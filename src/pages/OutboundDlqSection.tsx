@@ -202,7 +202,7 @@ const OutboundDlqSection: React.FC = () => {
             <tbody>
               {failed.map(e => (
                 <tr key={e.id} className="ps-conf-tr">
-                  <td className="ps-conf-td">{e.caseId}</td>
+                  <td className="ps-conf-td" data-phi="accession">{e.caseId}</td>
                   <td className="ps-conf-td">{siteLabelFor(e.caseId)}</td>
                   <td className="ps-conf-td">{e.billingType}</td>
                   <td className="ps-conf-td">
@@ -267,7 +267,7 @@ const OutboundDlqSection: React.FC = () => {
             <tbody>
               {queued.map(e => (
                 <tr key={e.id} className="ps-conf-tr">
-                  <td className="ps-conf-td">{e.caseId}</td>
+                  <td className="ps-conf-td" data-phi="accession">{e.caseId}</td>
                   <td className="ps-conf-td">{siteLabelFor(e.caseId)}</td>
                   <td className="ps-conf-td">{e.billingType}</td>
                   <td className="ps-conf-td">{e.triggerEvent}</td>

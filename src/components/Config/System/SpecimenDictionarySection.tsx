@@ -27,12 +27,14 @@ import { useSpecimenDictionary } from './useSpecimenDictionary';
 import { departmentService, subspecialtyService, Subspecialty } from '../../../services';
 import { protocolService } from '../../../services';
 import type { SpecimenEntry } from '../../../services/specimenDictionary/specimenTypes';
+import { buildSpecimenEntry, type SpecimenEntryDraft } from '@/services/specimenDictionary/buildSpecimenEntry';
+import { duplicateSpecimenEntry } from '@/services/duplication/duplicateEntities';
 import type { Department } from '../../../services/departments/IDepartmentService';
 import type { Protocol } from '../../../services/protocols/IProtocolService';
 
 // ─── Draft type ─────────────────────────────────────────────────────────────
 
-type Draft = Omit<SpecimenEntry, 'id' | 'normalizedLabel' | 'version' | 'updatedBy' | 'updatedAt'> & { synonymsText: string; defaultStainsText: string };
+type Draft = SpecimenEntryDraft;
 
 const emptyDraft = (): Draft => ({
   name: '', description: '', subspecialty: '', type: '', procedure: '', site: '', laterality: '',
@@ -333,38 +335,25 @@ const SpecimenDictionarySection: React.FC = () => {
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [dictionary, search, typeFilter, statusFilter]);
 
-  const buildEntry = (draft: Draft, existing?: SpecimenEntry): SpecimenEntry => ({
-    id: existing?.id ?? `sp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
-    name: draft.name.trim(),
-    description: draft.description?.trim() || undefined,
-    subspecialty: draft.subspecialty?.trim() || undefined,
-    subspecialtyId: draft.subspecialtyId || undefined,
-    type: draft.type.trim(),
-    procedure: draft.procedure.trim(),
-    site: draft.site?.trim() || undefined,
-    laterality: draft.laterality || undefined,
-    normalizedLabel: draft.name.trim(),
-    synonyms: draft.synonyms,
-    active: draft.active,
-    version: (existing?.version ?? 0) + 1,
-    updatedBy: 'admin',
-    updatedAt: new Date().toISOString(),
-    departmentId: draft.departmentId || undefined,
-    requireFixativeTimeBeforeSignout: draft.requireFixativeTimeBeforeSignout || undefined,
-    specimenCode: draft.specimenCode?.trim() || undefined,
-    defaultStains: draft.defaultStains?.length ? draft.defaultStains : undefined,
-    processingNotes: draft.processingNotes?.trim() || undefined,
-    defaultBaseCptCode: draft.defaultBaseCptCode?.trim() || undefined,
-  });
-
+  // Draft → stored entry lives in services/specimenDictionary/buildSpecimenEntry.ts
+  // (it keeps every field the form doesn't show; see that file for the
+  // data-loss bug it fixed). Add vs update keys off the modal's mode, never
+  // off whether an entry was passed in (a duplicate passes one for an add).
   const handleSaveEntry = (draft: Draft) => {
+    const opts = { now: new Date().toISOString(), newId: () => `sp-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`, updatedBy: 'admin' };
     if (modal?.mode === 'add') {
-      addEntries([buildEntry(draft)]);
+      addEntries([buildSpecimenEntry(draft, undefined, opts)]);
     } else if (modal?.entry) {
-      updateEntries([buildEntry(draft, modal.entry)]);
+      updateEntries([buildSpecimenEntry(draft, modal.entry, opts)]);
     }
     setModal(null);
   };
+
+  // Duplicate (PS-73): the Add form pre-filled from an existing entry. The
+  // matching keys (specimen code, synonyms) are cleared; see
+  // services/duplication/duplicateEntities.ts.
+  const handleDuplicate = (source: SpecimenEntry) =>
+    setModal({ mode: 'add', entry: duplicateSpecimenEntry(source, name => t('common.copyOfName', { name })) });
 
   const toggleActive = (entry: SpecimenEntry) => {
     updateEntries([{ ...entry, active: !entry.active, version: entry.version + 1, updatedAt: new Date().toISOString(), updatedBy: 'admin' }]);
@@ -524,7 +513,10 @@ const SpecimenDictionarySection: React.FC = () => {
                     </button>
                   </td>
                   <td className="ps-conf-td">
-                    <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: e })}>{t('common.edit')}</button>
+                    <div className="ps-conf-row-actions">
+                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: e })}>{t('common.edit')}</button>
+                      <button className="ps-conf-btn-row" onClick={() => handleDuplicate(e)}>{t('common.duplicate')}</button>
+                    </div>
                   </td>
                 </tr>
               ))}

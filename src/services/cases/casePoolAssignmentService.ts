@@ -122,6 +122,13 @@ export const BUILT_IN_ROUTING_RULES: RoutingRule[] = [
     keywords: ['lymph node', 'lymphoma', 'bone marrow', 'thymus', 'lymphadenopathy', 'haematological', 'hematological'] },
 ];
 
+/** Another rule already using `priority`. Pass the edited rule's id as
+ *  `excludeId` in EDIT mode only: an unsaved rule (add or duplicate) must be
+ *  checked against every stored rule. */
+export function findRoutingRulePriorityConflict(rules: RoutingRule[], priority: number, excludeId?: string): RoutingRule | undefined {
+  return rules.find(r => r.priority === priority && r.id !== excludeId);
+}
+
 export function loadRoutingRules(): RoutingRule[] {
   const stored = storageGet<RoutingRule[]>(ROUTING_RULES_KEY, BUILT_IN_ROUTING_RULES);
   // Migration: ensure all built-ins are present

@@ -62,6 +62,26 @@ export interface Department {
    * names, just missing here until now.
    */
   retentionOverrideDays?: RetentionOverrideDays;
+
+  /** Real, per PS-277 §1.2.2 (Master Template Engine — conditional
+   *  branding & header overrides), and per direct architecture
+   *  guidance: conditional branding reuses the SAME real
+   *  Facility/Department/Enterprise hierarchy Case Mask Scoping
+   *  already established (resolveCaseMaskScopeCandidates.ts), as the
+   *  middle fallback tier between a performing Facility's own value
+   *  and its Enterprise ancestor's. Free text, same "not validated
+   *  against a format" posture as Facility.cliaOrIsoNumber — a
+   *  Department-level override is a real, admin-configured convenience
+   *  default, not a claim that a workflow category independently holds
+   *  its own regulatory accreditation. See
+   *  services/facilities/resolveFacilityPrintBranding.ts for the real
+   *  resolution order (facility's own value wins; falls back to this
+   *  field, then to the Enterprise ancestor's). */
+  directorName?: string;
+  cliaOrIsoNumber?: string;
+  /** Same real reference-only posture as Facility.headerLogoUrl —
+   *  never the image binary itself. */
+  headerLogoUrl?: string;
 }
 
 export interface IDepartmentService {

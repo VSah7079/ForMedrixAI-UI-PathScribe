@@ -29,8 +29,8 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import '../../pathscribe.css';
-import { mockLabelLayoutService } from '../../services/labelDesigner/mockLabelLayoutService';
-import { mockFacilityService } from '../../services/facilities/mockFacilityService';
+import { labelLayoutService } from '@/services';
+import { facilityService } from '@/services';
 import { generateBarcodeSvg } from '../../utils/labels/generateBarcodeSvg';
 import { buildLabelLayoutZpl } from '../../services/labelDesigner/buildLabelLayoutZpl';
 import {
@@ -98,7 +98,7 @@ const LabelDesignerPage: React.FC = () => {
   const allowsOverride = LABEL_TYPE_ALLOWS_FACILITY_OVERRIDE[labelType];
 
   useEffect(() => {
-    mockFacilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(f => !f.isEnterprise)); });
+    facilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(f => !f.isEnterprise)); });
   }, []);
   const [widthMm, setWidthMm] = useState(LABEL_TYPE_DEFAULT_SIZE_MM.requisition.widthMm);
   const [heightMm, setHeightMm] = useState(LABEL_TYPE_DEFAULT_SIZE_MM.requisition.heightMm);
@@ -123,7 +123,7 @@ const LabelDesignerPage: React.FC = () => {
     // facilityId, so switching to a locked type never leaves a stale
     // facility selection silently affecting what's actually loaded.
     const effectiveFacilityId = LABEL_TYPE_ALLOWS_FACILITY_OVERRIDE[labelType] ? (facilityId || undefined) : undefined;
-    mockLabelLayoutService.getByLabelType(labelType, effectiveFacilityId).then(res => {
+    labelLayoutService.getByLabelType(labelType, effectiveFacilityId).then(res => {
       if (res.ok && res.data) {
         setWidthMm(res.data.widthMm);
         setHeightMm(res.data.heightMm);
@@ -186,7 +186,7 @@ const LabelDesignerPage: React.FC = () => {
     setSaveMessage(null);
     try {
       const effectiveFacilityId = allowsOverride ? (facilityId || undefined) : undefined;
-      const res = await mockLabelLayoutService.save({ labelType, facilityId: effectiveFacilityId, widthMm, heightMm, fields });
+      const res = await labelLayoutService.save({ labelType, facilityId: effectiveFacilityId, widthMm, heightMm, fields });
       setSaveMessage(res.ok ? (effectiveFacilityId ? t('labelDesignerPage.saveMessages.facilityOverrideSaved') : t('labelDesignerPage.saveMessages.enterpriseDefaultSaved')) : 'error' in res ? res.error : t('labelDesignerPage.saveMessages.unknownError'));
     } finally {
       setSaving(false);
@@ -195,7 +195,7 @@ const LabelDesignerPage: React.FC = () => {
 
   const handleReset = async () => {
     const effectiveFacilityId = allowsOverride ? (facilityId || undefined) : undefined;
-    await mockLabelLayoutService.reset(labelType, effectiveFacilityId);
+    await labelLayoutService.reset(labelType, effectiveFacilityId);
     setWidthMm(LABEL_TYPE_DEFAULT_SIZE_MM[labelType].widthMm);
     setHeightMm(LABEL_TYPE_DEFAULT_SIZE_MM[labelType].heightMm);
     setFields([]);
@@ -272,7 +272,7 @@ const LabelDesignerPage: React.FC = () => {
               onDrop={handleCanvasDrop}
               onClick={() => setSelectedFieldId(null)}
               className="ps-designer-canvas"
-              style={{ width: widthMm * PX_PER_MM, height: heightMm * PX_PER_MM }}>
+              style={{ '--canvas-w': `${widthMm * PX_PER_MM}px`, '--canvas-h': `${heightMm * PX_PER_MM}px` } as React.CSSProperties}>
               {fields.map(f => {
                 const def = LABEL_FIELD_CATALOG[labelType].find(c => c.key === f.fieldKey);
                 const isSelected = f.id === selectedFieldId;
@@ -285,10 +285,10 @@ const LabelDesignerPage: React.FC = () => {
                     title={def?.displayName ?? f.fieldKey}
                     className={`ps-designer-field${isSelected ? ' ps-designer-field--selected' : ''}`}
                     style={{
-                      left: f.xMm * PX_PER_MM, top: f.yMm * PX_PER_MM,
-                      width: f.widthMm * PX_PER_MM, height: f.heightMm * PX_PER_MM,
-                      fontSize: f.fontSizeMm * PX_PER_MM * 0.6,
-                    }}>
+                      '--field-x': `${f.xMm * PX_PER_MM}px`, '--field-y': `${f.yMm * PX_PER_MM}px`,
+                      '--field-w': `${f.widthMm * PX_PER_MM}px`, '--field-h': `${f.heightMm * PX_PER_MM}px`,
+                      '--field-font': `${f.fontSizeMm * PX_PER_MM * 0.6}px`,
+                    } as React.CSSProperties}>
                     {f.fieldKey === 'barcode' ? (
                       // Real, per this file's own header — a real,
                       // rendered barcode (the same generateBarcodeSvg.ts

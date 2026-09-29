@@ -196,6 +196,42 @@ Shared, reusable UI primitives used across multiple pages.
   and rechecking on the `visibilitychange` event, not just counting
   timer ticks.
 
+## PS-62: native `<select>` stays native (Batch 323)
+
+PS-62 asked for the remaining native `<select>` elements in Config/System to get the `Dropdown.tsx` treatment.
+- **The count was far off.** The ticket said 18; a fresh count found about 190 in Config/System and about 400 app-wide.
+- **Pete's decision:** keep the browser's own select, which gives keyboard, screen-reader and mobile behaviour for free, and make its open list match the dark theme with CSS. `Dropdown.tsx` and `SearchableCombobox.tsx` stay for the cases they were built for (chips + add-another, search).
+- **What changed:** one app-wide rule set in `pathscribe.css` (near the top, beside the date-input rule). All selects get `color-scheme: dark` and the same dark option and optgroup colours. This replaced four per-class option rules (ps-conf-select, ps-input-dark, ps-specedit-input, ps-st-role-filter) that used four different shades. Checked in the browser on the Accession page, Staff and System: every select's options now compute to the same surface colour and text.
+- **Not used: Chrome/Edge's fully styled open list** (`appearance: base-select`). It was tried and checked in the browser. It sizes each select to its *selected* value instead of its widest option, so toolbars and table columns change width as values are picked, and it changes the arrow glyph and row height. Getting native-like widths back would need a small script measuring every select app-wide. That is Pete's call; it's recorded on PS-62.
+
+## Batch 367 (PS-74): no inline CSS
+
+`ConfirmModal.tsx`, `DraftRecoveryModal.tsx`, `LookupModal.tsx`, `PatientIdStatusDot.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+`ConfirmModal` lost its unused `overlayStyle` prop.
+
+## CapabilityButton (Batch 369, PS-355)
+
+`CapabilityButton` is a button for an action that needs a capability. Without the capability, the button:
+- stays visible, greyed out (`aria-disabled`, class `ps-cap-btn--denied`);
+- shows a tooltip naming the missing capability;
+- ignores clicks.
+
+It reads `hooks/useCapabilities.ts` and decides nothing itself. The service behind the action checks again and audits.
+
+## Batch 370 (PS-356)
+
+`CapabilityButton` takes an optional `context`: the case, the facility, or all facilities. The tooltip gives the actual reason:
+- not granted;
+- a missing requirement;
+- outside the user's facility assignment.
+
+## Batch 374
+
+- **`ScreenGate`:** wraps a route and shows it only if the signed-in user may open that screen (`services/screens`); otherwise it shows a short "no access" page with a way home.
+
+- **Batch 375, `ScreenGate`:** takes a Home tile id too; a tile opens when any of its screens may be opened (the Worklist and its two queues, the hubs).
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

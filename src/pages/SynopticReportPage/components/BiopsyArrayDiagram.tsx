@@ -84,8 +84,8 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
   const height = PAD * 2 + rows * CELL + (rows - 1) * GAP + 20; // +20 for the cassette-label strip
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginLeft: 40, marginBottom: 12 }}>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ flexShrink: 0 }}>
+    <div className="ps-biopsyarray-wrap">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="ps-biopsyarray-svg">
         {/* Cassette outline — same amber/brown language as BlockIcon, so a
             Biopsy Array still visually reads as "a block" at a glance. */}
         <rect
@@ -104,7 +104,7 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
             <g
               key={p.blockId}
               onClick={() => onOpenBlockEditor(p.blockId)}
-              style={{ cursor: 'pointer' }}
+              className="ps-biopsyarray-cell-group"
             >
               <title>
                 {t('biopsyArrayDiagram.positionTooltip', { position: p.position, label: p.specimenLabel })}
@@ -124,13 +124,13 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
           );
         })}
       </svg>
-      <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.6 }}>
+      <div className="ps-biopsyarray-legend">
         {sorted.map(p => (
           <div key={p.blockId}>
             <Trans
               i18nKey="biopsyArrayDiagram.legendRow"
               values={{ position: p.position, label: p.specimenLabel }}
-              components={{ bold: <span style={{ fontWeight: 700, color: '#cbd5e1' }} /> }}
+              components={{ bold: <span className="ps-biopsyarray-legend-bold" /> }}
             />
             {p.specimenDescription ? t('biopsyArrayDiagram.legendDescriptionSuffix', { description: p.specimenDescription }) : ''}
           </div>

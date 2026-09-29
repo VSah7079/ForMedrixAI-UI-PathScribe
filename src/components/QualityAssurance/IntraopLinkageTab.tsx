@@ -22,17 +22,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TooltipContentProps } from 'recharts';
 import { intraoperativeService } from '@/services';
-import { mockAuditService } from '@/services/auditlog/mockAuditService';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
 import type { IntraoperativeEntry } from '@/types/intraop/IntraoperativeEntry';
 import type { AuditLog } from '@/services/auditlog/IAuditService';
 import { QaScopeSwitcher } from './QaScopeSwitcher';
-import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope } from './qaReportUtils';
+import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { auditService } from '@/services';
 
 const hoursSince = (iso: string) => Math.floor((Date.now() - new Date(iso).getTime()) / 3600000);
 
@@ -49,7 +50,7 @@ export const IntraopLinkageTab: React.FC = () => {
     const session = getSessionUser();
     const crossTenant = canViewCrossTenantQaData(session);
     if (crossTenant) {
-      mockAuditService.logEvent({
+      auditService.logEvent({
         type: 'system',
         event: 'qa.cross_tenant_access_executed',
         detail: `Cross-tenant QA access: Intraoperative Linkage tab, user ${session?.id ?? 'unknown'}`,
@@ -60,7 +61,7 @@ export const IntraopLinkageTab: React.FC = () => {
     }
     Promise.all([
       intraoperativeService.getAll(),
-      mockAuditService.getAuditLogs(),
+      auditService.getAuditLogs(),
       caseRouter.getAll(undefined, { includeOrchestration: true, bypassAccessControl: crossTenant }),
     ]).then(([entriesRes, logsRes, casesRes]) => {
       if (entriesRes.ok) setEntries(entriesRes.data);
@@ -142,7 +143,7 @@ export const IntraopLinkageTab: React.FC = () => {
       'Performed By': e.performedBy.userName,
       'OR Number': e.orNumber,
     }));
-    exportQaReportRows([...mergedRows, ...pendingRows], `intraoperative-linkage-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:intraop-linkage:export', [...mergedRows, ...pendingRows], `intraoperative-linkage-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext(scope));
   };
 
   if (loading) return <div className="ps-conf-loading">{t('intraopLinkageTab.loading')}</div>;
@@ -151,7 +152,7 @@ export const IntraopLinkageTab: React.FC = () => {
     <div>
       <div className="ps-qa-tab-toolbar">
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={visibleClientIds} />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
+        <CapabilityButton capability="qa:intraop-linkage:export" context={qaScopeContext(scope)} className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</CapabilityButton>
       </div>
 
       <div className="ps-defic-trend-card">

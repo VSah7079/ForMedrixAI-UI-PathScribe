@@ -20,11 +20,20 @@
 // identical, already-translated strings from `AmendmentModal.tsx`'s
 // own clinical-notification section (same real
 // `NotificationMethod`/`CriticalResultNotification` vocabulary).
+//
+// Batch 380 (PS-359): what Record needs comes from the organisation's Field
+// Requirements (report page, Critical findings): the clinician, the method
+// and who notified are locked as always required; read-back can be required.
+// The check is services/fieldRequirements/reportPageChecks.ts. Record can
+// also be said ("record notification", CRITICAL_NOTIFICATION_RECORD).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
+import { actionRegistryService, criticalNotificationMissing, reportFieldRequired } from '@/services';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
+import { formatList } from '@/utils/formatList';
 import type { CriticalFindingFlag } from '@/services/clinical/detectCriticalFindings';
 import type { NotificationMethod } from '@/types/clinical/CriticalResultNotification';
 
@@ -52,41 +61,51 @@ interface CriticalFindingsModalProps {
 export const CriticalFindingsModal: React.FC<CriticalFindingsModalProps> = ({
   findings, defaultNotifiedByName, onRecord, onAcknowledge,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const requirements = useFieldRequirements('report');
   const [clinicianName, setClinicianName] = useState('');
   const [method, setMethod] = useState<NotificationMethod | ''>('');
   const [readBackConfirmed, setReadBackConfirmed] = useState(false);
   const [notifiedByName, setNotifiedByName] = useState(defaultNotifiedByName ?? '');
   const [busy, setBusy] = useState(false);
 
-  const canRecord = clinicianName.trim().length > 0 && !!method && notifiedByName.trim().length > 0;
+  const missing = criticalNotificationMissing({ clinicianName, method, notifiedByName, readBackConfirmed }, requirements);
+  const canRecord = missing.length === 0;
+  const required = (id: string) => reportFieldRequired(requirements, id);
 
   const handleRecord = async () => {
-    if (!canRecord) return;
+    if (!canRecord || busy) return;
     setBusy(true);
     await onRecord({ clinicianName: clinicianName.trim(), method: method as NotificationMethod, readBackConfirmed, notifiedByName: notifiedByName.trim() });
     setBusy(false);
   };
+
+  // Voice/keyboard "record notification": the same Record, with the same check.
+  const recordRef = useRef(handleRecord);
+  recordRef.current = handleRecord;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'CRITICAL_NOTIFICATION_RECORD') void recordRef.current();
+  }), []);
 
   return (
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">⚠️ {t('criticalFindingsModal.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-intraop-note" style={{ marginBottom: 16, borderColor: 'rgba(248,113,113,0.4)' }}>
-            <span className="ps-intraop-note-label" style={{ color: '#f87171' }}>{t('criticalFindingsModal.requiresUrgentLabel')}</span>
+          <p className="ps-intraop-note ps-intraop-note--danger ps-mb-16">
+            <span className="ps-intraop-note-label ps-intraop-note-label--danger">{t('criticalFindingsModal.requiresUrgentLabel')}</span>
             {t('criticalFindingsModal.intro')}
           </p>
 
           {findings.map((f, i) => (
-            <div key={i} className="ps-intraop-note" style={{ marginBottom: 10 }}>
+            <div key={i} className="ps-intraop-note ps-mb-10">
               <span className="ps-intraop-note-label">{t('criticalFindingsModal.findingLabel', { term: f.term, sourceField: f.sourceField })}</span>
-              "{f.sourceQuote}"
+              {t('criticalFindingsModal.sourceQuote', { quote: f.sourceQuote })}
             </div>
           ))}
 
-          <div className="ps-conf-form-field" style={{ marginTop: 16 }}>
-            <label className="ps-conf-label">{t('criticalFindingsModal.notifiedByLabel')}</label>
+          <div className="ps-conf-form-field ps-mt-16">
+            <label className="ps-conf-label">{t('criticalFindingsModal.notifiedByLabel')} {required('criticalNotifiedBy') && <span className="ps-conf-required">*</span>}</label>
             <input
               className="ps-conf-input"
               value={notifiedByName}
@@ -95,7 +114,7 @@ export const CriticalFindingsModal: React.FC<CriticalFindingsModalProps> = ({
             />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">{t('amendmentModal.notification.clinicianNotifiedLabel')}</label>
+            <label className="ps-conf-label">{t('amendmentModal.notification.clinicianNotifiedLabel')} {required('criticalClinician') && <span className="ps-conf-required">*</span>}</label>
             <input
               className="ps-conf-input"
               value={clinicianName}
@@ -104,7 +123,7 @@ export const CriticalFindingsModal: React.FC<CriticalFindingsModalProps> = ({
             />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="critical-notify-method">{t('amendmentModal.notification.methodLabel')}</label>
+            <label className="ps-conf-label" htmlFor="critical-notify-method">{t('amendmentModal.notification.methodLabel')} {required('criticalMethod') && <span className="ps-conf-required">*</span>}</label>
             <select id="critical-notify-method" className="ps-conf-select" value={method} onChange={e => setMethod(e.target.value as NotificationMethod | '')}>
               <option value="">{t('amendmentModal.notification.methodSelectPlaceholder')}</option>
               {(Object.keys(NOTIFICATION_METHOD_LABEL_KEY) as NotificationMethod[]).map(m => (
@@ -112,10 +131,16 @@ export const CriticalFindingsModal: React.FC<CriticalFindingsModalProps> = ({
               ))}
             </select>
           </div>
-          <label className="ps-conf-label" style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          <label className="ps-conf-label ps-flex-row-gap-8 ps-conf-label--clickable">
             <input type="checkbox" checked={readBackConfirmed} onChange={e => setReadBackConfirmed(e.target.checked)} />
             {t('criticalFindingsModal.readBackLabel')}
+            {required('criticalReadBack') && <span className="ps-conf-required">*</span>}
           </label>
+          {missing.length > 0 && (
+            <p className="ps-field-still-required" role="status">
+              {t('fieldRequirements.stillRequired', { fields: formatList(missing.map(id => t(`fieldRequirements.fields.report.${id}`)), i18n.language) })}
+            </p>
+          )}
         </div>
         <div className="ps-ms-footer">
           <button className="ps-btn-secondary" onClick={onAcknowledge} disabled={busy}>

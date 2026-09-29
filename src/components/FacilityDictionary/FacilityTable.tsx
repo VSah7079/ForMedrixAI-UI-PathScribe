@@ -21,6 +21,13 @@ import { JURISDICTION_LABELS } from "../../types/systemConfig";
 interface FacilityTableProps {
   facilities: Facility[];
   onEdit: (facilityId: string) => void;
+  /** Real, new (PS-73, Sep 2026) — opens the editor pre-filled from this
+   *  facility as a starting template, via FacilityDictionaryPage.tsx's own
+   *  handleDuplicateFacility. Passes the full Facility (not just its id) —
+   *  matches PhysiciansSection.tsx's handleClonePhysician convention,
+   *  since the caller needs the source record to build the prefill, not
+   *  just an id to look it back up. */
+  onDuplicate: (facility: Facility) => void;
   onToggleActive: (id: string, active: boolean) => void;
   onVerify: (id: string) => void;
 }
@@ -45,6 +52,7 @@ const STATUS_FILTER_LABEL_KEY: Record<StatusFilter, string> = {
 export const FacilityTable: React.FC<FacilityTableProps> = ({
   facilities,
   onEdit,
+  onDuplicate,
   onToggleActive,
   onVerify,
 }) => {
@@ -151,12 +159,12 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
         ) : (
           <table className="fct-table">
             <colgroup>
-              <col style={{ width: "24%" }} />
-              <col style={{ width: "18%" }} />
-              <col style={{ width: "22%" }} />
-              <col style={{ width: "13%" }} />
-              <col style={{ width: "9%" }} />
-              <col style={{ width: "14%" }} />
+              <col className="fct-col-facility" />
+              <col className="fct-col-roles" />
+              <col className="fct-col-contact" />
+              <col className="fct-col-tat" />
+              <col className="fct-col-status" />
+              <col className="fct-col-actions" />
             </colgroup>
             <thead>
               <tr className="fct-thead-row">
@@ -257,6 +265,10 @@ export const FacilityTable: React.FC<FacilityTableProps> = ({
                         className="ps-conf-btn-secondary fct-action-btn fct-action-btn--edit"
                         onClick={() => onEdit(facility.id)}
                       >{t('facilityTable.edit')}</button>
+                      <button
+                        className="ps-conf-btn-secondary fct-action-btn fct-action-btn--duplicate"
+                        onClick={() => onDuplicate(facility)}
+                      >{t('common.duplicate')}</button>
                       {facility.status !== 'Unverified' && (
                         <button
                           className={`ps-conf-btn-secondary fct-action-btn ${facility.status === 'Active' ? 'fct-action-btn--deactivate' : 'fct-action-btn--activate'}`}

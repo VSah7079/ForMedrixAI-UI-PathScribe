@@ -41,12 +41,19 @@ export interface Flag {
 }
 
 // ─── Filter parameter contract ────────────────────────────────────────────────
-// Used by SearchPage → caseService.getAll() and WorklistPage → caseService.getAll().
-// All fields are optional; omitting a field means "no restriction on that axis".
+// Simple case-list filters for internal callers (billing audit search,
+// cytology patient history). All fields are optional; omitting a field means
+// "no restriction on that axis".
+//
+// Batch 350: the Search page's filters (demographics, status, priority,
+// flags, protocols, pathologist, codes, dates …) moved to the case search
+// service (services/caseSearch/), which the server runs with paging. They
+// were removed from here so there is one implementation, not two that
+// drift: several of them never matched (diagnosis, subspecialty) or matched
+// the wrong field (requisition numbers, pathologist).
 
 export interface CaseFilterParams {
-  // ── Identifier / text search ───────────────────────────────────────────────
-  /** Free-text search across accession number and patient name */
+  /** Free-text search across accession number, patient name and MRN */
   search?: string;
   /** Exact or partial patient full-name match */
   patientName?: string;
@@ -64,91 +71,8 @@ export interface CaseFilterParams {
   patientId?: string;
   /** Accession number (full or partial) */
   accessionNo?: string;
-
-  // ── Accession date range (specimen receivedAt or case createdAt) ───────────
-  /** ISO date string, inclusive lower bound for accession date */
-  dateFrom?: string;
-  /** ISO date string, inclusive upper bound for accession date */
-  dateTo?: string;
-
-  // ── Patient demographics ───────────────────────────────────────────────────
-  /** E.g. ['Male', 'Female', 'Non-binary'] — normalised to M/F in service */
-  genderList?: ('Male' | 'Female' | 'Non-binary' | 'Other' | 'Unknown')[];
-  /** ISO date string lower bound for patient date-of-birth */
-  dobFrom?: string;
-  /** ISO date string upper bound for patient date-of-birth */
-  dobTo?: string;
-  /** Minimum patient age in years (computed from DOB at query time) */
-  ageMin?: number;
-  /** Maximum patient age in years (computed from DOB at query time) */
-  ageMax?: number;
-
-  // ── Worklist / status ─────────────────────────────────────────────────────
-  /** Single status — legacy worklist usage; prefer statusList for SearchPage */
+  /** Single status or list — legacy worklist usage */
   status?: CaseStatus | CaseStatus[];
-  /** One or more workflow statuses to include */
-  statusList?: CaseStatus[];
-  /** One or more case priorities to include */
-  priorityList?: ('Routine' | 'STAT')[];
-  /** Filter to a single clinical subspecialty */
-  specialty?: string;
-
-  // ── Assignment ─────────────────────────────────────────────────────────────
-  /** Pathologist IDs (e.g. 'PATH-001') matched against order.assignedTo */
-  pathologistIds?: string[];
-  /**
-   * Requesting / attending provider names (full display name, e.g. 'Dr. Sarah Chen').
-   * SearchPage maps att-N UI IDs → full names before passing; service matches
-   * against order.requestingProvider with title-stripped contains logic.
-   */
-  attendingNames?: string[];
-
-  // ── Clinical content ───────────────────────────────────────────────────────
-  /** Partial specimen description keywords */
-  specimenList?: string[];
-  /** Free-text diagnosis keywords */
-  diagnosisList?: string[];
-  /**
-   * SNOMED CT codes (numeric strings, e.g. '413448000').
-   * Matched against case.coding.snomed[].
-   */
-  snomedCodes?: string[];
-  /**
-   * ICD-10/11 codes (e.g. 'C50.412').
-   * Matched against case.coding.icd10[] with prefix tolerance so 'C50' matches 'C50.412'.
-   */
-  icdCodes?: string[];
-
-  // ── Protocols & flags ─────────────────────────────────────────────────────
-  /**
-   * Resolved synoptic templateId values (e.g. 'breast_invasive').
-   * SearchPage maps ALL_SYNOPTICS p-keys → templateId before passing.
-   * Matched against case.synopticReports[].templateId.
-   */
-  synopticProtocolIds?: string[];
-  /**
-   * Case flag display names (e.g. 'STAT — Rush Processing').
-   * Matched with name-contains logic so partial selections still connect.
-   */
-  flagIds?: string[];
-  /**
-   * Real, per direct guidance's own follow-up: computational flag
-   * codes (Flag.tagClass === 'COMPUTATIONAL', a distinct category from
-   * the manually-assigned case flags flagIds already matches above),
-   * matched against a case's own real specimenFlags - true when ANY
-   * specimen flag's lisCode, id, or label equals ANY of the given
-   * codes. Previously applied client-side in SearchPage.tsx itself,
-   * after the real page had already been fetched - moved here so
-   * every real caller gets the same, correct, pre-pagination
-   * filtering (mockCaseService.ts applies this before
-   * applyCasePagination, same real pipeline order as every other
-   * filter field here).
-   */
-  compFlagCodes?: string[];
-
-  // ── Submitting client ──────────────────────────────────────────────────────
-  /** Real client ids from clientService.getAll(), matched against order.facilityId */
-  facilityIds?: string[];
 
   // ── Pagination ─────────────────────────────────────────────────────────────
   /**

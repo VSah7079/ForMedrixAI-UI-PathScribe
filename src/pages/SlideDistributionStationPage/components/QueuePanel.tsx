@@ -49,7 +49,7 @@ const QueuePanel: React.FC<QueuePanelProps> = ({ queue, activeQueueId, onSelect,
             >
               <div className="ps-slidedist-queue-row-top">
                 <span>
-                  {item.caseData.accession?.fullAccession ?? item.caseData.id} · {item.specimen.label}{item.block.label}
+                  <span data-phi="accession">{item.caseData.accession?.fullAccession ?? item.caseData.id}</span> · {item.specimen.label}{item.block.label}
                   <span className={`ps-slidedist-priority-badge ps-slidedist-priority-badge--${item.caseData.order.priority}`}>{item.caseData.order.priority}</span>
                 </span>
                 <button

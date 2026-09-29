@@ -20,6 +20,7 @@ function payload(overrides: Partial<CriticalAlertPayload> = {}): CriticalAlertPa
       hasKnownEhrInbox: true,
       preferredContact: 'Email',
     },
+    referenceUrl: 'https://pathscribe.app/critical-alert/cat_abc123',
     ...overrides,
   };
 }
@@ -46,6 +47,27 @@ describe('sendSecureEmailAlert — real, disclosed stub', () => {
     expect(getSentSecureEmailAlerts()).toHaveLength(1);
     expect(getSentSecureEmailAlerts()[0].to).toBe('dr.chen@example.org');
   });
+
+  // Real, per direct guidance's own engineering brief: despite the
+  // "secure_email" name, the body must never carry PHI or clinical
+  // detail — only the generic template plus the opaque reference link.
+  it('never includes findingTerm, sourceQuote, or findingSeverity in the email body — zero-PHI template only', async () => {
+    const outcome = await sendSecureEmailAlert(payload());
+    expect(outcome.detail).not.toContain('invasive carcinoma');
+    expect(outcome.detail).not.toContain('invasive carcinoma identified');
+    expect(outcome.detail).not.toContain('Critical');
+  });
+
+  it('includes the opaque reference link when one was issued', async () => {
+    const outcome = await sendSecureEmailAlert(payload());
+    expect(outcome.detail).toContain('https://pathscribe.app/critical-alert/cat_abc123');
+  });
+
+  it('falls back to a link-free, still zero-PHI message when no reference link could be issued', async () => {
+    const outcome = await sendSecureEmailAlert(payload({ referenceUrl: undefined }));
+    expect(outcome.detail).not.toContain('http');
+    expect(outcome.detail).not.toContain('invasive carcinoma');
+  });
 });
 
 describe('sendSmsAlert — real, disclosed stub', () => {
@@ -59,6 +81,27 @@ describe('sendSmsAlert — real, disclosed stub', () => {
   it('never includes the sourceQuote (patient-adjacent narrative text) in the SMS body — kept minimal by design', async () => {
     const outcome = await sendSmsAlert(payload({ sourceQuote: 'a real, specific narrative quote' }));
     expect(outcome.detail).not.toContain('a real, specific narrative quote');
+  });
+
+  // Real, per direct guidance's own engineering brief: standard telecom
+  // SMS carriers generally will not sign a HIPAA BAA, so findingTerm
+  // and findingSeverity must never appear in the body either, not just
+  // sourceQuote.
+  it('never includes findingTerm or findingSeverity in the SMS body — zero-PHI template only', async () => {
+    const outcome = await sendSmsAlert(payload());
+    expect(outcome.detail).not.toContain('invasive carcinoma');
+    expect(outcome.detail).not.toContain('Critical');
+  });
+
+  it('includes the opaque reference link when one was issued', async () => {
+    const outcome = await sendSmsAlert(payload());
+    expect(outcome.detail).toContain('https://pathscribe.app/critical-alert/cat_abc123');
+  });
+
+  it('falls back to a link-free, still zero-PHI message when no reference link could be issued', async () => {
+    const outcome = await sendSmsAlert(payload({ referenceUrl: undefined }));
+    expect(outcome.detail).not.toContain('http');
+    expect(outcome.detail).not.toContain('invasive carcinoma');
   });
 
   it('records the real request in the inspectable log', async () => {

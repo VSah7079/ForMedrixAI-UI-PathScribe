@@ -115,10 +115,71 @@ file:
 
 The footer's own Save/Add button — background switches between `#10b981` (saved, bright green) and `#0891b2` (this app's own teal accent, `--ps-teal`) — used `color: "#0f172a"` (dark). Bright green with dark text is genuinely readable, but the teal state (a moderate-brightness accent, not a truly bright one) made the dark text noticeably hard to read — the same pattern already found and fixed in `pathscribe.css` itself for `.ps-login-submit` (see `src/README.md`'s own account). Fixed to white, readable against both real background states this button ever has.
 
+## Real fix (PS-73, Sep 2026) — Duplicate + assigningAuthority uniqueness
+
+The one dictionary this ticket's own original target matrix named
+("Client Dictionary" — this folder's real predecessor, see the rename
+note above) and that had genuinely never been wired, closed:
+
+- **`FacilityTable.tsx`** — new Duplicate action button per row
+  (`common.duplicate`), alongside the existing Edit.
+- **`FacilityDictionaryPage.tsx`** — new `handleDuplicateFacility()`.
+  Not a plain `prepareDuplicate()` "(Copy)"-and-done clone (see
+  `utils/README.md`'s own account of why `preparePersonDuplicate()`
+  doesn't fit here either): `assigningAuthority` — the field a real,
+  live lookup in `mockOrderIntakeService.ts` keys Facility resolution
+  on — is cleared, not copied, same reasoning as a cloned physician's
+  own `npi`/`physicianCode`; contact-person fields
+  (`contactGivenNames`/`contactFamilyNames`/`email`/`phone`/`fax`/
+  `address`/`notes`) are cleared too, since they belong to a specific
+  person/location, not the reusable org config actually being cloned
+  (roles, jurisdiction, reporting, TAT, escalation, AI settings, LIS
+  routing, identifier formats — all genuinely carry over). Also added
+  an explicit `editorMode: 'add' | 'edit'` page state, replacing the
+  old `!!editingFacility` inference — real bug class this avoids:
+  Duplicate populates `editingFacility` with a prefilled template for
+  an *add*, which `!!editingFacility` could never tell apart from a
+  real edit; `handleSave` now branches on `editorMode`, never on
+  `editingFacility`'s mere presence.
+- **`FacilityEditorModal.tsx`** — gained the matching `mode: 'add' |
+  'edit'` prop, replacing `isEdit = !!facility` with
+  `isEdit = mode === 'edit'` — the same fix on the modal's own side.
+  This wasn't cosmetic: `eligibleModels` (AI tab) and `locations`
+  (Locations tab) were both gated on `facility?.id` alone, which a
+  Duplicate template's placeholder id would have satisfied, firing
+  real lookups against a bogus id and showing the Locations tab for
+  an unsaved record. Both effects, plus the Locations tab itself and
+  `handleAddLocation`, are now additionally gated on `isEdit`. Also
+  gained real `assigningAuthority` uniqueness validation via
+  `utils/validateUnique.ts`'s `findDuplicate()` (case-insensitive,
+  `excludeId` only in real edit mode) — the exact real-lookup risk
+  `CrosswalkSection.tsx`'s own compound check already protects
+  against, just single-key here.
+- Real regression tests added: `FacilityEditorModal.test.tsx` (mode
+  vs. facility-presence for the id-gated effects; the uniqueness
+  check itself, both directions) and a new
+  `pages/system/FacilityDictionaryPage.test.tsx` (the actual
+  regression this fix is about — Duplicate-then-Save calls
+  `facilityService.add()`, never `.update()`, and never touches the
+  source record).
+
 ## Sole consumer
 
 `pages/system/FacilityDictionaryPage.tsx` — page title also reads
 "Facility Configuration", same rename.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`IdentifierFormatsTab.tsx`: the scan-test result banner is tagged. The kind badge's colours come from `--ps-hue` and a CSS rule; they were three inline style properties built in JSX.
+
+## Batch 367 (PS-74): no inline CSS
+
+`FacilityEditorModal.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`FacilityEditorModal.tsx` takes `placeOfServiceCodeService` from `@/services`, and is off the deployment baseline.
 
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

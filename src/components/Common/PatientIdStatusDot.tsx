@@ -56,20 +56,11 @@ export const PatientIdStatusDot: React.FC<Props> = ({ jurisdiction, rawId, hl7St
   const tooltip = t(status.tooltipKey, tooltipParams);
   return (
     <span
-      className="ps-patient-id-status-dot"
+      className="ps-patient-id-status-dot ps-patient-id-status-dot-shape"
       role="img"
       aria-label={`${label}: ${tooltip}`}
       title={tooltip}
-      style={{
-        display: 'inline-block',
-        width: px,
-        height: px,
-        borderRadius: '50%',
-        flexShrink: 0,
-        background: DOT_COLOR[status.color],
-        boxShadow: `0 0 4px ${DOT_COLOR[status.color]}99`,
-        cursor: 'default',
-      }}
+      style={{ '--dot-size': `${px}px`, '--ps-hue': DOT_COLOR[status.color] } as React.CSSProperties}
     />
   );
 };

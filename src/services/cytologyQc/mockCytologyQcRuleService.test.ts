@@ -48,11 +48,11 @@ describe('mockCytologyQcRuleService', () => {
 
   it('a real duplicate copies the source rule\'s own real criteria/sampling config, but starts inactive and gets a real, distinct id', async () => {
     const { mockCytologyQcRuleService } = await import('./mockCytologyQcRuleService');
-    const result = await mockCytologyQcRuleService.duplicate('SEED-US-CLIA-002');
+    const result = await mockCytologyQcRuleService.duplicate('SEED-US-CLIA-002', 'US CLIA High-Risk Targeted Pap Rescreen (copie)');
     expect(result.ok).toBe(true);
     if (result.ok) {
       expect(result.data.id).not.toBe('SEED-US-CLIA-002');
-      expect(result.data.name).toBe('Copy of US CLIA High-Risk Targeted Pap Rescreen');
+      expect(result.data.name).toBe('US CLIA High-Risk Targeted Pap Rescreen (copie)'); // caller-supplied, localized
       expect(result.data.active).toBe(false);
       expect(result.data.criteria).toEqual(expect.objectContaining({ jurisdictions: ['US'], resultIsNegative: true }));
       expect(result.data.samplingLogic).toEqual({ type: 'percentage', ratePercent: 100.0 });
@@ -61,7 +61,7 @@ describe('mockCytologyQcRuleService', () => {
 
   it('duplicating, then making a small real change, leaves the original real rule completely untouched', async () => {
     const { mockCytologyQcRuleService } = await import('./mockCytologyQcRuleService');
-    const duplicated = await mockCytologyQcRuleService.duplicate('SEED-UK-NHS-001');
+    const duplicated = await mockCytologyQcRuleService.duplicate('SEED-UK-NHS-001', 'UK copy');
     if (!duplicated.ok) return;
     await mockCytologyQcRuleService.update(duplicated.data.id, { samplingLogic: { type: 'percentage', ratePercent: 30 } });
     const original = await mockCytologyQcRuleService.getById('SEED-UK-NHS-001');
@@ -71,7 +71,7 @@ describe('mockCytologyQcRuleService', () => {
 
   it('a real, non-existent rule id is honestly refused for duplication, never silently creating an empty rule', async () => {
     const { mockCytologyQcRuleService } = await import('./mockCytologyQcRuleService');
-    const result = await mockCytologyQcRuleService.duplicate('does-not-exist');
+    const result = await mockCytologyQcRuleService.duplicate('does-not-exist', 'x');
     expect(result.ok).toBe(false);
   });
 

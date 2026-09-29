@@ -43,7 +43,7 @@ const CassettePrintPanel: React.FC<CassettePrintPanelProps> = ({
 
   return (
     <div>
-      <div className="ps-embedding-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-embedding-panel ps-mb-14">
         <p className="ps-embedding-panel-title">{t('embeddingStation.hardware.deviceStatus')}</p>
         <div className="ps-embedding-hardware-card">
           <span>{printer ? `${printer.printerId} (${printer.model})` : t('embeddingStation.hardware.noPrinter')}</span>
@@ -54,13 +54,13 @@ const CassettePrintPanel: React.FC<CassettePrintPanelProps> = ({
         {printerError && <div className="ps-embedding-scan-error">{printerError}</div>}
       </div>
 
-      <div className="ps-embedding-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-embedding-panel ps-mb-14">
         <p className="ps-embedding-panel-title">{t('embeddingStation.hardware.reprint')}</p>
         <button type="button" className="ps-btn-primary" disabled={reprintInFlight} onClick={onRequestReprint}>
           🖨️ {t('embeddingStation.hardware.reprintCassette')}
         </button>
         {typeof cassetteReprintCount === 'number' && cassetteReprintCount > 0 && (
-          <div className="ps-embedding-context-field" style={{ marginTop: 8 }}>
+          <div className="ps-embedding-context-field ps-mt-8">
             {t('embeddingStation.hardware.reprintCount', { count: cassetteReprintCount })}
             {lastCassetteReprintReason && <strong>{lastCassetteReprintReason}</strong>}
           </div>
@@ -70,16 +70,16 @@ const CassettePrintPanel: React.FC<CassettePrintPanelProps> = ({
 
       <div className="ps-embedding-panel">
         <p className="ps-embedding-panel-title">{t('embeddingStation.hardware.labelPreview')}</p>
-        <div className="ps-embedding-label-preview" style={{ aspectRatio: `${labelLayout.faceWidthMm} / ${labelLayout.faceHeightMm}`, border: '1px solid rgba(148,163,184,0.3)', borderRadius: 6, padding: 8, display: 'flex', flexDirection: 'column', justifyContent: 'center', gap: 4 }}>
-          <div style={{ display: 'flex', gap: 1, flexWrap: 'wrap' }}>
+        <div className="ps-embedding-label-preview" style={{ '--label-aspect': `${labelLayout.faceWidthMm} / ${labelLayout.faceHeightMm}` } as React.CSSProperties}>
+          <div className="ps-embedding-cassette-module-row">
             {/* Real, deliberate: a schematic module grid, same honest
                 "not a pixel-exact DataMatrix render" posture as
                 HardwarePrintPanel.tsx's own slide label preview. */}
             {Array.from({ length: 24 }).map((_, i) => (
-              <span key={i} style={{ width: 3, height: 3, background: '#e2e8f0', opacity: (specimenLabel.charCodeAt(0) + i) % 3 === 0 ? 0.15 : 1 }} />
+              <span key={i} className={`ps-embedding-cassette-module-dot${(specimenLabel.charCodeAt(0) + i) % 3 === 0 ? ' ps-embedding-cassette-module-dot--dim' : ''}`} />
             ))}
           </div>
-          <div style={{ fontSize: 10, color: '#e2e8f0' }}>{specimenLabel}{blockLabel}</div>
+          <div className="ps-embedding-cassette-label-text">{specimenLabel}{blockLabel}</div>
         </div>
         <div className="ps-embedding-comment-meta">{labelLayout.faceWidthMm}mm × {labelLayout.faceHeightMm}mm</div>
       </div>

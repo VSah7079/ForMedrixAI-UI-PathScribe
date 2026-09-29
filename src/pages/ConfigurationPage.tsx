@@ -5,8 +5,8 @@
  * Voice context: CONFIGURATION — tab navigation commands active while here.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import { useAuditLog } from '../components/Audit/useAuditLog';
 import { useIsAdmin, useIsSuperAdmin } from '../contexts/AuthContext';
@@ -27,6 +27,8 @@ import ReportTemplatesSection    from '../components/TemplateBuilder/ReportTempl
 import ValidationStudiesSection from '../components/ValidationStudies/ValidationStudiesSection';
 import ConfigSearchBar from '../components/Config/Search/ConfigSearchBar';
 import { resetConfigScroll } from '../utils/resetConfigScroll';
+import { ConfigDirtyGuardContext } from '../components/Config/configDirtyGuardContext';
+import ConfirmModal from '../components/Common/ConfirmModal';
 import '../pathscribe.css';
 
 // ── Admin permission check ────────────────────────────────────────────────────
@@ -90,6 +92,77 @@ const ConfigurationPage: React.FC = () => {
   useEffect(() => { setActiveTab(getTabFromSearch(location.search)); }, [location.search]);
   useEffect(() => { const t = setTimeout(() => setIsLoaded(true), 100); return () => clearTimeout(t); }, []);
 
+  // ── PS-128: page-level dirty-flag guard ────────────────────────────────────
+  // Real fix — this page previously had zero awareness of any nested tab's
+  // own unsaved-draft state: the tab bar, the voice-nav listeners below, and
+  // ConfigSearchBar's onNavigate all called navigate()/setActiveTab()
+  // unconditionally, silently discarding whatever a tab like Macros had
+  // half-written. tabIsDirty is fed by ConfigDirtyGuardContext, which
+  // MacroPanel.tsx (the first real, confirmed case — see its own comment)
+  // now populates. A ref mirrors the state so the voice-nav listeners below
+  // (registered once, via a stable effect) can read the CURRENT dirty value
+  // without needing to be re-subscribed on every keystroke.
+  const [tabIsDirty, setTabIsDirty] = useState(false);
+  const tabIsDirtyRef = useRef(false);
+  useEffect(() => { tabIsDirtyRef.current = tabIsDirty; }, [tabIsDirty]);
+  // A tab that just became active starts clean — any dirty flag belonged to
+  // whichever tab was showing a moment ago.
+  useEffect(() => { setTabIsDirty(false); }, [activeTab]);
+
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const pendingNavRef = useRef<(() => void) | null>(null);
+
+  // The real navigation actions, unchanged from before this fix — pulled out
+  // so both the "just go" path and the "confirm first" path call the exact
+  // same code.
+  const performNavigateToTab = useCallback((tabId: TabId, withScrollReset: boolean, section?: string) => {
+    navigate(`/configuration?tab=${tabId}`);
+    log('navigate_tab', { tabId });
+    if (withScrollReset) {
+      // Real fix, per direct report: switching tabs used to leave
+      // scroll position wherever it was on the previous tab, hiding
+      // the new tab's own add button and column headers until manually
+      // scrolled up. See utils/resetConfigScroll.ts's own header for
+      // why this needs a direct container lookup rather than a prop.
+      resetConfigScroll();
+    }
+    if (section) {
+      // Real, per direct report ("the top level search in config
+      // found the entry, but when clicked on, it did not go to
+      // the setting"): same real PATHSCRIBE_SYSTEM_NAVIGATE event
+      // AppShell.tsx's own config-link chat messages already
+      // dispatch, same setTimeout delay reasoning — the System
+      // tab's own component needs to actually mount (and its
+      // event listener attach) after this navigation's state
+      // update, before this event can be caught.
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('PATHSCRIBE_SYSTEM_NAVIGATE', { detail: { section } }));
+      }, 150);
+    }
+  }, [navigate, log]);
+
+  const guardedNavigateToTab = useCallback((tabId: TabId, withScrollReset: boolean, section?: string) => {
+    if (tabIsDirtyRef.current) {
+      pendingNavRef.current = () => performNavigateToTab(tabId, withScrollReset, section);
+      setShowDiscardConfirm(true);
+    } else {
+      performNavigateToTab(tabId, withScrollReset, section);
+    }
+  }, [performNavigateToTab]);
+
+  const handleDiscardConfirm = () => {
+    setShowDiscardConfirm(false);
+    setTabIsDirty(false);
+    const perform = pendingNavRef.current;
+    pendingNavRef.current = null;
+    perform?.();
+  };
+
+  const handleDiscardCancel = () => {
+    setShowDiscardConfirm(false);
+    pendingNavRef.current = null;
+  };
+
   // ── Voice: set context on mount ─────────────────────────────────────────────
   useEffect(() => {
     mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.CONFIGURATION);
@@ -104,9 +177,11 @@ const ConfigurationPage: React.FC = () => {
       setActiveTab(current => {
         const idx = tabIds.indexOf(current);
         const next = tabIds[Math.min(idx + 1, tabIds.length - 1)];
-        navigate(`/configuration?tab=${next}`);
-        log('navigate_tab', { tabId: next });
-        return next;
+        guardedNavigateToTab(next, false);
+        // Stay on the current tab until a pending discard-confirm resolves;
+        // performNavigateToTab (via the effect above) is what actually
+        // advances activeTab once the navigation really happens.
+        return tabIsDirtyRef.current ? current : next;
       });
     };
 
@@ -114,9 +189,8 @@ const ConfigurationPage: React.FC = () => {
       setActiveTab(current => {
         const idx = tabIds.indexOf(current);
         const prev = tabIds[Math.max(idx - 1, 0)];
-        navigate(`/configuration?tab=${prev}`);
-        log('navigate_tab', { tabId: prev });
-        return prev;
+        guardedNavigateToTab(prev, false);
+        return tabIsDirtyRef.current ? current : prev;
       });
     };
 
@@ -126,18 +200,11 @@ const ConfigurationPage: React.FC = () => {
       window.removeEventListener('PATHSCRIBE_NEXT_TAB',     nextTab);
       window.removeEventListener('PATHSCRIBE_PREVIOUS_TAB', prevTab);
     };
-  }, [navigate, log]);
+  }, [guardedNavigateToTab]);
 
-  const handleTabChange = (tabId: TabId) => {
-    navigate(`/configuration?tab=${tabId}`);
-    log('navigate_tab', { tabId });
-    // Real fix, per direct report: switching tabs used to leave
-    // scroll position wherever it was on the previous tab, hiding
-    // the new tab's own add button and column headers until manually
-    // scrolled up. See utils/resetConfigScroll.ts's own header for
-    // why this needs a direct container lookup rather than a prop.
-    resetConfigScroll();
-  };
+  const handleTabChange = (tabId: TabId) => guardedNavigateToTab(tabId, true);
+
+  const dirtyGuardContextValue = useMemo(() => ({ setDirty: setTabIsDirty }), []);
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -173,22 +240,7 @@ const ConfigurationPage: React.FC = () => {
         <div className="ps-cfgpage-title-block">
           <h1 className="ps-cfgpage-title">{t('configuration.title')}</h1>
           <p className="ps-cfgpage-subtitle">{t('configuration.subtitle')}</p>
-          <ConfigSearchBar onNavigate={(tabId, section) => {
-            handleTabChange(tabId);
-            // Real, per direct report ("the top level search in config
-            // found the entry, but when clicked on, it did not go to
-            // the setting"): same real PATHSCRIBE_SYSTEM_NAVIGATE event
-            // AppShell.tsx's own config-link chat messages already
-            // dispatch, same setTimeout delay reasoning — the System
-            // tab's own component needs to actually mount (and its
-            // event listener attach) after handleTabChange's state
-            // update, before this event can be caught.
-            if (section) {
-              setTimeout(() => {
-                window.dispatchEvent(new CustomEvent('PATHSCRIBE_SYSTEM_NAVIGATE', { detail: { section } }));
-              }, 150);
-            }
-          }} />
+          <ConfigSearchBar onNavigate={(tabId, section) => guardedNavigateToTab(tabId, true, section)} />
         </div>
 
         <div className="ps-cfgpage-tabbar">
@@ -211,9 +263,22 @@ const ConfigurationPage: React.FC = () => {
       <div className="ps-cfgpage-scroll">
         {/* Inner content: full width, padding on sides */}
         <div className="ps-cfgpage-inner">
-          {renderActiveTab()}
+          <ConfigDirtyGuardContext.Provider value={dirtyGuardContextValue}>
+            {renderActiveTab()}
+          </ConfigDirtyGuardContext.Provider>
         </div>
       </div>
+
+      {/* ── PS-128: discard-unsaved-changes confirmation ── */}
+      <ConfirmModal
+        show={showDiscardConfirm}
+        title={t('configuration.dirtyGuard.title')}
+        message={t('configuration.dirtyGuard.message')}
+        confirmLabel={t('configuration.dirtyGuard.discardButton')}
+        cancelLabel={t('common.cancel')}
+        onConfirm={handleDiscardConfirm}
+        onCancel={handleDiscardCancel}
+      />
     </div>
   );
 };

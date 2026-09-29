@@ -225,8 +225,6 @@ const ExternalConsultAccessModal: React.FC<ExternalConsultAccessModalProps> = ({
                               className="eca-status-badge"
                               style={{
                                 '--eca-status-color': STATUS_COLOR[status],
-                                '--eca-status-border': `${STATUS_COLOR[status]}55`,
-                                '--eca-status-bg': `${STATUS_COLOR[status]}18`,
                               } as React.CSSProperties}
                             >
                               {t(STATUS_LABEL_KEY[status] ?? status)}

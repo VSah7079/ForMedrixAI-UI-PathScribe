@@ -14,7 +14,6 @@ import { containerTypeService, fixativeDictionaryService } from '../../../servic
 import type { ContainerType, ContainerCategory } from '../../../services/containerTypes/IContainerTypeService';
 import type { FixativeDictionaryEntry } from '../../../services/protocols/IPathwayMaterialDictionaryService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
-import { prepareDuplicate } from '../../../utils/duplicateEntry';
 import { findDuplicate } from '../../../utils/validateUnique';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
 
@@ -98,7 +97,7 @@ const ContainerTypeModal: React.FC<ContainerTypeModalProps> = ({ mode, container
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          {mode === 'edit' ? t('containerTypesSection.modal.headerEdit', { name: containerType?.name }) : containerType ? t('containerTypesSection.modal.headerDuplicate', { name: containerType.name }) : t('containerTypesSection.modal.headerAdd')}
+          {mode === 'edit' ? t('containerTypesSection.modal.headerEdit', { name: containerType?.name }) : t('containerTypesSection.modal.headerAdd')}
         </div>
 
         <div className="ps-ms-body">
@@ -244,15 +243,9 @@ const ContainerTypesSection: React.FC = () => {
     if (res.ok) setTypes(prev => prev.map(x => x.id === ct.id ? res.data : x));
   };
 
-  // Opens the Add modal pre-filled with an existing entry's data,
-  // matching Protocol Dictionary's proven, confirmed-working pattern —
-  // NOT an immediate silent save (see PS-72 for the real bug this
-  // pattern replaced). mode: 'add' is what makes handleSave treat this
-  // as a real create() even though containerType is populated for
-  // prefill.
-  const handleClone = (source: ContainerType) => {
-    setModal({ mode: 'add', containerType: { ...prepareDuplicate(source, 'name'), id: '__clone__' } });
-  };
+  // No Duplicate action (PS-73): container types are a flat lookup —
+  // adding a new one takes no more effort than duplicating, so the extra
+  // button adds clutter without value. Policy: services/duplication/duplicatePolicy.ts.
 
   if (loading) return <div className="ps-conf-loading">{t('containerTypesSection.loading')}</div>;
 
@@ -319,7 +312,6 @@ const ContainerTypesSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
                       <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', containerType: ct })}>{t('common.edit')}</button>
-                      <button className="ps-conf-btn-row" onClick={() => handleClone(ct)}>{t('common.duplicate')}</button>
                       <button className="ps-conf-btn-row" onClick={() => handleToggleStatus(ct)}>
                         {ct.status === 'Active' ? t('common.deactivate') : t('common.reactivate')}
                       </button>

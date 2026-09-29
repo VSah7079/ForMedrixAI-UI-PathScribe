@@ -15,6 +15,7 @@
 import type { ResolvedAnswer } from '@/orchestrator/contextBuilder';
 import type { AiFieldSuggestion } from '@/types/case/Case';
 import type { AbnormalTriggerRule, AbnormalSeverity, SyntheticCodingTerm } from './IAbnormalTriggerRuleService';
+import { ABNORMAL_SEVERITY_RANK } from './IAbnormalTriggerRuleService';
 import { resolveSyntheticCoding } from './resolveSyntheticCoding';
 
 export interface AbnormalTriggerMatch {
@@ -32,11 +33,14 @@ export interface AbnormalTriggerMatch {
   syntheticCoding: SyntheticCodingTerm[];
 }
 
-/** Real severity ranking so a specimen matching multiple rules can be
- *  reduced to its single highest-severity match for display purposes,
- *  without discarding the other real matches (callers needing all of
- *  them still get the full array). */
-const SEVERITY_RANK: Record<AbnormalSeverity, number> = { Abnormal: 1, Critical: 2, Malignant: 3 };
+// Real severity ranking so a specimen matching multiple rules can be
+// reduced to its single highest-severity match for display purposes,
+// without discarding the other real matches (callers needing all of
+// them still get the full array). PS-132, real, direct fix: this used
+// to be its own private copy — now the shared ABNORMAL_SEVERITY_RANK
+// (IAbnormalTriggerRuleService.ts), so this ranking lives in exactly
+// one place rather than drifting out of sync with the cytology
+// module's own equivalent reduction (resolveCytologyAbnormalSeverity.ts).
 
 /**
  * Checks one specimen's resolved synoptic answers against the active
@@ -98,7 +102,7 @@ export function evaluateAbnormalTriggerRules(
  *  matches, never a fabricated "Normal" placeholder. */
 export function highestSeverityMatch(matches: AbnormalTriggerMatch[]): AbnormalTriggerMatch | undefined {
   if (matches.length === 0) return undefined;
-  return matches.reduce((best, m) => SEVERITY_RANK[m.severity] > SEVERITY_RANK[best.severity] ? m : best);
+  return matches.reduce((best, m) => ABNORMAL_SEVERITY_RANK[m.severity] > ABNORMAL_SEVERITY_RANK[best.severity] ? m : best);
 }
 
 /** Real, per direct guidance's own unified sign-out review: converts a

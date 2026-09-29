@@ -48,6 +48,17 @@ describe('mockMolecularBatchService — real, per direct specification', () => {
     if (all.ok) expect(all.data).toHaveLength(1); // still just the seed — nothing created
   });
 
+  it('create refuses a target instrument that is not an active instrument in the list (Batch 356, PS-326)', async () => {
+    const { mockMolecularBatchService } = await import('./mockMolecularBatchService');
+    const { MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE } = await import('./IMolecularBatchService');
+    const res = await mockMolecularBatchService.create({
+      assayCode: 'RESP_PCR', assayName: 'Respiratory PCR Panel', targetInstrumentId: 'PANTHR_03', plateLayout: '96_well',
+      reagentLots: [{ componentType: 'MASTER_MIX', lotNumber: 'MM-NEW', expirationDate: '2027-01-01T00:00:00.000Z', qcStatus: 'signed_off' }],
+      wells: [], createdByUserId: 'u1', createdByUserName: 'Test User',
+    });
+    expect(res).toEqual({ ok: false, error: MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE });
+  });
+
   it('create correctly accepts a real, fully-valid batch and generates real, correctly-formatted identifiers', async () => {
     const { mockMolecularBatchService } = await import('./mockMolecularBatchService');
     const res = await mockMolecularBatchService.create({

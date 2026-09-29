@@ -16,17 +16,18 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TooltipContentProps } from 'recharts';
 import { qaActivityRecordService, auditService } from '@/services';
-import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
 import type { QaActivityRecord, QaDiscordanceDelta, QaDiscordanceSeverity, QaDiscordanceRootCause } from '@/types/quality/QaActivityRecord';
 import type { FrozenCategory } from '@/types/intraop/IntraoperativeEntry';
 import { QaScopeSwitcher } from './QaScopeSwitcher';
-import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope } from './qaReportUtils';
+import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services';
 
 // Real, persisted FrozenCategory enum values stay as data; only the
 // displayed label is translated. Reuses the exact intraopQueue.
@@ -173,7 +174,7 @@ export const ReconciliationTab: React.FC = () => {
       'Recorded At': r.recordedAt,
       'Recorded By': r.recordedBy.userName,
     }));
-    exportQaReportRows(rows, `reconciliation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:reconciliation:export', rows, `reconciliation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext(scope));
   };
 
   if (loading) return <div className="ps-conf-loading">{t('reconciliationTab.loading')}</div>;
@@ -182,7 +183,7 @@ export const ReconciliationTab: React.FC = () => {
     <div>
       <div className="ps-qa-tab-toolbar">
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={visibleClientIds} />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
+        <CapabilityButton capability="qa:reconciliation:export" context={qaScopeContext(scope)} className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</CapabilityButton>
       </div>
 
       <div className="ps-defic-trend-card">

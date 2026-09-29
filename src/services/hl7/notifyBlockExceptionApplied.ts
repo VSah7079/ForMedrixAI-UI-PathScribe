@@ -23,6 +23,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { toast } from 'react-toastify';
+import i18n from '@/i18n/config';
+import { phiToastContent } from '../phi/phiToast';
 import { caseRouter } from '../cases/CaseRouter';
 
 export interface BlockExceptionNotificationPayload {
@@ -42,6 +44,8 @@ export async function notifyBlockExceptionApplied(payload: BlockExceptionNotific
   const caseData = await caseRouter.getCase(payload.caseId);
   const accession = caseData?.accession?.fullAccession ?? payload.caseId;
 
-  toast.warn(`🔬 ${accession}: Block ${payload.specimenLetter}${payload.blockNumber} reported ${payload.status}${payload.note ? ` — ${payload.note}` : ''}`);
+  // Batch 363 (PS-72): translated, and redacted in support-ticket screenshots (it names the case).
+  const values = { accession, block: `${payload.specimenLetter}${payload.blockNumber}`, status: i18n.t(`hl7Notifications.blockStatus.${payload.status}`), note: payload.note };
+  toast.warn(phiToastContent(i18n.t(payload.note ? 'hl7Notifications.blockExceptionWithNote' : 'hl7Notifications.blockException', values)));
   notifiedMessageIds.add(payload.messageId);
 }

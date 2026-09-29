@@ -5,6 +5,13 @@
  * Receives a pre-captured, PHI-redacted screenshot from EnhancementRequestButton.
  * User can approve or discard the screenshot before submitting.
  *
+ * Batch 364 (PS-349): nothing identifying leaves in the ticket.
+ *   - System details name the page type and the case's support reference,
+ *     not the page address (services/enhancementRequestService.ts).
+ *   - Before sending, the title and description are checked against the
+ *     lab's identifier formats. If a case number or MRN is found, the user
+ *     is warned and can replace case numbers with support references.
+ *
  * Drop-in path: src/components/EnhancementRequest/EnhancementRequestModal.tsx
  * ─────────────────────────────────────────────────────────────────────────────
  */
@@ -23,6 +30,9 @@ import {
   loadEnhancementConfig,
 } from '../../services/enhancementRequestService';
 import { useScreenCapture, ScreenCaptureResult } from '../../hooks/useScreenCapture';
+import { caseService, supportReferenceService } from '@/services';
+import { supportReferencesForCaseNumbers } from '../../services/enhancementRequestService';
+import { findIdentifiersInText, replaceIdentifiers, type IdentifierInText } from '../../services/supportReferences/supportTicketRules';
 
 // ─── Screenshot compression ───────────────────────────────────────────────────
 // Resizes and re-encodes to JPEG to stay under EmailJS 50KB request limit.
@@ -201,14 +211,34 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
     setIncludeScreenshot(true);
   };
   const [submitting,      setSubmitting]      = useState(false);
+  // Batch 364 (PS-349): identifiers found in what the user typed.
+  const [identifiersFound, setIdentifiersFound] = useState<IdentifierInText[] | null>(null);
+  const [replacedCount,    setReplacedCount]    = useState<number | null>(null);
   const [error,           setError]           = useState<string | null>(null);
   const [submitted,       setSubmitted]       = useState(false);
   const [ticketUrl,       setTicketUrl]       = useState<string | undefined>();
 
   const canSubmit = title.trim().length > 0 && description.trim().length > 0 && !submitting;
 
-  const handleSubmit = async () => {
+  const handleReplaceCaseNumbers = async () => {
+    const caseNumbers = (identifiersFound ?? []).filter(f => f.kind === 'accession').map(f => f.text);
+    const refs = await supportReferencesForCaseNumbers(caseNumbers, { caseService, supportReferenceService });
+    const nextTitle = replaceIdentifiers(title, refs);
+    const nextDescription = replaceIdentifiers(description, refs);
+    setTitle(nextTitle);
+    setDescription(nextDescription);
+    setReplacedCount(refs.size);
+    const remaining = findIdentifiersInText(`${nextTitle}\n${nextDescription}`);
+    setIdentifiersFound(remaining.length > 0 ? remaining : null);
+  };
+
+  const handleSubmit = async (sendAnyway = false) => {
     if (!canSubmit) return;
+    if (!sendAnyway) {
+      const found = findIdentifiersInText(`${title}\n${description}`);
+      if (found.length > 0) { setIdentifiersFound(found); setReplacedCount(null); return; }
+    }
+    setIdentifiersFound(null);
     setSubmitting(true);
     setError(null);
 
@@ -233,7 +263,7 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
       mode,
       screenshotDataUrl: (screenshot && includeScreenshot) ? await compressScreenshot(screenshot.dataUrl, 400, 0.3) : undefined,
       metadata: includeSystem && user
-        ? captureMetadata({ id: user.id, name: user.name, role: user.role })
+        ? await captureMetadata({ id: user.id, name: user.name, role: user.role })
         : undefined,
     };
 
@@ -404,6 +434,32 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
                 </div>
               </div>
 
+              {/* Batch 364 (PS-349): identifiers in the typed text */}
+              {identifiersFound && (
+                <div className="erm-identifier-warning" role="alert">
+                  <div className="erm-identifier-warning-title">⚠ {t('enhancementRequestModal.identifierWarning.title')}</div>
+                  <div className="erm-identifier-warning-body">{t('enhancementRequestModal.identifierWarning.body')}</div>
+                  <ul className="erm-identifier-warning-list" data-phi="true">
+                    {identifiersFound.map(f => (
+                      <li key={f.text}>{t('enhancementRequestModal.identifierWarning.item', { text: f.text, kind: t(`enhancementRequestModal.identifierWarning.kinds.${f.kind}`) })}</li>
+                    ))}
+                  </ul>
+                  {replacedCount !== null && (
+                    <div className="erm-identifier-warning-note">{t('enhancementRequestModal.identifierWarning.replaced', { count: replacedCount })}</div>
+                  )}
+                  <div className="erm-identifier-warning-actions">
+                    {identifiersFound.some(f => f.kind === 'accession') && (
+                      <button type="button" className="ps-conf-btn-primary" onClick={handleReplaceCaseNumbers}>{t('enhancementRequestModal.identifierWarning.replaceButton')}</button>
+                    )}
+                    <button type="button" className="ps-conf-btn-secondary" onClick={() => setIdentifiersFound(null)}>{t('enhancementRequestModal.identifierWarning.keepEditing')}</button>
+                    <button type="button" className="ps-conf-btn-secondary" onClick={() => handleSubmit(true)}>{t('enhancementRequestModal.identifierWarning.sendAnyway')}</button>
+                  </div>
+                </div>
+              )}
+              {!identifiersFound && replacedCount !== null && replacedCount > 0 && (
+                <div className="erm-identifier-ok">✓ {t('enhancementRequestModal.identifierWarning.replaced', { count: replacedCount })}</div>
+              )}
+
               {/* Error */}
               {error && (
                 <div className="erm-error">
@@ -418,9 +474,8 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
                 {t('enhancementRequestModal.cancel')}
               </button>
               <button
-                onClick={handleSubmit} disabled={!canSubmit}
-                className={`ps-enhance-submit-btn${isQA ? ' ps-enhance-submit-btn--qa' : ''}`}
-                style={{ opacity: submitting ? 0.7 : 1 }}
+                onClick={() => handleSubmit()} disabled={!canSubmit}
+                className={`ps-enhance-submit-btn${isQA ? ' ps-enhance-submit-btn--qa' : ''}${submitting ? ' ps-enhance-submit-btn--busy' : ''}`}
               >
                 {submitting
                   ? `⏳ ${t('enhancementRequestModal.submitting')}`

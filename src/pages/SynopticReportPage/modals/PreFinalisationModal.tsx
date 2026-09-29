@@ -9,19 +9,26 @@
 //   │ Synoptic ordering   │ Q&A format, updates on reorder       │
 //   └─────────────────────┴──────────────────────────────────────┘
 //   Signing panel (biometric → password fallback)
+//
+// Batch 344 (PS-60 follow-up): the signing panel now confirms who is
+// signing through services/auth/signerConfirmation.ts. Before, any password
+// of three characters or more was accepted, and the panel named the case's
+// assigned pathologist rather than the person actually signed in. It now
+// names the signed-in user, checks the password (or, for an SSO session,
+// has the identity provider ask again), and offers the biometric button only
+// in demo builds, because the WebAuthn check is still simulated. The
+// biometric "cadence" shortcut that signed with no action at all is gone: a
+// signature always takes a deliberate click.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
-import {
-  isBiometricAvailable,
-  isBiometricCurrentForUser,
-  verifyBiometric,
-  getCredentialForUser,
-  getDeviceName,
-  getBiometricPolicy,
-} from '@/services/biometric/mockBiometricService';
+import { biometricService } from '@/services';
+import { useAuth } from '@/contexts/AuthContext';
+import { SignerConfirmationFields } from '@/components/Signing/SignerConfirmationFields';
+import { useSignerConfirmation } from '@/hooks/useSignerConfirmation';
+import type { SignatureConfirmation } from '@/services/auth/signerConfirmation';
 import { formatOrdinal } from '@/utils/formatOrdinal';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
@@ -70,12 +77,10 @@ interface Props {
   patientName:      string;
   reportingMode:    'assisted' | 'pathscribe';
   synoptics:        SynopticForReview[];
-  userId:           string;
-  userDisplayName:  string;
-  userCredentials:  string;
   finalizeAndNext?:  boolean;
   onJumpToField?:    (instanceId: string, fieldKey: string) => void;
-  onConfirm:         (orderedInstanceIds: string[], excludedInstanceIds: string[]) => void;
+  /** Runs only after the signer has been confirmed (Batch 344). */
+  onConfirm:         (orderedInstanceIds: string[], excludedInstanceIds: string[], confirmation: SignatureConfirmation) => void;
   onCancel:          () => void;
 }
 
@@ -193,57 +198,51 @@ const ReportPreview: React.FC<{ staged: StagedSpecimen[] }> = ({ staged }) => {
 type BioStep = 'idle' | 'pending' | 'failed' | 'verified';
 
 const SigningPanel: React.FC<{
-  userId:          string;
-  userDisplayName: string;
-  userCredentials: string;
+  caseRef:         string;
   totalCount:      number;
   finalizeAndNext: boolean;
-  onSign:          () => void;
+  onSign:          (confirmation: SignatureConfirmation) => void;
   onCancel:        () => void;
-}> = ({ userId, userDisplayName, userCredentials, totalCount, finalizeAndNext, onSign, onCancel }) => {
+}> = ({ caseRef, totalCount, finalizeAndNext, onSign, onCancel }) => {
   const { t } = useTranslation();
+  const { user } = useAuth();
+  const signer = useSignerConfirmation('report-finalize', caseRef || null);
   const [showBio,    setShowBio]    = React.useState(false);
   const [bioStep,    setBioStep]    = React.useState<BioStep>('idle');
   const [deviceName, setDeviceName] = React.useState(t('preFinalisationModal.signing.biometricDefault'));
-  const [password,   setPassword]   = React.useState('');
-  const [pwError,    setPwError]    = React.useState('');
   const [bioFailMsg, setBioFailMsg] = React.useState('');
-  const pwRef = React.useRef<HTMLInputElement>(null);
+  const userId = user?.id ?? '';
 
+  // Biometric is offered only in demo builds (simulated WebAuthn), only when
+  // the institution has turned it on, and only if this user is enrolled.
   React.useEffect(() => {
-    const policy = getBiometricPolicy();
-    if (!policy.enabled) { setTimeout(() => pwRef.current?.focus(), 100); return; }
-    if (isBiometricCurrentForUser(userId)) { setBioStep('verified'); setTimeout(onSign, 400); return; }
-    isBiometricAvailable().then(avail => {
-      const enrolled = !!getCredentialForUser(userId) && avail;
-      setShowBio(enrolled);
-      setDeviceName(getDeviceName());
-      if (!enrolled) setTimeout(() => pwRef.current?.focus(), 100);
+    if (!signer.biometricAllowed || !userId || !biometricService.getBiometricPolicy().enabled) return;
+    let live = true;
+    biometricService.isBiometricAvailable().then(avail => {
+      if (!live) return;
+      setShowBio(!!biometricService.getCredentialForUser(userId) && avail);
+      setDeviceName(biometricService.getDeviceName());
     });
-  }, [userId, onSign]);
+    return () => { live = false; };
+  }, [signer.biometricAllowed, userId]);
 
-  const handleBio = async () => {
+  const handleBio = () => {
     setBioStep('pending'); setBioFailMsg('');
-    const r = await verifyBiometric(userId);
-    if (r.ok) { setBioStep('verified'); setTimeout(onSign, 400); }
-    else { setBioStep('failed'); setBioFailMsg(t('preFinalisationModal.signing.bioNotRecognised')); setTimeout(() => pwRef.current?.focus(), 100); }
+    void signer.confirmBiometric().then(c => {
+      if (c) { setBioStep('verified'); setTimeout(() => onSign(c), 400); }
+      else { setBioStep('failed'); setBioFailMsg(t('preFinalisationModal.signing.bioNotRecognised')); }
+    });
   };
 
-  const handlePw = (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!password.trim()) { setPwError(t('preFinalisationModal.signing.passwordRequired')); return; }
-    if (password.length < 3) { setPwError(t('preFinalisationModal.signing.passwordIncorrect')); return; }
-    setPwError(''); onSign();
-  };
+  // Straight from the click: for SSO this opens the provider's popup.
+  const handleConfirm = () => { void signer.confirm().then(c => { if (c) onSign(c); }); };
+  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); handleConfirm(); };
 
   return (
     <div className="ps-prefin-signing">
       {bioFailMsg && <div className="ps-prefin-signing-biofail">⚠ {bioFailMsg}</div>}
       <div className="ps-prefin-signing-row">
         <div className="ps-prefin-signing-identity">
-          <p className="ps-prefin-signing-name">
-            {t('preFinalisationModal.signing.signingAs', { name: userDisplayName })}{userCredentials ? ` · ${userCredentials}` : ''}
-          </p>
           <p className="ps-prefin-signing-meta">
             {t('preFinalisationModal.signing.synopticsTransmitted', { count: totalCount })}
             {finalizeAndNext && <span className="ps-prefin-signing-next"> · {t('preFinalisationModal.signing.nextCaseQueued')}</span>}
@@ -253,6 +252,7 @@ const SigningPanel: React.FC<{
         {showBio && bioStep !== 'failed' && (
           <>
             <button
+              type="button"
               onClick={handleBio}
               disabled={bioStep === 'pending' || bioStep === 'verified'}
               className={`ps-prefin-bio-btn${bioStep === 'verified' ? ' ps-prefin-bio-btn--verified' : ''}`}
@@ -264,25 +264,16 @@ const SigningPanel: React.FC<{
           </>
         )}
 
-        <form onSubmit={handlePw} className="ps-prefin-pw-form">
-          <div>
-            <input
-              ref={pwRef}
-              type="password"
-              value={password}
-              onChange={e => { setPassword(e.target.value); setPwError(''); }}
-              placeholder={showBio ? t('preFinalisationModal.signing.passwordFallback') : t('preFinalisationModal.signing.password')}
-              autoComplete="current-password"
-              className={`ps-prefin-pw-input${pwError ? ' ps-prefin-pw-input--error' : ''}`}
-            />
-            {pwError && <p className="ps-prefin-pw-error">{pwError}</p>}
-          </div>
-          <button type="submit" className="ps-btn-primary ps-prefin-nowrap">
-            {finalizeAndNext ? `${t('preFinalisationModal.signing.finaliseAndNext')} →` : `${t('preFinalisationModal.signing.finaliseNow')} 🔒`}
+        <form onSubmit={handleSubmit} className="ps-prefin-pw-form">
+          <SignerConfirmationFields signer={signer} onSubmit={handleConfirm} variant="inline" />
+          <button type="submit" className="ps-btn-primary ps-prefin-nowrap" disabled={signer.busy || signer.method === 'unavailable'}>
+            {signer.busy
+              ? t('signerConfirmation.confirming')
+              : finalizeAndNext ? `${t('preFinalisationModal.signing.finaliseAndNext')} →` : `${t('preFinalisationModal.signing.finaliseNow')} 🔒`}
           </button>
         </form>
 
-        <button onClick={onCancel} className="ps-btn-ghost-dark">{t('common.cancel')}</button>
+        <button type="button" onClick={onCancel} className="ps-btn-ghost-dark">{t('common.cancel')}</button>
       </div>
     </div>
   );
@@ -300,7 +291,7 @@ const DragHandle = () => (
 
 export const PreFinalisationModal: React.FC<Props> = ({
   show, caseAccession, patientName, reportingMode,
-  synoptics, userId, userDisplayName, userCredentials,
+  synoptics,
   finalizeAndNext = false, onJumpToField, onConfirm, onCancel,
 }) => {
   const { t, i18n } = useTranslation();
@@ -340,9 +331,9 @@ export const PreFinalisationModal: React.FC<Props> = ({
   };
   const onDragEnd = () => { setDragSrc(null); setDragOver(null); };
 
-  const handleSign = () => {
+  const handleSign = (confirmation: SignatureConfirmation) => {
     const ordered = staged.flatMap(sp => sp.synoptics.map(s => s.instanceId));
-    onConfirm(ordered, []);
+    onConfirm(ordered, [], confirmation);
   };
 
   return (
@@ -358,7 +349,7 @@ export const PreFinalisationModal: React.FC<Props> = ({
                 {t(REPORTING_MODE_LABEL_KEY[reportingMode])}
               </span>
             </div>
-            <p className="ps-prefin-header-meta">{caseAccession} · {patientName}</p>
+            <p className="ps-prefin-header-meta" data-phi="true">{caseAccession} · {patientName}</p>
           </div>
           <div className="ps-prefin-header-hint">
             <div>{t('preFinalisationModal.header.dragHint')}</div>
@@ -471,9 +462,7 @@ export const PreFinalisationModal: React.FC<Props> = ({
 
         {/* ── Signing panel ── */}
         <SigningPanel
-          userId={userId}
-          userDisplayName={userDisplayName}
-          userCredentials={userCredentials}
+          caseRef={caseAccession}
           totalCount={totalCount}
           finalizeAndNext={finalizeAndNext}
           onSign={handleSign}

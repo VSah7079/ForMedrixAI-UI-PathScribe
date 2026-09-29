@@ -18,7 +18,7 @@ root-level files. 40 files total.
 | [intraop/](./intraop/README.md) | Intraop Pre-Check "Unlinked Intraoperative Entries" queue data model |
 | [labels/](./labels/README.md) | Real label identifiers + physical label-size presets used by every label-printing feature |
 | [patients/](./patients/README.md) | Break-Glass rebind reason-code taxonomy (MPI Interface Exception module) |
-| [printing/](./printing/README.md) | Real network-print job dispatch + callback event contract |
+| [printing/](./printing/README.md) | Real network-print job dispatch + callback event contract (slide labels and retry attempts since Batch 347) |
 | [quality/](./quality/README.md) | Frozen-to-Permanent reconciliation record (full reviewed population, not just mismatches) |
 | [reports/](./reports/README.md) | Real report lifecycle beyond the synoptic itself — amendment/addendum, version history, informal review, LIS-side correction tracking |
 | [specimen/](./specimen/README.md) | Input shape for adding a specimen mid-workflow |
@@ -26,12 +26,13 @@ root-level files. 40 files total.
 ## Root-level files (not in a subfolder)
 
 - **`index.ts`** — barrel re-exports.
-- **`serviceResult.ts`** — an older `ServiceResult<T>` shape (`{success, data, error}`), still genuinely used by the `aiIntegration/` subsystem — see "Real findings" below before assuming this is dead.
 - **`systemConfig.ts`**, **`template.ts`**, **`templateTypes.ts`**, **`reportPart.ts`**, **`smarttag.types.ts`**, **`voiceMacros.ts`**, **`flagsRuntime.ts`**, **`FlagDefinition.ts`**, **`AuditEvent.ts`**, **`SynopticAuditEvents.ts`**, **`ContributionDashboard.ts`** — standalone domain types not yet folded into a dedicated subfolder. **`voiceMacros.ts` grew real substance this pass** ("Personal Quick Text" — Enterprise then Facility then Staff): `VoiceMacro` gained the same `performingLabFacilityId?`/`ownerUserId?` three-tier ownership model `Macro` (`services/macros/`) already has, plus `isVoiceMacroVisibleTo()` (the matching resolution rule) and `applyVoiceMacroSubstitutions()` — the real spoken-trigger substitution algorithm, now shared by `mockVoiceMacroService.ts`'s `refineTranscript()` and `contexts/VoiceProvider.tsx`'s own live dictation pipeline (see that folder's own README for the full account of wiring a previously-orphaned function into real, live use).
 
 ## Real findings
 
-**A genuinely instructive near-miss, worth recording honestly:**
+**Resolved in Batch 348 (PS-67):** `serviceResult.ts` is deleted. The `aiIntegration/` services and `mockVoiceMacroService.refineTranscript` now return `ServiceResult` from `services/types.ts` (`{ ok, data } | { ok: false, error }`), the one shape used everywhere, and `tsc` confirms nothing else imported the old one. Correction to the paragraph below: by Batch 348 the live caller of `PathScribeAIService` was `pages/SynopticReportPage/hooks/useSignOutWorkflow.ts` (AI synoptic suggestions and narrative generation), not `OrchestratorSectionEditor.tsx`, whose use ended when its AI spelling check was retired in Batch 338.
+
+**A genuinely instructive near-miss, worth recording honestly (history):**
 `serviceResult.ts` defines an older `ServiceResult<T>` shape
 (`{success, data, error}`). An initial grep for direct import paths
 found zero consumers, so it was deleted as apparently-dead — matching
@@ -96,10 +97,13 @@ was verified by its actual exported name, not just file path):
   events — with an overlapping `trigger: 'initial_signout' |
   'amendment'` field. Reads like an earlier design that was reworked
   into `ReportVersionRecord`'s different, actually-implemented
-  approach, with the old one never removed. Flagged rather than
-  deleted — the evidence is circumstantial, not certain, and this is
-  exactly the kind of call that deserves a real decision rather than a
-  guess.
+  approach, with the old one never removed. **Removed in Batch 366
+  (PS-68)** after a whole-repo check found no code using it. Its
+  release types live on in `ReportVersionRecord.trigger` and
+  `AmendmentRecord.type`. Its two unbuilt points (store the PDF by
+  reference, and keep a SHA-256 of it to detect a swapped file) are now
+  notes for the API server in `ReportVersionRecord.ts`.
+  `removedTypes.guard.test.ts` keeps it from coming back.
 
 ## Not exhaustively reviewed
 
@@ -110,3 +114,20 @@ types, orphaned exports) rather than read field-by-field in full. Pure
 type-definition files are lower-risk for the kind of business-logic
 bugs this review has focused on elsewhere — no `any` casts or runtime
 logic live here to find.
+
+## Batch 333 (PS-89)
+
+`billing/BillingRuleVersion.ts`:
+- **New fields:** `vocabulary` (`CodeVocabulary`: CPT, HCPCS, NHS_OPCS4, LOCAL_LAB), `importJobId` and `rollbackNotes`.
+- **`effectiveTo` doc:** it now describes natural sunset.
+
+`billing/CodeImportJob.ts` (new) is the append-only import-job ledger. See `services/billing/codeEngine/README.md`.
+
+## Batch 317
+
+`quality/TatConfigEntry.ts` is new: the TAT/escalation target types, moved out of a component. See `quality/README.md`.
+
+- **Batch 322 (PS-87):** `case/Case.ts` gained `SynopticReportInstance.aiDraftSource`, which marks drafts created by Assist-mode LIS polling. See `case/README.md`.
+
+- **Batch 365 (PS-347):** `systemConfig.ts` — new `JurisdictionDateFormat` type; `JURISDICTION_LOCALE.NL.dateFormat` is `DD-MM-YYYY` (was `DD/MM/YYYY`), and the comment claiming slashes across BE/NL/FR is corrected.
+- **Batch 366 (PS-68):** `case/ReportSnapshot.ts` removed (unused earlier design); `ReportVersionRecord` is the one release record. New `removedTypes.guard.test.ts`.

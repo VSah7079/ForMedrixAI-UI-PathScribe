@@ -46,13 +46,14 @@
 
 import { useState, useCallback, type MutableRefObject } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getSessionUser, canFinalizeCase } from '@/services/auth/caseAccessControl';
+import { getSessionUser, canFinalizeCase, resolveCountersignRequiredTypeIds } from '@/services/auth/caseAccessControl';
 import { countersignService, userService, fppeAssignmentService, qaSupervisionAssignmentService } from '@/services';
 import { FPPE_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
 import { intraoperativeService } from '@/services';
 import { concordanceReviewSettingsService } from '@/services';
 import { dispatchCancerRegistryReportIfApplicable } from '@/services/cancerRegistry/dispatchCancerRegistryReportIfApplicable';
-import { amendmentService, reportVersionService } from '@/services';
+import { amendmentService, reportVersionService, signatureGate } from '@/services';
+import type { SignatureConfirmation } from '@/services/auth/signerConfirmation';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { syncPrimaryAssignee } from '@/services/cases/caseAssignmentSync';
 import { mockReportReleaseService } from '@/services/reportRelease/mockReportReleaseService';
@@ -72,7 +73,8 @@ import { resolveSyntheticCoding } from '@/services/abnormalDetection/resolveSynt
 import { abnormalDetectionSignalService, qaActivityRecordService } from '@/services';
 import { ABNORMAL_FINDING_CONFIRMATION_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
 import { applySurgicalPostSignOutQa } from '@/services/quality/applySurgicalPostSignOutQa';
-import { deidentifyText } from '@/services/narrativeSignals/deidentification';
+import { recordAbnormalDetectionOutcomes, type AbnormalDetectionOutcome } from '@/services/abnormalDetection/recordAbnormalDetectionOutcomes';
+import { resolveActiveStudyId } from '@/services/validationStudies/resolveActiveStudyId';
 import { resolveAnswers } from '@/orchestrator/contextBuilder';
 import { resolveAbnormalDetectionEnabled } from '@/services/abnormalDetection/resolveAbnormalDetectionEnabled';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
@@ -81,8 +83,7 @@ import { shouldRandomlySampleForCodeReview } from '@/services/billing/shouldRand
 import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
 import { facilityService } from '@/services';
 import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
-import { getParticipationTypeLookup } from '@/utils/participationTypeLookup';
-import type { ParticipationTypeRecord } from '@/services/participationTypes/IParticipationTypeService';
+import { resolveFinalizeAuthorityContext } from '@/services/auth/resolveFinalizeAuthorityContext';
 import { sweepChargesForOutbox } from '@/services/billing/sweepChargesForOutbox';
 import { mockBillingTypeTriggerConfigService } from '@/services/billing/mockBillingTypeTriggerConfigService';
 import { validateChargeMetadata } from '@/services/billing/validateChargeMetadata';
@@ -119,7 +120,8 @@ interface UseSignOutWorkflowParams {
   caseData: Case | null;
   setCaseData: React.Dispatch<React.SetStateAction<Case | null>>;
   signingUser: SigningUser;
-  showToast: (message: string) => void;
+  /** The report page's toast; messages naming the case pass `{ containsPhi: true }`. */
+  showToast: import('@/pages/Synoptic/useSynopticToast').ShowToast;
   activeReportInstanceId: string;
   knownVersionRef: MutableRefObject<number>;
   setConcurrencyConflict: SetConcurrencyConflict;
@@ -230,20 +232,18 @@ const BILLING_DEFICIENCY_SEVERITY: Record<BillingDeficiencyType, BillingDeficien
 // still applies in that case, so a transient service hiccup can never
 // silently lock out every legitimate finalizer, only fall back to the
 // pre-existing hardcoded behavior for that one attempt.
-async function resolveFinalizeAuthorityContext(
-  caseData: Case | null | undefined
-): Promise<{ participationTypes: ParticipationTypeRecord[]; performingLabFacilityId: string | undefined }> {
-  const orderingFacilityId = caseData?.order?.facilityId;
-  const [participationTypes, labId] = await Promise.all([
-    getParticipationTypeLookup().catch(() => []),
-    (async () => {
-      if (!orderingFacilityId) return undefined;
-      const facilityRes = await facilityService.getById(orderingFacilityId).catch(() => null);
-      return facilityRes?.ok ? resolvePerformingLabFacilityId(facilityRes.data) : undefined;
-    })(),
-  ]);
-  return { participationTypes, performingLabFacilityId: labId };
-}
+//
+// Real, per direct correction (jurisdiction-bound signing authority):
+// also resolves the performing lab's own `Facility.jurisdiction`, fed
+// into resolveParticipationTypeAuthority()'s new middle tier
+// (`ParticipationTypeRecord.jurisdictionProfiles` — see
+// IParticipationTypeService.ts), via the shared
+// resolveCasePerformingLabScope() — the same resolution CaseTeamModal.tsx
+// uses, so the editor and this gate can never disagree on which
+// country's rules govern a case.
+// resolveFinalizeAuthorityContext() moved to
+// services/auth/resolveFinalizeAuthorityContext.ts (Batch 331, PS-327) so
+// Cytology and Autopsy sign-out resolve authority the same way.
 
 function checkPreAnalyticAndFixativeGates(
   caseData: Case,
@@ -300,6 +300,10 @@ export function useSignOutWorkflow({
   // in any language, with no wrapping needed here.
   const { t } = useTranslation();
 
+  // Batch 345: the case's accession as the signing screens pass it, so a
+  // signature confirmed for one case can't be used on another.
+  const signingCaseRef = caseData?.accession?.fullAccession ?? caseData?.accession?.accessionNumber ?? null;
+
   const finalizeSignOut = useCallback(async () => {
     // Stage 2 of the CoPilot amendment pipeline — this is the real
     // re-sign-out. Real, serious ordering bug caught and fixed here:
@@ -345,7 +349,7 @@ export function useSignOutWorkflow({
 
         {
           const { pdfBase64, generationError } = await generateReportPdfSnapshot();
-          if (generationError) showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }));
+          if (generationError) showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }), 'warning');
           await reportVersionService.create({
             caseId: caseData.id,
             mode: 'assist',
@@ -360,7 +364,7 @@ export function useSignOutWorkflow({
       }
 
       if (failedInstances.length > 0) {
-        showToast(t('useSignOutWorkflow.toast.correctedInstancesNotTransmitted', { count: failedInstances.length }));
+        showToast(t('useSignOutWorkflow.toast.correctedInstancesNotTransmitted', { count: failedInstances.length }), 'warning');
       }
 
       if (successfulInstanceIds.size > 0) {
@@ -392,7 +396,7 @@ export function useSignOutWorkflow({
         const versionCount = existingVersions.ok ? existingVersions.data.length : 0;
         const { pdfBase64, generationError } = await generateReportPdfSnapshot();
         if (generationError) {
-          showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }));
+          showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }), 'warning');
         }
         await reportVersionService.create({
           caseId: caseData.id,
@@ -403,6 +407,10 @@ export function useSignOutWorkflow({
         });
       }
     }
+
+    // Batch 345: the signature accepted in handleSignOutConfirm is stored
+    // now that the case is signed (services/auth/signatureEvidence.ts).
+    if (caseData?.id) await signatureGate.commit(caseData.id, 'signed', { kind: 'report-version' });
 
     setCaseSigned(true);
     setShowSignOutModal(false);
@@ -424,7 +432,7 @@ export function useSignOutWorkflow({
 
     const trimmedFeedback = countersignFeedback.trim();
     if (!trimmedFeedback) {
-      showToast(t('useSignOutWorkflow.toast.feedbackRequiredForReturn'));
+      showToast(t('useSignOutWorkflow.toast.feedbackRequiredForReturn'), 'warning');
       return;
     }
 
@@ -435,7 +443,7 @@ export function useSignOutWorkflow({
       attendingFeedback: trimmedFeedback,
     });
     if (!result.ok) {
-      showToast((result as { ok: false; error: string }).error ?? t('useSignOutWorkflow.toast.couldNotReturnCase'));
+      showToast((result as { ok: false; error: string }).error ?? t('useSignOutWorkflow.toast.couldNotReturnCase'), 'warning');
       return;
     }
     const record = result.data;
@@ -476,11 +484,11 @@ export function useSignOutWorkflow({
     } catch (e) {
       if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
       console.error('[useSignOutWorkflow] Failed to apply the real return-to-trainee state transition:', e);
-      showToast(t('useSignOutWorkflow.toast.feedbackRecordedUpdateFailed'));
+      showToast(t('useSignOutWorkflow.toast.feedbackRecordedUpdateFailed'), 'warning');
     }
   }, [caseData, countersignFeedback, signingUser, showToast, setShowSignOutModal, knownVersionRef, setCaseData, setConcurrencyConflict, t]);
 
-  const handleSignOutConfirm = useCallback(async () => {
+  const handleSignOutConfirm = useCallback(async (confirmation?: SignatureConfirmation) => {
     // Real, critical defense-in-depth guard, per direct specification:
     // Post-Sign-Out Release Buffer. A real, serious bug found during a
     // post-delivery gap review: this function's own real effect
@@ -495,10 +503,40 @@ export function useSignOutWorkflow({
     // in its own recall window should never reach any further sign-out
     // logic at all.
     if (caseData?.status === 'pending-release') {
-      showToast(t('useSignOutWorkflow.toast.alreadyPendingRelease'));
+      showToast(t('useSignOutWorkflow.toast.alreadyPendingRelease'), 'warning');
       setShowSignOutModal(false);
       return;
     }
+
+    // Batch 345: nothing is signed without a checked signature. The
+    // modal's confirmation is verified here (the check the API server
+    // will make); a resume after a gate reuses the one already accepted
+    // for this case (services/auth/signatureEvidence.ts).
+    if (caseData?.id) {
+      const accepted = await signatureGate.accept(confirmation, {
+        caseId: caseData.id, caseRef: signingCaseRef, actions: ['case-sign-out', 'countersign'],
+      });
+      if (accepted.ok === false) {
+        showToast(t(`signatureEvidence.refused.${accepted.reason}`), 'warning');
+        return;
+      }
+    }
+
+    // Real, per PS-327 ("Yes, complete the work" — wiring requiresCountersign
+    // gating through the same per-lab resolution path canFinalizeCase()
+    // already uses): resolved once, up front, and reused by BOTH the
+    // resident/FPPE/configured-type countersign gate immediately below AND
+    // the canFinalizeCase() write-guard further down. Previously resolved
+    // twice — once implicitly missing here (the countersign gate never
+    // consulted real participation types at all) and again via a second,
+    // separate resolveFinalizeAuthorityContext() call right before
+    // canFinalizeCase(). Same real data either way, so resolving it once
+    // removes a duplicate facility/participation-type fetch from every
+    // sign-out attempt, not just a cosmetic simplification.
+    const { participationTypes: authorityParticipationTypes, performingLabFacilityId: authorityLabId, jurisdiction: authorityJurisdiction } =
+      await resolveFinalizeAuthorityContext(caseData);
+    const countersignRequiredTypeIds = resolveCountersignRequiredTypeIds(authorityParticipationTypes, authorityLabId, authorityJurisdiction);
+
     // Real resident-countersign gate — must run before anything else in
     // this function, including the reconciliation check below. If the
     // current user is acting as a resident (not attending) on this case,
@@ -572,6 +610,7 @@ export function useSignOutWorkflow({
         participants: caseData?.participants,
         signingUserId: signingUser?.id ?? '',
         hasActiveFppeAssignment: !!activeFppeAssignment,
+        countersignRequiredTypeIds,
       });
 
       if (countersignCheck.required) {
@@ -599,7 +638,7 @@ export function useSignOutWorkflow({
           const existingVersions = await reportVersionService.getByCaseId(caseData.id);
           const versionCount = existingVersions.ok ? existingVersions.data.length : 0;
           const { pdfBase64, generationError } = await generateReportPdfSnapshot();
-          if (generationError) showToast(t('useSignOutWorkflow.toast.submittedCountersignPdfFailed', { error: generationError }));
+          if (generationError) showToast(t('useSignOutWorkflow.toast.submittedCountersignPdfFailed', { error: generationError }), 'warning');
           await reportVersionService.create({
             caseId: caseData.id,
             mode: 'orchestration',
@@ -616,6 +655,8 @@ export function useSignOutWorkflow({
           residentName: signingUser?.name ?? 'Unknown User',
           releasedAnswersSnapshot,
         });
+        // Batch 345: the resident's signature on what they released.
+        await signatureGate.commit(caseData.id, 'released_for_countersign', { kind: 'report-version' });
 
         // Sync per-instance status alongside the case-level status —
         // previously only Case.status was updated here, leaving
@@ -668,7 +709,7 @@ export function useSignOutWorkflow({
           }
         }
 
-        showToast(t('useSignOutWorkflow.toast.caseReleasedForCountersign', { caseId: caseData.id }));
+        showToast(t('useSignOutWorkflow.toast.caseReleasedForCountersign', { caseId: caseData.id }), 'info', { containsPhi: true });
         setShowSignOutModal(false);
         return; // does not proceed to reconciliation check or any finalize logic below
       }
@@ -685,11 +726,9 @@ export function useSignOutWorkflow({
     // release-for-countersign above; this guard only needs to catch
     // whoever isn't covered by either that routing or a genuine
     // primary/attending/admin relationship.
-    const { participationTypes: signOutParticipationTypes, performingLabFacilityId: signOutLabId } =
-      await resolveFinalizeAuthorityContext(caseData);
-    const signOutFinalizeDecision = canFinalizeCase(getSessionUser(), caseData?.participants, signOutParticipationTypes, signOutLabId);
+    const signOutFinalizeDecision = canFinalizeCase(getSessionUser(), caseData?.participants, authorityParticipationTypes, authorityLabId, authorityJurisdiction);
     if (!signOutFinalizeDecision.granted) {
-      showToast(signOutFinalizeDecision.reason);
+      showToast(signOutFinalizeDecision.reason, 'warning');
       setShowSignOutModal(false);
       return;
     }
@@ -912,7 +951,7 @@ export function useSignOutWorkflow({
       } catch (e) {
         if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
         console.error('[useSignOutWorkflow] Failed to apply the real sign-out/buffer state transition:', e);
-        showToast(t('useSignOutWorkflow.toast.signedOutBufferFailed'));
+        showToast(t('useSignOutWorkflow.toast.signedOutBufferFailed'), 'warning');
       }
     }
   }, [caseData, finalizeSignOut, signingUser, showToast, countersignFeedback, setShowSignOutModal, knownVersionRef, setConcurrencyConflict, setCaseData, setPendingReconciliation, isOrchestrationMode, log, t]);
@@ -1113,6 +1152,28 @@ export function useSignOutWorkflow({
     return [...narrativeFindings, ...discreteFindings];
   }, [caseData, enterpriseConfig]);
 
+  // PS-137: records the pathologist's decision on this session's flagged
+  // findings as agreement signals, tagged with the covering Validation
+  // Study. Orchestration only; the decisions live in
+  // services/abnormalDetection/recordAbnormalDetectionOutcomes.ts.
+  const captureAbnormalDetectionOutcomes = useCallback((outcome: AbnormalDetectionOutcome) => {
+    if (criticalFindings.length === 0) return;
+    const input = {
+      caseId: caseData?.id ?? 'unknown',
+      findings: criticalFindings,
+      outcome,
+      scope: {
+        clientId: caseData?.order?.facilityId ?? '',
+        pathologistId: signingUser?.id ?? '',
+        subspecialtyId: caseData?.subspecialtyId,
+      },
+    };
+    import('@/services/validationStudies/mockValidationStudyService')
+      .then(({ mockValidationStudyService }) =>
+        recordAbnormalDetectionOutcomes(input, { signalService: abnormalDetectionSignalService, studyService: mockValidationStudyService }))
+      .catch(e => console.error('[AbnormalDetection] Could not record agreement signals:', e));
+  }, [caseData, criticalFindings, signingUser]);
+
   /** Real, per direct guidance - the pathologist has reviewed the real,
    *  detected finding(s) and chosen to record a real notification.
    *  Requires every real field ICriticalResultNotificationService
@@ -1218,6 +1279,7 @@ export function useSignOutWorkflow({
       // the human notification already recorded from standing.
       dispatchCriticalAlerts({
         caseId: caseData.id,
+        accessionNumber: caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? '',
         orderingPhysicianId: caseData.order?.orderingPhysicianId,
         findingTerm: highestFinding?.term ?? highest,
         findingSeverity: highest,
@@ -1238,31 +1300,17 @@ export function useSignOutWorkflow({
       }).catch(e => console.error('[AbnormalDetection] Could not record QA activity for this confirmed finding:', e));
     }
 
-    // Real, per direct guidance (PS-105/PS-137): "How often was their
-    // agreement... an opportunity to feed that information back for
-    // learning, just like we do when we add or remove synoptic
-    // reports." Fire-and-forget, same real posture as the existing
-    // Level 1 narrative-edit-signal capture elsewhere in this file —
-    // never blocks the actual sign-out action on this background
-    // capture. One real signal per finding actually shown in this
-    // session, 'confirmed' outcome — the pathologist genuinely
-    // recorded a real notification for it.
-    criticalFindings.forEach(f => {
-      const source: 'discrete' | 'narrative' = f.sourceField === 'synoptic' ? 'discrete' : 'narrative';
-      const reasonClean = source === 'narrative' ? deidentifyText(f.sourceQuote).clean : f.sourceQuote;
-      abnormalDetectionSignalService.recordSignal({
-        caseId: caseData.id,
-        source,
-        reasonClean,
-        suggestedSeverity: f.severity,
-        suggestedConfidence: f.confidence,
-        outcome: 'confirmed',
-      }).catch(e => console.error('[AbnormalDetection] Could not record agreement signal:', e));
-    });
+    // PS-105/PS-137 agreement tracking ("How often was their agreement...
+    // an opportunity to feed that information back for learning"): one
+    // 'confirmed' signal per finding shown, tagged with the Validation Study
+    // covering the case. Fire-and-forget, never blocks sign-out. Mapping,
+    // de-identification and study resolution:
+    // services/abnormalDetection/recordAbnormalDetectionOutcomes.ts.
+    captureAbnormalDetectionOutcomes('confirmed');
 
     setAcknowledgedCritical(true);
     setShowCriticalFindingsModal(false);
-  }, [caseData, criticalFindings, signingUser, setCaseData, knownVersionRef]);
+  }, [caseData, criticalFindings, signingUser, setCaseData, knownVersionRef, captureAbnormalDetectionOutcomes]);
 
   /** Real, per direct guidance - a soft block, not a hard one: the
    *  detection here is an LLM-based heuristic that can be wrong, and
@@ -1271,27 +1319,15 @@ export function useSignOutWorkflow({
    *  modal without recording anything - a real, honest choice, not a
    *  forced action. */
   const handleAcknowledgeCriticalFindings = useCallback(() => {
-    // Real, per direct guidance (PS-105/PS-137) — same real agreement-
-    // tracking capture as handleRecordCriticalNotification above,
+    // Same agreement capture as handleRecordCriticalNotification, with a
     // 'dismissed' outcome. Deliberately does NOT set
     // Case.abnormalDetectionStatus (see that field's own doc comment,
-    // types/case/Case.ts) — this is a real signal for learning, not a
-    // confirmed clinical status.
-    criticalFindings.forEach(f => {
-      const source: 'discrete' | 'narrative' = f.sourceField === 'synoptic' ? 'discrete' : 'narrative';
-      const reasonClean = source === 'narrative' ? deidentifyText(f.sourceQuote).clean : f.sourceQuote;
-      abnormalDetectionSignalService.recordSignal({
-        caseId: caseData?.id ?? 'unknown',
-        source,
-        reasonClean,
-        suggestedSeverity: f.severity,
-        suggestedConfidence: f.confidence,
-        outcome: 'dismissed',
-      }).catch(e => console.error('[AbnormalDetection] Could not record agreement signal:', e));
-    });
+    // types/case/Case.ts): this is a signal for learning, not a confirmed
+    // clinical status.
+    captureAbnormalDetectionOutcomes('dismissed');
     setAcknowledgedCritical(true);
     setShowCriticalFindingsModal(false);
-  }, [caseData, criticalFindings]);
+  }, [captureAbnormalDetectionOutcomes]);
 
   // ── Real finalization logic — shared by both finalize entry points ────────
   // Previously: handlePreFinalConfirm only console.log'd and closed the
@@ -1307,6 +1343,17 @@ export function useSignOutWorkflow({
   ): Promise<boolean> => {
     if (!caseData) return false;
 
+    // Batch 345: finalising is a signature. It needs a confirmation
+    // already accepted for this case (handlePreFinalConfirm /
+    // handleFinalizeConfirm), which a gate resume reuses.
+    const heldSignature = await signatureGate.accept(undefined, {
+      caseId: caseData.id, caseRef: signingCaseRef, actions: ['report-finalize', 'synoptic-finalize'],
+    });
+    if (heldSignature.ok === false) {
+      showToast(t(`signatureEvidence.refused.${heldSignature.reason}`), 'warning');
+      return false;
+    }
+
     // ── Real write guard (dimension 4 — case relationship). Found via
     // direct investigation: any user who could VIEW this case (passes
     // the tenant/pool checks in caseAccessControl.ts) could also
@@ -1317,11 +1364,11 @@ export function useSignOutWorkflow({
     // fixative-time gate below — there's no reason to walk someone
     // through resolving a data-completeness gate for a case they were
     // never going to be allowed to sign out anyway.
-    const { participationTypes: finalizeParticipationTypes, performingLabFacilityId: finalizeLabId } =
+    const { participationTypes: finalizeParticipationTypes, performingLabFacilityId: finalizeLabId, jurisdiction: finalizeJurisdiction } =
       await resolveFinalizeAuthorityContext(caseData);
-    const finalizeDecision = canFinalizeCase(getSessionUser(), caseData?.participants, finalizeParticipationTypes, finalizeLabId);
+    const finalizeDecision = canFinalizeCase(getSessionUser(), caseData?.participants, finalizeParticipationTypes, finalizeLabId, finalizeJurisdiction);
     if (!finalizeDecision.granted) {
-      showToast(finalizeDecision.reason);
+      showToast(finalizeDecision.reason, 'warning');
       return false;
     }
 
@@ -1458,7 +1505,7 @@ export function useSignOutWorkflow({
           auditorNotes: f.auditorNotes,
           createdBy: 'system',
         })));
-        showToast(t('useSignOutWorkflow.toast.billingItemsFlaggedQa', { count: findings.length }));
+        showToast(t('useSignOutWorkflow.toast.billingItemsFlaggedQa', { count: findings.length }), 'warning');
       })().catch(e => console.error('[PathScribe] Billing deficiency raise failed (non-blocking):', e));
 
       // Real, per direct guidance's own Code Review Pool design - the
@@ -1536,6 +1583,7 @@ export function useSignOutWorkflow({
         }));
       })().catch(e => console.error('[PathScribe] Outbound charge queue sweep failed (non-blocking):', e));
 
+      await signatureGate.commit(caseData.id, 'finalized');
       return true;
     } catch (err) {
       // The actual finalize action — the highest-stakes write in this
@@ -1545,7 +1593,7 @@ export function useSignOutWorkflow({
       // never actually saw.
       if (handleConcurrencyConflict(err, setConcurrencyConflict, { blockOverride: true })) return false;
       console.error('[Finalise] Failed to persist finalization:', err);
-      showToast(t('useSignOutWorkflow.toast.finalizationFailed'));
+      showToast(t('useSignOutWorkflow.toast.finalizationFailed'), 'warning');
       return false;
     }
   }, [caseData, signingUser, log, showToast, specimenDictionary, knownVersionRef, setCaseData, setConcurrencyConflict, setFixativeGateSpecimens, setStainQcGateBlocking, setPreAnalyticDateGateSpecimens, setPendingFinalizeArgs, fetchBillingDeficiencyFindings, t]);
@@ -1663,7 +1711,7 @@ export function useSignOutWorkflow({
       findings.length === 1
         ? t('useSignOutWorkflow.toast.billingNoteSingle', { note: findings[0].auditorNotes })
         : t('useSignOutWorkflow.toast.billingItemsFlaggedStartingWith', { count: findings.length, note: findings[0].auditorNotes })
-    );
+    , 'warning');
   }, [fetchBillingDeficiencyFindings, showToast, t]);
 
   const handleRequestFinalize = useCallback(async (andNext: boolean) => {
@@ -1677,7 +1725,7 @@ export function useSignOutWorkflow({
     // those checks find.
     const activeCaseHold = (caseData?.caseHolds ?? []).find(h => h.active);
     if (activeCaseHold) {
-      showToast(t('useSignOutWorkflow.toast.caseOnHold', { note: activeCaseHold.note }));
+      showToast(t('useSignOutWorkflow.toast.caseOnHold', { note: activeCaseHold.note }), 'warning');
       return;
     }
     // Real fix, found via direct live verification before shipping this:
@@ -1702,7 +1750,7 @@ export function useSignOutWorkflow({
         microscopicBlocking.length === 1
           ? t('useSignOutWorkflow.toast.specimenBlocking', { label: first.specimenLabel, reason: firstReasonText })
           : t('useSignOutWorkflow.toast.specimensNeedAttention', { count: microscopicBlocking.length, label: first.specimenLabel, reason: firstReasonText })
-      );
+      , 'warning');
       setActiveSpecimenId(first.specimenId);
       setActiveReportType('microscopic');
       return;
@@ -1749,7 +1797,7 @@ export function useSignOutWorkflow({
         blocking.length === 1
           ? t('useSignOutWorkflow.toast.aiSuggestionNeedsReview', { label: blocking[0].fieldLabel })
           : t('useSignOutWorkflow.toast.aiSuggestionsNeedReview', { count: blocking.length, label: blocking[0].fieldLabel })
-      );
+      , 'warning');
       if (isOrchestrationMode) safeSetLeftTab('draft');
       setAlertFieldId(blocking[0].fieldId);
       return;
@@ -1763,7 +1811,7 @@ export function useSignOutWorkflow({
     setShowPreFinalise(true);
   }, [buildSynopticsForReview, caseData, synopticPanelRef, showToast, setAlertFieldId, isOrchestrationMode, safeSetLeftTab, getMicroscopicBlockingSpecimens, setActiveSpecimenId, setActiveReportType, previewBillingWarnings, acknowledgedCritical, fetchCriticalFindings, t]);
 
-  const handlePreFinalConfirm = useCallback((_ordered: string[], _excluded: string[]) => {
+  const handlePreFinalConfirm = useCallback((_ordered: string[], _excluded: string[], confirmation?: SignatureConfirmation) => {
     setShowPreFinalise(false);
     // Credentials already verified inside PreFinalisationModal.
     // _ordered is the pathologist's final section/synoptic ordering choice
@@ -1779,12 +1827,17 @@ export function useSignOutWorkflow({
     // of any race condition. Now shares the same fixed logic as the
     // fallback path (handleFinalizeConfirm), properly sequenced.
     (async () => {
+      // Batch 345: check the signature before anything is finalised.
+      if (caseData?.id) {
+        const accepted = await signatureGate.accept(confirmation, { caseId: caseData.id, caseRef: signingCaseRef, actions: ['report-finalize'] });
+        if (accepted.ok === false) { showToast(t(`signatureEvidence.refused.${accepted.reason}`), 'warning'); return; }
+      }
       const succeeded = await finalizeCase(_excluded);
       if (succeeded) await releasePendingAmendmentOrAddendum();
     })();
-  }, [finalizeCase, releasePendingAmendmentOrAddendum]);
+  }, [finalizeCase, releasePendingAmendmentOrAddendum, caseData?.id, signingCaseRef, showToast, t]);
 
-  const handleFinalizeConfirm = useCallback(() => {
+  const handleFinalizeConfirm = useCallback((confirmation?: SignatureConfirmation) => {
     if (synopticPanelRef.current) {
       const { verificationSummary } = synopticPanelRef.current.sweepAndGetFinalState();
       console.info('[PathScribe] Finalization sweep:', verificationSummary);
@@ -1807,20 +1860,15 @@ export function useSignOutWorkflow({
           // logic already existed (getStudyForCase), it was just never called
           // anywhere. Calling it here, at signal-capture time, is correct
           // because study membership is evaluated per-case at the moment of
-          // finalization, not stored ahead of time.
-          let resolvedStudyId: string | undefined;
-          try {
-            const { mockValidationStudyService } = await import('@/services/validationStudies/mockValidationStudyService');
-            const clientId       = caseData?.order?.facilityId ?? '';
-            const pathologistId  = signingUser?.id ?? '';
-            const subspecialtyId = caseData?.subspecialtyId;
-            const studyResult = await mockValidationStudyService.getStudyForCase(clientId, pathologistId, subspecialtyId);
-            if (studyResult.ok && studyResult.data) {
-              resolvedStudyId = studyResult.data.id;
-            }
-          } catch (e) {
-            console.error('[PathScribe] Study lookup failed — signals will record without studyId:', e);
-          }
+          // finalization, not stored ahead of time. The lookup is shared with
+          // the abnormal-detection agreement signals (resolveActiveStudyId,
+          // Batch 318) so both kinds of signal agree on a case's study.
+          const { mockValidationStudyService } = await import('@/services/validationStudies/mockValidationStudyService');
+          const resolvedStudyId = await resolveActiveStudyId({
+            clientId:       caseData?.order?.facilityId ?? '',
+            pathologistId:  signingUser?.id ?? '',
+            subspecialtyId: caseData?.subspecialtyId,
+          }, mockValidationStudyService);
 
           const signals = orchSections
             .filter(s => s.aiGenerated || s.text)
@@ -1869,10 +1917,15 @@ export function useSignOutWorkflow({
     // which is exactly why the "AMENDMENT IN PROGRESS" banner stayed
     // stuck inconsistently rather than every time.
     (async () => {
+      // Batch 345: check the signature before anything is finalised.
+      if (caseData?.id) {
+        const accepted = await signatureGate.accept(confirmation, { caseId: caseData.id, caseRef: signingCaseRef, actions: ['synoptic-finalize'] });
+        if (accepted.ok === false) { showToast(t(`signatureEvidence.refused.${accepted.reason}`), 'warning'); return; }
+      }
       const succeeded = await finalizeCase();
       if (succeeded) await releasePendingAmendmentOrAddendum();
     })();
-  }, [setShowFinalizeModal, caseData, activeReportInstanceId, setAmendmentMode, setShowAmendmentModal, isOrchestrationMode, orchSections, finalizeCase, releasePendingAmendmentOrAddendum, signingUser, synopticPanelRef, openAmendmentDraft]);
+  }, [signingCaseRef, showToast, t, setShowFinalizeModal, caseData, activeReportInstanceId, setAmendmentMode, setShowAmendmentModal, isOrchestrationMode, orchSections, finalizeCase, releasePendingAmendmentOrAddendum, signingUser, synopticPanelRef, openAmendmentDraft]);
 
   // Real, per direct guidance's own confirmed, foundational gap (PS-274):
   // suggestSynopticFields() and AiReviewModal were both already real
@@ -1908,11 +1961,11 @@ export function useSignOutWorkflow({
     };
 
     if (!caseText.gross.trim() && !caseText.microscopic.trim() && !caseText.ancillary.trim()) {
-      showToast(t('useSignOutWorkflow.toast.enterNarrativeBeforeAiSuggestions'));
+      showToast(t('useSignOutWorkflow.toast.enterNarrativeBeforeAiSuggestions'), 'warning');
       return;
     }
     if (!activeInstance?.templateId) {
-      showToast(t('useSignOutWorkflow.toast.noSynopticTemplateAssigned'));
+      showToast(t('useSignOutWorkflow.toast.noSynopticTemplateAssigned'), 'warning');
       return;
     }
 
@@ -1923,7 +1976,7 @@ export function useSignOutWorkflow({
         const detail = await getTemplate(activeInstance.templateId);
         template = detail.template;
       } catch (e) {
-        showToast(t('useSignOutWorkflow.toast.couldNotLoadTemplateForAiSuggestion'));
+        showToast(t('useSignOutWorkflow.toast.couldNotLoadTemplateForAiSuggestion'), 'warning');
         return;
       }
       if (!template) return;
@@ -1934,8 +1987,8 @@ export function useSignOutWorkflow({
 
       const aiService = new PathScribeAIService();
       const result = await aiService.suggestSynopticFields(caseText, fields);
-      if (!result.success || !result.data) {
-        showToast(t('useSignOutWorkflow.toast.aiSuggestionFailed'));
+      if (result.ok === false || !result.data) {
+        showToast(t('useSignOutWorkflow.toast.aiSuggestionFailed'), 'warning');
         return;
       }
 
@@ -1968,11 +2021,11 @@ export function useSignOutWorkflow({
     const synopticAnswers = activeInstance?.answers ?? caseData.synopticAnswers ?? {};
 
     if (Object.keys(synopticAnswers).length === 0) {
-      showToast(t('useSignOutWorkflow.toast.answerFieldsBeforeGeneratingNarrative'));
+      showToast(t('useSignOutWorkflow.toast.answerFieldsBeforeGeneratingNarrative'), 'warning');
       return;
     }
     if (!activeInstance?.templateId) {
-      showToast(t('useSignOutWorkflow.toast.noSynopticTemplateAssigned'));
+      showToast(t('useSignOutWorkflow.toast.noSynopticTemplateAssigned'), 'warning');
       return;
     }
 
@@ -1983,15 +2036,15 @@ export function useSignOutWorkflow({
         const detail = await getTemplate(activeInstance.templateId);
         template = detail.template;
       } catch (e) {
-        showToast(t('useSignOutWorkflow.toast.couldNotLoadTemplateForNarrativeGeneration'));
+        showToast(t('useSignOutWorkflow.toast.couldNotLoadTemplateForNarrativeGeneration'), 'warning');
         return;
       }
       if (!template) return;
 
       const aiService = new PathScribeAIService();
       const result = await aiService.generateNarrativeFromSynopticAnswers(template, synopticAnswers);
-      if (!result.success || !result.data) {
-        showToast(t('useSignOutWorkflow.toast.narrativeGenerationFailed'));
+      if (result.ok === false || !result.data) {
+        showToast(t('useSignOutWorkflow.toast.narrativeGenerationFailed'), 'warning');
         return;
       }
 
@@ -2025,7 +2078,7 @@ export function useSignOutWorkflow({
       await caseRouter.updateCase(caseData.id, { diagnostic: updatedDiagnostic } as any, knownVersionRef.current);
       knownVersionRef.current = knownVersionRef.current + 1;
     } catch (e) {
-      showToast(t('useSignOutWorkflow.toast.narrativeInsertedSaveFailed'));
+      showToast(t('useSignOutWorkflow.toast.narrativeInsertedSaveFailed'), 'warning');
     }
   }, [caseData, setCaseData, knownVersionRef, showToast, t]);
 

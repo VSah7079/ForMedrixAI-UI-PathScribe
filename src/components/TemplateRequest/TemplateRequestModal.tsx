@@ -313,8 +313,7 @@ export const TemplateRequestModal: React.FC<TemplateRequestModalProps> = ({ onCl
                     onChange={e => { setBaseSearch(e.target.value); setShowBaseList(true); }}
                     onFocus={() => { setShowBaseList(true); setBaseSearch(''); }}
                     placeholder={t('templateRequestModal.baseSearchPlaceholder')}
-                    className="trm-input"
-                    style={{ paddingRight: baseTemplate ? 36 : 12 }}
+                    className={`trm-input${baseTemplate ? ' trm-input--with-clear' : ''}`}
                   />
                   {baseTemplate && (
                     <button

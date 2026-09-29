@@ -1,6 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
+import { useIsSuperAdmin } from '../../../contexts/AuthContext';
 import '../../../pathscribe.css';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
 import type { Facility } from '../../../services';
@@ -15,6 +16,7 @@ import MigrationFieldMappingsSection from './MigrationFieldMappingsSection';
 import CancerRegistrySettingsSection from './CancerRegistrySettingsSection';
 import ProtocolDictionarySection from './ProtocolDictionarySection';
 import PrinterProfilesSection from './PrinterProfilesSection';
+import AssistLisPollingSection from './AssistLisPollingSection';
 import GrossingRouteOverridesSection from './GrossingRouteOverridesSection';
 import DepartmentsSection from './DepartmentsSection';
 import AssetLocationDictionarySection from './AssetLocationDictionarySection';
@@ -23,6 +25,8 @@ import ReagentLotsSection from './ReagentLotsSection';
 import WorkstationGroupsSection from './WorkstationGroupsSection';
 import ActionGroupsSection from './ActionGroupsSection';
 import ScanStationsSection from './ScanStationsSection';
+import EquipmentSection from './EquipmentSection';
+import GrossingHardwareSection from './GrossingHardwareSection';
 import CassetteRoutingRulesSection from './CassetteRoutingRulesSection';
 import CassetteColorsSection from './CassetteColorsSection';
 import PrintSettingsSection from './PrintSettingsSection';
@@ -41,13 +45,18 @@ import JurisdictionPaymentMappingSection  from './JurisdictionPaymentMappingSect
 import DftExportPreviewSection   from './DftExportPreviewSection';
 import BillingDictionarySection  from './BillingDictionarySection';
 import PendingApprovalSection from './PendingApprovalSection';
+import CodeImportSection from './CodeImportSection';
 import ModifierDictionarySection from './ModifierDictionarySection';
 import BillingTypeTriggerSection from './BillingTypeTriggerSection';
 import ParticipationTypesSection from './ParticipationTypesSection';
+import CountrySigningRulesSection from './CountrySigningRulesSection';
 import SessionSecuritySection    from './SessionSecuritySection';
+import SupportAccessSection      from './SupportAccessSection';
+import FieldRequirementsSection  from './FieldRequirementsSection';
 import ReleaseBufferSection      from './ReleaseBufferSection';
 import ConcordanceReviewSettingsSection from './ConcordanceReviewSettingsSection';
 import DeliveryRulesSection from './DeliveryRulesSection';
+import PrintRoutingRuleSection from './PrintRoutingRuleSection';
 import ContributionSettingsSection from './ContributionSettingsSection';
 import ExternalResourcesSection  from './ExternalResourcesSection';
 import ResearchFeedSection      from './ResearchFeedSection';
@@ -71,6 +80,7 @@ import PhysiciansSection from './PhysiciansSection';
 import DeficienciesSection from './DeficienciesSection';
 import AbnormalTriggerRulesSection from './AbnormalTriggerRulesSection';
 import QAConfigurationCenterSection from './QAConfigurationCenterSection';
+import TemplateGovernanceSection from './TemplateGovernanceSection';
 import { resetConfigScroll } from '../../../utils/resetConfigScroll';
 
 // ── Section registry ──────────────────────────────────────────────────────────
@@ -93,15 +103,21 @@ type SystemSection =
   | 'workstation_groups'
   | 'action_groups'
   | 'scan_stations'
+  | 'equipment'
+  | 'grossing_hardware'
   | 'cassette_routing_rules'
   | 'cassette_colors'
   | 'fonts'
   | 'document_style'
   | 'retention'
   | 'session_security'
+  | 'support_access'
+  | 'field_requirements'
   | 'release_buffer'
   | 'concordance_review_settings'
+  | 'template_governance'
   | 'delivery_rules'
+  | 'print_routing_rules'
   | 'contribution_settings'
   | 'qa_config_center'
   | 'external_resources'
@@ -117,10 +133,12 @@ type SystemSection =
   | 'outbound_message_preview'
   | 'dft_export_preview'
   | 'billing_dictionary'
+  | 'code_import'
   | 'billing_type_triggers'
   | 'pending_approvals'
   | 'modifier_dictionary'
   | 'participation_types'
+  | 'country_signing_rules'
   | 'print_settings'
   | 'label_designer'
   | 'printer_profiles'
@@ -132,7 +150,8 @@ type SystemSection =
   | 'routing_rules'
   | 'physicians'
   | 'deficiencies'
-  | 'abnormal_trigger_rules';
+  | 'abnormal_trigger_rules'
+  | 'assist_lis_polling';
 
 // Real, per PS-85 (Jira) — every item in this file belonged to
 // exactly one of five real, named groups (Workstation & Hardware,
@@ -178,6 +197,10 @@ const SECTIONS: { id: SystemSection; emoji: string; labelKey: string; group: str
   { id: 'label_designer',      emoji: '🏷️', labelKey: 'systemTab.sections.labelDesigner'        , group: 'Workstation & Hardware' },
   { id: 'printer_profiles',    emoji: '🖨️', labelKey: 'systemTab.sections.printerProfiles'      , group: 'Workstation & Hardware' },
   { id: 'scan_stations',       emoji: '📍', labelKey: 'systemTab.sections.scanStations'         , group: 'Workstation & Hardware' },
+  // Batch 358: the equipment register (took over Batch 356's Instruments list).
+  { id: 'equipment',           emoji: '🔬', labelKey: 'systemTab.sections.equipment'            , group: 'Workstation & Hardware' },
+  // Batch 359: grossing cameras and scales (settings; the device is in the register).
+  { id: 'grossing_hardware',   emoji: '📷', labelKey: 'systemTab.sections.grossingHardware'     , group: 'Workstation & Hardware' },
 
   // ── Lab Materials & Workflows ──
   { id: 'cassette_colors',     emoji: '🎨', labelKey: 'systemTab.sections.cassetteColors'       , group: 'Lab Materials & Workflows' },
@@ -218,6 +241,7 @@ const SECTIONS: { id: SystemSection; emoji: string; labelKey: string; group: str
   { id: 'governing_bodies',    emoji: '📋', labelKey: 'systemTab.sections.governingBodies'      , group: 'Clinical Lookups' },
   { id: 'abnormal_trigger_rules', emoji: '🚩', labelKey: 'systemTab.sections.abnormalTriggerRules', group: 'Clinical Lookups' },
   { id: 'participation_types', emoji: '👥', labelKey: 'systemTab.sections.participationTypes'   , group: 'Clinical Lookups' },
+  { id: 'country_signing_rules', emoji: '🌐', labelKey: 'systemTab.sections.countrySigningRules', group: 'Clinical Lookups' },
   { id: 'protocols',           emoji: '🧬', labelKey: 'systemTab.sections.protocols'   , group: 'Clinical Lookups' },
   { id: 'departments', emoji: '🗂️', labelKey: 'systemTab.sections.departments'   , group: 'Clinical Lookups' },
   { id: 'subspecialties',      emoji: '🩺', labelKey: 'systemTab.sections.subspecialties'        , group: 'Clinical Lookups' },
@@ -225,6 +249,7 @@ const SECTIONS: { id: SystemSection; emoji: string; labelKey: string; group: str
   // ── Financial & Revenue Lookups ──
   { id: 'billing_dictionary',  emoji: '💲', labelKey: 'systemTab.sections.billingDictionary', group: 'Financial & Revenue Lookups' },
   { id: 'dft_export_preview',  emoji: '📄', labelKey: 'systemTab.sections.dftExportPreview', group: 'Financial & Revenue Lookups' },
+  { id: 'code_import',         emoji: '📥', labelKey: 'systemTab.sections.codeImport', group: 'Financial & Revenue Lookups' },
   { id: 'billing_type_triggers', emoji: '🚦', labelKey: 'systemTab.sections.billingTypeTriggers', group: 'Financial & Revenue Lookups' },
   { id: 'modifier_dictionary', emoji: '🏷️', labelKey: 'systemTab.sections.modifierDictionary', group: 'Financial & Revenue Lookups' },
   { id: 'jurisdiction_payment_mappings', emoji: '🌍', labelKey: 'systemTab.sections.jurisdictionPaymentMappings', group: 'Financial & Revenue Lookups' },
@@ -240,14 +265,23 @@ const SECTIONS: { id: SystemSection; emoji: string; labelKey: string; group: str
   { id: 'delegation_types',    emoji: '🔀', labelKey: 'systemTab.sections.delegationTypes'      , group: 'Administration & Compliance' },
   { id: 'document_style',      emoji: '🖋', labelKey: 'systemTab.sections.documentStyle'        , group: 'Administration & Compliance' },
   { id: 'external_resources',  emoji: '🌐', labelKey: 'systemTab.sections.externalResources'    , group: 'Administration & Compliance' },
+  // PS-359 (Batch 376): which fields each page requires before saving.
+  { id: 'field_requirements',  emoji: '✳', labelKey: 'systemTab.sections.fieldRequirements'    , group: 'Administration & Compliance' },
   { id: 'release_buffer',      emoji: '⏳', labelKey: 'systemTab.sections.releaseBuffer', group: 'Administration & Compliance' },
   { id: 'concordance_review_settings', emoji: '⚖', labelKey: 'systemTab.sections.concordanceReviewSettings', group: 'Administration & Compliance' },
   { id: 'delivery_rules', emoji: '📬', labelKey: 'systemTab.sections.deliveryRules', group: 'Administration & Compliance' },
+  { id: 'print_routing_rules', emoji: '🖨', labelKey: 'systemTab.sections.printRoutingRules', group: 'Administration & Compliance' },
   { id: 'qa_config_center',    emoji: '✅', labelKey: 'systemTab.sections.qaConfigCenter' , group: 'Administration & Compliance' },
   { id: 'research_feed',       emoji: '📰', labelKey: 'systemTab.sections.researchFeed'         , group: 'Administration & Compliance' },
   { id: 'session_security',    emoji: '🔒', labelKey: 'systemTab.sections.sessionSecurity'      , group: 'Administration & Compliance' },
+  // Batch 372: whether ForMedrixAI support may reach this organisation's data, approvals, and the support audit.
+  { id: 'support_access',      emoji: '🛡', labelKey: 'systemTab.sections.supportAccess'        , group: 'Administration & Compliance' },
+  // PS-63: template self-approval and required reviewers.
+  { id: 'template_governance', emoji: '🧾', labelKey: 'systemTab.sections.templateGovernance', group: 'Administration & Compliance' },
 
   // ── Integrations ──
+  // PS-87: Assist-mode LIS polling (settings, Poll now, activity log).
+  { id: 'assist_lis_polling', emoji: '🔄', labelKey: 'systemTab.sections.assistLisPolling', group: 'Integrations' },
   { id: 'case_mask_config', emoji: '🔢', labelKey: 'systemTab.sections.caseMaskConfig', group: 'Integrations' },
   { id: 'case_routing',     emoji: '🔀', labelKey: 'systemTab.sections.caseRouting'           , group: 'Integrations' },
   { id: 'clients',          emoji: '🏥', labelKey: 'systemTab.sections.clients' , group: 'Integrations' },
@@ -286,6 +320,9 @@ const GROUPS: string[] = Array.from(new Set(SECTIONS.map(s => s.group)));
 
 const SystemTab: React.FC = () => {
   const { t } = useTranslation();
+  // Batch 371: the terminology endpoint details are shown to PathScribe
+  // support (Superadmin) only; this used to be hard-coded true for everyone.
+  const isSuperAdmin = useIsSuperAdmin();
   const location = useLocation();
   const [active, setActiveRaw] = useState<SystemSection>(() => {
     const section = new URLSearchParams(location.search).get('section') as SystemSection | null;
@@ -349,6 +386,8 @@ const SystemTab: React.FC = () => {
       case 'workstation_groups': return <WorkstationGroupsSection />;
       case 'action_groups': return <ActionGroupsSection />;
       case 'scan_stations': return <ScanStationsSection selectedFacilityId={workstationFacilityId || undefined} />;
+      case 'equipment': return <EquipmentSection selectedFacilityId={workstationFacilityId || undefined} />;
+      case 'grossing_hardware': return <GrossingHardwareSection selectedFacilityId={workstationFacilityId || undefined} />;
       case 'cassette_routing_rules': return <CassetteRoutingRulesSection />;
       case 'cassette_colors': return <CassetteColorsSection />;
       case 'print_settings': return <PrintSettingsSection selectedFacilityId={workstationFacilityId || undefined} />;
@@ -356,10 +395,11 @@ const SystemTab: React.FC = () => {
       case 'fonts':               return <FontsSection />;
       case 'document_style':      return <DocumentStyleSection />;
       case 'retention':           return <RetentionSection />;
-      case 'governing_bodies':    return <GoverningBodiesSection isSuperAdmin={true} />;
+      case 'governing_bodies':    return <GoverningBodiesSection />;
       case 'delegation_types':    return <DelegationTypeSection />;
       case 'billing_dictionary':  return <BillingDictionarySection />;
       case 'pending_approvals': return <PendingApprovalSection />;
+      case 'code_import': return <CodeImportSection />;
       case 'modifier_dictionary': return <ModifierDictionarySection />;
       case 'billing_type_triggers': return <BillingTypeTriggerSection />;
       case 'rvu_code_map':        return <RvuCodeMapSection />;
@@ -369,14 +409,19 @@ const SystemTab: React.FC = () => {
       case 'outbound_message_preview': return <OutboundMessagePreviewSection />;
       case 'dft_export_preview':  return <DftExportPreviewSection />;
       case 'participation_types': return <ParticipationTypesSection />;
+      case 'country_signing_rules': return <CountrySigningRulesSection />;
       case 'session_security':    return <SessionSecuritySection />;
+      case 'support_access':      return <SupportAccessSection />;
+      case 'field_requirements':  return <FieldRequirementsSection />;
       case 'release_buffer':      return <ReleaseBufferSection />;
       case 'concordance_review_settings': return <ConcordanceReviewSettingsSection />;
+      case 'template_governance': return <TemplateGovernanceSection />;
       case 'delivery_rules': return <DeliveryRulesSection />;
+      case 'print_routing_rules': return <PrintRoutingRuleSection />;
       case 'contribution_settings': return <ContributionSettingsSection />;
       case 'external_resources':  return <ExternalResourcesSection />;
       case 'research_feed':       return <ResearchFeedSection />;
-      case 'terminology':      return <TerminologyServicesSection isSuperAdmin={true} />;
+      case 'terminology':      return <TerminologyServicesSection isSuperAdmin={isSuperAdmin} />;
       case 'clients':          return <FacilityDictionaryPage />;
       case 'crosswalk':        return <CrosswalkSection />;
       case 'case_mask_config': return <CaseMaskConfigSection />;
@@ -385,6 +430,7 @@ const SystemTab: React.FC = () => {
       case 'physicians':       return <PhysiciansSection />;
       case 'deficiencies':     return <DeficienciesSection />;
       case 'abnormal_trigger_rules': return <AbnormalTriggerRulesSection />;
+      case 'assist_lis_polling': return <AssistLisPollingSection />;
       case 'qa_config_center': return <QAConfigurationCenterSection />;
       default:                    return null;
     }
@@ -423,7 +469,7 @@ const SystemTab: React.FC = () => {
       </div>
 
       {/* Real, per direct guidance: one facility selector shared
-          across all three Workstation & Hardware sections — placed
+          across the Workstation & Hardware sections (Equipment added in Batch 356/358) — placed
           above the sidebar+content shell (not inside it) so it spans
           the full width rather than becoming a third flex column.
           Never rendered for any other group, since no other group's

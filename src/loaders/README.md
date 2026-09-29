@@ -27,3 +27,7 @@ the rest of the app already uses, for consistency and correctness.
 fetch — smaller, safer fix scope, and mock-service fetches are
 near-instant anyway so the duplicate fetch has negligible real cost.
 Full detail in `PRIORITY_FIXES.md` item #37.
+
+## React Router 7 (Batch 341, PS-344)
+
+Every file here that used `react-router-dom` now imports the same hooks and components from `react-router` 7 (`react-router-dom` was removed from the project). Nothing else changed: the app had already opted into version 7's behaviour. See `src/i18n/README.md` → Batch 341.

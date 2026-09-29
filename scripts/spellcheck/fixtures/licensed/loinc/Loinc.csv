@@ -1,0 +1,7 @@
+"LOINC_NUM","COMPONENT","PROPERTY","TIME_ASPCT","SYSTEM","SCALE_TYP","METHOD_TYP","CLASS","STATUS","SHORTNAME","LONG_COMMON_NAME"
+"90001-1","Cholangiocarcinoma subtype","Type","Pt","Tiss","Nom","","PATH","ACTIVE","CCA subtype","Cholangiocarcinoma subtype in Tissue by Light microscopy"
+"90002-9","Neuroendocrine tumor, ""well-differentiated"" grade","Type","Pt","Tiss","Ord","","PATH.PROTOCOLS.GI","ACTIVE","NET grade","Neuroendocrine tumor grade in Tissue by Mitotic count
+and Ki-67 index"
+"90003-7","Thrombocytopoietin","MCnc","Pt","Ser","Qn","","CHEM","ACTIVE","TPO","Thrombocytopoietin [Mass/volume] in Serum"
+"90004-5","Pseudomyxomatous change","Prid","Pt","Tiss","Nom","","CYTO","DEPRECATED","","Pseudomyxomatous change in Tissue"
+"90005-2","Paragangliomatous component","Prid","Pt","Tiss","Nom","","PATH","ACTIVE","","Paragangliomatous component in Tissue"

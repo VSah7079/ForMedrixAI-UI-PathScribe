@@ -57,10 +57,90 @@ standard interface/mock triplet).
   may already have been communicated through a real means this feature doesn't
   capture"). Gates on `Critical`/`Malignant` severity only; `Abnormal` alone
   doesn't prompt the modal.
-- Genuinely distinct from PS-136 (SMS/secure email/EHR task push — still
-  blocked, no real transport exists for any of those channels). This folder's
-  notification record is a human logging that they already made a real phone
-  call/page — not an automated dispatch system.
+- Genuinely distinct from PS-136's own automated dispatch pipeline
+  (`dispatchCriticalAlerts.ts`, `resolveCriticalAlertChannels.ts`,
+  `alertChannels/`, `mockCriticalAlertDispatchService.ts`) — this
+  folder's notification record is a human logging that they already
+  made a real phone call/page, additive to (never replaced by) that
+  automated dispatch. **Real, direct correction**: this note previously
+  read "still blocked, no real transport exists for any of those
+  channels" — true when first written, no longer true. Per direct
+  guidance following an RFP discussion (a real, specific customer need,
+  exactly the condition PS-136's own deprioritization said would bring
+  it back), the full automated pipeline was built: real physician
+  contact resolution, a real, pure severity/preferred-channel rule
+  engine, real per-case audit persistence, wired into
+  `useSignOutWorkflow.ts` at the same point the human notification is
+  recorded. Only the one network call inside each of the three channel
+  adapters remains a disclosed stub (no real Twilio/secure-email/EHR
+  vendor is contracted in this environment) — swapping in a real vendor
+  there is a contained, later implementation-and-testing task, not a
+  redesign. Full account in `src/i18n/README.md`'s own batch log and
+  PS-136's own Jira comment history.
+- **Real, follow-up redesign — zero-PHI sms/secure_email transport.**
+  Per a direct engineering brief following the pipeline note just above:
+  standard telecom SMS carriers and standard transactional email relays
+  generally will not sign a HIPAA BAA, so `sendSmsAlert.ts`/
+  `sendSecureEmailAlert.ts` no longer put `findingTerm`/`findingSeverity`/
+  any patient-identifying detail in the message body at all — only a
+  fixed, generic, non-PHI template plus an opaque reference link
+  (`ICriticalAlertReferenceTokenService.ts`/
+  `mockCriticalAlertReferenceTokenService.ts`, new this phase). The real,
+  intended production architecture behind that link: the receiving
+  physician authenticates via their OWN EHR's SSO/SMART-on-FHIR launch —
+  never a PathScribe-hosted login, which doesn't exist anywhere in this
+  app (confirmed by direct search of `services/auth/` and
+  `IPhysicianService.ts` before building this). `ehr_push` is
+  deliberately unchanged and keeps real clinical detail — it already
+  routes through the receiving institution's own interface-engine/EHR
+  trust boundary, never a public link, same reasoning
+  `pushEhrInboxAlert.ts`'s own header documents.
+
+  The new public route this link resolves to
+  (`/critical-alert/:token` → `pages/CriticalAlertReferencePage/`) is a
+  direct, deliberate answer to `App.tsx`'s own `/consult/:token` route
+  warning ("do not treat this route as a precedent for any other
+  unauthenticated PHI-bearing page without the same explicit caveat"):
+  it never renders `findingTerm`/`findingSeverity`/`sourceQuote`, since
+  it has no real authentication to gate that content with — only
+  `accessionNumber`/`physicianName`/link status, plus a disclosed-
+  simulation banner matching `ExternalConsultViewPage.tsx`'s own. Real
+  clinical detail stays visible only inside the new, internal,
+  authenticated **Audit Page > Critical Alerts** tab
+  (`pages/CriticalAlertAuditSection.tsx`), which joins each
+  `CriticalAlertDispatchRecord` to its own reference token's real
+  access/acknowledgement history — the "Complete Audit Trail" ask this
+  phase closes. `dispatchCriticalAlerts.ts` now requires
+  `accessionNumber` on its input (threaded through from
+  `useSignOutWorkflow.ts`) and pre-generates the dispatch record's own
+  id so a reference token can honestly link back to it from the moment
+  it's issued, before that record exists in storage
+  (`ICriticalAlertDispatchService.ts`'s own `record()` now accepts an
+  optional caller-supplied `id`).
+- **`postGaAlertChannels/` — real, deliberately NOT-wired-in cutover
+  candidate.** Per direct follow-up ("Can the interface engine be used
+  for any post GA modification to fully implement this feature?" →
+  "Can you build the patch and keep it separate in the repo?"): the
+  same three channels, routed through this app's one real, generic
+  outbound HTTP transport (`dispatchInterfaceMessage.ts`, new
+  `'CRITICAL_ALERT'` transaction type) instead of the local
+  `console.info` stubs `alertChannels/` still is today.
+  `dispatchCriticalAlerts.ts` is untouched — this module isn't imported
+  anywhere in the live call path, so it changes nothing about current
+  behavior until someone deliberately activates it (three import swaps
+  — see the folder's own README, which also has the full, real account
+  of the customer-side delivery options this was researched against:
+  SMTP relay/OAuth for email, email-to-SMS gateway or interface-engine
+  offloading for SMS. The carrier data-model gap that
+  email-to-SMS needs (`Physician` had no carrier field) is now closed:
+  `Physician.smsCarrier`/`smsCarrierOtherDomain`
+  (`services/physicians/IPhysicianService.ts`), set via the Physicians
+  config UI, resolved into a real gateway address by the new
+  `services/physicians/resolveEmailToSmsGatewayAddress.ts` and carried
+  on this module's `CRITICAL_ALERT` envelope. What's left — actually
+  registering OAuth/SMTP-relay tenants and routing on the receiving
+  side — is backend work in the separate `receive_interface_message`
+  repo, out of this codebase's scope.
 - **10 real tests** in `detectCriticalFindings.test.ts` (empty-input handling,
   real parsing, markdown-fence stripping, honest-empty-on-no-finding, error
   handling for bad JSON/failed calls, the PHI-minimization boundary, defensive

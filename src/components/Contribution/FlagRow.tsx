@@ -66,8 +66,7 @@ const FlagRow: React.FC<FlagRowProps> = ({
   return (
     <div
       onClick={onClick}
-      className="fr-row"
-      style={{ cursor: onClick ? "pointer" : "default" }}
+      className={`fr-row${onClick ? ' fr-row--clickable' : ''}`}
     >
       {/* Left: case ID + issue description */}
       <div className="fr-row-info">

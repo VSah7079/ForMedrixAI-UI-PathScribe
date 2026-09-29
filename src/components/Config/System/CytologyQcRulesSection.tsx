@@ -103,7 +103,7 @@ const RuleModal: React.FC<{
             {PRIORITY_TIERS.map(tier => <option key={tier} value={tier}>{t(`cytologyQcRules.tier.${tier}`)}</option>)}
           </select>
 
-          <label className="ps-conf-toggle-label-row" style={{ marginTop: 10 }}>
+          <label className="ps-conf-toggle-label-row ps-mt-10">
             <input type="checkbox" checked={draft.active} onChange={e => setDraft({ ...draft, active: e.target.checked })} className="ps-conf-radio-input" />
             <span className="ps-conf-option-text">{t('common.active')}</span>
           </label>
@@ -122,17 +122,17 @@ const RuleModal: React.FC<{
             <option value="fixed_volume">{t('cytologyQcRules.sampling.fixedVolume')}</option>
           </select>
           {draft.samplingLogic.type === 'percentage' && (
-            <input type="number" step="0.1" className="ps-conf-input" style={{ marginTop: 8 }}
+            <input type="number" step="0.1" className="ps-conf-input ps-mt-8"
               value={draft.samplingLogic.ratePercent} placeholder={t('cytologyQcRules.sampling.ratePercentPlaceholder')}
               onChange={e => setDraft({ ...draft, samplingLogic: { type: 'percentage', ratePercent: Number(e.target.value) } })} />
           )}
           {draft.samplingLogic.type === 'interval' && (
-            <input type="number" className="ps-conf-input" style={{ marginTop: 8 }}
+            <input type="number" className="ps-conf-input ps-mt-8"
               value={draft.samplingLogic.everyNthCase} placeholder={t('cytologyQcRules.sampling.everyNthPlaceholder')}
               onChange={e => setDraft({ ...draft, samplingLogic: { type: 'interval', everyNthCase: Number(e.target.value) } })} />
           )}
           {draft.samplingLogic.type === 'fixed_volume' && (
-            <input type="number" className="ps-conf-input" style={{ marginTop: 8 }}
+            <input type="number" className="ps-conf-input ps-mt-8"
               value={draft.samplingLogic.firstNCases} placeholder={t('cytologyQcRules.sampling.firstNPlaceholder')}
               onChange={e => setDraft({ ...draft, samplingLogic: { type: 'fixed_volume', firstNCases: Number(e.target.value) } })} />
           )}
@@ -144,7 +144,7 @@ const RuleModal: React.FC<{
               <label key={j} className="ps-conf-toggle-label-row">
                 <input type="checkbox" className="ps-conf-radio-input" checked={(criteria.jurisdictions ?? []).includes(j)}
                   onChange={() => setCriteria({ jurisdictions: toggleInArray(criteria.jurisdictions, j) })} />
-                <span className="ps-conf-option-text">{JURISDICTION_LABELS[j]}</span>
+                <span className="ps-conf-option-text">{t(`jurisdictionNames.${j}`)}</span>
               </label>
             ))}
           </div>
@@ -261,7 +261,7 @@ const CytologyQcRulesSection: React.FC = () => {
   };
 
   const handleDuplicate = async (rule: CytologyQcRule) => {
-    const result = await mockCytologyQcRuleService.duplicate(rule.id);
+    const result = await mockCytologyQcRuleService.duplicate(rule.id, t('common.copyOfName', { name: rule.name }));
     if (result.ok) setModal({ mode: 'edit', rule: result.data });
     refresh();
   };
@@ -276,7 +276,7 @@ const CytologyQcRulesSection: React.FC = () => {
         <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'add' })}>{t('cytologyQcRules.addRuleBtn')}</button>
       </div>
 
-      <label className="ps-conf-toggle-label-row" style={{ marginBottom: 12 }}>
+      <label className="ps-conf-toggle-label-row ps-mb-12">
         <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="ps-conf-radio-input" />
         <span className="ps-conf-option-text">{t('common.showInactive')}</span>
       </label>
@@ -286,7 +286,7 @@ const CytologyQcRulesSection: React.FC = () => {
           <div key={rule.id} className="ps-conf-row">
             <span className="ps-conf-value">
               {rule.name}
-              <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--ps-conf-text-3, #94a3b8)' }}>
+              <span className="ps-cytqc-priority-inline">
                 {t('cytologyQcRules.priorityInline', { priority: rule.evaluationPriority })} · {t(`cytologyQcRules.tier.${rule.peerReviewPriorityTier}`)}
                 {!rule.active ? ` · ${t('common.inactive')}` : ''}
               </span>

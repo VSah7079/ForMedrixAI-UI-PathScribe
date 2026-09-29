@@ -21,15 +21,15 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key) }),
+  useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key), i18n: { language: 'en' } }),
 }));
 
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return { ...actual, useNavigate: () => mockNavigate, useParams: () => ({ caseId: 'TEST-CASE-GROSS' }) };
 });
 
@@ -47,16 +47,31 @@ vi.mock('@/services', () => ({
   protocolService: { getAll: protocolGetAll },
   stainTypeService: { getAll: stainTypeGetAll },
   batchService: { getAll: batchGetAll },
+  // Batch 378: the page listens for the Complete grossing command.
+  actionRegistryService: { setCurrentContext: vi.fn(), onAction: vi.fn(() => () => {}) },
 }));
 
+// The Complete grossing button's capability check is CapabilityButton's own concern (tested there).
+vi.mock('@/components/Common/CapabilityButton', () => ({
+  CapabilityButton: ({ children, onClick, disabled }: { children: React.ReactNode; onClick?: () => void; disabled?: boolean }) => (
+    <button type="button" onClick={onClick} disabled={disabled}>{children}</button>
+  ),
+}));
+
+// Batch 379: a test can change what the hook reports (the protocol confirmation).
+const { hookOverrides } = vi.hoisted(() => ({ hookOverrides: { current: {} as Record<string, unknown> } }));
 vi.mock('./hooks/useGrossingScreen', () => ({
   useGrossingScreen: () => ({
     handleAddBlock: vi.fn(), handleRemoveBlock: vi.fn().mockResolvedValue({ ok: true }),
     handleAddStain: vi.fn(), handleRemoveStain: vi.fn().mockResolvedValue({ ok: true }),
     pendingStainRemoval: null, confirmPendingStainRemoval: vi.fn(), cancelPendingStainRemoval: vi.fn(),
     handleUpdatePieceCount: vi.fn(),
+    missingItems: [], handleCompleteGrossing: vi.fn(), completeRefusal: null,
+    secondaryReviewSpecimens: [], pendingProtocolConfirmation: null, confirmCompleteWithoutProtocol: vi.fn(),
+    cancelCompleteWithoutProtocol: vi.fn(), completionReview: null,
     handleRecordFixationEnded: vi.fn(), handleConfirmFixativeRatio: vi.fn(),
     handleRaiseFixationDeficiency: vi.fn(), specimensWithOpenFixationDeficiency: new Set<string>(),
+    ...hookOverrides.current,
   }),
 }));
 
@@ -81,7 +96,7 @@ const TEST_CASE = {
   ],
 };
 
-afterEach(() => { cleanup(); vi.clearAllMocks(); });
+afterEach(() => { cleanup(); vi.clearAllMocks(); hookOverrides.current = {}; });
 
 async function renderGrossingScreen(caseData: unknown = TEST_CASE) {
   getCase.mockResolvedValue(caseData);
@@ -154,5 +169,28 @@ describe('GrossingScreenPage — real render smoke test', () => {
     expect(screen.queryByText(/grossingScreen.auditEntry/)).toBeNull(); // collapsed by default
     fireEvent.click(toggle);
     expect(screen.getByText(/grossingScreen.auditEntry/)).not.toBeNull();
+  });
+
+  it('Batch 379: with the protocol rule off, says which specimens will go for review, and confirms before completing', async () => {
+    const confirm = vi.fn(); const cancel = vi.fn();
+    hookOverrides.current = { secondaryReviewSpecimens: ['B'] };
+    const { unmount } = await renderGrossingScreen({ ...TEST_CASE, status: 'accessioned' });
+    expect(screen.getByText(/grossingScreen.complete.reviewNotice/).textContent).toContain('"specimens":"B"');
+    unmount();
+    hookOverrides.current = { secondaryReviewSpecimens: ['B'], pendingProtocolConfirmation: ['B'], confirmCompleteWithoutProtocol: confirm, cancelCompleteWithoutProtocol: cancel };
+    await renderGrossingScreen({ ...TEST_CASE, status: 'accessioned' });
+    expect(screen.getByRole('alertdialog')).not.toBeNull();
+    expect(screen.getByText(/grossingScreen.complete.withoutProtocol.body/)).not.toBeNull();
+    fireEvent.click(screen.getByText('grossingScreen.complete.withoutProtocol.confirm'));
+    expect(confirm).toHaveBeenCalledTimes(1);
+    fireEvent.click(screen.getByText('common.cancel'));
+    expect(cancel).toHaveBeenCalled();
+  });
+
+  it('Batch 379: after completing, says which specimens were routed for secondary review', async () => {
+    hookOverrides.current = { completionReview: { routedForReview: ['B'], reviewNotRaised: ['C'] } };
+    await renderGrossingScreen({ ...TEST_CASE, status: 'gross-complete' });
+    expect(screen.getByText(/grossingScreen.complete.routedForReview/)).not.toBeNull();
+    expect(screen.getByRole('alert').textContent).toContain('grossingScreen.complete.reviewNotRaised');
   });
 });

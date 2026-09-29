@@ -69,6 +69,13 @@
   question by finally connecting what had already been built for this
   exact purpose.
 
+  **Correction (Sep 2026, PS-78):** only the message-row system is still
+  wired in. `ThreadPanel` was later moved onto its own `ps-thread-*`
+  classes (and the compose and user-search views onto `ps-compose-*` /
+  `ps-user-*`), so the `.ps-msg-bubble`/`.ps-msg-reply-bar` system above
+  went back to being dead code. It was deleted in Batch 319; see the
+  PS-78 entry in `docs/ARCHIVE.md`.
+
   **One real bug caught during the refactor itself, not after:**
   converting `ThreadPanel`'s outer container from an inline style to a
   class silently dropped `position: relative` along with everything else
@@ -126,6 +133,27 @@
   into `components/Common/LogoutWarningModal.tsx`. Not this folder's
   concern directly, but the same "same-named component, different files"
   risk pattern worth being aware of anywhere in the app.
+
+## PS-78: dead `ps-msg-*` CSS removed (Batch 319)
+
+The live message drawer (this component) uses 63 `ps-msg-*` classes, plus `ps-thread-*`, `ps-compose-*` and `ps-user-*`. The other 70 `ps-msg-*` classes in `pathscribe.css`, 130 rules in all, came from a pasted copy of an earlier Messages UI spec and matched nothing. They were removed.
+
+A computed-style comparison of every element in the drawer, in its list, thread and compose states (653 elements), found no difference between the old and new stylesheet. Full account in `docs/ARCHIVE.md`.
+
+Two classes this component uses have no CSS rule of their own, and never had one:
+- `ps-msg-row-meta`: a layout wrapper;
+- `ps-msg-search-input`: also used as a `querySelector` hook for focusing the search box.
+
+## Batch 340 (PS-344): safe config links in messages
+
+A message's **config link** (`IMessageService` `configLink`) comes from stored message data, so the thread view only follows it when `utils/safeInternalPath.ts` confirms it is a PathScribe path. React Router 6 would otherwise treat `/\evil.example` as an external site (GHSA-wrjc-x8rr-h8h6). The app moved to React Router 7 in Batch 341, which fixes that; the check stays as a second line of defence. Case links are built from case numbers (`/report/<ref>`) and are unaffected. The file still uses `sessionStorage` (`ps_reopen_messages`) and stays on the deployment baseline for that.
+
+**Batch 350:** the breadcrumb's "returning to Search" mark goes through `utils/search/searchSession.ts → markReturnToSearch()`. The file still uses session storage for the messages drawer, so it stays on the deployment baseline.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`AppShell.tsx`: the case links in the messages drawer (the message's case and case numbers detected in its text) carry `data-phi="accession"`.
 
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

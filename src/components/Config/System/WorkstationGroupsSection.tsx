@@ -5,6 +5,7 @@ import '../../../pathscribe.css';
 import { workstationGroupService, actionGroupService } from '../../../services';
 import { mockActionRegistryService } from '../../../services/actionRegistry/mockActionRegistryService';
 import type { WorkstationGroup, WorkstationDiscipline, QcEnforcementMode } from '../../../services/workstationGroups/IWorkstationGroupService';
+import { duplicateWorkstationGroup } from '@/services/duplication/duplicateEntities';
 import { WORKSTATION_DISCIPLINES, FUNCTIONAL_AREAS_BY_DISCIPLINE } from '../../../services/workstationGroups/IWorkstationGroupService';
 import type { ActionGroup } from '../../../services/actionGroups/IActionGroupService';
 import type { SystemAction } from '../../../services/actionRegistry/IActionRegistryService';
@@ -260,6 +261,8 @@ const WorkstationGroupsSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
                       <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', workstationGroup: g })}>{t('common.edit')}</button>
+                      {/* Duplicate (PS-73): same workstation setup for another performing lab. */}
+                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'add', workstationGroup: duplicateWorkstationGroup(g, name => t('common.copyOfName', { name })) })}>{t('common.duplicate')}</button>
                       <button className="ps-conf-btn-row" onClick={() => handleToggleStatus(g)}>{g.status === 'Active' ? t('common.deactivate') : t('common.reactivate')}</button>
                     </div>
                   </td>

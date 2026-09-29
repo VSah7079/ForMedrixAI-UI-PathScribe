@@ -8,7 +8,7 @@
  */
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '@/pathscribe.css';
 import { claimPoolCase, acceptPoolCase, passPoolCase } from '../../services/cases/mockCaseService';
 import { mockActionRegistryService } from '../../services/actionRegistry/mockActionRegistryService';
@@ -178,8 +178,8 @@ export const PoolClaimModal: React.FC<PoolClaimModalProps> = ({
         <div className="ps-pool-header">
           <div className="ps-pool-header-col">
             <div className="ps-pool-eyebrow">{'👥 '}{poolName ?? t('poolClaimModal.defaultPoolName')} — {t('poolClaimModal.caseAssignment')}</div>
-            <div className="ps-pool-title">{caseSummary ?? caseId}</div>
-            <div className="ps-pool-subtitle">{caseId}</div>
+            <div className="ps-pool-title" data-phi="true">{caseSummary ?? caseId}</div>
+            <div className="ps-pool-subtitle" data-phi="accession">{caseId}</div>
           </div>
         </div>
 

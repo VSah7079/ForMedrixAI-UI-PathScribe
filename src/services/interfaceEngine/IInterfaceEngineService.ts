@@ -103,6 +103,32 @@ export interface OrderCreationEventPayload {
   specimens: OrderCreationSpecimen[];
 }
 
+/** What happened when PathScribe sent an OrderCreated event (Batch 318, PS-86).
+ *  - 'delivered': the receiving endpoint accepted it;
+ *  - 'failed': the send failed (timeout, unreachable, or rejected), see `error`;
+ *  - 'recorded': recorded before outcomes were stored, so the outcome is unknown. */
+export type DispatchOutcomeStatus = 'delivered' | 'failed' | 'recorded';
+
+export interface DispatchOutcome {
+  status: Exclude<DispatchOutcomeStatus, 'recorded'>;
+  attemptedAt: string;
+  /** How many send attempts have been made (a redelivered, previously failed event is re-sent). */
+  attempts: number;
+  error?: string;
+  errorCode?: 'DISPATCH_TIMEOUT' | 'DISPATCH_UNREACHABLE' | 'DISPATCH_REJECTED';
+}
+
+/** One row of the Audit Log's Outbound Dispatches trail: the event exactly as
+ *  it was sent, plus its dispatch outcome. */
+export interface OrderCreatedDispatchRecord {
+  payload: OrderCreationEventPayload;
+  status: DispatchOutcomeStatus;
+  attemptedAt?: string;
+  attempts?: number;
+  error?: string;
+  errorCode?: DispatchOutcome['errorCode'];
+}
+
 export interface IInterfaceEngineService {
   /**
    * Dispatches a real Category E OrderCreated event.
@@ -122,4 +148,10 @@ export interface IInterfaceEngineService {
    *  admin UI showing "what would have gone out." Returns every event
    *  dispatched so far, most-recent-first. */
   listDispatchedEvents(organisationId: string): Promise<ServiceResult<OrderCreationEventPayload[]>>;
+
+  /** The Audit Log's Outbound Dispatches trail (PS-86): every recorded
+   *  OrderCreated event with its dispatch outcome, most-recent-first.
+   *  Deliberately not organisation-scoped, like the Audit Log's other
+   *  Interfaces views: it is an administrator's system-wide view. */
+  listDispatchTrail(): Promise<ServiceResult<OrderCreatedDispatchRecord[]>>;
 }

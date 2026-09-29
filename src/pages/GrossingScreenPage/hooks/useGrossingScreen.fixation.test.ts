@@ -9,6 +9,8 @@ vi.mock('@/services/cases/CaseRouter', () => ({
 }));
 
 vi.mock('@/services', () => ({
+  // Batch 378: the hook loads the Grossing field requirements.
+  fieldRequirementService: { forSession: vi.fn().mockResolvedValue([]) },
   specimenDeficiencyService: {
     getByCaseId: vi.fn().mockResolvedValue({ ok: true, data: [] }),
     raise: vi.fn().mockResolvedValue({ ok: true, data: {} }),

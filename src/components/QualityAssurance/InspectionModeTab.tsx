@@ -24,14 +24,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
-import { mockQaActivityRecordService } from '@/services/quality/mockQaActivityRecordService';
-import { mockQaActivityTypeService } from '@/services/quality/mockQaActivityTypeService';
+import { useNavigate } from 'react-router';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
 import { auditService } from '@/services';
 import { resolveQaEvidenceBinder, type QaEvidenceBinderReport } from '@/services/quality/resolveQaEvidenceBinder';
 import { JURISDICTION_LABELS } from '@/types/systemConfig';
-import { exportQaReportRows } from './qaReportUtils';
+import { exportQaReportRows, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { qaActivityRecordService, qaActivityTypeService } from '@/services';
 
 const EMPTY_REPORT: QaEvidenceBinderReport = {
   windowMonths: 24, windowStart: new Date().toISOString(), generatedAt: new Date().toISOString(),
@@ -61,7 +61,7 @@ export const InspectionModeTab: React.FC = () => {
 
     let cancelled = false;
     setLoading(true);
-    Promise.all([mockQaActivityRecordService.getAll(), mockQaActivityTypeService.getAll()]).then(([recordsRes, typesRes]) => {
+    Promise.all([qaActivityRecordService.getAll(), qaActivityTypeService.getAll()]).then(([recordsRes, typesRes]) => {
       if (cancelled) return;
       if (recordsRes.ok && typesRes.ok) {
         setReport(resolveQaEvidenceBinder(recordsRes.data, typesRes.data, windowMonths));
@@ -83,7 +83,7 @@ export const InspectionModeTab: React.FC = () => {
       Recorded: r.recordedAt,
       Reviewer: r.recordedByName,
     })));
-    exportQaReportRows(rows, `qa-inspection-evidence-binder-${windowMonths}mo-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:inspection-evidence:export', rows, `qa-inspection-evidence-binder-${windowMonths}mo-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext());
   };
 
   if (loading) return <div className="ps-conf-page">{t('inspectionModeTab.loading')}</div>;
@@ -105,7 +105,7 @@ export const InspectionModeTab: React.FC = () => {
         >
           {WINDOW_OPTIONS.map(m => <option key={m} value={m}>{t('inspectionModeTab.monthsOption', { count: m })}</option>)}
         </select>
-        <button className="ps-conf-btn-secondary" onClick={handleExportAll}>{t('inspectionModeTab.downloadButton')}</button>
+        <CapabilityButton capability="qa:inspection-evidence:export" context={qaScopeContext()} className="ps-conf-btn-secondary" onClick={handleExportAll}>{t('inspectionModeTab.downloadButton')}</CapabilityButton>
       </div>
 
       <div className="ps-conf-card ps-conf-card--spaced">
@@ -171,7 +171,7 @@ export const InspectionModeTab: React.FC = () => {
                       {entry.records.map(r => (
                         <tr key={r.recordId} className="ps-conf-tr">
                           <td className="ps-conf-td">
-                            <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>{r.caseId}</button>
+                            <button className="ps-conf-btn-row" data-phi="accession" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>{r.caseId}</button>
                           </td>
                           <td className="ps-conf-td">{r.specimenId ?? <em className="ps-defic-caselevel">{t('qualityAssurance.operations.caseLevel')}</em>}</td>
                           <td className="ps-conf-td">

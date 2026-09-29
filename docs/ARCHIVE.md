@@ -293,7 +293,9 @@ this app, and given a boundary mistake already happened once in this
 same pass (see below), that much larger claim was deliberately **not**
 acted on here — flagged as its own, separate, real finding worth a
 dedicated investigation, not rushed through on the strength of a grep
-count alone.
+count alone. *(Resolved 2026-09-24 under Jira PS-78: 70 classes / 130 rules
+removed after a fresh scan and a browser computed-style comparison;
+see the PS-78 entry at the end of this file.)*
 
 **`ps-pool-overlay`** — zero live usage; `PoolClaimModal.tsx` was
 refactored at some point to use the shared, already-fixed `.ps-overlay`
@@ -338,3 +340,32 @@ Config sections, Integrations, Batch Management) confirmed no
 downstream breakage from the cumulative CSS changes in this session.
 - Commit: _____
 
+## 2026-09-24 — PS-78: the dead `ps-msg-*` block removed (Batch 319)
+
+The follow-up the 2026-08-20 entry above deliberately deferred. PS-78's own verification bar was followed.
+
+**Fresh scan, not the ticket's stale list.**
+- `pathscribe.css` had **133** `ps-msg-*` classes.
+- **63** appear in source, all in `components/AppShell/AppShell.tsx` (the live message drawer), plus `ps-msg-drawer` in `EMRSidecarDrawer.tsx`.
+- **70** appear nowhere in `src/` (`.ts`/`.tsx`/`.js`/`.html`) or `index.html`.
+- **Dynamic class names were checked:** the only templated uses (`` `ps-msg-row-checkbox${…}` ``, `` `ps-msg-avatar${…}` ``, `` `ps-msg-drawer${…}` ``, `` `ps-msg-filter-item${…}` ``) append literal modifiers to used classes. No `ps-msg-${…}` construction exists, and there are no `classList` calls.
+- **`MessagingContext.tsx` and the other messaging files** reference no `ps-msg-*` class.
+
+**Why they were dead.** The live drawer's thread, compose and user-search views render through `ps-thread-*`, `ps-compose-*` and `ps-user-*`. The dead classes were the thread/compose/user-search half of a pasted copy of an earlier Messages UI spec. It also included the four `ps-msg-legacy-*` rules PS-96/PS-97 had renamed out of the cascade. `components/AppShell/README.md` had claimed the `.ps-msg-bubble` system was wired into `ThreadPanel`; that stopped being true when `ThreadPanel` moved to `ps-thread-*`. That README is now corrected.
+
+**What was removed (by a CSS parser, not line ranges):**
+- **130 rules**: every rule whose selectors all contain a class no source file uses. A class inside `:not(…)` was not counted as dead, since a dead class there makes the selector always match. No rule had a mix of dead and live selectors.
+- **`@keyframes ps-toast-in`**: referenced only by the removed `.ps-msg-toast`.
+- **19 comments** that headed only removed rules. The section header was rewritten to say what remains.
+
+**Kept, deliberately.** `@media (max-width: 680px) { .ps-msg-sidebar { width: 100%; … } }` sits inside the pasted block but styles the live sidebar. Removing it would change the mobile layout.
+
+**Verification**
+- Brace balance: 0 before and after.
+- 832 lines removed.
+- `tsc --noEmit` clean; full test suite green (see the Batch 319 changelog).
+- **Computed-style comparison in a real browser.** The app was run in Chromium (Vite dev server + Playwright), the message drawer was opened, and the computed styles of every element inside it (30 properties each) were captured in three states: message list (195 elements), open thread (237) and compose (221). This was done once with the old stylesheet and once with the new one.
+  - **Result: 0 differences.** The only mismatch was the urgent unread badge's `box-shadow`, captured at a different point of its running `ps-badge-pulse` animation.
+  - Console errors were identical in both runs.
+
+**Still in the file.** Two classes the drawer uses have no CSS rule of their own and never had one: `ps-msg-row-meta` (a layout wrapper) and `ps-msg-search-input` (also a `querySelector` focus hook). Nothing to fix.

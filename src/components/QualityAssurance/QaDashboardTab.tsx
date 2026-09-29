@@ -24,13 +24,12 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TooltipContentProps } from 'recharts';
-import { mockQaActivityRecordService } from '@/services/quality/mockQaActivityRecordService';
-import { mockQaActivityTypeService } from '@/services/quality/mockQaActivityTypeService';
-import { mockSubspecialtyService } from '@/services/subspecialties/mockSubspecialtyService';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
 import { auditService } from '@/services';
 import { resolveQaActivityDashboardReport, type QaActivityDashboardReport, type QaDashboardGroupRow } from '@/services/quality/resolveQaActivityDashboardReport';
-import { exportQaReportRows } from './qaReportUtils';
+import { exportQaReportRows, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { qaActivityRecordService, qaActivityTypeService, subspecialtyService } from '@/services';
 
 const pct = (n: number) => `${n.toFixed(1)}%`;
 
@@ -96,9 +95,9 @@ export const QaDashboardTab: React.FC = () => {
     let cancelled = false;
     setLoading(true);
     Promise.all([
-      mockQaActivityRecordService.getAll(),
-      mockQaActivityTypeService.getAll(),
-      mockSubspecialtyService.getAll(),
+      qaActivityRecordService.getAll(),
+      qaActivityTypeService.getAll(),
+      subspecialtyService.getAll(),
     ]).then(([recordsRes, typesRes, subspecialtiesRes]) => {
       if (cancelled) return;
       if (recordsRes.ok && typesRes.ok && subspecialtiesRes.ok) {
@@ -114,7 +113,7 @@ export const QaDashboardTab: React.FC = () => {
       'Activity Type': r.name, Total: r.total, Concordant: r.concordant, Discordant: r.discordant,
       'Concordance %': r.concordantPercent.toFixed(1), 'Mandatory Follow-Up': r.escalationRequiredCount,
     }));
-    exportQaReportRows(rows, `qa-dashboard-by-activity-type-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:activity-dashboard:export', rows, `qa-dashboard-by-activity-type-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext());
   };
 
   if (loading) return <div className="ps-conf-page">{t('qaDashboardTab.loading')}</div>;
@@ -159,7 +158,7 @@ export const QaDashboardTab: React.FC = () => {
       </div>
 
       <div className="ps-qa-tab-toolbar">
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('qaDashboardTab.exportButton')}</button>
+        <CapabilityButton capability="qa:activity-dashboard:export" context={qaScopeContext()} className="ps-conf-btn-secondary" onClick={handleExport}>{t('qaDashboardTab.exportButton')}</CapabilityButton>
       </div>
 
       <GroupTable title={t('qaDashboardTab.sections.byActivityType')} rows={report.byActivityType} leadColumnLabel={t('qaDashboardTab.leadColumns.activityType')} />

@@ -18,7 +18,7 @@
 // separate role check is needed here beyond that resolution itself.
 //
 // Deliberately distinct from the Orchestration *case-routing* concept
-// (O26-/S26- prefixes, CaseRouter.ts, Role.canViewOrchestration) — see
+// (O26-/S26- prefixes, CaseRouter.ts, StaffUser.canViewOrchestration) — see
 // Facility.internalAiOrchestratorEnabled's own doc comment.
 // ─────────────────────────────────────────────────────────────
 

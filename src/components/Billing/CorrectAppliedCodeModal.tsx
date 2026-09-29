@@ -19,30 +19,55 @@
 // (CptCodeSearchPicker's own real, established behavior) - a real
 // billing specialist correcting a code isn't blocked just because
 // this specific code hasn't been catalogued yet.
+//
+// Batch 382 (PS-359, and Pete: keep today's users): the corrected code is a
+// locked Field Requirement (reportPageChecks.correctedCodeCheck; it must
+// also differ from the code being corrected). The correction credits the
+// original charge and bills the new one, so it needs
+// billing:applied-code:correct (checked in services/billing, greyed out
+// here). Correct can be said ("correct billing code", CORRECT_CODE_CONFIRM).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { CptCodeSearchPicker } from '@/components/Common/CptCodeSearchPicker';
-import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { actionRegistryService, correctedCodeCheck, reportFieldRequired, rvuCodeMapService } from '@/services';
+import { useCapabilities } from '@/hooks/useCapabilities';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
+import { formatList } from '@/utils/formatList';
 import type { BillingDictionaryEntry } from '@/services/billing/RvuTableVersion';
 
 export interface CorrectAppliedCodeModalProps {
   originalCode: string;
+  /** The case whose charge is corrected, for the permission's facility scope. */
+  caseId?: string;
   onConfirm: (newCode: string) => void;
   onCancel: () => void;
 }
 
-export const CorrectAppliedCodeModal: React.FC<CorrectAppliedCodeModalProps> = ({ originalCode, onConfirm, onCancel }) => {
-  const { t } = useTranslation();
+export const CorrectAppliedCodeModal: React.FC<CorrectAppliedCodeModalProps> = ({ originalCode, caseId, onConfirm, onCancel }) => {
+  const { t, i18n } = useTranslation();
+  const requirements = useFieldRequirements('report');
+  const { decide } = useCapabilities();
   const [newCode, setNewCode] = useState('');
   const [rvuEntries, setRvuEntries] = useState<BillingDictionaryEntry[]>([]);
   useEffect(() => {
-    mockRvuCodeMapService.getActiveVersion().then(res => {
+    rvuCodeMapService.getActiveVersion().then(res => {
       if (res.ok && res.data) setRvuEntries(res.data.entries);
     });
   }, []);
-  const canConfirm = newCode.trim().length > 0 && newCode.trim() !== originalCode;
+  const check = correctedCodeCheck(newCode, originalCode, requirements);
+  const canConfirm = check.missing.length === 0 && !check.sameAsOriginal;
+  const context = caseId ? { caseId } : undefined;
+  const confirm = () => { if (canConfirm && decide('billing:applied-code:correct', context)?.allowed) onConfirm(newCode.trim()); };
+
+  // Voice/keyboard "correct billing code": the same Correct, with the same checks.
+  const confirmRef = useRef(confirm);
+  confirmRef.current = confirm;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'CORRECT_CODE_CONFIRM') confirmRef.current();
+  }), []);
 
   return (
     <div className="ps-ms-overlay">
@@ -58,7 +83,7 @@ export const CorrectAppliedCodeModal: React.FC<CorrectAppliedCodeModalProps> = (
             {t('correctAppliedCodeModal.intro', { originalCode })}
           </p>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="correct-applied-code-input">{t('correctAppliedCodeModal.correctedCodeLabel')} <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="correct-applied-code-input">{t('correctAppliedCodeModal.correctedCodeLabel')} {reportFieldRequired(requirements, 'correctedBillingCode') && <span className="ps-conf-required">*</span>}</label>
             <CptCodeSearchPicker
               entries={rvuEntries}
               value={newCode}
@@ -66,16 +91,26 @@ export const CorrectAppliedCodeModal: React.FC<CorrectAppliedCodeModalProps> = (
               onSelect={entry => setNewCode(entry.code)}
             />
           </div>
+          {check.missing.length > 0 && (
+            <p className="ps-field-still-required" role="status">
+              {t('fieldRequirements.stillRequired', { fields: formatList(check.missing.map(id => t(`fieldRequirements.fields.report.${id}`)), i18n.language) })}
+            </p>
+          )}
+          {check.sameAsOriginal && (
+            <p className="ps-field-still-required" role="status">{t('correctAppliedCodeModal.sameAsOriginal', { originalCode })}</p>
+          )}
         </div>
         <div className="ps-ms-footer">
           <button className="ps-conf-btn-secondary" onClick={onCancel}>{t('correctAppliedCodeModal.cancel')}</button>
-          <button
+          <CapabilityButton
+            capability="billing:applied-code:correct"
+            context={context}
             className="ps-conf-btn-primary"
             disabled={!canConfirm}
-            onClick={() => onConfirm(newCode.trim())}
+            onClick={confirm}
           >
             {t('correctAppliedCodeModal.correctCode')}
-          </button>
+          </CapabilityButton>
         </div>
       </div>
     </div>

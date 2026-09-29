@@ -366,6 +366,39 @@ export interface Facility {
    *  doesn't have a verified format spec for either to validate
    *  against, so this deliberately doesn't pretend to. */
   cliaOrIsoNumber?: string;
+  /** Real, per PS-277 §1.2.2 (Master Template Engine — conditional
+   *  branding & header overrides). Printed in a generated report's own
+   *  header for this facility's performing lab, when configured. Only
+   *  meaningful when roles includes 'performing_lab' — same real
+   *  gating as cliaOrIsoNumber just above, since a Director is an
+   *  attribute of the entity actually performing the diagnostic work,
+   *  not of an ordering-only facility. See
+   *  services/facilities/resolveFacilityPrintBranding.ts for how this
+   *  resolves against Department/Enterprise fallback levels when
+   *  unset here. */
+  directorName?: string;
+  /** Real, per PS-277 §1.2.2 — a hosted image URL for this facility's
+   *  own logo in a generated report's header. Same real reference-only
+   *  posture as ImageAssociation elsewhere in this app (types/
+   *  imageAssociation/) — PathScribe never stores the image binary
+   *  itself, only this URL. Only meaningful when roles includes
+   *  'performing_lab'. Real, disclosed scope: resolving this URL and
+   *  actually drawing the logo as vector-safe embedded PDF content
+   *  (rather than just carrying the reference) is not yet built — see
+   *  services/documentRendering/README.md's own "remaining gaps." */
+  headerLogoUrl?: string;
+  /** Real, per PS-277 §1.2.3 (sectional page-break controls) — "Addenda
+   *  forced onto a dedicated page when configured by client policy."
+   *  false/undefined (the real, existing-behavior default) means an
+   *  addendum's own text can share a page with whatever content
+   *  precedes it, same as before this batch — never a silent behavior
+   *  change for a facility that hasn't opted in. Only meaningful when
+   *  roles includes 'performing_lab' — same real "policy of the entity
+   *  actually releasing the addendum" reasoning as requireBillingApproval
+   *  above. Resolved the same way (resolvePerformingLabFacilityId), by
+   *  the real caller that assembles CytologyReportContent — this
+   *  renderer never resolves Facility policy itself. */
+  forceAddendumOnDedicatedPagePrintPolicy?: boolean;
   /** Real, per direct guidance — Phase 3 of the Organisation/Site ->
    *  Facility migration (originSiteId step). Migrated here from
    *  Site.billingDosRule (organisation/organisationService.ts) for
@@ -520,7 +553,7 @@ export interface Facility {
    *  in. */
   printDeliveryConfig?: {
     enabled: boolean;
-    mode: 'NATIVE_QZ_TRAY' | 'INTERFACE_ENGINE_HANDOFF';
+    mode: import('@/types/printing/PrintJob').PrintDeliveryMode;
     /** Real, only meaningful for NATIVE_QZ_TRAY — see
      *  PrintJob.printerName's own doc comment for the same real
      *  reasoning. */
@@ -533,7 +566,34 @@ export interface Facility {
      *  existing, established US-market default), never silently
      *  assumed A4 for a site that never configured it. */
     paperSize?: import('@/types/printing/PrintJob').PaperSize;
+    /** Real, per PS-278 §2.1.2 — only meaningful for
+     *  DIRECT_NETWORK_PRINT: the real Facility-tier fallback
+     *  (services/printRouting/resolvePrintDestination.ts's own least-
+     *  specific tier) a job lands on when no real, more specific
+     *  PrintRoutingRule (workstation/location/clientAccount) matched
+     *  it. Undefined means this facility's own DIRECT_NETWORK_PRINT
+     *  mode has no real default at all — dispatchPrintJob.ts fails
+     *  that job honestly (PRINT_REJECTED) rather than guessing a
+     *  destination, same real posture an unset printerName under
+     *  NATIVE_QZ_TRAY already has. */
+    directNetworkPrintDestination?: import('@/types/printRouting/PrintDestination').PrintDestination;
   };
+
+  /** Real, per PS-279 §2.2.4's own "client preference" — this is a
+   *  client-ACCOUNT-level preference (Case.order.facilityId, the same
+   *  real Ordering Facility concept `DeliveryRule.orderingFacilityId`/
+   *  `resolvePrintDestination.ts`'s own `clientAccount` tier already
+   *  use), deliberately NOT nested inside `printDeliveryConfig` above
+   *  — that block belongs to the PERFORMING facility (which mode/
+   *  printer to use); this belongs to the ORDERING facility (how ITS
+   *  own reports should look on paper), and the same real `Facility`
+   *  record can be either one depending on which case it's read for.
+   *  Either field independently optional — see
+   *  resolvePrintPresentationOptions.ts's own per-field fallback. */
+  printPresentationPreference?: Partial<{
+    paperSource: import('@/types/printing/PrintJob').PaperSourceTray;
+    duplexMode: import('@/types/printing/PrintJob').DuplexMode;
+  }>;
 
   status: 'Active' | 'Inactive' | 'Unverified';
   /** TRANSITIONAL BRIDGE FIELD — real, per direct guidance, Phase 1 of

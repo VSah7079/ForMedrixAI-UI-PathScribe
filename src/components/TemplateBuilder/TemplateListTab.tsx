@@ -1,6 +1,6 @@
 // src/components/TemplateBuilder/TemplateListTab.tsx
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import type { ReportTemplate } from '../../types/reportPart';
 import {
@@ -157,7 +157,8 @@ const TemplateListTab: React.FC = () => {
 
   const handleCreate = async (fromStandardId?: string) => {
     if (fromStandardId) {
-      const result = await svc.clone(fromStandardId, 'My Surgical Pathology Report');
+      // Stored as the new template's name, so it comes from the user's language.
+      const result = await svc.clone(fromStandardId, t('templateListTab.defaultCustomTemplateName'));
       if (result.ok) navigate(`/admin/templates/${result.data.id}/edit`);
       else if (result.ok === false) setError(result.error);
     } else {
@@ -165,10 +166,12 @@ const TemplateListTab: React.FC = () => {
     }
   };
 
-  const handleDuplicate = async (id: string) => {
+  // The copy's name is marked in the user's own language (PS-73).
+  const handleDuplicate = async (tpl: ReportTemplate) => {
+    const id = tpl.id;
     setDuplicatingId(id);
     try {
-      const result = await svc.clone(id);
+      const result = await svc.clone(id, t('common.copyOfName', { name: tpl.name }));
       if (result.ok) navigate(`/admin/templates/${result.data.id}/edit`);
       else if (result.ok === false) setError(result.error);
     } catch (e: unknown) {
@@ -282,7 +285,7 @@ className="tmpl-error-dismiss">✕</button>
               key={tpl.id}
               template={tpl}
               onEdit={() => navigate(`/admin/templates/${tpl.id}/edit`)}
-              onDuplicate={() => handleDuplicate(tpl.id)}
+              onDuplicate={() => handleDuplicate(tpl)}
               onDelete={() => handleDelete(tpl.id)}
               isDeleting={deletingId === tpl.id}
               isDuplicating={duplicatingId === tpl.id}

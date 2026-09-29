@@ -32,7 +32,7 @@ describe('embedImageAssociationsIntoPdf — real, per spec §3 fidelity-preservi
     const fetchAssetBytes: FetchAssetBytes = async () => ({ result: { outcome: 'success' }, bytes: pngBytes });
 
     const result = await embedImageAssociationsIntoPdf(base, [assoc({ imageUrl: 'https://example.com/photo.png' })], fetchAssetBytes);
-    const finalDoc = await PDFDocument.load(result);
+    const finalDoc = await PDFDocument.load(result.bytes);
     expect(finalDoc.getPageCount()).toBe(2);
   });
 
@@ -42,7 +42,7 @@ describe('embedImageAssociationsIntoPdf — real, per spec §3 fidelity-preservi
     const fetchAssetBytes: FetchAssetBytes = async () => ({ result: { outcome: 'success' }, bytes: attachmentBytes });
 
     const result = await embedImageAssociationsIntoPdf(base, [assoc({ imageUrl: 'https://example.com/referral.pdf' })], fetchAssetBytes);
-    const finalDoc = await PDFDocument.load(result);
+    const finalDoc = await PDFDocument.load(result.bytes);
     expect(finalDoc.getPageCount()).toBe(2);
   });
 
@@ -51,7 +51,7 @@ describe('embedImageAssociationsIntoPdf — real, per spec §3 fidelity-preservi
     const fetchAssetBytes: FetchAssetBytes = async () => ({ result: { outcome: 'error', statusCode: 404 } });
 
     const result = await embedImageAssociationsIntoPdf(base, [assoc({ id: 'asset-42', imageUrl: 'https://example.com/broken.jpg' })], fetchAssetBytes);
-    const finalDoc = await PDFDocument.load(result);
+    const finalDoc = await PDFDocument.load(result.bytes);
     expect(finalDoc.getPageCount()).toBe(2); // base + placeholder page — never silently dropped
   });
 
@@ -82,7 +82,32 @@ describe('embedImageAssociationsIntoPdf — real, per spec §3 fidelity-preservi
       assoc({ id: 'a2', imageUrl: 'https://example.com/referral.pdf' }),
       assoc({ id: 'a3', imageUrl: 'https://example.com/broken.jpg' }),
     ], fetchAssetBytes);
-    const finalDoc = await PDFDocument.load(result);
+    const finalDoc = await PDFDocument.load(result.bytes);
     expect(finalDoc.getPageCount()).toBe(4); // base + image + merged page + placeholder
+  });
+
+  it('real, per PS-276 §1.1.3 — flags a real association whose embedded image falls below the 300 DPI minimum at its printed size', async () => {
+    const base = await makeBaseReportBytes();
+    // Real, deliberately tiny 1×1 PNG (the same RED_PNG_BASE64 fixture
+    // every other test here uses) — its effective DPI at ANY non-zero
+    // printed size is always dramatically below 300, since a 1px-wide
+    // image can never carry 300 real pixels per printed inch.
+    const pngBytes = Uint8Array.from(Buffer.from(RED_PNG_BASE64, 'base64'));
+    const fetchAssetBytes: FetchAssetBytes = async () => ({ result: { outcome: 'success' }, bytes: pngBytes });
+
+    const result = await embedImageAssociationsIntoPdf(base, [assoc({ id: 'low-res-1', imageUrl: 'https://example.com/photo.png' })], fetchAssetBytes);
+
+    expect(result.warnings).toHaveLength(1);
+    expect(result.warnings[0]).toContain('low-res-1');
+    expect(result.warnings[0]).toContain('300 DPI');
+  });
+
+  it('real, per PS-276 §1.1.3 — never warns for a vector PDF-page merge, which has no DPI concept', async () => {
+    const base = await makeBaseReportBytes();
+    const attachmentBytes = await makeAttachmentPdfBytes();
+    const fetchAssetBytes: FetchAssetBytes = async () => ({ result: { outcome: 'success' }, bytes: attachmentBytes });
+
+    const result = await embedImageAssociationsIntoPdf(base, [assoc({ imageUrl: 'https://example.com/referral.pdf' })], fetchAssetBytes);
+    expect(result.warnings).toEqual([]);
   });
 });

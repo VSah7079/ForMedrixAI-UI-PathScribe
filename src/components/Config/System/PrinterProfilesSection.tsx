@@ -6,14 +6,27 @@
 // scope reasoning (this is the real, PathScribe-side data store;
 // actually detecting a real printer's capabilities is Section 8's own
 // separate Local Bridge Agent responsibility).
+//
+// Batch 346 (PS-52): the optional Agent Port for PathScribe Agent
+// printers. The save checks come from
+// services/printerProfiles/validatePrinterProfileDraft.ts.
+//
+// Batch 359: each profile can name its physical printer in the equipment
+// register (services/equipment/, kind 'label_printer'). This screen keeps
+// the printing settings; the register holds the device. The list filter and
+// support label moved to services/printerProfiles/printerProfileList.ts.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
-import { printerProfileService } from '../../../services';
-import type { PrinterProfile, PrinterVendor, PrinterBridgeType, Facility } from '../../../services';
+import { printerProfileService, equipmentService } from '../../../services';
+import type { PrinterProfile, PrinterVendor, PrinterBridgeType, Facility, Equipment } from '../../../services';
+import { equipmentLinkOptions } from '@/services/equipment/equipmentRules';
+import { printerProfilesForFacility, printerSupportLabelKey } from '@/services/printerProfiles/printerProfileList';
+import { duplicatePrinterProfile } from '@/services/duplication/duplicateEntities';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
+import { hasInvalidAgentPort, isPrinterProfileDraftValid, printerProfileDraftForSave } from '@/services/printerProfiles/validatePrinterProfileDraft';
 
 type Draft = Omit<PrinterProfile, 'id' | 'createdAt' | 'updatedAt'>;
 
@@ -51,23 +64,27 @@ interface EditorModalProps {
   mode: 'add' | 'edit';
   entry?: PrinterProfile;
   labs: Facility[];
+  equipment: Equipment[];
   defaultFacilityId?: string;
-  onSave: (draft: Draft) => void;
+  onSave: (draft: Draft) => Promise<boolean>;
   onClose: () => void;
 }
 
-const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFacilityId, onSave, onClose }) => {
+const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, equipment, defaultFacilityId, onSave, onClose }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(entry ? {
     printerId: entry.printerId, model: entry.model, dpi: entry.dpi,
     supportsDataMatrix: entry.supportsDataMatrix, supportsGS1: entry.supportsGS1,
     zplVersion: entry.zplVersion, maxPrintDensity: entry.maxPrintDensity, moduleSize: entry.moduleSize,
     vendor: entry.vendor, bridgeType: entry.bridgeType, ipAddress: entry.ipAddress ?? '', port: entry.port,
-    facilityId: entry.facilityId ?? '', active: entry.active,
+    agentPort: entry.agentPort, facilityId: entry.facilityId ?? '', equipmentId: entry.equipmentId, active: entry.active,
   } : emptyDraft(defaultFacilityId));
+  const [saveFailed, setSaveFailed] = useState(false);
+  const deviceOptions = equipmentLinkOptions(equipment, 'label_printer', entry?.equipmentId);
 
   const set = <K extends keyof Draft>(field: K, value: Draft[K]) => setDraft(prev => ({ ...prev, [field]: value }));
-  const canSave = draft.printerId.trim().length > 0 && draft.model.trim().length > 0;
+  const canSave = isPrinterProfileDraftValid(draft);
+  const agentPortInvalid = hasInvalidAgentPort(draft);
 
   return (
     <div className="ps-ms-overlay">
@@ -109,6 +126,28 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFac
               </select>
             </div>
           </div>
+          {draft.bridgeType === 'pathscribe_agent' && (
+            <div className="ps-conf-form-row">
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label" htmlFor="ps-printer-agent-port">{t('printerProfilesSection.modal.agentPortField')}</label>
+                <input
+                  id="ps-printer-agent-port"
+                  className="ps-conf-input"
+                  type="number"
+                  min={1024}
+                  max={65535}
+                  value={draft.agentPort ?? ''}
+                  onChange={e => set('agentPort', e.target.value ? Number(e.target.value) : undefined)}
+                  placeholder={t('printerProfilesSection.modal.agentPortPlaceholder')}
+                  aria-invalid={agentPortInvalid}
+                  aria-describedby="ps-printer-agent-port-hint"
+                />
+                <p id="ps-printer-agent-port-hint" className={agentPortInvalid ? 'ps-printer-agent-port-hint ps-printer-agent-port-hint--error' : 'ps-printer-agent-port-hint'}>
+                  {agentPortInvalid ? t('printerProfilesSection.modal.agentPortInvalid') : t('printerProfilesSection.modal.agentPortHint')}
+                </p>
+              </div>
+            </div>
+          )}
           <div className="ps-conf-form-row">
             <div className="ps-conf-form-field">
               <label className="ps-conf-label" title={t('printerProfilesSection.modal.facilityHint')}>
@@ -118,6 +157,14 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFac
                 <option value="">{t('printerProfilesSection.modal.globalFacilityOption')}</option>
                 {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
+            </div>
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" htmlFor="ps-printer-device">{t('printerProfilesSection.modal.deviceField')}</label>
+              <select id="ps-printer-device" className="ps-conf-select" value={draft.equipmentId ?? ''} onChange={e => set('equipmentId', e.target.value || undefined)}>
+                <option value="">{t('printerProfilesSection.modal.deviceNoneOption')}</option>
+                {deviceOptions.map(d => <option key={d.id} value={d.id}>{t('printerProfilesSection.modal.deviceOption', { name: d.name, code: d.code })}</option>)}
+              </select>
+              <span className="ps-conf-field-hint">{t('printerProfilesSection.modal.deviceHint')}</span>
             </div>
           </div>
           <div className="ps-conf-form-row">
@@ -172,10 +219,11 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, labs, defaultFac
               </div>
             </div>
           </div>
+          {saveFailed && <span className="ps-conf-error-text">{t('printerProfilesSection.modal.saveFailed')}</span>}
         </div>
         <div className="ps-ms-footer">
           <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
-          <button className="ps-ms-btn-apply" onClick={() => onSave(draft)} disabled={!canSave}>
+          <button className="ps-ms-btn-apply" onClick={async () => setSaveFailed(!(await onSave(printerProfileDraftForSave(draft))))} disabled={!canSave}>
             {mode === 'add' ? t('printerProfilesSection.modal.addProfileButton') : t('printerProfilesSection.modal.saveChangesButton')}
           </button>
         </div>
@@ -188,30 +236,30 @@ const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ sel
   const { t } = useTranslation();
   const [profiles, setProfiles] = useState<PrinterProfile[]>([]);
   const [labs, setLabs] = useState<Facility[]>([]);
+  const [equipment, setEquipment] = useState<Equipment[]>([]);
   const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: PrinterProfile } | null>(null);
 
   const loadAll = () => { printerProfileService.getAll().then(res => { if (res.ok) setProfiles(res.data); }); };
-  useEffect(() => { loadAll(); getActivePerformingLabs().then(setLabs); }, []);
+  useEffect(() => {
+    loadAll();
+    getActivePerformingLabs().then(setLabs);
+    equipmentService.getAll().then(res => { if (res.ok) setEquipment(res.data); });
+  }, []);
 
-  // Real, per direct guidance (group-level Facility Selector): when a
-  // facility is chosen at the top of the Workstation & Hardware group,
-  // this list narrows to that facility's own printers PLUS any real,
-  // Global (shared network-pool) profile — a Global printer is
-  // reachable from every facility's own benches by definition, so it
-  // stays visible regardless of which facility is selected, same
-  // most-specific-wins-but-Global-always-applies convention used
-  // throughout this app's other lab-scoped dictionaries.
-  const filteredProfiles = selectedFacilityId
-    ? profiles.filter(p => !p.facilityId || p.facilityId === selectedFacilityId)
-    : profiles;
+  // Group-level Facility Selector: that lab's printers plus shared (no-lab)
+  // ones; the rule is printerProfilesForFacility (Batch 359).
+  const filteredProfiles = printerProfilesForFacility(profiles, selectedFacilityId);
 
   const facilityName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('printerProfilesSection.globalFacilityLabel');
 
-  const handleSave = (draft: Draft) => {
-    const promise = modal?.mode === 'edit' && modal.entry
-      ? printerProfileService.update(modal.entry.id, draft)
-      : printerProfileService.add(draft);
-    promise.then(() => { setModal(null); loadAll(); });
+  const handleSave = async (draft: Draft): Promise<boolean> => {
+    const res = modal?.mode === 'edit' && modal.entry
+      ? await printerProfileService.update(modal.entry.id, draft)
+      : await printerProfileService.add(draft);
+    if (!res.ok) return false;
+    setModal(null);
+    loadAll();
+    return true;
   };
 
   const handleRemove = (id: string) => {
@@ -243,6 +291,7 @@ const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ sel
                   ['vendor', t('printerProfilesSection.headers.vendor')],
                   ['bridge', t('printerProfilesSection.headers.bridge')],
                   ['facility', t('printerProfilesSection.headers.facility')],
+                  ['device', t('printerProfilesSection.headers.device')],
                   ['dpi', t('printerProfilesSection.headers.dpi')],
                   ['gs1DataMatrix', t('printerProfilesSection.headers.gs1DataMatrix')],
                   ['status', t('printerProfilesSection.headers.status')],
@@ -261,8 +310,9 @@ const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ sel
                   <td className="ps-conf-td">{t(VENDOR_LABEL_KEY[p.vendor])}</td>
                   <td className="ps-conf-td">{t(BRIDGE_LABEL_KEY[p.bridgeType])}</td>
                   <td className="ps-conf-td">{facilityName(p.facilityId)}</td>
+                  <td className="ps-conf-td">{p.equipmentId ? (equipment.find(e => e.id === p.equipmentId)?.name ?? p.equipmentId) : '—'}</td>
                   <td className="ps-conf-td">{p.dpi}</td>
-                  <td className="ps-conf-td">{p.supportsGS1 && p.supportsDataMatrix ? t('printerProfilesSection.supportBoth') : p.supportsDataMatrix ? t('printerProfilesSection.supportDataMatrixOnly') : p.supportsGS1 ? t('printerProfilesSection.supportGs1Only') : t('printerProfilesSection.supportNone')}</td>
+                  <td className="ps-conf-td">{t(printerSupportLabelKey(p))}</td>
                   <td className="ps-conf-td">
                     <span className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${p.active ? 'ps-conf-status-dot--active' : ''}`} />
@@ -271,17 +321,20 @@ const PrinterProfilesSection: React.FC<{ selectedFacilityId?: string }> = ({ sel
                   </td>
                   <td className="ps-conf-td">
                     <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: p })}>{t('common.edit')}</button>
+                    {/* Duplicate (PS-73): same printer model at another bench/site. The
+                        physical device (printer ID, IP) is not copied. */}
+                    <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'add', entry: duplicatePrinterProfile(p) })}>{t('common.duplicate')}</button>
                     <button className="ps-conf-btn-row" onClick={() => handleRemove(p.id)}>{t('common.remove')}</button>
                   </td>
                 </tr>
               ))}
-              {filteredProfiles.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={9}>{selectedFacilityId ? t('printerProfilesSection.emptyStateForFacility') : t('printerProfilesSection.emptyStateAll')}</td></tr>}
+              {filteredProfiles.length === 0 && <tr><td className="ps-conf-empty-row" colSpan={10}>{selectedFacilityId ? t('printerProfilesSection.emptyStateForFacility') : t('printerProfilesSection.emptyStateAll')}</td></tr>}
             </tbody>
           </table>
         </div>
       </div>
 
-      {modal && <EditorModal mode={modal.mode} entry={modal.entry} labs={labs} defaultFacilityId={selectedFacilityId} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && <EditorModal mode={modal.mode} entry={modal.entry} labs={labs} equipment={equipment} defaultFacilityId={selectedFacilityId} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
   );
 };

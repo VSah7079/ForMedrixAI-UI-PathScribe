@@ -43,13 +43,13 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { printSettingsService, printerProfileService } from '@/services';
 import { DEFAULT_CASSETTE_LABEL_LAYOUT } from '@/services/printSettings/IPrintSettingsService';
 import type { CassetteLabelLayoutConfig } from '@/services/printSettings/IPrintSettingsService';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
-import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
+import { scanStationService } from '@/services';
 import type { CassetteReprintReason } from '@/types/case/Specimen';
 import { useFootPedal } from '@/hooks/useFootPedal';
 import { useEmbeddingStation } from './hooks/useEmbeddingStation';
@@ -105,7 +105,7 @@ const EmbeddingStationPage: React.FC = () => {
 
   useEffect(() => {
     if (!w.effectiveStationId) { setPrinter(null); setPrinterError(t('embeddingStation.hardware.noStation')); return; }
-    mockScanStationService.getById(w.effectiveStationId).then(async stationRes => {
+    scanStationService.getById(w.effectiveStationId).then(async stationRes => {
       if (!stationRes.ok || !stationRes.data.supportsPrinting || !stationRes.data.cassetteSlidePrinterProfileId) {
         setPrinter(null); setPrinterError(t('embeddingStation.hardware.notConfigured'));
         return;
@@ -180,14 +180,14 @@ const EmbeddingStationPage: React.FC = () => {
         <>
           <div className="ps-embedding-context-bar">
             <span>{t('embeddingStation.context.accession')} <strong data-phi="accession">{w.workItem.caseData.accession?.fullAccession ?? w.workItem.caseData.id}</strong></span>
-            <span>{t('embeddingStation.context.patient')} <strong>{`${w.workItem.caseData.patient?.givenNames ?? ''} ${w.workItem.caseData.patient?.familyNames ?? ''}`.trim() || '—'}</strong></span>
+            <span>{t('embeddingStation.context.patient')} <strong data-phi="name">{`${w.workItem.caseData.patient?.givenNames ?? ''} ${w.workItem.caseData.patient?.familyNames ?? ''}`.trim() || '—'}</strong></span>
             <span>{t('embeddingStation.context.dob')} <strong data-phi="dob">{w.workItem.caseData.patient?.dateOfBirth ?? '—'}</strong></span>
             <span>
               {t('embeddingStation.context.specimenBlock')}{' '}
               <strong>{w.workItem.specimen.label}{w.workItem.block.label}</strong>
             </span>
             <span>{t('embeddingStation.context.specimenType')} <strong>{w.workItem.specimen.description ?? '—'}</strong></span>
-            <button type="button" className="ps-embedding-row-btn" onClick={() => { setScanInput(''); w.clearWorkItem(); }} style={{ marginLeft: 'auto' }}>
+            <button type="button" className="ps-embedding-row-btn ps-ml-auto" onClick={() => { setScanInput(''); w.clearWorkItem(); }}>
               {t('embeddingStation.context.scanNext')}
             </button>
           </div>

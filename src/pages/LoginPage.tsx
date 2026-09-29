@@ -10,17 +10,39 @@
  * see src/i18n/README.md. No inline CSS or extractable business logic
  * found; the login/autofill handling below is UI-bound by nature.
  *
+ * PS-60 (Batch 343): single sign-on. Each provider configured for this
+ * build (services/auth/authConfig.ts) gets a working button; with none
+ * configured, the disabled "Soon" row stays as before. The password form
+ * shows only when this build allows password sign-in (demo accounts).
+ * After signing in, the user goes to the page they were trying to open
+ * (ProtectedRoute passes it as `from`), checked by resolvePostSignInPath.
+ * A refused SSO sign-in comes back from /auth/callback with its reason.
+ *
  * Copyright (c) 2026 ForMedrixAI LLC. All rights reserved.
  */
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useLocation, useNavigate } from 'react-router';
 import '../pathscribe.css';
 import { useAuth } from '../contexts/AuthContext';
 import SessionSupersededNotice from '../components/Common/SessionSupersededNotice';
 import ConfirmModal from '../components/Common/ConfirmModal';
+import { consumeSupersededNotice } from '@/services/session/sessionSupersedeService';
+import { resolvePostSignInPath } from '@/services/auth/sessionRole';
+import { isSsoDenialReason } from '@/services/auth/externalIdentity';
+import type { SsoProviderId } from '@/services/auth/authConfig';
 
-const SUPERSEDED_NOTICE_KEY = 'pathscribe_show_superseded_notice';
+/** Route state LoginPage reads: where the user was going, and why an SSO sign-in was refused. */
+export interface LoginRouteState {
+  from?: string;
+  ssoError?: string;
+}
+
+const SSO_LABEL_KEYS: Record<SsoProviderId, string> = {
+  microsoft: 'login.ssoMicrosoft',
+  google: 'login.ssoGoogle',
+  oidc: 'login.ssoOrganisation',
+};
 
 /**
  * Version is injected at build time from package.json (see vite.config.ts),
@@ -86,8 +108,10 @@ const MicrosoftIcon = () => (
 
 const LoginPage: React.FC = () => {
   const { t } = useTranslation();
-  const { login } = useAuth();
+  const { login, passwordSignInEnabled, ssoProviders, beginSsoSignIn } = useAuth();
   const navigate  = useNavigate();
+  const location  = useLocation();
+  const routeState = (location.state ?? {}) as LoginRouteState;
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
@@ -133,20 +157,28 @@ const LoginPage: React.FC = () => {
   const environment = resolveEnvironment();
 
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(SUPERSEDED_NOTICE_KEY) === '1') {
-        setShowSupersededNotice(true);
-        sessionStorage.removeItem(SUPERSEDED_NOTICE_KEY);
-      }
-    } catch {}
+    if (consumeSupersededNotice()) setShowSupersededNotice(true);
   }, []);
+
+  // A refused SSO sign-in, sent back here by the callback page.
+  useEffect(() => {
+    if (isSsoDenialReason(routeState.ssoError)) setError(t(`login.ssoError.${routeState.ssoError}`));
+  }, [routeState.ssoError, t]);
+
+  const startSso = async (providerId: string) => {
+    setError('');
+    setLoading(true);
+    const reason = await beginSsoSignIn(providerId, routeState.from ?? '/');
+    // Still here only if the redirect didn't start.
+    if (reason) { setLoading(false); setError(t(`login.ssoError.${reason}`)); }
+  };
 
   const attemptLogin = async (forceSupersede: boolean, overrideEmail?: string, overridePassword?: string) => {
     setLoading(true);
     const result = await login(overrideEmail ?? email, overridePassword ?? password, forceSupersede);
     setLoading(false);
     if (result === 'success') {
-      navigate('/', { replace: true });
+      navigate(resolvePostSignInPath(routeState.from), { replace: true });
     } else if (result === 'session_conflict') {
       setShowSessionConflict(true);
     } else {
@@ -196,7 +228,8 @@ const LoginPage: React.FC = () => {
             )}
           </div>
 
-          {/* Form */}
+          {/* Email + password: demo builds only (VITE_AUTH_MODE unset or "demo"). */}
+          {passwordSignInEnabled && (
           <form onSubmit={handleSubmit}>
             <div className="ps-login-field">
               <label className="ps-login-field-label" htmlFor="login-email">{t('login.email')}</label>
@@ -255,39 +288,70 @@ const LoginPage: React.FC = () => {
               {loading ? t('login.signingIn') : t('login.signIn')}
             </button>
           </form>
+          )}
 
-          {/* Single sign-on — announced, not yet live. Rendered as disabled
-              controls so they stay out of the tab order, with aria-disabled
-              so assistive tech reports the state rather than the buttons
-              simply being unreachable and unexplained. */}
-          <div className="ps-login-divider">
-            <div className="ps-login-divider-line" />
-            <span className="ps-login-divider-text">{t('login.continueWith')}</span>
-            <div className="ps-login-divider-line" />
-          </div>
+          {!passwordSignInEnabled && error && (
+            <div className="ps-login-error" role="alert">
+              {error}
+            </div>
+          )}
 
-          <div className="ps-login-social-row">
-            <button
-              type="button"
-              className="ps-login-social"
-              disabled
-              aria-disabled="true"
-              title={t('login.ssoUnavailable')}
-            >
-              <GoogleIcon /> {t('login.ssoGoogle')}
-              <span className="ps-login-social-badge">{t('login.ssoSoon')}</span>
-            </button>
-            <button
-              type="button"
-              className="ps-login-social"
-              disabled
-              aria-disabled="true"
-              title={t('login.ssoUnavailable')}
-            >
-              <MicrosoftIcon /> {t('login.ssoMicrosoft')}
-              <span className="ps-login-social-badge">{t('login.ssoSoon')}</span>
-            </button>
-          </div>
+          {!passwordSignInEnabled && ssoProviders.length === 0 && (
+            <div className="ps-login-error" role="alert">
+              {t('login.signInNotConfigured')}
+            </div>
+          )}
+
+          {passwordSignInEnabled && (
+            <div className="ps-login-divider">
+              <div className="ps-login-divider-line" />
+              <span className="ps-login-divider-text">{t('login.continueWith')}</span>
+              <div className="ps-login-divider-line" />
+            </div>
+          )}
+
+          {ssoProviders.length > 0 ? (
+            /* Single sign-on with the organisation's identity provider (PS-60). */
+            <div className="ps-login-social-row">
+              {ssoProviders.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="ps-login-social ps-login-social--live"
+                  disabled={loading}
+                  onClick={() => { void startSso(p.id); }}
+                >
+                  {p.id === 'microsoft' ? <MicrosoftIcon /> : p.id === 'google' ? <GoogleIcon /> : null} {t(SSO_LABEL_KEYS[p.id])}
+                </button>
+              ))}
+            </div>
+          ) : passwordSignInEnabled && (
+            /* No provider configured in this build: announced, not live.
+               Disabled controls stay out of the tab order; aria-disabled
+               lets assistive tech report the state. */
+            <div className="ps-login-social-row">
+              <button
+                type="button"
+                className="ps-login-social"
+                disabled
+                aria-disabled="true"
+                title={t('login.ssoUnavailable')}
+              >
+                <GoogleIcon /> {t('login.ssoGoogle')}
+                <span className="ps-login-social-badge">{t('login.ssoSoon')}</span>
+              </button>
+              <button
+                type="button"
+                className="ps-login-social"
+                disabled
+                aria-disabled="true"
+                title={t('login.ssoUnavailable')}
+              >
+                <MicrosoftIcon /> {t('login.ssoMicrosoft')}
+                <span className="ps-login-social-badge">{t('login.ssoSoon')}</span>
+              </button>
+            </div>
+          )}
 
           {/* Authorised-use notice. This describes how the system behaves; it
               makes no certification claim. */}

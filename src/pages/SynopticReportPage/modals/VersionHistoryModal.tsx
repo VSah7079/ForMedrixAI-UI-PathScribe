@@ -119,7 +119,7 @@ export const VersionHistoryModal: React.FC<Props> = ({ versions, onClose }) => {
                       {snapshotFields(snapshot, t).map(f => (
                         <div key={f.label}>
                           <span className="ps-verhist-snapshot-field-label">{f.label}: </span>
-                          <span className="ps-verhist-snapshot-field-value">{f.value}</span>
+                          <span className="ps-verhist-snapshot-field-value" data-phi="true">{f.value}</span>
                         </div>
                       ))}
                     </div>

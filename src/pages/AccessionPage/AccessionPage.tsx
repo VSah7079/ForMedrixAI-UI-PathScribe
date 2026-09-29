@@ -36,28 +36,30 @@
 
 import React, { useEffect, useMemo, useState, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { toast } from 'react-toastify';
 import { PhiToastMessage } from '@/components/Common/PhiToastMessage';
 
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { ORCH_ID_PREFIX, isOrchCaseId, formatOrchCaseId } from '@/services/cases/reportingModeRouting';
-import { evaluateGrossingTemplateAssignment } from '@/services/cases/mockCaseService';
-import { mockFacilityService, type Facility } from '@/services/facilities/mockFacilityService';
+import {
+  evaluateGrossingTemplateAssignment, facilityService, departmentService, userService, clinicalHistoryDictionaryService,
+  accessionOutboundQueueService, molecularOrderOutboundQueueService, interfaceEngineService, patientIndexService,
+  encounterService, caseMaskService, actionRegistryService, masterPaymentTypeService, jurisdictionPaymentMappingService,
+  fieldRequirementService, resolveFieldRequirements, missingRequiredFields, type ResolvedFieldRequirement,
+} from '@/services';
+import type { Facility } from '@/services/facilities/IFacilityService';
+import { formatList } from '@/utils/formatList';
+import { resolveSubmittedPatientId } from '@/services/accessioning/patientIdGeneration';
 import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
 import { locationService } from '@/services';
 import type { Location as LocationRecord } from '@/services/locations/ILocationService';
-import { mockDepartmentService } from '@/services/departments/mockDepartmentService';
 import type { Department } from '@/services/departments/IDepartmentService';
-import { mockUserService } from '@/services/users/mockUserService';
 import type { StaffUser } from '@/services/users/IUserService';
 import type { Case, GrossingReportInstance } from '@/types/case/Case';
 import type { RecordedClinicalHistoryEntry, ClinicalHistoryCategoryCode } from '@/types/clinicalHistory/RecordedClinicalHistoryEntry';
 import ClinicalHistoryEntryPanel from './ClinicalHistory/ClinicalHistoryEntryPanel';
-import { mockClinicalHistoryDictionaryService } from '@/services/clinicalHistory/mockClinicalHistoryDictionaryService';
 import { resolveAccessionValidation, type AccessionValidationResult } from '@/services/accessioning/resolveAccessionValidation';
-import { mockAccessionOutboundQueueService } from '@/services/accessioning/mockAccessionOutboundQueueService';
-import { mockMolecularOrderOutboundQueueService } from '@/services/molecularOrders/mockMolecularOrderOutboundQueueService';
 import { resolveOutboundMolecularAssaysForProtocol } from '@/utils/resolveOutboundMolecularAssaysForProtocol';
 import type { HistologyBlock, Specimen } from '@/types/case/Specimen';
 import { generateDefaultMaterial } from '@/utils/generateDefaultMaterial';
@@ -98,7 +100,6 @@ import { isEncounterActive } from '@/utils/isEncounterActive';
 import { inferLateralityFromText } from '@/utils/inferLateralityFromText';
 import { parseScannedPayload } from '@/utils/parseScannedPayload';
 import { playScanBeep } from '@/utils/playScanBeep';
-import { mockInterfaceEngineService } from '@/services/interfaceEngine/mockInterfaceEngineService';
 import { buildOrderCreationPayload } from '@/services/interfaceEngine/buildOrderCreationPayload';
 import { applyGrossingRefinement, markGrossingRefinementFailed } from '@/utils/applyGrossingRefinement';
 import { PatientIdStatusDot } from '@/components/Common/PatientIdStatusDot';
@@ -112,10 +113,7 @@ import { formatFullDisplayName } from '@/utils/personName';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useDirtyState } from '@/contexts/DirtyStateContext';
 import { getHospitalIdForOrganisation, getOrganisationDisplayName, getOrganisationByHospitalId, resolveMpiScopeEnterpriseId } from '@/services/organisation/organisationService';
-import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
-import { mockEncounterService } from '@/services/encounters/mockEncounterService';
 import type { Encounter } from '@/services/encounters/IEncounterService';
-import { mockCaseMaskService } from '@/services/caseRegistry/mockCaseMaskService';
 import { resolveCaseMaskScopeCandidates } from '@/services/caseRegistry/resolveCaseMaskScopeCandidates';
 import { resolveTenantFacility } from '@/services/auth/resolveTenantFacility';
 import type { CaseMask } from '@/types/config/CaseMask';
@@ -123,12 +121,9 @@ import { PATIENT_ID_BY_JURISDICTION } from '@/types/systemConfig';
 import { SpecimenDictionaryPicker } from '@/components/SpecimenPicker/SpecimenDictionaryPicker';
 import { CaseCommentModal } from '@/pages/Synoptic/Comments/CaseCommentModal';
 import { ReportCommentModal } from '@/pages/Synoptic/Comments/ReportCommentModal';
-import { mockActionRegistryService } from '@/services/actionRegistry/mockActionRegistryService';
 import { VOICE_CONTEXT } from '@/constants/systemActions';
 import { BREAK_GLASS_REASON_CODES } from '@/types/patients/BreakGlassReasonCode';
 import type { OutsidePatientFinancialData } from '@/types/billing/OutsidePatientFinancialData';
-import { mockMasterPaymentTypeService } from '@/services/billing/mockMasterPaymentTypeService';
-import { mockJurisdictionPaymentMappingService } from '@/services/billing/mockJurisdictionPaymentMappingService';
 import type { MasterPaymentType } from '@/types/billing/MasterPaymentType';
 import type { JurisdictionPaymentMapping } from '@/types/billing/JurisdictionPaymentMapping';
 import { resolveAutopsyIntakeFormValidation, type AutopsyIntakeFormState } from '@/services/autopsy/resolveAutopsyIntakeFormValidation';
@@ -470,7 +465,7 @@ function emptySpecimen(label: string): SpecimenDraft {
 type TabKey = 'case' | 'specimens' | 'outside_patient';
 
 const AccessionPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { config } = useSystemConfig();
@@ -490,28 +485,17 @@ const AccessionPage: React.FC = () => {
   // defined later in this file, so referencing it here would hit a
   // real TS2448 block-scope ordering error).
   //
-  // searchDobFormat is the explicit 'MM/DD/YYYY' | 'DD/MM/YYYY' hint
-  // itself — passed directly to isoDateForSearch. Deliberately not a
-  // BCP-47 locale string fed through toLocaleDateString the way
-  // formatDate.ts's own display formatting works: confirmed live that
-  // real ICU locale data disagrees with this app's own
-  // JURISDICTION_LOCALE table for at least 'en-CA' (formats as ISO
-  // yyyy-mm-dd via toLocaleDateString, not the dd/mm/yyyy
-  // JURISDICTION_LOCALE.CA declares) — see isoDateForSearch.ts's own
-  // header comment for the full story. Building the string directly
-  // from this app's own explicit format hint sidesteps that risk
-  // entirely for search-matching, where correctness matters more than
-  // for display.
-  //
-  // dateFormatHint() itself is typed to return a bare `string` (a
-  // pre-existing, shared utility other code already depends on — not
-  // narrowed here to avoid any ripple effect on those other callers).
-  // Narrowed explicitly at this one call site instead: real,
-  // confirmed safe given JURISDICTION_LOCALE's own table (this
-  // function's only real source of values, plus its own 'MM/DD/YYYY'
-  // fallback) never produces anything outside this exact union.
+  // searchDobFormat is the jurisdiction's own date format ('MM/DD/YYYY',
+  // 'DD/MM/YYYY', 'DD-MM-YYYY', 'DD.MM.YYYY' or 'YYYY-MM-DD'), used for the
+  // placeholder and to write dates of birth in the order lookup
+  // (isoDateForSearch). Deliberately not a BCP-47 locale fed through
+  // toLocaleDateString: real ICU data disagrees with JURISDICTION_LOCALE
+  // for at least 'en-CA' (ISO yyyy-mm-dd, not dd/mm/yyyy) — see
+  // isoDateForSearch.ts. Matching tries every format regardless (see
+  // filteredOrders below). Batch 365 (PS-347): this used to be narrowed to
+  // the two slash forms, which wasn't true for Germany or Korea.
   const searchJurisdiction = config.jurisdiction;
-  const searchDobFormat = dateFormatHint(searchJurisdiction) as 'MM/DD/YYYY' | 'DD/MM/YYYY';
+  const searchDobFormat = dateFormatHint(searchJurisdiction);
   const searchDobFormatHint = searchDobFormat.toLowerCase();
   const { pushCrumb } = useBreadcrumb();
   useEffect(() => { pushCrumb(t('accessionPage.page.title'), '/accession'); }, [pushCrumb, t]);
@@ -531,11 +515,11 @@ const AccessionPage: React.FC = () => {
   };
 
   useEffect(() => {
-    mockFacilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(c => c.status === 'Active')); });
-    mockUserService.getAll().then(res => {
+    facilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(c => c.status === 'Active')); });
+    userService.getAll().then(res => {
       if (res.ok) setPathologists(res.data.filter(u => u.status === 'Active' && u.roles.includes('Pathologist')));
     });
-    mockDepartmentService.getAll().then(res => { if (res.ok) setDepartments(res.data); });
+    departmentService.getAll().then(res => { if (res.ok) setDepartments(res.data); });
     loadPendingOrders();
   }, []);
 
@@ -632,7 +616,7 @@ const AccessionPage: React.FC = () => {
   // Specification). Real, deliberate scope boundary, confirmed
   // directly before building: "completely bypassing the identity
   // reconciliation queue" for Outside Patient cases is NOT implemented
-  // here — mockPatientIndexService.resolveOrCreatePatient()'s result
+  // here — patientIndexService.resolveOrCreatePatient()'s result
   // feeds directly into Encounter resolution immediately after it
   // returns, and into the Case record itself further down, so a real
   // bypass means deciding what an Outside Patient case's own
@@ -669,8 +653,8 @@ const AccessionPage: React.FC = () => {
   const [jurisdictionMappings, setJurisdictionMappings] = useState<JurisdictionPaymentMapping[]>([]);
   useEffect(() => {
     if (intakeType !== 'outside') return;
-    mockMasterPaymentTypeService.getAll().then(res => { if (res.ok) setMasterPaymentTypes(res.data.filter(mpt => mpt.active)); });
-    mockJurisdictionPaymentMappingService.getAll().then(res => { if (res.ok) setJurisdictionMappings(res.data.filter(m => m.active)); });
+    masterPaymentTypeService.getAll().then(res => { if (res.ok) setMasterPaymentTypes(res.data.filter(mpt => mpt.active)); });
+    jurisdictionPaymentMappingService.getAll().then(res => { if (res.ok) setJurisdictionMappings(res.data.filter(m => m.active)); });
   }, [intakeType]);
 
   // Origin Hospital is derived from the accessioning user's own
@@ -823,7 +807,7 @@ const AccessionPage: React.FC = () => {
       if (!typesRes.ok || cancelled) return;
       let performingLabFacilityId: string | undefined;
       if (clientId) {
-        const facilityRes = await mockFacilityService.getById(clientId);
+        const facilityRes = await facilityService.getById(clientId);
         if (facilityRes.ok) performingLabFacilityId = resolvePerformingLabFacilityId(facilityRes.data);
       }
       if (!cancelled) {
@@ -1067,12 +1051,12 @@ const AccessionPage: React.FC = () => {
   // were reserved in systemActions.ts but never wired to a live action
   // until this pass.
   useEffect(() => {
-    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.ACCESSION);
-    return () => { mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
+    actionRegistryService.setCurrentContext(VOICE_CONTEXT.ACCESSION);
+    return () => { actionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
   }, []);
 
   useEffect(() => {
-    const unsubscribe = mockActionRegistryService.onAction((actionId: string) => {
+    const unsubscribe = actionRegistryService.onAction((actionId: string) => {
       switch (actionId) {
         case 'NEXT_TAB':
           setTab(prev => prev === 'case' ? 'specimens' : prev);
@@ -1182,7 +1166,8 @@ const AccessionPage: React.FC = () => {
       // specifically: dobIncludesQuery also checks year-first formats
       // (dash and dot separated) — see isoDateForSearch.ts's own header
       // comment for why day/month permutation alone doesn't cover a
-      // genuinely different, year-first convention.
+      // genuinely different, year-first convention. Batch 365 (PS-347):
+      // and the Dutch (23-07-1990) and German (23.07.1990) forms.
       dobIncludesQuery(o.patient.dateOfBirth, q)
     );
   }, [pendingOrders, orderSearch]);
@@ -1373,15 +1358,14 @@ const AccessionPage: React.FC = () => {
       // among the way a bare patient selection can be.
       if (order.encounterNumber) {
         const orgId = user?.organisationId ?? originHospitalId;
-        const encounterRes = await mockEncounterService.getByEncounterNumber(orgId, order.encounterNumber);
+        const encounterRes = await encounterService.getByEncounterNumber(orgId, order.encounterNumber);
         if (encounterRes.ok && encounterRes.data && isEncounterActive(encounterRes.data, Date.now())) {
           applyEncounterToForm(encounterRes.data);
           toast.success(t('accessionPage.encounter.autoFilled', { number: encounterRes.data.encounterNumber }) + (encounterRes.data.ward ? ` (${encounterRes.data.ward})` : ''));
         }
       }
 
-      const departmentsModule = await import('@/services/departments/mockDepartmentService');
-      const catsRes = await departmentsModule.mockDepartmentService.getAll();
+      const catsRes = await departmentService.getAll();
       const catNameById = new Map((catsRes.ok ? catsRes.data : []).map(c => [c.id, c.name]));
 
       // Exact match only against the Specimen Dictionary — no AI/fuzzy
@@ -1551,7 +1535,7 @@ const AccessionPage: React.FC = () => {
   async function lookupActiveEncountersForPatient(patientId: string, patientLabel: string) {
     setEncounterLookupState('loading');
     setEncounterCandidates([]);
-    const res = await mockEncounterService.listForPatient(patientId);
+    const res = await encounterService.listForPatient(patientId);
     const now = Date.now();
     const active = res.ok ? res.data.filter(e => isEncounterActive(e, now)) : [];
     setEncounterLookupState('done');
@@ -1774,9 +1758,26 @@ const AccessionPage: React.FC = () => {
 
 
   // ── Validation ───────────────────────────────────────────────────────────
-  const caseInfoValid = givenNames.trim() && familyNames.trim() && dob && clientId && requestingProvider.trim();
-  const specimensValid = specimens.length > 0
-    && specimens.every(s => s.description.trim().length > 0 && !s.needsDictionaryResolution);
+  // PS-359 (Batch 376): which fields are required comes from the
+  // organisation's Field Requirements (Configuration → System), with the
+  // locked ones (names, date of birth, client, requesting provider, a
+  // described specimen) always required. Until they load, the defaults apply,
+  // which match what this page required before.
+  const [fieldRequirements, setFieldRequirements] = useState<ResolvedFieldRequirement[]>(() => resolveFieldRequirements('accession'));
+  useEffect(() => { void fieldRequirementService.forSession('accession').then(setFieldRequirements); }, [user?.id]);
+  const missingFields = missingRequiredFields(fieldRequirements, {
+    givenNames, familyNames, dateOfBirth: dob, mrn, client: clientId, requestingProvider, location: locationId,
+    assignedPathologist: assignedTo, clinicalIndication,
+    specimenDescription: specimens.map(s => s.description), collectedAt: specimens.map(s => s.collectedAt), processedAt: specimens.map(s => s.processedAt),
+  });
+  const missingCaseFields = missingFields.filter(f => f.group !== 'specimens');
+  const missingSpecimenFields = missingFields.filter(f => f.group === 'specimens');
+  const missingCaseLabel = formatList(missingCaseFields.map(f => t(`fieldRequirements.fields.accession.${f.id}`)), i18n.language);
+  const missingAllLabel = formatList(missingFields.map(f => t(`fieldRequirements.fields.accession.${f.id}`)), i18n.language);
+  const isFieldRequired = (id: string) => fieldRequirements.some(f => f.id === id && f.required);
+  const caseInfoValid = missingCaseFields.length === 0;
+  const specimensValid = specimens.length > 0 && missingSpecimenFields.length === 0
+    && specimens.every(s => !s.needsDictionaryResolution);
   // Real, filled-in specimen count — for display only (the Specimens tab
   // label). Raw specimens.length includes the empty placeholder row(s)
   // the form starts with/adds, which have no description yet and
@@ -1787,7 +1788,7 @@ const AccessionPage: React.FC = () => {
 
   // Real departments (Surgical/Non-GYN Cytology/Consultation) each
   // draw from their own accession series — see resolveCaseMaskScopeCandidates
-  // and mockCaseMaskService. Per the CAP-adjacent labeling guideline and
+  // and caseMaskService. Per the CAP-adjacent labeling guideline and
   // real specimen-handling policy this whole feature was researched
   // against, specimens spanning genuinely different case types are
   // standard practice to accession as SEPARATE cases, not combine under
@@ -1912,6 +1913,13 @@ const AccessionPage: React.FC = () => {
 
     try {
       const caseId = await generateNextCaseId();
+      // Batch 377 (Pete): a blank Patient ID is generated from the case id,
+      // which satisfies a required Patient ID; if it can't be, stop and say so.
+      const patientId = resolveSubmittedPatientId(mrn, caseId, isFieldRequired('mrn'));
+      if (patientId.ok === false) {
+        toast.error(t('accessionPage.toast.patientIdNotGenerated'));
+        return;
+      }
       const nowIso = new Date().toISOString();
 
       // Real fix, per direct follow-up: "will the User have to wait 6
@@ -1972,7 +1980,7 @@ const AccessionPage: React.FC = () => {
       let performingLabFacility: Facility | undefined;
       let allFacilities: Facility[] = [];
       if (clientId) {
-        const [facilityRes, allFacilitiesRes] = await Promise.all([mockFacilityService.getById(clientId), mockFacilityService.getAll()]);
+        const [facilityRes, allFacilitiesRes] = await Promise.all([facilityService.getById(clientId), facilityService.getAll()]);
         if (allFacilitiesRes.ok) allFacilities = allFacilitiesRes.data;
         if (facilityRes.ok) {
           const performingLabId = resolvePerformingLabFacilityId(facilityRes.data);
@@ -1981,7 +1989,7 @@ const AccessionPage: React.FC = () => {
       }
 
       const caseMaskCandidates = resolveCaseMaskScopeCandidates(soleDepartmentId, performingLabFacility, allFacilities);
-      const accessionRes = await mockCaseMaskService.allocateNextCaseNumber(caseMaskCandidates, config.facilityTimezone);
+      const accessionRes = await caseMaskService.allocateNextCaseNumber(caseMaskCandidates, config.facilityTimezone);
       const fullAccession = accessionRes.ok ? accessionRes.data : caseId; // last-resort fallback if the service call itself errors (not just unconfigured — that's handled inside the service), so submission still can't hard-fail on this
 
       // Same real scope candidates, most-specific first — the first one
@@ -1991,7 +1999,7 @@ const AccessionPage: React.FC = () => {
       // the case record's own audit metadata below.
       let effectiveMask: CaseMask | null = null;
       for (const candidate of caseMaskCandidates) {
-        const maskRes = await mockCaseMaskService.getMask(candidate.scopeType, candidate.scopeId);
+        const maskRes = await caseMaskService.getMask(candidate.scopeType, candidate.scopeId);
         if (maskRes.ok && maskRes.data) { effectiveMask = maskRes.data; break; }
       }
 
@@ -2156,15 +2164,15 @@ const AccessionPage: React.FC = () => {
         // PatientMatchCandidate.assigningAuthority's own doc comment
         // for the real collision risk this closes.
         assigningAuthority: originOrganisation?.id,
-        mrn: mrn.trim() || `AUTO-${caseId.slice(4)}`,
+        mrn: patientId.value,
         firstName: givenNames.trim(),
         lastName: familyNames.trim(),
         dateOfBirth: new Date(dob).toISOString(),
         sourceAccession: fullAccession,
       };
       const mpiResult = intakeType === 'outside'
-        ? await mockPatientIndexService.resolvePatientWithoutMatching(patientCandidate)
-        : await mockPatientIndexService.resolveOrCreatePatient({
+        ? await patientIndexService.resolvePatientWithoutMatching(patientCandidate)
+        : await patientIndexService.resolveOrCreatePatient({
             ...patientCandidate,
             isDowntimeRecord: isDowntimeAccession || undefined,
             downtimeReasonCode: isDowntimeAccession ? (downtimeReasonCode || undefined) : undefined,
@@ -2191,7 +2199,7 @@ const AccessionPage: React.FC = () => {
       // attached to; a real, honest console warning is left for
       // whoever's watching real errors, not a silent swallow.
       if (samePersonLinkConfirmed) {
-        mockPatientIndexService.linkPatients(
+        patientIndexService.linkPatients(
           mpiResult.patientId,
           samePersonLinkConfirmed.id,
           'same_person',
@@ -2210,7 +2218,7 @@ const AccessionPage: React.FC = () => {
       // routine outpatient referral with no real visit/FIN concept).
       let resolvedEncounterId: string | undefined;
       if (encounterNumber.trim()) {
-        const encounterResult = await mockEncounterService.resolveOrCreateEncounter({
+        const encounterResult = await encounterService.resolveOrCreateEncounter({
           organisationId: mpiOrgId,
           patientId: mpiResult.patientId,
           encounterNumber: encounterNumber.trim(),
@@ -2231,7 +2239,7 @@ const AccessionPage: React.FC = () => {
       // anywhere to validate.
       let accessionValidation: AccessionValidationResult = { valid: true, errors: [] };
       if (cytologyRelevant) {
-        const dictRes = await mockClinicalHistoryDictionaryService.getAll();
+        const dictRes = await clinicalHistoryDictionaryService.getAll();
         accessionValidation = resolveAccessionValidation(
           clinicalHistoryEntries,
           specimens.map(s => ({ label: s.label, clinicalHistory: s.clinicalHistory })),
@@ -2278,7 +2286,7 @@ const AccessionPage: React.FC = () => {
         status: 'accessioned',
         patient: {
           id: mpiResult.patientId,
-          mrn: mrn.trim() || `AUTO-${caseId.slice(4)}`,
+          mrn: patientId.value,
           namePrefix: namePrefix.trim() || undefined,
           givenNames: givenNames.trim(),
           familyNames: familyNames.trim(),
@@ -2364,14 +2372,14 @@ const AccessionPage: React.FC = () => {
       if (cytologyRelevant) {
         const chMessageId = crypto.randomUUID();
         if (accessionValidation.valid) {
-          mockAccessionOutboundQueueService.enqueue({
+          accessionOutboundQueueService.enqueue({
             caseId,
             eventType: 'order.accessioned',
             organisationId: selectedFacility?.id ?? clientId,
             payload: { messageId: chMessageId, timestamp: nowIso, orderId: caseId, clinicalHistory: clinicalHistoryEntries },
           }).catch(console.error);
         } else {
-          mockAccessionOutboundQueueService.enqueue({
+          accessionOutboundQueueService.enqueue({
             caseId,
             eventType: 'order.deficiency.created',
             organisationId: selectedFacility?.id ?? clientId,
@@ -2394,7 +2402,7 @@ const AccessionPage: React.FC = () => {
         const specimenProtocol = sp._entry?.protocolId ? protocols.find(p => p.id === sp._entry?.protocolId) : undefined;
         const assayIds = resolveOutboundMolecularAssaysForProtocol(specimenProtocol);
         for (const assayCode of assayIds) {
-          mockMolecularOrderOutboundQueueService.enqueue({
+          molecularOrderOutboundQueueService.enqueue({
             caseId,
             eventType: 'order.molecular',
             payload: {
@@ -2538,12 +2546,12 @@ const AccessionPage: React.FC = () => {
       // about that order, since it's the one that sent it. Genuinely
       // fire-and-forget from the accessioner's own point of view — a real
       // failure here must never block or roll back a real, already-created
-      // Case; see mockInterfaceEngineService.ts's own header comment for
+      // Case; see interfaceEngineService.ts's own header comment for
       // why "delivered" only means "the mock recorded it," not "a real
       // downstream system received it" — there is no real backend yet.
       if (!sourceOrderId) {
         const orderCreationPayload = buildOrderCreationPayload(newCase, mpiResult.outcome, nowIso);
-        mockInterfaceEngineService.postOrderCreated(orderCreationPayload).catch(console.error);
+        interfaceEngineService.postOrderCreated(orderCreationPayload).catch(console.error);
       }
 
       // Real, per PS-81 (Jira) — completes the ROOT FIX above. That
@@ -3138,7 +3146,7 @@ const AccessionPage: React.FC = () => {
               )}
               <div>
                 <label className="ps-label ps-label--with-badge">
-                  {t('accessionPage.patientId.label')}
+                  {t(isFieldRequired('mrn') ? 'accessionPage.patientId.labelRequired' : 'accessionPage.patientId.label')}
                   {/* Real feature, per direct specification: "UI Status
                       Indicator Component" — only shown once a real
                       facility is selected, since the jurisdiction (and
@@ -3341,7 +3349,7 @@ const AccessionPage: React.FC = () => {
                 )}
               </div>
               <div>
-                <label className="ps-label" htmlFor="accession-assigned-to">{t('accessionPage.provider.assignPathologist')}</label>
+                <label className="ps-label" htmlFor="accession-assigned-to">{t(isFieldRequired('assignedPathologist') ? 'accessionPage.provider.assignPathologistRequired' : 'accessionPage.provider.assignPathologist')}</label>
                 <select id="accession-assigned-to" className="ps-input-dark" value={assignedTo} onChange={e => setAssignedTo(e.target.value)}>
                   <option value="">{t('accessionPage.provider.unassigned')}</option>
                   {pathologists.map(p => <option key={p.id} value={p.id}>{p.firstName} {p.lastName}</option>)}
@@ -3411,6 +3419,9 @@ const AccessionPage: React.FC = () => {
                 {t('accessionPage.actions.nextSpecimens')} →
               </button>
             </div>
+            {missingCaseFields.length > 0 && (
+              <p className="ps-accession-missing" role="status">{t('fieldRequirements.stillRequired', { fields: missingCaseLabel })}</p>
+            )}
           </div>
         )}
 
@@ -3753,7 +3764,7 @@ const AccessionPage: React.FC = () => {
 
             {departmentConflictNames && (
               <div className="ps-warning-banner">
-                {t('accessionPage.departmentConflict.message', { names: departmentConflictNames.join(' and ') })}
+                {t('accessionPage.departmentConflict.message', { names: formatList(departmentConflictNames, i18n.language) })}
               </div>
             )}
 
@@ -3763,6 +3774,9 @@ const AccessionPage: React.FC = () => {
                 {submitting ? t('accessionPage.actions.assigningTemplates') : t('accessionPage.actions.submitAccession')}
               </button>
             </div>
+            {missingFields.length > 0 && (
+              <p className="ps-accession-missing" role="status">{t('fieldRequirements.stillRequired', { fields: missingAllLabel })}</p>
+            )}
             </>}
 
             {justAccessionedCase && (

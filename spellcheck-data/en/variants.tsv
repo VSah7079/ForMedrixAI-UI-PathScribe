@@ -1,0 +1,175 @@
+# PathScribe English medical spelling variants (PS-342).
+# Columns: US form <TAB> UK/international form <TAB> Hunspell suffix flags (shared by both).
+# Used for en-US (US column), en-GB / en-AU (UK column) and en-CA (both columns).
+# The other column's word is flagged as a regional variant with this column's form suggested.
+# Only clear regional pairs belong here; a word both conventions use belongs in pathology.dic.txt.
+#
+# ── haem- / hem- ──
+hematology	haematology	M
+hematologic	haematologic
+hematological	haematological	Y
+hematologist	haematologist	SM
+hematoxylin	haematoxylin	M
+hematoma	haematoma	SM
+hemangioma	haemangioma	SM
+hemangioendothelioma	haemangioendothelioma	SM
+hemangiopericytoma	haemangiopericytoma	SM
+hemangioblastoma	haemangioblastoma	SM
+hematopoiesis	haematopoiesis	M
+hematopoietic	haematopoietic
+hematuria	haematuria	M
+hematemesis	haematemesis	M
+hematocrit	haematocrit	M
+hemosiderin	haemosiderin	M
+hemosiderosis	haemosiderosis	M
+hemosiderin-laden	haemosiderin-laden
+hemolysis	haemolysis	M
+hemolytic	haemolytic
+hemoglobin	haemoglobin	M
+hemoglobinopathy	haemoglobinopathy	SM
+hemophilia	haemophilia	M
+hemoptysis	haemoptysis	M
+hemothorax	haemothorax	M
+hemoperitoneum	haemoperitoneum	M
+hemopericardium	haemopericardium	M
+hemarthrosis	haemarthrosis	M
+hemochromatosis	haemochromatosis	M
+hemophagocytic	haemophagocytic
+hemophagocytosis	haemophagocytosis	M
+hemorrhagic	haemorrhagic
+hemostasis	haemostasis	M
+hemostatic	haemostatic
+hemodynamic	haemodynamic
+hemodialysis	haemodialysis	M
+hemangiomatous	haemangiomatous
+hemosiderotic	haemosiderotic
+hemorrhoid	haemorrhoid	SM
+hemorrhoidal	haemorrhoidal
+hemorrhoidectomy	haemorrhoidectomy	SM
+hemolymphatic	haemolymphatic
+hematogenous	haematogenous
+hematoxylin-eosin	haematoxylin-eosin
+hemosiderophage	haemosiderophage	SM
+hemorrhage	haemorrhage	MGDS
+# ── oe- / e- ──
+edema	oedema	SM
+edematous	oedematous
+esophagus	oesophagus	M
+esophagi	oesophagi
+esophageal	oesophageal
+esophagectomy	oesophagectomy	SM
+esophagogastrectomy	oesophagogastrectomy	SM
+esophagogastric	oesophagogastric
+esophagogastroduodenoscopy	oesophagogastroduodenoscopy	SM
+esophagitis	oesophagitis	M
+esophagoscopy	oesophagoscopy	SM
+gastroesophageal	gastro-oesophageal
+estrogen	oestrogen	SM
+estrogenic	oestrogenic
+estradiol	oestradiol	M
+celiac	coeliac
+fetor	foetor	M
+# ── ae- / e- ──
+anemia	anaemia	SM
+anemic	anaemic
+leukemia	leukaemia	SM
+leukemic	leukaemic
+ischemia	ischaemia	SM
+ischemic	ischaemic
+bacteremia	bacteraemia	M
+septicemia	septicaemia	M
+viremia	viraemia	M
+uremia	uraemia	M
+uremic	uraemic
+hypoxemia	hypoxaemia	M
+hyperemia	hyperaemia	M
+hyperemic	hyperaemic
+hypercalcemia	hypercalcaemia	M
+hyperglycemia	hyperglycaemia	M
+hypoglycemia	hypoglycaemia	M
+hyperlipidemia	hyperlipidaemia	M
+anesthesia	anaesthesia	M
+anesthetic	anaesthetic	SM
+anesthetist	anaesthetist	SM
+cecum	caecum	M
+cecal	caecal
+ileocecal	ileocaecal
+pediatric	paediatric	S
+pediatrics	paediatrics	M
+pediatrician	paediatrician	SM
+orthopedic	orthopaedic	S
+gynecology	gynaecology	M
+gynecologic	gynaecologic
+gynecological	gynaecological
+gynecologist	gynaecologist	SM
+etiology	aetiology	SM
+etiologic	aetiologic
+etiological	aetiological	Y
+diarrhea	diarrhoea	M
+dyspnea	dyspnoea	M
+amenorrhea	amenorrhoea	M
+gonorrhea	gonorrhoea	M
+apnea	apnoea	M
+cesarean	caesarean
+fecal	faecal
+feces	faeces
+fecalith	faecolith	SM
+nevus	naevus	M
+nevi	naevi
+nevoid	naevoid
+# ── -ize / -ise (en-GB and en-AU use -ise) ──
+keratinizing	keratinising
+nonkeratinizing	non-keratinising
+necrotizing	necrotising
+hybridization	hybridisation	SM
+vascularized	vascularised
+epithelialized	epithelialised
+hyalinized	hyalinised
+hyalinization	hyalinisation	M
+cauterized	cauterised
+catheterized	catheterised
+characterization	characterisation	SM
+lateralization	lateralisation	M
+localization	localisation	SM
+mineralization	mineralisation	M
+mineralized	mineralised
+neovascularization	neovascularisation	M
+organizing	organising
+organized	organised
+recanalized	recanalised
+recanalization	recanalisation	M
+sensitization	sensitisation	M
+standardized	standardised
+visualized	visualised
+anonymized	anonymised
+pseudonymized	pseudonymised
+# ── other ──
+artifact	artefact	SM
+artifactual	artefactual
+fiber	fibre	SM
+fibers	fibres
+centimeter	centimetre	SM
+millimeter	millimetre	SM
+micrometer	micrometre	SM
+liter	litre	SM
+milliliter	millilitre	SM
+gray	grey	M
+gray-white	grey-white
+color	colour	SM
+labeled	labelled
+labeling	labelling
+tumor	tumour	SM
+favor	favour	SM
+favored	favoured
+favoring	favouring
+behavior	behaviour	SM
+signaled	signalled
+aluminum	aluminium	M
+# ── moved from the shared list (Batch 336) ──
+keratinized	keratinised
+keratinization	keratinisation	M
+conization	conisation	SM
+autolyzed	autolysed
+pheochromocytoma	phaeochromocytoma	SM
+appendectomy	appendicectomy	SM
+orchiectomy	orchidectomy	SM

@@ -39,7 +39,7 @@ import { stainTypeService, sectioningProtocolService, stainOrderMacroService } f
 import type { StainType, StainCategory, SectioningProtocol, StainOrderMacro } from '../../../services';
 import { mockMolecularTargetService } from '@/services/stains/mockMolecularTargetService';
 import type { MolecularTarget, MolecularMethodology, BillingModel, CptMappingRule } from '@/types/billing/MolecularBillingRule';
-import { prepareDuplicate } from '../../../utils/duplicateEntry';
+import { duplicateStainType, duplicateSectioningProtocol, duplicateStainOrderMacro, duplicateMolecularTarget } from '@/services/duplication/duplicateEntities';
 import { findDuplicate } from '../../../utils/validateUnique';
 
 type SubTab = 'types' | 'protocols' | 'macros' | 'targets';
@@ -482,11 +482,14 @@ const ProtocolModal: React.FC<ProtocolModalProps> = ({ mode, entry, existingEntr
 interface MolecularTargetModalProps {
   mode: 'add' | 'edit';
   entry?: MolecularTarget;
+  /** Symbol of the target being duplicated. The copy's own symbol starts empty
+   *  (a gene symbol is the target's identity), so the header names the source. */
+  duplicateOf?: string;
   existingEntries: MolecularTarget[];
   onSave: (draft: Omit<MolecularTarget, 'id'>) => void;
   onClose: () => void;
 }
-const MolecularTargetModal: React.FC<MolecularTargetModalProps> = ({ mode, entry, existingEntries, onSave, onClose }) => {
+const MolecularTargetModal: React.FC<MolecularTargetModalProps> = ({ mode, entry, duplicateOf, existingEntries, onSave, onClose }) => {
   const { t } = useTranslation();
   const [symbol, setSymbol] = useState(entry?.symbol ?? '');
   const [detail, setDetail] = useState(entry?.detail ?? '');
@@ -522,7 +525,7 @@ const MolecularTargetModal: React.FC<MolecularTargetModalProps> = ({ mode, entry
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
           {mode === 'edit' ? t('stainDictionarySection.editTitle', { value: entry?.symbol })
-            : entry ? t('stainDictionarySection.duplicateTitle', { value: entry.symbol })
+            : entry ? t('stainDictionarySection.duplicateTitle', { value: duplicateOf ?? entry.symbol })
             : t('stainDictionarySection.targetModal.addTitle')}
         </div>
         <div className="ps-ms-body">
@@ -661,7 +664,7 @@ const StainDictionarySection: React.FC = () => {
   const [typeModal, setTypeModal] = useState<{ mode: 'add' | 'edit'; entry?: StainType } | null>(null);
   const [protocolModal, setProtocolModal] = useState<{ mode: 'add' | 'edit'; entry?: SectioningProtocol } | null>(null);
   const [macroModal, setMacroModal] = useState<{ mode: 'add' | 'edit'; entry?: StainOrderMacro } | null>(null);
-  const [targetModal, setTargetModal] = useState<{ mode: 'add' | 'edit'; entry?: MolecularTarget } | null>(null);
+  const [targetModal, setTargetModal] = useState<{ mode: 'add' | 'edit'; entry?: MolecularTarget; duplicateOf?: string } | null>(null);
 
   const loadAll = () => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data); });
@@ -694,18 +697,22 @@ const StainDictionarySection: React.FC = () => {
   // then a real Save creates a genuinely new entry. mode: 'add' is
   // what makes the save-decision logic below treat this as an add()
   // even though entry is populated for prefill.
+  // What a copy keeps and clears is decided in services/duplication/
+  // duplicateEntities.ts (PS-73); the copy's name is marked in the user's
+  // own language.
+  const copyName = (name: string) => t('common.copyOfName', { name });
   const handleCloneStainType = (source: StainType) => {
-    setTypeModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'name'), id: '__clone__' } });
+    setTypeModal({ mode: 'add', entry: duplicateStainType(source, copyName) });
   };
   const handleCloneProtocol = (source: SectioningProtocol) => {
-    setProtocolModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'name'), id: '__clone__' } });
+    setProtocolModal({ mode: 'add', entry: duplicateSectioningProtocol(source, copyName) });
   };
   const handleCloneMacro = (source: StainOrderMacro) => {
-    setMacroModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'label'), id: '__clone__' } });
+    setMacroModal({ mode: 'add', entry: duplicateStainOrderMacro(source, copyName) });
   };
 
   const handleCloneTarget = (source: MolecularTarget) => {
-    setTargetModal({ mode: 'add', entry: { ...prepareDuplicate(source, 'symbol'), id: '__clone__' } });
+    setTargetModal({ mode: 'add', entry: duplicateMolecularTarget(source), duplicateOf: source.symbol });
   };
 
   // ── Spreadsheet import/export — also genuinely missing before, unlike
@@ -996,7 +1003,7 @@ const StainDictionarySection: React.FC = () => {
           onClose={() => setMacroModal(null)} />
       )}
       {targetModal && (
-        <MolecularTargetModal mode={targetModal.mode} entry={targetModal.entry} existingEntries={masterTargets}
+        <MolecularTargetModal mode={targetModal.mode} entry={targetModal.entry} duplicateOf={targetModal.duplicateOf} existingEntries={masterTargets}
           onSave={async draft => {
             if (targetModal.mode === 'edit' && targetModal.entry) await mockMolecularTargetService.update(targetModal.entry.id, draft);
             else await mockMolecularTargetService.add(draft);

@@ -104,7 +104,7 @@ const FormatRow: React.FC<{
         <div className="ps-idf-row-left">
           <span
             className="ps-idf-kind-badge"
-            style={{ background: kindColor + '22', color: kindColor, border: `1px solid ${kindColor}44` }}
+            style={{ '--ps-hue': kindColor } as React.CSSProperties}
           >
             {kindLabels[format.kind]}
           </span>
@@ -237,7 +237,7 @@ const SimulateScanTool: React.FC = () => {
         <button className="ps-btn-secondary ps-idf-simulate-btn" onClick={handleRun}>{t('identifierFormatsTab.simulateBtn')}</button>
       </div>
       {fired && lastScan && (
-        <div className={`ps-idf-test-banner${lastScan.type !== 'unknown' ? ' ps-idf-test-banner--pass' : ' ps-idf-test-banner--fail'}`}>
+        <div className={`ps-idf-test-banner${lastScan.type !== 'unknown' ? ' ps-idf-test-banner--pass' : ' ps-idf-test-banner--fail'}`} data-phi="accession">
           {lastScan.type === 'accession' && t('identifierFormatsTab.simulateResultAccession', { accession: lastScan.matchedAccession })}
           {lastScan.type === 'mrn' && t('identifierFormatsTab.simulateResultMrn')}
           {lastScan.type === 'unknown' && t('identifierFormatsTab.simulateResultUnknown')}

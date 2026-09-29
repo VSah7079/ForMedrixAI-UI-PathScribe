@@ -29,7 +29,7 @@ interface UseMicroscopicEntryParams {
   setCaseData: React.Dispatch<React.SetStateAction<Case | null>>;
   knownVersionRef: MutableRefObject<number>;
   setConcurrencyConflict: SetConcurrencyConflict;
-  showToast: (message: string) => void;
+  showToast: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
 }
 
 export interface UseMicroscopicEntryResult {
@@ -107,7 +107,7 @@ export function useMicroscopicEntry({
       return true;
     } catch (e) {
       if (handleConcurrencyConflict(e, setConcurrencyConflict)) return false;
-      showToast(t('useMicroscopicEntry.toast.saveFailed'));
+      showToast(t('useMicroscopicEntry.toast.saveFailed'), 'warning');
       return false;
     }
   }, [caseData, setCaseData, knownVersionRef, setConcurrencyConflict, showToast, t]);

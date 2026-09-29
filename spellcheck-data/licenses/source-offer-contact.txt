@@ -1,0 +1,1 @@
+ForMedrixAI LLC — add the address that source requests should go to (e-mail or postal) here, then run npm run spellcheck:build.

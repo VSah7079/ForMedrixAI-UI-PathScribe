@@ -12,7 +12,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
-import { RoutingRule } from '../../../services/cases/casePoolAssignmentService';
+import { RoutingRule, findRoutingRulePriorityConflict } from '../../../services/cases/casePoolAssignmentService';
 import { Subspecialty } from '../../../services/subspecialties/ISubspecialtyService';
 
 // ─── Rule Modal ───────────────────────────────────────────────────────────────
@@ -50,7 +50,8 @@ const RuleModal: React.FC<{
   const handleSave = () => {
     if (!subspecialtyId) { setError(t('ruleModal.errors.selectPool')); return; }
     if (keywords.length === 0) { setError(t('ruleModal.errors.addKeyword')); return; }
-    const conflict = allRules.find(r => r.priority === priority && r.id !== rule?.id);
+    // Exclude the rule itself only when editing it; a duplicate is a new rule (PS-73).
+    const conflict = findRoutingRulePriorityConflict(allRules, priority, mode === 'edit' ? rule?.id : undefined);
     if (conflict) {
       setError(t('ruleModal.errors.priorityConflict', { priority }));
       return;

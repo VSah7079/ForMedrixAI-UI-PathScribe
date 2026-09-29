@@ -22,7 +22,7 @@
 
 import { describe, it, expect, vi, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 
 // File-by-file cleanup sweep: Home.tsx's tile titles now go through
 // useTranslation()/t() — same real mocking convention already established
@@ -34,12 +34,17 @@ vi.mock('react-i18next', () => ({
 }));
 
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return { ...actual, useNavigate: () => mockNavigate };
 });
 vi.mock('@contexts/AuthContext', () => ({
   useAuth: () => ({ user: { name: 'Test, Doctor' } }),
+}));
+// Batch 374: tiles show only for screens the user may open; these tests
+// cover the tiles themselves, so every screen is granted.
+vi.mock('@/hooks/useCapabilities', () => ({
+  useCapabilities: () => ({ loading: false, has: () => true, decide: () => null }),
 }));
 vi.mock('@hooks/useLogout', () => ({
   useLogout: () => vi.fn(),

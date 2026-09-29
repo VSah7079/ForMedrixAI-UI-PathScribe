@@ -1,31 +1,28 @@
 // src/components/Config/Models/index.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// i18n note: `m.name`/`.version`/`.accuracy`/`.casesProcessed` are real
-// model data, never translated. `m.vendor`/`.type`/`.status` are real,
-// persisted enum values — the local `VENDOR_LABEL_KEY`/`TYPE_LABEL_KEY`/
-// `STATUS_LABEL_KEY` maps below translate only the displayed label,
-// leaving the underlying enum values (used for conditional logic too,
-// e.g. `target?.type === 'Voice Dictation'`) untouched as data.
+// The current organisation's adopted AI models (PS-58: global catalog +
+// per-tenant adoption). Status, default, accuracy and cases processed shown
+// here are this organisation's adoption record; name, vendor and type come
+// from the shared ForMedrixAI catalog.
+//
+// i18n note: `m.name`/`.version` are model data, never translated.
+// `m.vendor`/`.type`/`.status` are persisted enum values; the label maps
+// below translate only their display.
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { modelService, facilityService } from '../../../services';
-import { AIModel, ModelVendor, ModelType, ModelStatus } from '../../../services/models/IModelService';
+import { AIModel, ModelType, ModelStatus } from '../../../services/models/IModelService';
+import { MODEL_VENDOR_LABEL_KEY } from '../../../services/models/modelLabels';
+import { facilitiesPinnedToModel } from '../../../services/models/modelAdoption';
 import type { Facility } from '../../../services/facilities/IFacilityService';
-import { hasPassingValidationForVoiceModel } from '../AI/resolveVoiceAiModel';
+import { canBecomeDefault } from '../AI/resolveVoiceAiModel';
 
 const STATUS_LABEL_KEY: Record<ModelStatus, string> = {
   Active:  'common.active',
   Retired: 'billingDictionarySection.status.retired',
   Beta:    'modelStoreModal.betaLabel',
-};
-
-const VENDOR_LABEL_KEY: Record<ModelVendor, string> = {
-  anthropic: 'navBar.systemInfo.anthropic',
-  openai:    'modelsTab.vendor.openai',
-  google:    'login.ssoGoogle',
-  other:     'printerProfilesSection.vendorLabels.OTHER',
 };
 
 const TYPE_LABEL_KEY: Record<ModelType, string> = {
@@ -37,60 +34,36 @@ const TYPE_LABEL_KEY: Record<ModelType, string> = {
 };
 
 const ModelsTab: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [models,  setModels]  = useState<AIModel[]>([]);
   const [facilities, setFacilities] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    Promise.all([modelService.getAll(), facilityService.getAll()]).then(([modelsRes, facilitiesRes]) => {
-      if (modelsRes.ok) setModels(modelsRes.data);
-      if (facilitiesRes.ok) setFacilities(facilitiesRes.data);
-      setLoading(false);
-    });
+  const load = useCallback(async () => {
+    const [modelsRes, facilitiesRes] = await Promise.all([modelService.getAll(), facilityService.getAll()]);
+    if (modelsRes.ok) setModels(modelsRes.data);
+    if (facilitiesRes.ok) setFacilities(facilitiesRes.data);
+    setLoading(false);
   }, []);
+
+  useEffect(() => { load(); }, [load]);
 
   const [blockedMessage, setBlockedMessage] = useState<string | null>(null);
 
   const handleSetDefault = async (id: string) => {
     setBlockedMessage(null);
     const target = models.find(m => m.id === id);
-    // Real fix, per direct product decision: voice models have no
-    // per-facility override layer the way report-generation models do
-    // (Facility.internalAiModelId) — this "Set Default" action IS the
-    // only point where a voice model actually goes live, so this is
-    // the only place the hard block can meaningfully apply. Same
-    // absolute-block posture as resolveClientAiModel.ts: an
-    // unvalidated voice model going live on a real deployment is a
-    // real liability concern, not just a UX one.
-    if (target?.type === 'Voice Dictation') {
-      const eligible = await hasPassingValidationForVoiceModel(id);
-      if (!eligible) {
-        setBlockedMessage(t('modelsTab.blockedMessage', { nameVersion: `${target.name} ${target.version}` }));
-        return;
-      }
+    // Voice models must have a PASS-graded study before going live; see
+    // canBecomeDefault in resolveVoiceAiModel.ts.
+    if (target && !(await canBecomeDefault(target))) {
+      setBlockedMessage(t('modelsTab.blockedMessage', { nameVersion: `${target.name} ${target.version}` }));
+      return;
     }
+    // The service decides which defaults clear (voice and report
+    // generation are separate groups); re-read rather than re-derive it.
     const res = await modelService.setDefault(id);
-    if (res.ok) {
-      // Real fix: previously un-defaulted EVERY model in local state
-      // regardless of type, no longer matching the now type-aware
-      // backend (see mockModelService.ts's setDefault) — only clear
-      // isDefault on other models within the same group (voice vs
-      // non-voice) as the one just set.
-      const isVoice = target?.type === 'Voice Dictation';
-      setModels(prev => prev.map(m => {
-        const sameGroup = (m.type === 'Voice Dictation') === isVoice;
-        return sameGroup ? { ...m, isDefault: m.id === id } : m;
-      }));
-    }
+    if (res.ok) await load();
   };
-
-  // Real fix, per direct request: "track which types and versions are
-  // at our customer sites." A facility is only ever "on" a model via
-  // its own explicit internalAiModelId override — there's no separate
-  // tracking table to fall out of sync, this reads the exact same
-  // field the hard-block enforcement itself checks.
-  const facilitiesOnModel = (modelId: string) => facilities.filter(c => c.internalAiModelId === modelId);
 
   if (loading) return (
     <div className="ps-models-loading">{t('modelsTab.loading')}</div>
@@ -125,16 +98,16 @@ const ModelsTab: React.FC = () => {
           </thead>
           <tbody>
             {models.map(m => {
-              const approved = facilitiesOnModel(m.id);
+              const approved = facilitiesPinnedToModel(facilities, m.id);
               return (
               <tr key={m.id} className={`ps-models-tr${m.status === 'Retired' ? ' ps-models-tr--retired' : ''}`}>
                 <td className="ps-models-td ps-models-td--strong">
                   {m.name} {m.version}
                 </td>
-                <td className="ps-models-td ps-models-td--muted">{t(VENDOR_LABEL_KEY[m.vendor])}</td>
+                <td className="ps-models-td ps-models-td--muted">{t(MODEL_VENDOR_LABEL_KEY[m.vendor])}</td>
                 <td className="ps-models-td ps-models-td--muted">{t(TYPE_LABEL_KEY[m.type])}</td>
-                <td className="ps-models-td ps-models-td--accent">{m.accuracy}%</td>
-                <td className="ps-models-td ps-models-td--muted">{m.casesProcessed.toLocaleString()}</td>
+                <td className="ps-models-td ps-models-td--accent">{t('modelsTab.accuracyValue', { value: m.accuracy.toLocaleString(i18n.language) })}</td>
+                <td className="ps-models-td ps-models-td--muted">{m.casesProcessed.toLocaleString(i18n.language)}</td>
                 <td className="ps-models-td">
                   <span className={`ps-models-status-badge ps-models-status-badge--${m.status.toLowerCase()}`}>{t(STATUS_LABEL_KEY[m.status])}</span>
                 </td>

@@ -29,15 +29,13 @@
 // a real, server-side scheduler that would also release a case nobody
 // has this page open for. Flagged honestly, not hidden.
 //
-// Matched this folder's own established banner pattern
-// (InformalReviewBanner.tsx, still unconverted) at the time this file
-// was written — a self-contained component, inline styles (no
+// Matched this folder's own established banner pattern at the time
+// this file was written — a self-contained component, inline styles (no
 // dedicated banner CSS class family existed for these one-offs at the
 // time), ps-btn-secondary for actions. This i18n/cleanup sweep gave it
 // its own new `.ps-release-buffer-*` class family instead, matching
 // how batch 168's TerminologyAlertBanner.tsx (also fully inline
-// originally) was handled — InformalReviewBanner.tsx can reuse or
-// mirror this pattern once its own batch comes up.
+// originally) was handled.
 //
 // i18n note: `result.reason` (from mockReportReleaseService.recall(),
 // a shared, multi-consumer service) stays literal English — same
@@ -59,7 +57,7 @@ interface ReleaseBufferBannerProps {
   currentUserId?: string;
   currentUserName?: string;
   setCaseData: (updater: (prev: Case | null | undefined) => Case | null | undefined) => void;
-  showToast?: (message: string) => void;
+  showToast?: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
 }
 
 export const ReleaseBufferBanner: React.FC<ReleaseBufferBannerProps> = ({

@@ -50,5 +50,10 @@ there's no other "case panel" concept it was distinguishing itself from).
   (`SynopticReportPage.tsx`) — confirmed directly there's only the one
   real caller before choosing this approach.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`PatientHistoryModal.tsx`: the breadcrumb's case number and the compose panel's case number are tagged.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

@@ -5,7 +5,7 @@ import type { GrossingHardwareProfile } from './IGrossingHardwareProfileService'
 
 const agentProfile: GrossingHardwareProfile = {
   id: 'p1', kind: 'scale', label: 'Test Scale', bridgeType: 'pathscribe_agent',
-  agentBaseUrl: 'http://localhost:9191', isActive: true, createdAt: '', updatedAt: '',
+  agentBaseUrl: 'https://127.0.0.1:9100', isActive: true, createdAt: '', updatedAt: '',
 };
 
 const manualProfile: GrossingHardwareProfile = {
@@ -26,6 +26,21 @@ describe('resolveScaleWeightCapture — real, per the RFP-APLIS-2026-GLOBAL Gros
   it('real, no profile at all honestly reports not_configured', async () => {
     const result = await resolveScaleWeightCapture(null);
     expect(result).toEqual({ ok: false, reason: 'not_configured' });
+  });
+
+  it('refuses a plain-HTTP agent address without fetching (Batch 327)', async () => {
+    let fetchCalled = false;
+    const fetchImpl = mockFetch(async () => { fetchCalled = true; return new Response('{}'); });
+    const result = await resolveScaleWeightCapture({ ...agentProfile, agentBaseUrl: 'http://localhost:9191' }, fetchImpl);
+    expect(result).toEqual({ ok: false, reason: 'not_https' });
+    expect(fetchCalled).toBe(false);
+  });
+
+  it('reads the weight from the https address', async () => {
+    const urls: string[] = [];
+    const fetchImpl = mockFetch(async url => { urls.push(url); return new Response(JSON.stringify({ grams: 12, stable: true }), { status: 200 }); });
+    await resolveScaleWeightCapture(agentProfile, fetchImpl);
+    expect(urls).toEqual(['https://127.0.0.1:9100/scale/weight']);
   });
 
   it('real, a genuinely stable reading is accepted', async () => {

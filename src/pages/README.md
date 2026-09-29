@@ -9,6 +9,7 @@ Top-level route pages.
 | [AccessionPage/](./AccessionPage/README.md) | Case accessioning form + order lookup/intraop-merge/deficiency modals |
 | [AddOnOrderPage/](./AddOnOrderPage/README.md) | **NEW (Sep 2026)** — PS-287, fourth of the PS-284→285→286→287→288 workstation-build sequence: case-scoped, pathologist-initiated add-on orders (recuts, special stains, IHC, molecular/send-out) with routing, auto-control pairing, real-time order tracking, and a block-exhaustion exception/notification loop (`/add-on-orders`) |
 | [BatchManagement/](./BatchManagement/README.md) | Cassette/slide chain-of-custody + the disposal/pending-load/retention-hold computed queues |
+| [CriticalAlertReferencePage/](./CriticalAlertReferencePage/README.md) | **NEW (Sep 2026)** — PS-136 follow-up redesign: the public, unauthenticated, zero-PHI landing page (`/critical-alert/:token`) behind the SMS/secure-email "tap to view" reference link — never renders clinical content, see the folder's own README |
 | [EmbeddingStationPage/](./EmbeddingStationPage/README.md) | **NEW (Sep 2026)** — PS-285, second of the PS-284→285→286→287→288 workstation-build sequence: bench-scoped, scan-driven cassette piece-count verification, discrepancy flagging, mold/orientation selection, and split-block tracking (`/workstations/embedding`), visually matching `MicrotomyWorkstationPage/`/`GrossingScreenPage/` |
 | [ExternalConsultViewPage/](./ExternalConsultViewPage/README.md) | **NEW (Sep 2026)** — PS-290, the outside half of External Consult / Second-Opinion Access: a public, unauthenticated route (`/consult/:token`) an outside consultant opens directly, no PathScribe login of their own. NOT real token security — see the folder's own README |
 | [FacilityOpsDashboard/](./FacilityOpsDashboard/README.md) | **NEW (Sep 2026)** — PS-288, fifth and final of the PS-284→285→286→287→288 workstation-build sequence: five high-contrast, wall-display department dashboard views (Grossing & Intake, Embedding & Microtomy, Staining & IHC, Send-Out & Reference, Diagnostic Sign-Out/Scanner) bound via a Display Profile (`/facility-ops-dashboard`), same public/unauthenticated kiosk-route posture as `OrSuiteDashboardPage.tsx` |
@@ -23,7 +24,7 @@ Top-level route pages.
 | [ReportPreview/](./ReportPreview/README.md) | Orchestration mode's template-driven report preview renderer |
 | [SlideDistributionStationPage/](./SlideDistributionStationPage/README.md) | **NEW (Sep 2026)** — PS-286, third of the PS-284→285→286→287→288 workstation-build sequence: continuous-scan checkout to pathologists or digital-scanner ingestion, with split-destination warnings and exception handling (`/workstations/slide-distribution`) |
 | [Synoptic/](./Synoptic/README.md) | Shared types/hooks extracted from `SynopticReportPage.tsx`, plus Codes/Comments/Delegate/UI subfolders |
-| [SynopticReportPage/](./SynopticReportPage/README.md) | **Central folder** — the core clinical workflow (`/case/:caseId/synoptic`): hooks/components/modals |
+| [SynopticReportPage/](./SynopticReportPage/README.md) | **Central folder** — the core clinical workflow (`/case/:caseId/synoptic`): hooks/components/modals. Sign-out and the case team are jurisdiction-aware (Sep 2026): the performing lab's country decides who may sign out, whose work needs a countersign, and which roles are offered |
 | [system/](./system/README.md) | Admin config pages rendered by `Config/System/index.tsx`'s route switch |
 | [WorklistPage/](./WorklistPage/README.md) | Sortable/filterable case table + its own modals |
 
@@ -76,6 +77,40 @@ with no folder of their own — filled in incrementally as the
   forced-scrollable viewport and a confirmed non-zero scroll position
   before each switch — not assumed from one working case.
 
+  **Real fix (PS-128 — "Config Page does not honor dirty flag checks"),
+  Sep 2026.** This page's own tab-switch (`handleTabChange`), its
+  `PATHSCRIBE_NEXT_TAB`/`PATHSCRIBE_PREVIOUS_TAB` voice-nav listeners,
+  and `ConfigSearchBar`'s `onNavigate` all called `navigate()`
+  unconditionally — a nested tab's own real, local "unsaved draft"
+  state had no way to be seen, so switching tabs silently discarded it.
+  Investigated broadly before touching anything: only one real,
+  confirmed case actually lives inside this page's own tab tree —
+  `Macros/MacroPanel.tsx`'s real `isDirty` (previously known only to
+  its own Save button). `TemplateRenderer.tsx` and `SynopticEditor.tsx`
+  both have their own real `isDirty`/navigate-away guards already, but
+  both are separate, standalone routes (`/template-review/:templateId`,
+  `/template-editor/:templateId`) never mounted inside this page's own
+  tab system at all — ruled out directly via `App.tsx`'s route table,
+  not assumed from file location. Fixed with a small, shared,
+  opt-in bridge (`components/Config/configDirtyGuardContext.ts` — a
+  React Context carrying one `setDirty(boolean)`, since only one tab is
+  ever mounted at a time here) that `MacroPanel.tsx` now feeds. A new
+  `tabIsDirty` state on this page gates every one of the three real
+  navigation paths above through one shared `guardedNavigateToTab`,
+  showing the same shared `ConfirmModal` component this app already
+  standardized on (never `window.confirm()`) before actually
+  discarding. Real, honestly disclosed scope limit: the other ~30
+  Config admin screens (dictionaries, routing rules, etc.) each manage
+  their own add/edit state inside their own modal-based CRUD flows,
+  not an inline, page-persistent draft the way Macros does — this
+  page-level guard genuinely doesn't apply to them the same way, so
+  they were deliberately left alone rather than exhaustively retrofit
+  in one pass. New tests: `pages/__tests__/ConfigurationPage.test.tsx`
+  (the guard logic itself, via a mocked stand-in tab), plus
+  `components/Config/__tests__/configDirtyGuardContext.test.tsx` and
+  `components/Config/Macros/__tests__/MacroPanel.test.tsx` (the new
+  context module, and `MacroPanel.tsx`'s own real reporting into it).
+
 - **`LoginPage.tsx`** — Public unauthenticated route. Already in good
   shape structurally: `attemptLogin`/`handleSubmit` are named functions
   (not anonymous JSX closures), correctly uses the shared `ConfirmModal`
@@ -85,6 +120,17 @@ with no folder of their own — filled in incrementally as the
   styles, no dead code. **Fixed:** `resolveEnvironment()` had an
   unnecessary double-cast on `import.meta.env.VITE_APP_ENV`
   (`(import.meta as unknown as { env?: Record<string, string> })...`).
+  **Batch 343 (PS-60), single sign-on:**
+  - one working button per provider configured for the build; with none, the disabled "Soon" row stays as before;
+  - the password form only when the build allows it (demo accounts); in an SSO-only build with nothing configured, "Sign-in isn't set up…";
+  - after signing in, back to the page the user wanted (`from`, passed by `ProtectedRoute`);
+  - a refused SSO sign-in is explained through `login.ssoError.*`, in five languages;
+  - the superseded notice goes through `sessionSupersedeService`, so the page is off the browser-storage baseline.
+- **`AuthCallbackPage.tsx`** (new, Batch 343, PS-60): public route `/auth/callback/:providerId`, where the identity provider returns.
+  - Finishes the sign-in through `useAuth().completeSsoSignIn`.
+  - Signed in: goes to the page the user wanted.
+  - Already signed in elsewhere: shows the same conflict prompt as the password form.
+  - Refused: back to `/login` with the reason.
   Traced why it existed and why it wasn't needed: Vite's own `ImportMetaEnv` base
   type is a permissive `any` fallback, so the cast was pure dead
   weight. The SSO buttons (Google/Microsoft) are intentionally
@@ -676,7 +722,7 @@ with no folder of their own — filled in incrementally as the
   standard — every other button on this page, checked individually,
   was already correct.
 
-- **`SearchPage.tsx`** (2,199 lines) — the largest file in the whole
+- **`SearchPage.tsx`** (about 1,700 lines since Batch 350; see the Batch 350 section at the end, which supersedes the Load More, `.label` flag and browser-storage details below) — the largest file in the whole
   `src/pages/` review, spanning several sessions. Case search with a
   dense filter sidebar (identifier detection, demographics, status/
   priority, flags, synoptic protocols, pathologist/attending/client
@@ -765,7 +811,61 @@ folder's own README for the fuller account of the inline-style bug
 this whole pass traced back to) — matching Configuration/Quality
 Assurance/Intraop Queue/Contribution's existing, correct behavior.
 
+## Batch 317 (PS-73)
+
+`system/FacilityDictionaryPage.tsx`'s Duplicate moved to `services/duplication`; see `system/README.md`.
+
+## Audit Log: Outbound Dispatches (Batch 318, PS-86)
+
+`AuditLogPage.tsx` → **Interfaces** gains a fourth sub-tab, **Outbound Dispatches**: the new `OutboundDispatchTrailSection.tsx`. It is the trail of what PathScribe sent, not a failure queue; failed sends of results and patient updates stay in the Outbound Interface DLQ.
+
+- **Scope:** phase 1 covers Category E (OrderCreated, sent at accession), per Pete's scoping on the ticket.
+- **Table:** timestamp, message ID, category, message type, accession, ordering facility, and outcome (delivered / failed / outcome unknown), with status filter pills and a search box.
+- **Payload drawer:** clicking a row opens the exact JSON that was sent, as an expandable tree (native `<details>`, marked `data-phi`), with **Copy Payload**.
+- **No HL7 view:** PathScribe sends JSON and the interface engine builds the HL7, so the drawer says that rather than showing an HL7 message PathScribe never produced.
+- **Standing rules:** no inline CSS in the Audit Log files (checked: `AuditLogPage` and its section components have none), all text in five languages. Tested in `OutboundDispatchTrailSection.test.tsx`.
+
+## Batch 319: `__tests__/ConfigurationPage.test.tsx` timeout fix
+
+The PS-128 guard tests imported `ConfigurationPage` dynamically inside the first test. On a loaded machine, the page's first-time transform ran into the 15 s test timeout, and the leaked render then failed six more tests. The page is now imported statically at the top of the file. The test logic is unchanged.
+
 ---
+
+## Batch 342 (PS-262): live updates for the OR boards and Intraop Queue
+
+- **`OrSuiteDashboardPage.tsx`:**
+  - **Live updates:** the board subscribes to its OR locations through `hooks/useLiveIntraopUpdates.ts`, replacing the fixed 15-second poll. It updates within the 500 ms target through the API server's SignalR hub, with polling as the fallback. A badge in the header shows the connection state.
+  - **Logic moved to services:** the Multi-Suite location choice and the flash bookkeeping (`services/intraopDashboard/resolveOrBoardLiveView.ts`); the dismissal and its audit record (`dismissFromBoardWithAudit.ts`).
+  - **Standing rules:** the terminal and event-log services come from `@/services` (off the mock-import baseline). Two hard-coded separators are now translation templates, and a refused dismissal shows the translated message. The demo timer's stale refresh is fixed.
+  - **Still in the page:** the verbal-report modal still writes its event-log record itself.
+- **`IntraopQueuePage.tsx`:**
+  - **Live updates:** follows every intraoperative change, so new sessions, diagnoses, dismissals and merges from other devices appear without a reload. It shows the same badge.
+  - **Translation:** the log button's count is a translation template.
+  - **Baseline:** the page is still on the mock-import and browser-storage baselines for older code.
+
+## Batch 338 (PS-342): spell checking
+
+Report free text is spell-checked in the case's language (case choice → assigned pathologist's preference → ordering facility's default):
+- **`SynopticReportPage/`:** the whole page is inside a `SpellCheckProvider`; see its README.
+- **`CytologyWorklistPage/CytologyScreeningPage.tsx`:** the page is in a provider, with the language control in the header toolbar. The screening notes, `components/CytologySynopticFormView.tsx`'s text fields and `components/CytologyRoseView.tsx`'s preliminary impression use `SpellCheckedTextarea`.
+- **`IntraopQueuePage.tsx`:** the capture form's quick gross and frozen diagnosis, and each session card's quick-gross edit, are checked in the performing pathologist's language, else the session facility's. There's no case yet, so there's no per-case choice.
+- **Not converted, disclosed:** `CytologyScreeningPage.tsx` still has English-only text in its loading, not-found and header states ("Loading…", "Case", "Back to Worklist"), and `SynopticReportPage.tsx`'s "Case not found" block is English-only. Neither was touched in this batch. **Converted in Batch 344** (`cytologyScreening.*`, `caseNotFound.*`).
+
+## Batch 332 (PS-327)
+
+- **`CytologyWorklistPage/CytologyScreeningPage.tsx`:**
+  - **Signing authority:** sign-out applies per-lab and country signing authority on the pathologist track (`services/cytology/resolveCytologySignOutAuthority.ts`). The cytotechnologist track is unchanged.
+  - **Feedback:** a countersign release now shows a toast.
+  - **Translated:** the sign-out strings are now translated (`cytologySignOut.*`), with the signed-out time in the user's locale.
+- **`SynopticReportPage/`:** the Autopsy "Ready for Body Release" banner is translated.
+
+## Batch 331 (PS-327)
+
+`SynopticReportPage/`: Autopsy PAD/FAD signing now enforces signing authority (and forensic appointments); its banners and toasts are translated. See [SynopticReportPage/README.md](./SynopticReportPage/README.md).
+
+## Batch 327 (HTTPS)
+
+`SynopticReportPage/`: the report renderer URL must be `https://` in production builds, and the page's last inline style was converted to CSS variables. See [SynopticReportPage/README.md](./SynopticReportPage/README.md).
 
 ## Review status
 
@@ -790,3 +890,197 @@ and `LabelDesignerPage/` (the real, drag-and-drop label designer, see
 corresponding update here. Found directly, per a direct question ("have
 we been keeping up with READMEs?"), not caught proactively. Both
 subfolders now have their own real `README.md`, and are named here.
+
+## React Router 7 (Batch 341, PS-344)
+
+Every file here that used `react-router-dom` now imports the same hooks and components from `react-router` 7 (`react-router-dom` was removed from the project). Nothing else changed: the app had already opted into version 7's behaviour. See `src/i18n/README.md` → Batch 341.
+
+## Batch 344 (PS-60 follow-up): signer confirmation
+
+Every signature now confirms who is signing first (`components/Signing/`, `services/auth/signerConfirmation.ts`):
+- **Before:** the sign-out and finalize screens asked for a password and never checked it, and cytology and autopsy signing asked for nothing.
+- **`SynopticReportPage/modals/`:** the sign-out, countersign, synoptic finalize and pre-finalisation screens confirm the signer themselves; see `SynopticReportPage/modals/README.md`.
+- **`SynopticReportPage.tsx`:** Sign PAD / Sign FAD open a `SignatureConfirmModal` first. The "Case not found" block is translated.
+- **`CytologyWorklistPage/CytologyScreeningPage.tsx`:** Sign Out opens a `SignatureConfirmModal` first. The loading, empty, assist-mode and header text is translated.
+- **`Synoptic/useSynopticFinalize.ts`:** the unchecked credential state is gone, and the file is off the browser-storage baseline.
+
+## Batch 345 (PS-60 follow-up): the signature checked when it is saved
+
+Sign-out, countersign, finalize (`SynopticReportPage/hooks/useSignOutWorkflow.ts`), autopsy PAD/FAD (`SynopticReportPage.tsx`) and cytology sign-out (`CytologyWorklistPage/CytologyScreeningPage.tsx`) now:
+- pass the signer's confirmation to `signatureGate` (`services/auth/signatureEvidence.ts`) before writing anything;
+- store a signature record once the signed state is saved.
+
+A refused or missing confirmation stops the change with a message.
+
+**Batch 348 (PS-67):** `SynopticReportPage/hooks/useSignOutWorkflow.ts` reads AI service results in the app's single `{ ok, data }` result shape. No visible change.
+
+## Batch 349 (PS-100, PS-101)
+
+- **`SearchPage.tsx` (PS-101):** a value that isn't clearly one identifier (an MRN such as `100001`) is matched against name, MRN or accession; before, it had to match all three and found nothing. An identifier search with no dates chosen searches every date, with a hint saying so; the hidden 30-day default had hidden older cases. The results summary says which applied.
+- **Report page toasts (PS-100):** `Synoptic/useSynopticToast.ts` and `Synoptic/UI/SaveToast.tsx`. Every message used to show for 2.2 seconds with a green check. Warnings and failures now stay until closed (click or ×) and show a warning icon; confirmations fade after a reading time. 75 warning or failure calls in `SynopticReportPage/` pass `'warning'`, and 9 English-only warnings on the page were translated.
+
+## Batch 350: Search repaired, results paged on the server
+
+Pete: "the search is largely broken … results should be paged so that the heavy lifting is done on the server side."
+
+**`SearchPage.tsx`**
+- **One draft.** The filters live in one draft object (`CaseSearchDraft`). A search sends it through `utils/search/buildCaseSearchRequest.ts` to `caseSearchService` (`services/caseSearch/`).
+- **Paged on the server.** The service applies access rules, matches, sorts, counts and returns one page. The page shows "26–50 of 99 cases", a pager (first, previous, next, last), a page size (25, 50 or 100, remembered through `utils/uiPreferences.ts`), and a sort: accession date newest or oldest first, recently updated, patient name, or accession number.
+- **Paging keeps the search.** Paging, sort and page size re-run the search that produced the results, not unsaved edits in the sidebar.
+- **Load More is gone.** It appended pages that the table then re-sorted.
+- **Filters that didn't work now do:** diagnosis, requisition / order numbers, pathologist (signed or on the case, not only assigned), ICD-11 and ICD-O, synoptic protocols, and flags. See `services/caseSearch/README.md`.
+- **Pickers:**
+  - Synoptic protocols come from the protocol registry. The hard-coded list of 22 mostly used the wrong template ids.
+  - Flags are chosen by id.
+  - Sex offers what is recorded (Male, Female, Unknown); Non-binary and Other could never match.
+  - Statuses: 16 of 17 are offered (Closed, Accepted and AI-Assisted added; Claiming left out).
+- **Export** covers every match, not just the rows on screen, up to 5,000; the service audits it. Headings and values are translated and dates follow the user's locale. A message says when the export limit cut it short.
+- **Saved searches** go through the saved-search service (per user, across workstations). They keep every filter; facility and specimen flags used to be dropped.
+- **Coming back from a case** restores the same search, page and sort and fetches that page again. The page no longer keeps results (patient data) in session storage.
+- **Standing rules:**
+  - No browser storage and no mock-service imports, so the page is off the deployment baseline.
+  - Decisions moved to `utils/search/`: request, summary, CSV, date shortcuts, suggestions, picker filtering.
+  - New strings in all five languages. The date shortcuts, CSV headings, quick-link names and the English month names in the summary are translated too.
+  - "Dr." is no longer added to names in English.
+- **Still in the page, and disclosed:** the lookup modals' own list filtering for users, facilities, specimens and codes, as before.
+
+**Result table.** Search passes `preserveOrder` to `components/Worklist/WorklistTable.tsx`, which then shows the server's order without the Worklist's urgent and pool sections.
+
+**Report page.** Where a case was opened from, and the return to Search, go through `utils/search/searchSession.ts` (`SynopticReportPage.tsx`). The header's status pill is translated (`HeaderBar.tsx`, `utils/caseRevisionDisplay.ts`). The breadcrumb still says "Worklist" when the case came from Search, though it returns to Search: an existing label, not changed here.
+
+## Batch 351: Search section 3 filters
+
+`SearchPage.tsx` offers the new searchable case data (Pete: all 15 items):
+- **Dates:** the date range has a selector, **Accession date / Sign-out date / Release date**. There is a new sort, sign-out date newest first.
+- **Case type** pills after the identifier: Surgical, Gyn cytology, Non-gyn cytology, Autopsy.
+- **Pathologist:** once a pathologist is chosen, a **role** selector appears (any, assigned, signed out, resident, countersigner, delegated to). Residents are now in the picker.
+- **More filters**, collapsible, with a count:
+  - revisions, holds, result flag, pending work (stains, IHC, molecular, add-ons) and "Past TAT target";
+  - subspecialty, performing lab and location pickers;
+  - intake;
+  - billing type / payer and CPT codes;
+  - autopsy jurisdiction, authority and report stage.
+  It opens by itself when a saved search uses it.
+- The id/name picker is shared by the subspecialty, lab, location and jurisdiction lists.
+- Every new string is in five languages. `searchPage.sections.accessionDate` was removed, since the selector replaced it.
+
+## Batch 353
+
+- **Services, not demo files or storage:**
+  - `ContributionDashboardPage.tsx` gets TAT targets, RVU tables and the action registry through `@/services`;
+  - `WorklistPage/` and `Synoptic/Delegate/` use `delegationService`;
+  - `SynopticReportPage/components/InformalReviewBanner.tsx` did too; it was deleted in Batch 355 (PS-346).
+- **Deployment baselines:** the dashboard and the delegation screens came off them.
+
+## Batch 354
+
+`SearchPage.tsx` shows a hint under the submitting-facility and performing-lab filters once one is chosen: a Trust or other parent organisation includes the sites under it (`searchPage.includesSitesHint`, `.ps-searchpage-org-hint`). The service does the matching; see `services/caseSearch/README.md`.
+
+## Batch 355
+
+`SynopticReportPage/components/InformalReviewBanner.tsx` deleted (PS-346, Pete: "Delete it"). No page rendered it after informal reviews moved to their own service; they surface through the Internal Notes button and the Worklist's Informal Review tile.
+
+## Batch 356
+
+`MolecularBatchPage/MolecularPlateBuilderPage.tsx` picks the target instrument from the instrument list and checks the instrument's scan station at dispatch (PS-326). See its README.
+
+## Batch 358
+
+`MolecularBatchPage/MolecularPlateBuilderPage.tsx` offers the register's active analysers (`equipmentService`).
+
+## Batch 361
+
+`MolecularBatchPage/MolecularPlateBuilderPage.tsx` shows an analyser with an open malfunction or past due in red, and warns when it is chosen (not blocked).
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+Pages and components across the app now tag every patient identifier they show (name, date of birth, MRN, accession or case number) with `data-phi`, so support-ticket screenshots redact it. Checked by `services/phi/phiTagging.guard.test.ts`. Files in this folder: `AuditLogPage` (case links, detail text, interface-exception patient identifiers), `BillingLogsSection`, `CriticalAlertAuditSection`, `CytologyQcQueuePage`, `FullReportPage`, `IntraopQueuePage` (it also came off the mock-import baseline), `MockEMRPage`, `MockWsiViewerPage`, `OrSuiteDashboardPage` (the MRN tag was on the label, not the value), `OutboundDlqSection`, `PrintQueueDashboardSection`, `QualityAssurancePage`, `SurgicalQaWorklistPage`. `CytologyWorklistPage/`: row subtitles and "Unknown patient" were hard-coded English and are now translated; tile colours come from `--ps-hue` (they were built in JSX). `CytologyScreeningPage`: the released-for-countersign toast is redacted. `MolecularOrderQueuePage/`: the demo panel and the accession column are tagged.
+
+## Batch 364 (PS-349, PS-350): support references
+
+`AuditLogPage.tsx`: a "Find a support reference" box (also reached by `?supportRef=`), and a support-reference chip on each audit, error and interface-exception row.
+
+## Batch 365 (PS-347)
+
+`AccessionPage/`: the order lookup shows and finds dates of birth in the jurisdiction's own format (DD-MM-YYYY for the Netherlands, DD.MM.YYYY for Germany); German dates of birth were shown month first. `OrderLookupModal.tsx` is off the deployment baseline.
+
+## Batch 367 (PS-74): no inline CSS
+
+The last inline styles in `pages/` moved into `pathscribe.css` classes. That covers `PathologyWorkspacePage` and `QualityComplianceHubPage`, which have no README of their own: their cards' dim accent is now derived in CSS. Details are in each folder's README. The whole app is checked by `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368 (PS-353): report change history
+
+- **Report page:** a Change history view (see `SynopticReportPage/README.md`).
+- **Off the deployment baseline:** `BatchManagement`, `LabelDesignerPage`, `MolecularWorkcenterPage`, `Synoptic/Comments` and parts of `SynopticReportPage`.
+
+## Batch 369 (PS-355)
+
+- **`QualityAssurancePage.tsx`**: its four exports are gated:
+  - deficiencies (active and closed) by one capability;
+  - management reviews by another;
+  - billing deficiencies by a third.
+
+  It takes the billing, reason-dictionary and case services from `@/services` and is off the deployment baseline.
+- **`SynopticReportPage/`**: the change-history export is gated by `report:change-history:export` and passes `authorizationService` to `exportChangeLog`.
+- **`BatchManagement/DisposalReportPage.tsx`**: its export no longer borrows the QA export helper. It isn't gated yet; it's on the PS-357 list.
+
+## Batch 370 (PS-356)
+
+- **`QualityAssurancePage.tsx`:** its exports pass `qaScopeContext()`, all facilities.
+- **`SynopticReportPage/`:** the change-history export carries the case's facility.
+
+## Batch 372
+
+- **`Home.tsx`:** the Surgical Post-Sign-Out QA tile has its own background, `public/surgical_qa.webp` (Pete's photo, 1400×933). It had borrowed the Cytology QC tile's image.
+
+## Batch 374
+
+- **Pete: Home shows only the tiles the user may open.** `Home.tsx`, `PathologyWorkspacePage.tsx` and `QualityComplianceHubPage.tsx` show only the tiles whose screen the signed-in user may open (`services/screens`). A user with none sees a short message instead. The routes check too (`App.tsx` wraps them in `ScreenGate`).
+
+## Batch 375
+
+- **`Home.tsx`:** eight tiles now. The Cytology QC and Surgical QA queues moved into the Worklist, Add-On Orders became a case action, and Batch Management moved into the Pathology Workspace.
+- **`WorklistPage/`:** the two peer-review queues are views beside the case list, chosen from header tiles next to LIS Cases and Outreach and shown per screen capability. The file no longer imports mock services directly (off the mock-import baseline); its browser-storage use remains.
+- **`PathologyWorkspacePage.tsx`:** Batch Management tile.
+- **`AddOnOrderPage/`:** `?case=<id>` opens that case straight away.
+- **`SynopticReportPage/components/HeaderBar.tsx`:** the "Add-on order" action in the block row. The file is off both deployment baselines: its lis-sync types come from `@/services`, and the "back to messages" flag is read through `utils/uiPreferences.getSessionFlag`.
+- **Surgical QA tile image:** `public/surgical_qa.webp` (Batch 372) no longer has a Home tile to sit on. The file is kept.
+
+## Batch 376 (PS-359)
+
+- **`AccessionPage/AccessionPage.tsx`:**
+  - Which fields must be filled before Next and Submit comes from the organisation's Field Requirements (`services/fieldRequirements`), with the locked fields always required. The page lists what's still required.
+  - The Patient ID and Assign to Pathologist labels drop "(optional)" when required.
+  - The department-conflict message lists names in the user's language instead of joining them with an English "and".
+  - The page imports all its services from `@/services`, so it came off the mock-import baseline.
+
+## Batch 377
+
+- **`AccessionPage/`:** a blank Patient ID that the organisation requires is generated at submit; if generation fails, submit stops with an alert.
+
+## Batch 378
+
+- **`GrossingScreenPage/`:** Complete grossing (button, voice "complete grossing", Alt+Shift+F9), checked against the organisation's Grossing field requirements.
+
+## Batch 379
+
+- **`GrossingScreenPage/`:** with the organisation's protocol rule switched off, Complete grossing confirms before completing specimens without a protocol, which are then routed for secondary review. The confirmation can also be answered by voice. The fixation fields' English-only text was converted to all five languages.
+
+## Batch 380
+
+- **`SynopticReportPage/`:** Field Requirements for Add/Edit specimen, amendments and addenda, and critical findings, each with a voice save command. Fixed minor amendments and addenda that couldn't be saved from a new draft, and a specimen laterality that was never saved.
+
+## Batch 381
+
+- **`SynopticReportPage/`, `Synoptic/`:** Field Requirements for holds, comments, Delegate, biopsy arrays, and block cancellation and restains, each with a voice save command (block forms excepted).
+  - Holds and delegation now need capabilities, seeded to every role with case access.
+  - Fixed the report page refusing its next save after a hold or delegation.
+  - `SynopticReportPage.tsx` and `BlockStainEditorModal.tsx` came off the deployment baselines.
+
+## Batch 381: PS-98
+
+- **`QualityAssurancePage.tsx`:** the pillar row (`ps-qa-pillar-switch`) has 20px below it, so the tiles and tab content don't sit against it.
+
+## Batch 382
+
+- **`SynopticReportPage/`:** Field Requirements for the frozen-versus-final reconciliation modal and the post-sign-out billing and applied-code correction modals, each with a voice command. Correcting an applied billing code needs its own capability.

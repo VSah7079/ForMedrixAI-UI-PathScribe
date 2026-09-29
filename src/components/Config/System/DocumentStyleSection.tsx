@@ -54,6 +54,7 @@ import {
 } from './documentStyleConfig';
 import type { LabelConfig } from '../../../types/template';
 import { Label, TextInput, Toggle, Sel } from '../../TemplateBuilder/TemplateInspector';
+import { labelStyleVars } from '@/utils/labelStyleVars';
 
 const FONT_FAMILY_OPTIONS = [
   { value: 'Arial',           label: 'Arial' },
@@ -154,13 +155,7 @@ const DocumentStyleSection: React.FC = () => {
 
         <div
           className="ps-docstyle__preview"
-          style={{
-            fontFamily: style.fontFamily || 'Arial',
-            fontSize: `${style.fontSize ?? 10}px`,
-            fontWeight: style.weight === 'bold' ? 700 : 400,
-            textDecoration: style.decoration === 'underline' ? 'underline' : 'none',
-            textTransform: style.transform === 'uppercase' ? 'uppercase' : style.transform === 'capitalize' ? 'capitalize' : 'none',
-          }}
+          style={labelStyleVars(style, 'preview')}
         >
           {t('documentStyleSection.previewText', { category: t(CATEGORY_LABEL_KEY[category]) })}
         </div>

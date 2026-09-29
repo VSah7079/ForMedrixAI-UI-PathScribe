@@ -7,6 +7,7 @@ import { FPPE_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssig
 import type { StaffUser, Subspecialty, Facility } from '@/services';
 import { getActivePerformingLabs } from '@/utils/performingLabs';
 import type { FppeAssignment, FppeEndCondition } from '@/types/case/FppeAssignment';
+import { computeFppeProgress } from '@/services/cases/fppeEndCondition';
 
 type EndConditionType = 'case_count' | 'duration_days' | 'either';
 
@@ -111,15 +112,20 @@ const FppeAssignmentsSection: React.FC = () => {
     refresh();
   };
 
+  // Real fix, found by this app's own inline-CSS/business-logic sweep:
+  // daysSince now comes from fppeEndCondition.ts's shared
+  // computeFppeProgress() — the same real source of truth
+  // mockFppeAssignmentService.ts's actual enforcement and
+  // FppeTrackingTab.tsx's progress bar both use — instead of an
+  // independently-recomputed copy of the same days-since-start math.
   const endConditionLabel = (a: FppeAssignment) => {
+    const daysSince = Math.floor(computeFppeProgress(a).daysSinceStart);
     if (a.endCondition.type === 'case_count') {
       return t('fppeAssignmentsSection.progress.caseCount', { reviewed: a.casesReviewedCount, threshold: a.endCondition.threshold });
     }
     if (a.endCondition.type === 'duration_days') {
-      const daysSince = Math.floor((Date.now() - new Date(a.startedAt).getTime()) / 86400000);
       return t('fppeAssignmentsSection.progress.duration', { daysSince, threshold: a.endCondition.threshold });
     }
-    const daysSince = Math.floor((Date.now() - new Date(a.startedAt).getTime()) / 86400000);
     return t('fppeAssignmentsSection.progress.either', {
       reviewed: a.casesReviewedCount, caseThreshold: a.endCondition.caseCountThreshold,
       daysSince, durationThreshold: a.endCondition.durationDaysThreshold,

@@ -7,6 +7,7 @@ Text-expansion macro dictionary for the report editor (e.g. '.norm' shortcuts).
 ## Files
 
 - **`generateShortcutFromName.ts`** (+ `.test.ts`, 6 tests) — **New**, per direct reminder ("no business logic in the UI code") — extracted out of `MacroPanel.tsx`'s own "Import from Word" adapter. A real, imported AutoText entry's own name isn't a valid `;`-prefixed shortcut on its own; this sanitizes and deduplicates against every currently-existing real shortcut, so an import can never silently create two macros sharing the same trigger.
+- **`macroAccess.ts`** (+ `.test.ts`, Batch 349, PS-126): who may do what with macros. Administrators (`admin`, `pathologist-admin`, `superadmin`, the same roles as the facility spelling dictionary) see every macro, including other users' personal ones, and are the only users offered **Enterprise** when creating or editing. `canEditMacro()` makes an Enterprise macro, or another user's personal macro, read only for everyone else. `groupAllMacros()` builds the administrators' **All** list: Enterprise first, then each facility by name, then each user's personal macros by the user's name, macros by name within each group.
 
 ## Notes
 

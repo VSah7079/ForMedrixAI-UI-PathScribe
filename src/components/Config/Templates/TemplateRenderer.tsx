@@ -78,15 +78,17 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
-import React, { useEffect, useState, useCallback, useRef } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import '../../../pathscribe.css';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { InlineCommentThread } from '../../Common/InlineCommentThread';
 import { TemplateLifecycleState } from '../../../types/AuditEvent';
 import type { EditorSection, EditorField } from '../Protocols/SynopticEditor';
 import { getTemplate, transitionTemplate, TemplateDetail } from '../../../services/templates/templateService';
+import { getTemplateGovernanceSettings } from '../../../services/templates/templateGovernanceSettings';
+import { SNOMED_PUBLISH_THRESHOLD } from '../../../services/templates/templatePublishingRules';
 import { useAuth } from '../../../contexts/AuthContext';
 import { useSynopticAudit } from '../../../hooks/useSynopticAudit';
 
@@ -94,13 +96,12 @@ type AnswerMap = Record<string, string | string[]>;
 
 // ─── Lifecycle definitions ────────────────────────────────────────────────────
 
-const LIFECYCLE_STYLES: Record<string, { bg: string; color: string; border: string }> = {
-  draft:         { bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)' },
-  in_review:     { bg: 'rgba(245,158,11,0.15)',  color: '#fbbf24', border: 'rgba(245,158,11,0.3)'  },
-  needs_changes: { bg: 'rgba(239,68,68,0.15)',   color: '#f87171', border: 'rgba(239,68,68,0.3)'   },
-  approved:      { bg: 'rgba(16,185,129,0.15)',  color: '#10B981', border: 'rgba(16,185,129,0.3)'  },
-  published:     { bg: 'rgba(8,145,178,0.15)',   color: '#38bdf8', border: 'rgba(8,145,178,0.3)'   },
-};
+// Each state's colours are a ps-tmplr-state--<state> class in pathscribe.css,
+// which sets --tmplr-bg / --tmplr-fg / --tmplr-border for the badge,
+// transition buttons, flow steps and confirm button (Batch 328: these were
+// inline styles).
+const KNOWN_STATES = new Set(['draft', 'in_review', 'needs_changes', 'approved', 'published']);
+const stateClass = (state: string) => `ps-tmplr-state--${KNOWN_STATES.has(state) ? state : 'draft'}`;
 
 // Which transitions are allowed from each state
 const ALLOWED_TRANSITIONS: Record<TemplateLifecycleState, TemplateLifecycleState[]> = {
@@ -236,12 +237,8 @@ function getTransitionActions(source: string | undefined, t: TFunction): Transit
 
 const LifecycleBadge: React.FC<{ state: TemplateLifecycleState; source?: string }> = ({ state, source }) => {
   const { t } = useTranslation();
-  const s = LIFECYCLE_STYLES[state] ?? LIFECYCLE_STYLES.draft;
   return (
-    <span
-      className="ps-tmplr-lifecycle-badge"
-      style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
-    >
+    <span className={`ps-tmplr-lifecycle-badge ${stateClass(state)}`}>
       {t(getStateLabelKey(state, source))}
     </span>
   );
@@ -276,7 +273,7 @@ const CodingBadges: React.FC<{ snomed?: string; icd?: string }> = ({ snomed, icd
 
 const ModalOverlay: React.FC<{ children: React.ReactNode; onClose: () => void }> = ({ children, onClose }) => (
   <div className="ps-overlay" onClick={onClose}>
-    <div className="ps-modal-dark" style={{ width: 440 }} onClick={e => e.stopPropagation()}>
+    <div className="ps-modal-dark ps-modal-dark--narrow" onClick={e => e.stopPropagation()}>
       {children}
     </div>
   </div>
@@ -311,16 +308,16 @@ export const TemplateRenderer: React.FC = () => {
   const [state,   setState]   = useState<TemplateLifecycleState>('draft');
   const [isDirty, setIsDirty] = useState(false);
 
-  // Tracks whether a locally-persisted lifecycle state was found, so the
-  // real fetched status (below) doesn't clobber it once it resolves — the
-  // async fetch and the sync localStorage read can complete in either
-  // order, and localStorage (an in-progress local review) should win.
-  const hasStoredState = useRef(false);
 
   // ── Confirmation modal state ───────────────────────────────────────────────
   const [confirmAction,  setConfirmAction]  = useState<TransitionAction | null>(null);
   const [confirmNote,    setConfirmNote]    = useState('');
   const [confirmReset,   setConfirmReset]   = useState(false);
+  /** Why the service refused the transition (PS-63), shown in the modal. */
+  const [confirmError,   setConfirmError]   = useState<string | null>(null);
+  const [transitionBusy, setTransitionBusy] = useState(false);
+  /** A recorded approval that still needs more reviewers. */
+  const [transitionNotice, setTransitionNotice] = useState<string | null>(null);
 
   // ── Unsaved warning state ──────────────────────────────────────────────────
   const [showLeaveWarning, setShowLeaveWarning] = useState(false);
@@ -337,7 +334,7 @@ export const TemplateRenderer: React.FC = () => {
     } catch {}
     try {
       const raw = localStorage.getItem(STATE_KEY);
-      if (raw) { setState(raw as TemplateLifecycleState); hasStoredState.current = true; }
+      if (raw) setState(raw as TemplateLifecycleState);
     } catch {}
   }, [templateId, ANSWERS_KEY, STATE_KEY]);
 
@@ -351,7 +348,9 @@ export const TemplateRenderer: React.FC = () => {
       .then(detail => {
         if (cancelled) return;
         setTemplate(detail);
-        if (!hasStoredState.current) setState(detail.status as TemplateLifecycleState);
+        // Since Batch 328 every transition waits for the service, so the
+        // registry's status is authoritative and wins over the local copy.
+        setState(detail.status as TemplateLifecycleState);
         setLoading(false);
       })
       .catch((err: any) => {
@@ -371,7 +370,6 @@ export const TemplateRenderer: React.FC = () => {
 
   const persistState = (next: TemplateLifecycleState) => {
     setState(next);
-    hasStoredState.current = true;
     setIsDirty(false);  // completed a transition — annotations no longer "unsaved"
     localStorage.setItem(STATE_KEY, next);
   };
@@ -416,23 +414,55 @@ export const TemplateRenderer: React.FC = () => {
   // ── Lifecycle transition ───────────────────────────────────────────────────
   const openConfirm = (action: TransitionAction) => {
     setConfirmNote('');
+    setConfirmError(null);
+    setTransitionNotice(null);
     setConfirmAction(action);
   };
 
-  const handleTransitionConfirm = () => {
-    if (!confirmAction || !templateId) return;
+  /** The reviewer's message for a refused transition. */
+  const refusalMessage = (err: any): string => {
+    const required = getTemplateGovernanceSettings().requiredReviewers;
+    switch (err?.code) {
+      case 'NOT_APPROVER':           return t('templateRenderer.governance.notApprover');
+      case 'SELF_APPROVAL':          return t('templateRenderer.governance.selfApproval');
+      case 'ALREADY_APPROVED':       return t('templateRenderer.governance.alreadyApproved');
+      case 'NOT_ENOUGH_APPROVALS':   return t('templateRenderer.governance.notEnoughApprovals', { count: err.approvalCount ?? 0, required });
+      case 'SNOMED_BELOW_THRESHOLD': return t('templateRenderer.governance.snomedBelowThreshold', { coverage: err.coverage ?? 0, threshold: SNOMED_PUBLISH_THRESHOLD });
+      default:                       return t('templateRenderer.governance.failed', { message: err?.message ?? String(err) });
+    }
+  };
+
+  // PS-63: the service checks the approver role, self-approval, the number
+  // of approvals and SNOMED coverage. The page changes state only after it
+  // accepts; a refusal is shown in the modal.
+  const handleTransitionConfirm = async () => {
+    if (!confirmAction || !templateId || transitionBusy) return;
     const prev   = state;
     const target = confirmAction.target;
     const note   = confirmNote || undefined;
 
-    persistState(target);
+    setTransitionBusy(true);
+    setConfirmError(null);
+    let result: { status: string; approvalCount?: number };
+    try {
+      result = await transitionTemplate(templateId, target, note, currentUser);
+    } catch (err: any) {
+      setConfirmError(refusalMessage(err));
+      setTransitionBusy(false);
+      return;
+    }
+    setTransitionBusy(false);
+
+    const reached = result.status as TemplateLifecycleState;
+    persistState(reached);
     setConfirmAction(null);
     setConfirmNote('');
-
-    // Sync to PROTOCOL_REGISTRY so queue cards update immediately
-    transitionTemplate(templateId, target, note, currentUser).catch(err =>
-      console.error('[TemplateRenderer] transition failed:', err)
-    );
+    if (target === 'approved' && reached !== 'approved') {
+      setTransitionNotice(t('templateRenderer.governance.approvalRecorded', {
+        count: result.approvalCount ?? 0,
+        required: getTemplateGovernanceSettings().requiredReviewers,
+      }));
+    }
 
     auditAndNotify({
       user:         currentUser,
@@ -447,17 +477,23 @@ export const TemplateRenderer: React.FC = () => {
       templateId,
       templateName: template?.name ?? templateId,
       stateFrom:    prev,
-      stateTo:      target,
+      stateTo:      reached,
       note,
     });
   };
 
-  const handleReset = () => {
+  const handleReset = async () => {
     if (!templateId) return;
+    setConfirmReset(false);
+    try {
+      await transitionTemplate(templateId, 'draft');
+    } catch (err: any) {
+      setTransitionNotice(refusalMessage(err));
+      return;
+    }
     persistAnswers({});
     persistState('draft');
-    setConfirmReset(false);
-    transitionTemplate(templateId, 'draft').catch(() => {});
+    setTransitionNotice(null);
     auditOnly({ user: 'System', category: 'system', action: 'reset_template', templateId });
   };
 
@@ -566,21 +602,13 @@ export const TemplateRenderer: React.FC = () => {
               <div className="ps-tmplr-transition-row">
                 {transActions.map(action => {
                   const isAllowed = allowed.includes(action.target);
-                  const s = LIFECYCLE_STYLES[action.target];
                   return (
                     <button
                       key={action.target}
                       onClick={() => isAllowed && openConfirm(action)}
                       disabled={!isAllowed}
                       title={!isAllowed ? t('templateRenderer.lifecycleBar.notAvailableTooltip', { state: t(getStateLabelKey(state)) }) : undefined}
-                      className="ps-tmplr-transition-btn"
-                      style={{
-                        border: `1px solid ${isAllowed ? s.border : 'rgba(255,255,255,0.06)'}`,
-                        background: isAllowed ? s.bg : 'rgba(255,255,255,0.02)',
-                        color: isAllowed ? s.color : '#cbd5e1',
-                        cursor: isAllowed ? 'pointer' : 'not-allowed',
-                        opacity: isAllowed ? 1 : 0.65,
-                      }}
+                      className={`ps-tmplr-transition-btn ${stateClass(action.target)}`}
                     >
                       {action.icon} {action.label}
                     </button>
@@ -599,22 +627,19 @@ export const TemplateRenderer: React.FC = () => {
                 </button>
               </div>
 
+              {transitionNotice && (
+                <p className="ps-tmplr-transition-notice" role="status">{transitionNotice}</p>
+              )}
+
               {/* Linear flow hint */}
               <div className="ps-tmplr-flow-hint">
                 {(['draft', 'in_review', 'approved', 'published'] as TemplateLifecycleState[]).map((s, i, arr) => {
-                  const sStyle = LIFECYCLE_STYLES[s];
                   const isCurrent = state === s;
                   const isPast = arr.indexOf(state) > i;
                   return (
                     <React.Fragment key={s}>
                       <span
-                        className="ps-tmplr-flow-step"
-                        style={{
-                          fontWeight: isCurrent ? 700 : 500,
-                          color: isCurrent ? sStyle.color : isPast ? '#334155' : '#1e293b',
-                          background: isCurrent ? sStyle.bg : 'transparent',
-                          border: `1px solid ${isCurrent ? sStyle.border : isPast ? '#1e293b' : '#1e293b'}`,
-                        }}
+                        className={`ps-tmplr-flow-step ${stateClass(s)}${isCurrent ? ' ps-tmplr-flow-step--current' : isPast ? ' ps-tmplr-flow-step--past' : ''}`}
                       >
                         {isPast ? '✓ ' : ''}{t(getStateLabelKey(s, template.source))}
                       </span>
@@ -688,11 +713,7 @@ export const TemplateRenderer: React.FC = () => {
                     {field.options.map(opt => (
                       <label
                         key={opt.id}
-                        className="ps-tmplr-option-label"
-                        style={{
-                          border: `1px solid ${answers[field.id] === opt.id ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                          background: answers[field.id] === opt.id ? 'rgba(8,145,178,0.08)' : 'rgba(255,255,255,0.02)',
-                        }}
+                        className={`ps-tmplr-option-label${answers[field.id] === opt.id ? ' ps-tmplr-option-label--selected' : ''}`}
                       >
                         <input
                           type="radio" name={field.id} value={opt.id}
@@ -717,11 +738,7 @@ export const TemplateRenderer: React.FC = () => {
                       return (
                         <label
                           key={opt.id}
-                          className="ps-tmplr-option-label"
-                          style={{
-                            border: `1px solid ${checked ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.07)'}`,
-                            background: checked ? 'rgba(8,145,178,0.08)' : 'rgba(255,255,255,0.02)',
-                          }}
+                          className={`ps-tmplr-option-label${checked ? ' ps-tmplr-option-label--selected' : ''}`}
                         >
                           <input
                             type="checkbox" value={opt.id} checked={checked}
@@ -789,7 +806,6 @@ export const TemplateRenderer: React.FC = () => {
       {confirmAction && (
         <ModalOverlay onClose={() => setConfirmAction(null)}>
           {(() => {
-            const s = LIFECYCLE_STYLES[confirmAction.target];
             return (
               <>
                 <div className="ps-tmplr-modal-icon">{confirmAction.icon}</div>
@@ -810,6 +826,10 @@ export const TemplateRenderer: React.FC = () => {
                   />
                 )}
 
+                {confirmError && (
+                  <p className="ps-tmplr-modal-error" role="alert">{confirmError}</p>
+                )}
+
                 <div className="ps-tmplr-modal-actions">
                   <button
                     onClick={() => setConfirmAction(null)}
@@ -819,11 +839,8 @@ export const TemplateRenderer: React.FC = () => {
                   </button>
                   <button
                     onClick={handleTransitionConfirm}
-                    className="ps-tmplr-modal-confirm-btn"
-                    style={{
-                      background: confirmAction.destructive ? '#ef4444' : s.bg,
-                      color: confirmAction.destructive ? 'white' : s.color,
-                    }}
+                    disabled={transitionBusy}
+                    className={`ps-tmplr-modal-confirm-btn ${stateClass(confirmAction.target)}${confirmAction.destructive ? ' ps-tmplr-modal-confirm-btn--destructive' : ''}`}
                   >
                     {t('templateRenderer.modal.confirmButton', { label: confirmAction.label })}
                   </button>
@@ -843,7 +860,7 @@ export const TemplateRenderer: React.FC = () => {
           </h3>
           <p className="ps-tmplr-modal-msg ps-tmplr-modal-msg--wide">
             {t('templateRenderer.modal.reset.bodyPre')}
-            <strong style={{ color: '#f1f5f9' }}> {t('templateRenderer.modal.reset.draftWord')}</strong>
+            <strong className="ps-tmplr-modal-msg-highlight"> {t('templateRenderer.modal.reset.draftWord')}</strong>
             {t('templateRenderer.modal.reset.bodySuffix')}
           </p>
           <div className="ps-tmplr-modal-actions">
@@ -873,7 +890,7 @@ export const TemplateRenderer: React.FC = () => {
           <p className="ps-tmplr-modal-msg ps-tmplr-modal-msg--tight">
             {t('templateRenderer.leaveWarning.body1')}
           </p>
-          <p className="ps-tmplr-modal-msg ps-tmplr-modal-msg--wide" style={{ color: '#64748b' }}>
+          <p className="ps-tmplr-modal-msg ps-tmplr-modal-msg--wide ps-tmplr-modal-msg--dim">
             {t('templateRenderer.leaveWarning.body2')}
           </p>
           <div className="ps-tmplr-modal-actions">

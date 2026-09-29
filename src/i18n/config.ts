@@ -25,6 +25,16 @@
 // app continues to render in English until translated into these
 // same locale files — a real, incremental process, not a blocker to
 // using the framework itself.
+//
+// Batch 362: Belgian Dutch (nl-BE) added as a regional variant. Its file
+// holds only the wording Belgian users expect differently (aanmelden /
+// afmelden, familienaam, gsm, Belgian address order); every other key
+// falls back to Dutch (nl), then English. Dates and numbers follow the
+// nl-BE locale (27/09/2026 rather than the Netherlands' 27-09-2026).
+//
+// Batch 365 (PS-347): Belgian French (fr-BE) added the same way, falling
+// back to French (fr): Belgian address order and "GSM" for a mobile phone.
+// The language menu now names both French variants.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import i18n from 'i18next';
@@ -36,9 +46,17 @@ import fr from './locales/fr.json';
 import de from './locales/de.json';
 import nl from './locales/nl.json';
 import ko from './locales/ko.json';
+import nlBE from './locales/nl-BE.json';
+import frBE from './locales/fr-BE.json';
 
-export const SUPPORTED_LANGUAGES = ['en', 'fr', 'de', 'nl', 'ko'] as const;
+export const SUPPORTED_LANGUAGES = ['en', 'fr', 'fr-BE', 'de', 'nl', 'nl-BE', 'ko'] as const;
 export type SupportedLanguage = typeof SUPPORTED_LANGUAGES[number];
+
+/**
+ * Regional variants and the language each falls back to. A variant's file
+ * holds only the keys it words differently (localeParity.test.ts checks this).
+ */
+export const REGIONAL_VARIANTS = { 'fr-BE': 'fr', 'nl-BE': 'nl' } as const;
 
 const STORAGE_KEY = 'pathscribe_language';
 
@@ -52,8 +70,11 @@ i18n
       de: { translation: de },
       nl: { translation: nl },
       ko: { translation: ko },
+      'nl-BE': { translation: nlBE },
+      'fr-BE': { translation: frBE },
     },
-    fallbackLng: 'en',
+    // A regional variant falls back to its language first, then English.
+    fallbackLng: { 'fr-BE': ['fr', 'en'], 'nl-BE': ['nl', 'en'], default: ['en'] },
     supportedLngs: SUPPORTED_LANGUAGES as unknown as string[],
     detection: {
       // Real, per this app's own established preference-persistence

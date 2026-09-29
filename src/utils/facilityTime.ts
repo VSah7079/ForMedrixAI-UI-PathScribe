@@ -153,6 +153,12 @@ export function getFacilityDateParts(input: string | Date, timezone: string): Fa
   return { year, month, day };
 }
 
+/** Batch 360: the facility's calendar date as 'YYYY-MM-DD' (e.g. "today" for due dates). */
+export function getFacilityIsoDate(input: string | Date, timezone: string): string {
+  const { year, month, day } = getFacilityDateParts(input, timezone);
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
+}
+
 /** Real, shared UTC-offset computation (milliseconds), reused by both
  *  getFacilityMidnightUtc and getFacilityUtcOffsetString below - not
  *  duplicated inline in each. Compares the real, facility-local

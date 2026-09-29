@@ -6,7 +6,7 @@
 // whether they're inside a Part or an old-style Template.
 // ─────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 
 import type { ReportPart, ReportPartType } from '../../types/reportPart';

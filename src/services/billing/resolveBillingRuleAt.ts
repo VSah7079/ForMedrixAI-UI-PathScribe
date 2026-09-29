@@ -36,7 +36,8 @@
 // historical match.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { BillingRuleVersion } from '@/types/billing/BillingRuleVersion';
+import type { BillingRuleVersion, CodeVocabulary } from '@/types/billing/BillingRuleVersion';
+import { ruleMatchesCountry } from './codeEngine/countryMatch';
 
 /** Real, single-tier match helper - the exact algorithm from this
  *  file's own header, applied within one real siteId scope (a real
@@ -47,7 +48,8 @@ function matchWithinScope(
   billingCode: string,
   siteId: string | undefined,
   dateOfService: string,
-  allVersions: BillingRuleVersion[]
+  allVersions: BillingRuleVersion[],
+  options: BillingRuleResolutionOptions = {},
 ): BillingRuleVersion | null {
   const target = new Date(dateOfService).getTime();
   if (isNaN(target)) return null;
@@ -56,6 +58,10 @@ function matchWithinScope(
     if (v.billingCode !== billingCode) return false;
     if ((v.siteId ?? undefined) !== siteId) return false;
     if (v.status !== 'ACTIVE') return false;
+    // PS-89 §8 (Batch 333): extends the filter, never replaces it. A row
+    // stored before PS-89 has no vocabulary and is read as CPT.
+    if (options.vocabulary && (v.vocabulary ?? 'CPT') !== options.vocabulary) return false;
+    if (!ruleMatchesCountry(v.country, options.country)) return false;
     const from = new Date(v.effectiveFrom).getTime();
     if (isNaN(from) || from > target) return false;
     if (v.effectiveTo !== null) {
@@ -90,11 +96,24 @@ export function resolveBillingRuleAt(
   billingCode: string,
   dateOfService: string,
   allVersions: BillingRuleVersion[],
-  siteId?: string
+  siteId?: string,
+  options: BillingRuleResolutionOptions = {},
 ): BillingRuleVersion | null {
   if (siteId) {
-    const siteOverride = matchWithinScope(billingCode, siteId, dateOfService, allVersions);
+    const siteOverride = matchWithinScope(billingCode, siteId, dateOfService, allVersions, options);
     if (siteOverride) return siteOverride;
   }
-  return matchWithinScope(billingCode, undefined, dateOfService, allVersions);
+  return matchWithinScope(billingCode, undefined, dateOfService, allVersions, options);
+}
+
+/** PS-89 §8 (Batch 333): optional filters, supplied by the caller. The
+ *  resolver stays pure and synchronous; the async site → organisation →
+ *  country lookup lives at the service boundary
+ *  (mockBillingRuleService.getActiveRuleAt). Omitted = no filtering, the
+ *  exact behaviour before PS-89. */
+export interface BillingRuleResolutionOptions {
+  /** Jurisdiction being billed (see codeEngine/countryMatch.ts). */
+  country?: string;
+  /** Coding standard (CPT, HCPCS, NHS_OPCS4, LOCAL_LAB). */
+  vocabulary?: CodeVocabulary;
 }

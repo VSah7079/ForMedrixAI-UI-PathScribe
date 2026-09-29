@@ -71,6 +71,11 @@ Two further, real, notification-only siblings exist alongside the mutating funct
 - **`processInboundHpvResultEvent.ts`** — same real "ingest our own specification" posture as `processBlockExceptionEvent.ts`: takes an already-translated `HpvResultEventPayload` and applies it to the real specimen via `caseRouter.updateCase`. **Extended, Protocol-Driven Workflow Infrastructure story Part 2b**: `HpvResultEventPayload.assayStainTypeId` (additive, optional) now carries which real assay (StainType.id) the sending molecular platform actually ran. When a result is genuinely Positive AND that assay was the standalone `st-hpv-highrisk-screen` (not the bundled `st-hpv-reflex`, which already implies its own reflex), this file now fires a real `order.molecular` entry for `st-hpv-genotyping` onto `services/molecularOrders/` — closing the documented gap in `st-hpv-reflex`'s own dictionary description ("must currently be applied manually... no automated, result-triggered billing yet"). Fire-and-forget, same posture as every other outbound dispatch in this app.
 - **`processInboundCytologyInstrumentStatusEvent.ts`** — **New**, same "ingest our own specification" posture, for a genuinely different real sender: the ThinPrep processor itself, not a molecular platform. Keyed on `Batch.masterBarcode` (`services/batches/`), not accession/specimen — a processor run is a real, physical batch of many vials, not a single case result. Applies via `mockBatchService.setCytologyInstrumentStatus`, never `caseRouter` directly. See `services/batches/README.md` for the full cytology-node account.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`notifyBlockExceptionApplied.ts`, `notifyMaterialLocationApplied.ts` and `processCassetteDispatchOutcomeEvent.ts`: their toasts name the case, so they go through `phi/phiToast.ts → phiToastContent()` and are redacted in screenshots. Their English was hard-coded; it is now translated (`hl7Notifications.*`, all five languages). Tests read the text with `phiToastText()`; `processCassetteDispatchOutcomeEvent.test.ts` is new.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

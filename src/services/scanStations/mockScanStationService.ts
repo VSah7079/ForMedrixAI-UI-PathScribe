@@ -27,6 +27,7 @@
 
 import { ServiceResult, ID } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
+import { withMissingSeedRecords } from '../mockSeedMerge';
 import type { ScanStation, IScanStationService } from './IScanStationService';
 import { mockWorkstationGroupService } from '../workstationGroups/mockWorkstationGroupService';
 
@@ -45,12 +46,20 @@ const SEED_STATIONS: ScanStation[] = [
   { id: 'station-stain-1', name: 'Staining Station 1', barcodeCode: 'STAINING-01', facilityId: 'c-fenwick-general', workflowStage: 'Staining', status: 'Active', supportsEngraving: false, supportsPrinting: false },
   { id: 'station-stain-2', name: 'Staining Station 2', barcodeCode: 'STAINING-02', facilityId: 'c-fenwick-general', workflowStage: 'Staining', status: 'Active', supportsEngraving: false, supportsPrinting: false },
   { id: 'station-archive-1', name: 'Slide Archive — Shelf 12', barcodeCode: 'ARCHIVE-12', facilityId: 'c-fenwick-general', workflowStage: 'Slide Archival', status: 'Active', supportsEngraving: false, supportsPrinting: false },
+  // Batch 356 (PS-326): the molecular bay where the seeded Panther instruments
+  // sit (services/equipment/), so worklist dispatch can check the station.
+  { id: 'station-molecular-1', name: 'Molecular — Amplification Bay', barcodeCode: 'MOLECULAR-01', facilityId: 'c-fenwick-general', workflowStage: 'Other', status: 'Active', supportsEngraving: false, supportsPrinting: false },
 ];
 
 const STORAGE_KEY = 'scan_stations';
 
+// Batch 357: a browser that stored stations before a seed station was added
+// (e.g. the molecular bay, Batch 356) gets it without a Demo Reset. Stations
+// can't be deleted, so a missing seed id is always a new seed record.
 function load(): ScanStation[] {
-  return storageGet<ScanStation[]>(STORAGE_KEY, SEED_STATIONS);
+  const { records, added } = withMissingSeedRecords(storageGet<ScanStation[] | null>(STORAGE_KEY, null), SEED_STATIONS);
+  if (added > 0) storageSet(STORAGE_KEY, records);
+  return records;
 }
 
 function save(stations: ScanStation[]): void {

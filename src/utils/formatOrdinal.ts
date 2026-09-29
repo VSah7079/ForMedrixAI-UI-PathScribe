@@ -17,7 +17,8 @@
 const ORDINAL_SUFFIX_EN = ['th', 'st', 'nd', 'rd'];
 
 export function formatOrdinal(n: number, lang: string): string {
-  switch (lang) {
+  // Batch 362: a regional variant (nl-BE) uses its language's form.
+  switch (lang.split('-')[0]) {
     case 'fr': return n === 1 ? '1er' : `${n}e`;
     case 'de': return `${n}.`;
     case 'nl': return `${n}e`;

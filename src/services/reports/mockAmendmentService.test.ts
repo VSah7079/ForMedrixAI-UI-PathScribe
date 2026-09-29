@@ -124,3 +124,28 @@ describe('mockAmendmentService - real reportInstanceId/specimenId structured lin
     }
   });
 });
+
+describe('changeDraftType (Batch 380)', () => {
+  beforeEach(() => { localStorage.clear(); });
+  it('a new draft follows the modal to a minor amendment or an addendum, renumbered for that type', async () => {
+    const prior = await mockAmendmentService.startDraft({ caseId: 'CASE-T', type: 'addendum', authoringPathologist });
+    await mockAmendmentService.release(prior.ok ? prior.data.id : '', { body: 'IHC', addendumTitle: 'IHC', reasonId: 'r1' });
+    const draft = await mockAmendmentService.startDraft({ caseId: 'CASE-T', type: 'amendment', authoringPathologist });
+    if (!draft.ok) throw new Error('no draft');
+    const minor = await mockAmendmentService.changeDraftType(draft.data.id, 'correction');
+    expect(minor.ok && [minor.data.type, minor.data.sequenceNumber]).toEqual(['correction', 1]);
+    // Saved as a minor amendment, it no longer needs the clinician notification.
+    expect((await mockAmendmentService.captureFields(draft.data.id, { explanationOfChange: 'Typo', reasonId: 'r1', originalReportSnapshot: null })).ok).toBe(true);
+    const add = await mockAmendmentService.startDraft({ caseId: 'CASE-T', type: 'amendment', authoringPathologist });
+    if (!add.ok) throw new Error('no draft');
+    const addendum = await mockAmendmentService.changeDraftType(add.data.id, 'addendum');
+    expect(addendum.ok && [addendum.data.type, addendum.data.sequenceNumber]).toEqual(['addendum', 2]);
+  });
+  it('a draft whose fields were already captured keeps its type; the same type is a no-op', async () => {
+    const draft = await mockAmendmentService.startDraft({ caseId: 'CASE-U', type: 'correction', authoringPathologist });
+    if (!draft.ok) throw new Error('no draft');
+    await mockAmendmentService.captureFields(draft.data.id, { explanationOfChange: 'Typo', reasonId: 'r1', originalReportSnapshot: null });
+    expect((await mockAmendmentService.changeDraftType(draft.data.id, 'correction')).ok).toBe(true);
+    expect((await mockAmendmentService.changeDraftType(draft.data.id, 'addendum')).ok).toBe(false);
+  });
+});

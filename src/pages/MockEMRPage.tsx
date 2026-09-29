@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { caseRouter } from '@/services/cases/CaseRouter';
@@ -69,7 +69,7 @@ const MockEMRPage: React.FC<MockEMRPageProps> = ({ patientId: patientIdProp }) =
         </div>
         <div className="ps-mockemr-nopatient-body">
           <div className="ps-mockemr-nopatient-title">{t('mockEmr.noPatientFound')}</div>
-          <div className="ps-mockemr-nopatient-sub">
+          <div className="ps-mockemr-nopatient-sub" data-phi="mrn">
             {patientId ? t('mockEmr.noRecordForMrn', { patientId }) : t('mockEmr.noPatientIdentifier')}
           </div>
         </div>

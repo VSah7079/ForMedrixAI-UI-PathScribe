@@ -13,13 +13,24 @@
  *   entry.site                          → specimen.collection.bodySite
  *   entry.laterality                    → appended to description
  *   entry.procedure                     → specimen.collection.method
+ *
+ * Batch 380 (PS-359): what Save needs comes from the organisation's Field
+ * Requirements (report page, "Add or edit specimen"). The label and the
+ * description are locked as always required; site, laterality, method,
+ * container, complexity and the SNOMED codes can be required. The check is
+ * services/fieldRequirements/reportPageChecks.ts. Save can also be said
+ * ("save specimen", SPECIMEN_EDIT_SAVE).
+ * Laterality chosen here was never saved; it now goes to
+ * specimen.collection.laterality.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import React, { useState, useEffect, useCallback, useMemo } from 'react';
+import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import '@/pathscribe.css';
 import { useSpecimenDictionary } from '@/components/Config/System/useSpecimenDictionary';
-import { containerTypeService } from '@/services';
+import { containerTypeService, actionRegistryService, specimenEditProblems, reportFieldRequired } from '@/services';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
+import { formatList } from '@/utils/formatList';
 import type { ContainerType, ContainerCategory } from '@/services/containerTypes/IContainerTypeService';
 import type { Specimen, SpecimenLisStatus, SpecimenComplexity } from '@/types/case/Specimen';
 import { findForeignIdCollision } from '@/utils/foreignIdCollision';
@@ -76,8 +87,11 @@ const genId = () => crypto.randomUUID();
 const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
   specimen, nextLabel, existingSpecimens, isOrchestrationMode, effectiveComplexity, onSave, onClose,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const isEdit = !!specimen;
+  const requirements = useFieldRequirements('report');
+  const required = (id: string) => reportFieldRequired(requirements, id);
+  const labelClass = (id: string) => `ps-specedit-label${required(id) ? ' ps-specedit-label--required' : ''}`;
   const { dictionary } = useSpecimenDictionary();
 
   // ── Form state ───────────────────────────────────────────────────────────
@@ -85,7 +99,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
   const [description, setDescription] = useState(specimen?.description ?? '');
   const [bodySite,    setBodySite]    = useState(specimen?.collection?.bodySite  ?? '');
   const [method,      setMethod]      = useState(specimen?.collection?.method    ?? '');
-  const [laterality,  setLaterality]  = useState('');
+  const [laterality,  setLaterality]  = useState(specimen?.collection?.laterality ?? '');
   const [container,   setContainer]   = useState(specimen?.container?.type       ?? '');
   const [containerTypes, setContainerTypes] = useState<ContainerType[]>([]);
   useEffect(() => {
@@ -163,18 +177,19 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
 
   // ── Validation ────────────────────────────────────────────────────────────
   const validate = (): boolean => {
+    const problems = specimenEditProblems(
+      { label, description, bodySite, laterality, method, container, complexity, snomedTypeCode: snomedCode, snomedSiteCode: siteCode },
+      existingSpecimens.filter(s => s.id !== specimen?.id).map(s => s.label),
+      requirements,
+    );
     const e: Record<string, string> = {};
-    const trimLabel = label.trim().toUpperCase();
-    if (!trimLabel) {
-      e.label = t('specimenEditModal.errors.labelRequired');
-    } else {
-      // Check uniqueness (allow same label when editing the same specimen)
-      const conflict = existingSpecimens.find(s =>
-        s.label.toUpperCase() === trimLabel && s.id !== specimen?.id
-      );
-      if (conflict) e.label = t('specimenEditModal.errors.labelExists', { label: trimLabel });
+    if (problems.label === 'required') e.label = t('specimenEditModal.errors.labelRequired');
+    if (problems.label === 'exists') e.label = t('specimenEditModal.errors.labelExists', { label: label.trim().toUpperCase() });
+    if (problems.missing.includes('specimenDescription')) e.description = t('specimenEditModal.errors.descriptionRequired');
+    const others = problems.missing.filter(id => id !== 'specimenDescription');
+    if (others.length) {
+      e.other = t('fieldRequirements.stillRequired', { fields: formatList(others.map(id => t(`fieldRequirements.fields.report.${id}`)), i18n.language) });
     }
-    if (!description.trim()) e.description = t('specimenEditModal.errors.descriptionRequired');
     setErrors(e);
     return Object.keys(e).length === 0;
   };
@@ -210,8 +225,9 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
       complexity,
       collection: {
         ...(specimen?.collection ?? {}),
-        bodySite: bodySite.trim() || undefined,
-        method:   method.trim()   || undefined,
+        bodySite:   bodySite.trim() || undefined,
+        method:     method.trim()   || undefined,
+        laterality: laterality      || undefined,
       },
       container:   container.trim() ? { type: container.trim() } : specimen?.container,
       snomedTypeCode: snomedCode.trim() || undefined,
@@ -223,6 +239,13 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
     };
     onSave(built);
   };
+
+  // Voice/keyboard "save specimen": the same Save, with the same checks.
+  const saveRef = useRef(handleSave);
+  saveRef.current = handleSave;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'SPECIMEN_EDIT_SAVE') saveRef.current();
+  }), []);
 
   const selectedEntryObj = selectedEntry ? dictionary.find(e => e.id === selectedEntry) : null;
 
@@ -300,7 +323,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
 
             {/* Label */}
             <div className="ps-specedit-field-group">
-              <label className="ps-specedit-label ps-specedit-label--required">{t('specimenEditModal.fields.specimenLabel')}</label>
+              <label className={labelClass('specimenLabel')}>{t('specimenEditModal.fields.specimenLabel')}</label>
               <div className="ps-specedit-label-row">
                 <span className="ps-specedit-label-badge">{label || '?'}</span>
                 <input
@@ -317,7 +340,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
 
             {/* Description */}
             <div className="ps-specedit-field-group">
-              <label className="ps-specedit-label ps-specedit-label--required">{t('specimenEditModal.fields.description')}</label>
+              <label className={labelClass('specimenDescription')}>{t('specimenEditModal.fields.description')}</label>
               <input
                 className={`ps-specedit-input${errors.description ? ' ps-specedit-input--error' : ''}`}
                 value={description}
@@ -329,7 +352,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
 
             {/* Complexity */}
             <div className="ps-specedit-field-group">
-              <label className="ps-specedit-label">{t('specimenEditModal.complexity.label')}</label>
+              <label className={labelClass('complexity')}>{t('specimenEditModal.complexity.label')}</label>
               <div className="ps-specedit-complexity-row">
                 <button
                   type="button"
@@ -369,7 +392,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             {/* Site + Laterality */}
             <div className="ps-specedit-row-2col">
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">{t('specimenEditModal.fields.anatomicSite')}</label>
+                <label className={labelClass('anatomicSite')}>{t('specimenEditModal.fields.anatomicSite')}</label>
                 <input
                   className="ps-specedit-input"
                   value={bodySite}
@@ -378,7 +401,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
                 />
               </div>
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">{t('specimenEditModal.fields.laterality')}</label>
+                <label className={labelClass('laterality')}>{t('specimenEditModal.fields.laterality')}</label>
                 <select
                   className="ps-specedit-input"
                   value={laterality}
@@ -395,7 +418,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             {/* Method + Container */}
             <div className="ps-specedit-row-2col">
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">{t('specimenEditModal.fields.collectionMethod')}</label>
+                <label className={labelClass('collectionMethod')}>{t('specimenEditModal.fields.collectionMethod')}</label>
                 <input
                   className="ps-specedit-input"
                   value={method}
@@ -404,7 +427,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
                 />
               </div>
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">{t('specimenEditModal.fields.containerType')}</label>
+                <label className={labelClass('containerType')}>{t('specimenEditModal.fields.containerType')}</label>
                 <select
                   className="ps-specedit-input"
                   value={container}
@@ -429,7 +452,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
             {/* SNOMED codes */}
             <div className="ps-specedit-row-2col">
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">{t('specimenEditModal.fields.snomedType')}</label>
+                <label className={labelClass('snomedTypeCode')}>{t('specimenEditModal.fields.snomedType')}</label>
                 <input
                   className="ps-specedit-input"
                   value={snomedCode}
@@ -438,7 +461,7 @@ const SpecimenEditModal: React.FC<SpecimenEditModalProps> = ({
                 />
               </div>
               <div className="ps-specedit-field-group">
-                <label className="ps-specedit-label">{t('specimenEditModal.fields.snomedSite')}</label>
+                <label className={labelClass('snomedSiteCode')}>{t('specimenEditModal.fields.snomedSite')}</label>
                 <input
                   className="ps-specedit-input"
                   value={siteCode}

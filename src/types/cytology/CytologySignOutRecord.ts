@@ -5,13 +5,12 @@
 // auditable-record posture (CytologyReviewRecord, Phase 5; QaActivityRecord
 // before it). One real, immutable record per real sign-out event.
 //
-// Real, honest scoping: this is this app's own real, generic
-// "immutable record of release" concept (ReportSnapshot,
-// types/case/ReportSnapshot.ts) applied to cytology — but genuinely
-// simpler, since it carries real, structured report content
-// (CytologyReportContent) directly rather than a PDF blob reference.
-// The real PDF-rendering/storage infrastructure ReportSnapshot assumes
-// is separate, substantial work this phase does not build.
+// Real, honest scoping: this is this app's "immutable record of
+// release" concept (ReportVersionRecord, types/reports/) applied to
+// cytology — but simpler, since it carries structured report content
+// (CytologyReportContent) directly rather than a rendered PDF.
+// (Batch 366, PS-68: this used to point at ReportSnapshot, an unused
+// earlier design that has been removed.)
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { CytologyReportContent } from './CytologyReportContent';

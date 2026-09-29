@@ -4,6 +4,8 @@ import type { ServiceResult } from '../types';
 import type { IBillingRuleService } from './IBillingRuleService';
 import type { BillingRuleVersion } from '@/types/billing/BillingRuleVersion';
 import { resolveBillingRuleAt } from './resolveBillingRuleAt';
+import { applyNaturalSunset } from './codeEngine/naturalSunset';
+import { listAllSites, getOrganisation } from '../organisation/organisationService';
 
 const STORAGE_KEY = 'billing_rule_versions_v1';
 
@@ -124,8 +126,37 @@ const SEED_VERSIONS: BillingRuleVersion[] = [
   { billingCode: '88307', version: 2, effectiveFrom: '2027-01-01', effectiveTo: null, status: 'PENDING_APPROVAL', cpt: '88307', description: 'Code 88307 — Specimen Level', rvuWork: 1.58, level: 'specimen', billingType: 'Global', quantityRules: 'per specimen', country: 'US', createdAt: '2026-08-20T09:00:00.000Z', createdBy: 'PATH-UK-002', changeReason: 'Illustrative example ahead of the annual CMS Physician Fee Schedule update cycle (final rule typically released in November for the following year) - RVU delta shown is for demo purposes only, not a verified real 2027 figure.', submittedForApprovalBy: 'PATH-UK-002', submittedForApprovalAt: '2026-08-20T09:00:00.000Z' },
 ];
 
-const load    = (): BillingRuleVersion[] => storageGet<BillingRuleVersion[]>(STORAGE_KEY, SEED_VERSIONS);
-const persist = (versions: BillingRuleVersion[]) => storageSet(STORAGE_KEY, versions);
+// PS-89 §10 (Batch 333): rows stored before the Code Engine have no
+// vocabulary (and a few no country); they are read as CPT / US. This is a
+// field completion, not a new version, so it needs no changeReason.
+const backfill = (v: BillingRuleVersion): BillingRuleVersion =>
+  (v.vocabulary && v.country ? v : { ...v, vocabulary: v.vocabulary ?? 'CPT', country: v.country ?? 'US' });
+
+/** All stored billing rule versions (shared with the Code Engine's
+ *  import service). */
+export const loadBillingRuleVersions = (): BillingRuleVersion[] => storageGet<BillingRuleVersion[]>(STORAGE_KEY, SEED_VERSIONS).map(backfill);
+export const persistBillingRuleVersions = (versions: BillingRuleVersion[]) => storageSet(STORAGE_KEY, versions);
+const load    = loadBillingRuleVersions;
+const persist = persistBillingRuleVersions;
+
+/** The country of the organisation a billing site belongs to, for the
+ *  country filter (PS-89 §8). Undefined when unknown: no filtering. */
+async function countryForSite(siteId: string | undefined): Promise<string | undefined> {
+  if (!siteId) return undefined;
+  try {
+    const site = (await listAllSites()).find(s => s.id === siteId);
+    if (!site?.organisationId) return undefined;
+    return (await getOrganisation(site.organisationId))?.country;
+  } catch {
+    return undefined;
+  }
+}
+
+/** A row created by a bulk import is decided with its job, not alone. */
+const importJobRowError = (v: BillingRuleVersion) =>
+  v.importJobId && v.status === 'PENDING_APPROVAL'
+    ? `Version ${v.version} of "${v.billingCode}" belongs to import job ${v.importJobId}; approve or reject the job as a whole.`
+    : null;
 
 const ok  = <T>(data: T):     ServiceResult<T> => ({ ok: true,  data });
 const err = <T>(msg: string): ServiceResult<T> => ({ ok: false, error: msg });
@@ -145,8 +176,14 @@ export const mockBillingRuleService: IBillingRuleService = {
     return ok(load().filter(v => v.billingCode === billingCode && (v.siteId ?? undefined) === (siteId ?? undefined)).sort((a, b) => a.version - b.version));
   },
 
-  async getActiveRuleAt(billingCode, dateOfService, siteId) {
-    return ok(resolveBillingRuleAt(billingCode, dateOfService, load(), siteId));
+  async getActiveRuleAt(billingCode, dateOfService, siteId, options) {
+    // PS-89 §8: the country comes from site → organisation unless the
+    // caller gives one; vocabulary defaults to CPT.
+    const country = options?.country ?? await countryForSite(siteId);
+    return ok(resolveBillingRuleAt(billingCode, dateOfService, load(), siteId, {
+      vocabulary: options?.vocabulary ?? 'CPT',
+      ...(country ? { country } : {}),
+    }));
   },
 
   async createVersion(input) {
@@ -186,6 +223,7 @@ export const mockBillingRuleService: IBillingRuleService = {
       // explicitly).
       status: input.status ?? 'DRAFT',
       createdAt: new Date().toISOString(),
+      vocabulary: input.vocabulary ?? 'CPT',
     };
     persist([...versions, newVersion]);
     return ok(newVersion);
@@ -210,6 +248,8 @@ export const mockBillingRuleService: IBillingRuleService = {
     if (idx === -1) return err(`No real version ${version} found for billingCode "${billingCode}"${siteId ? ` at site "${siteId}"` : ' (enterprise-wide)'}.`);
     const target = versions[idx];
     if (target.status !== 'PENDING_APPROVAL') return err(`Version ${version} of "${billingCode}" is not real pending approval (currently ${target.status}).`);
+    const jobRow = importJobRowError(target);
+    if (jobRow) return err(jobRow);
     // Real, per direct guidance's own Four-Eyes Principle (dual
     // control) requirement - hard-enforced here, not just in the UI.
     // The person who drafted or submitted a change can never be the
@@ -218,21 +258,15 @@ export const mockBillingRuleService: IBillingRuleService = {
       return err('Four-Eyes Principle: the person who drafted or submitted this change cannot approve it. A different, real reviewer is required.');
     }
 
-    const versionsWithApproval = [...versions];
-    // Real, clean audit history: retires whichever version was
-    // previously ACTIVE within this same (billingCode, siteId) scope,
-    // if any - rather than leaving two ACTIVE rows to quietly compete
-    // via resolveBillingRuleAt's own tie-break (see that file's own
-    // comment on why that "shouldn't happen with correctly governed
-    // data").
-    const priorActiveIdx = versionsWithApproval.findIndex(v => v.billingCode === billingCode && (v.siteId ?? undefined) === (siteId ?? undefined) && v.status === 'ACTIVE');
-    if (priorActiveIdx !== -1) {
-      versionsWithApproval[priorActiveIdx] = { ...versionsWithApproval[priorActiveIdx], status: 'RETIRED', effectiveTo: target.effectiveFrom };
-    }
-
+    // PS-89 §6 natural sunset (Batch 333). This used to mark the prior
+    // ACTIVE version RETIRED on approval, so approving a future-dated
+    // change left every earlier date of service with no rule. Now the
+    // prior version stays ACTIVE and is closed at the moment before the
+    // new one starts (codeEngine/naturalSunset.ts).
     const updated: BillingRuleVersion = { ...target, status: 'ACTIVE', reviewedBy, reviewedAt: new Date().toISOString() };
+    const versionsWithApproval = [...versions];
     versionsWithApproval[idx] = updated;
-    persist(versionsWithApproval);
+    persist(applyNaturalSunset(versionsWithApproval, updated).versions);
     return ok(updated);
   },
 
@@ -243,6 +277,8 @@ export const mockBillingRuleService: IBillingRuleService = {
     if (idx === -1) return err(`No real version ${version} found for billingCode "${billingCode}"${siteId ? ` at site "${siteId}"` : ' (enterprise-wide)'}.`);
     const target = versions[idx];
     if (target.status !== 'PENDING_APPROVAL') return err(`Version ${version} of "${billingCode}" is not real pending approval (currently ${target.status}).`);
+    const jobRow = importJobRowError(target);
+    if (jobRow) return err(jobRow);
     // Same real, hard-enforced dual-control gate as approveVersion.
     if (reviewedBy === target.createdBy || reviewedBy === target.submittedForApprovalBy) {
       return err('Four-Eyes Principle: the person who drafted or submitted this change cannot reject it either. A different, real reviewer is required.');

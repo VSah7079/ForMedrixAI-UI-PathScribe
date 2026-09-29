@@ -10,7 +10,7 @@
 // own header for the full, load-bearing caveat on what that actually
 // means (NOT real cryptographic security).
 //
-// Deliberately calls mockCaseService.getCase() directly rather than
+// Deliberately calls caseService.getCase() directly rather than
 // routing through caseRouter.getCase() — caseRouter's own
 // resolveCaseAccess() enforces PathScribe's INTERNAL session/tenant
 // model (services/auth/caseAccessControl.ts), which has no concept of
@@ -31,8 +31,8 @@
 
 import React, { useEffect, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
-import { useParams } from 'react-router-dom';
-import { mockCaseService } from '@/services/cases/mockCaseService';
+import { useParams } from 'react-router';
+import { caseService } from '@/services';
 import { consultTokenService } from '@/services';
 import type { Case } from '@/types/case/Case';
 import type { ConsultToken, ConsultOpinionSignedStatus } from '@/services/consultAccess/IConsultTokenService';
@@ -89,7 +89,7 @@ const ExternalConsultViewPage: React.FC = () => {
       const record = (res as { ok: true; data: ConsultToken }).data;
       setTokenRecord(record);
 
-      const c = await mockCaseService.getCase(record.scope.caseId);
+      const c = await caseService.getCase(record.scope.caseId);
       if (cancelled) return;
       if (!c) { setStatus('invalid'); return; }
       setCaseRecord(c);
@@ -151,7 +151,7 @@ const ExternalConsultViewPage: React.FC = () => {
         <div className="ps-extconsult-section">
           <div className="ps-extconsult-eyebrow">{t('externalConsultViewPage.eyebrow')}</div>
           <div className="ps-extconsult-accession" data-phi="accession">{caseRecord.accession?.accessionNumber}</div>
-          <div className="ps-extconsult-patient-line">
+          <div className="ps-extconsult-patient-line" data-phi="true">
             {caseRecord.patient?.lastName}, {caseRecord.patient?.firstName}
             {caseRecord.patient?.dateOfBirth && <> · {t('externalConsultViewPage.dobPrefix', { date: caseRecord.patient.dateOfBirth })}</>}
           </div>

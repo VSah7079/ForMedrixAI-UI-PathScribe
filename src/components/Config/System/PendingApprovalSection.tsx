@@ -3,32 +3,41 @@
 // Real, per direct guidance's own Four-Eyes Principle (dual control)
 // requirement: a real, second-person review queue for every billing
 // rule version genuinely PENDING_APPROVAL, across every billingCode
-// and site. The service layer (mockBillingRuleService.ts) is the real
+// and site. The service layer (billingRuleService.ts) is the real
 // backstop - approveVersion/rejectVersion hard-reject a reviewer who
 // matches the drafter or submitter regardless of what this UI does or
 // doesn't check - but the visual lockout here means a reviewer never
 // has to find that out the hard way: the actions are genuinely
 // disabled, with a clear, honest explanation, before they'd even try.
+//
+// PS-89 (Batch 334): bulk billing-code import jobs are decided here as a
+// whole (one approval for the job). Their versions no longer appear in
+// the per-row list (codeEngine/pendingImportQueue.ts). Services now come
+// from @/services, not the mock files.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { mockBillingRuleService } from '@/services/billing/mockBillingRuleService';
-import { mockModifierDictionaryService } from '@/services/billing/mockModifierDictionaryService';
 import type { ModifierTableVersion } from '@/services/billing/ModifierTableVersion';
-import { mockNcciEditService } from '@/services/billing/mockNcciEditService';
 import type { NcciPtpEditImport } from '@/types/billing/NcciPtpEdit';
-import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
 import type { RvuTableVersion } from '@/services/billing/RvuTableVersion';
 import { listAllSites } from '@/services/organisation/organisationService';
 import type { Site } from '@/services/organisation/organisationService';
 import type { BillingRuleVersion } from '@/types/billing/BillingRuleVersion';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
-import { auditService } from '@/services';
+import {
+  auditService, billingRuleService, codeImportService, modifierDictionaryService, ncciEditService, rvuCodeMapService,
+} from '@/services';
+import type { CodeImportJob } from '@/types/billing/CodeImportJob';
+import { isImportJobLockedFor, pendingImportJobs, perRowPendingVersions } from '@/services/billing/codeEngine/pendingImportQueue';
+import { formatDate } from '@/utils/formatDate';
 import { siteLabel } from './BillingDictionarySection';
 
 const PendingApprovalSection: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const [pendingJobs, setPendingJobs] = useState<CodeImportJob[]>([]);
+  const [rejectingJobId, setRejectingJobId] = useState<string | null>(null);
+  const [jobRejectionReason, setJobRejectionReason] = useState('');
   const [pending, setPending] = useState<BillingRuleVersion[]>([]);
   const [pendingModifiers, setPendingModifiers] = useState<ModifierTableVersion[]>([]);
   const [pendingNcci, setPendingNcci] = useState<NcciPtpEditImport[]>([]);
@@ -52,8 +61,9 @@ const PendingApprovalSection: React.FC = () => {
   };
 
   const refresh = useCallback(() => {
-    Promise.all([mockBillingRuleService.getAll(), listAllSites(), mockModifierDictionaryService.getAllVersions(), mockNcciEditService.getAllImports(), mockRvuCodeMapService.getAllVersions()]).then(([versionsRes, sitesRes, modifierRes, ncciRes, rvuRes]) => {
-      if (versionsRes.ok) setPending(versionsRes.data.filter(v => v.status === 'PENDING_APPROVAL'));
+    Promise.all([billingRuleService.getAll(), listAllSites(), modifierDictionaryService.getAllVersions(), ncciEditService.getAllImports(), rvuCodeMapService.getAllVersions(), codeImportService.listJobs()]).then(([versionsRes, sitesRes, modifierRes, ncciRes, rvuRes, jobsRes]) => {
+      if (versionsRes.ok) setPending(perRowPendingVersions(versionsRes.data));
+      if (jobsRes.ok) setPendingJobs(pendingImportJobs(jobsRes.data));
       setSites(sitesRes);
       if (modifierRes.ok) setPendingModifiers(modifierRes.data.filter(v => v.approvalStatus === 'PENDING_APPROVAL'));
       if (ncciRes.ok) setPendingNcci(ncciRes.data.filter(i => i.approvalStatus === 'PENDING_APPROVAL'));
@@ -83,7 +93,7 @@ const PendingApprovalSection: React.FC = () => {
 
   const handleApprove = async (v: BillingRuleVersion) => {
     setErrorMsg(null);
-    const res = await mockBillingRuleService.approveVersion(v.billingCode, v.version, v.siteId, currentUserId);
+    const res = await billingRuleService.approveVersion(v.billingCode, v.version, v.siteId, currentUserId);
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
       type: 'user',
@@ -99,7 +109,7 @@ const PendingApprovalSection: React.FC = () => {
   const handleReject = async (v: BillingRuleVersion) => {
     setErrorMsg(null);
     if (!rejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
-    const res = await mockBillingRuleService.rejectVersion(v.billingCode, v.version, v.siteId, currentUserId, rejectionReason.trim());
+    const res = await billingRuleService.rejectVersion(v.billingCode, v.version, v.siteId, currentUserId, rejectionReason.trim());
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
       type: 'user',
@@ -114,9 +124,26 @@ const PendingApprovalSection: React.FC = () => {
     refresh();
   };
 
+  const handleApproveJob = async (job: CodeImportJob) => {
+    setErrorMsg(null);
+    const res = await codeImportService.approveJob(job.jobId, currentUserId, { actorLabel: currentUserDisplayName() });
+    if (res.ok === false) { setErrorMsg(t(`codeImportSection.refusals.${res.code}`)); return; }
+    refresh();
+  };
+
+  const handleRejectJob = async (job: CodeImportJob) => {
+    setErrorMsg(null);
+    if (!jobRejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
+    const res = await codeImportService.rejectJob(job.jobId, currentUserId, jobRejectionReason.trim(), { actorLabel: currentUserDisplayName() });
+    if (res.ok === false) { setErrorMsg(t(`codeImportSection.refusals.${res.code}`)); return; }
+    setRejectingJobId(null);
+    setJobRejectionReason('');
+    refresh();
+  };
+
   const handleApproveModifier = async (v: ModifierTableVersion) => {
     setErrorMsg(null);
-    const res = await mockModifierDictionaryService.approveVersion(v.id, currentUserId);
+    const res = await modifierDictionaryService.approveVersion(v.id, currentUserId);
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
       type: 'user',
@@ -132,7 +159,7 @@ const PendingApprovalSection: React.FC = () => {
   const handleRejectModifier = async (v: ModifierTableVersion) => {
     setErrorMsg(null);
     if (!modifierRejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
-    const res = await mockModifierDictionaryService.rejectVersion(v.id, currentUserId, modifierRejectionReason.trim());
+    const res = await modifierDictionaryService.rejectVersion(v.id, currentUserId, modifierRejectionReason.trim());
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
       type: 'user',
@@ -149,7 +176,7 @@ const PendingApprovalSection: React.FC = () => {
 
   const handleApproveNcci = async (v: NcciPtpEditImport) => {
     setErrorMsg(null);
-    const res = await mockNcciEditService.approveImport(v.id, currentUserId);
+    const res = await ncciEditService.approveImport(v.id, currentUserId);
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
       type: 'user',
@@ -165,7 +192,7 @@ const PendingApprovalSection: React.FC = () => {
   const handleRejectNcci = async (v: NcciPtpEditImport) => {
     setErrorMsg(null);
     if (!ncciRejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
-    const res = await mockNcciEditService.rejectImport(v.id, currentUserId, ncciRejectionReason.trim());
+    const res = await ncciEditService.rejectImport(v.id, currentUserId, ncciRejectionReason.trim());
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
       type: 'user',
@@ -182,7 +209,7 @@ const PendingApprovalSection: React.FC = () => {
 
   const handleApproveRvu = async (v: RvuTableVersion) => {
     setErrorMsg(null);
-    const res = await mockRvuCodeMapService.approveVersion(v.id, currentUserId);
+    const res = await rvuCodeMapService.approveVersion(v.id, currentUserId);
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
       type: 'user',
@@ -198,7 +225,7 @@ const PendingApprovalSection: React.FC = () => {
   const handleRejectRvu = async (v: RvuTableVersion) => {
     setErrorMsg(null);
     if (!rvuRejectionReason.trim()) { setErrorMsg(t('pendingApprovalSection.rejectionReasonRequired')); return; }
-    const res = await mockRvuCodeMapService.rejectVersion(v.id, currentUserId, rvuRejectionReason.trim());
+    const res = await rvuCodeMapService.rejectVersion(v.id, currentUserId, rvuRejectionReason.trim());
     if (res.ok === false) { setErrorMsg(res.error); return; }
     auditService.logEvent({
       type: 'user',
@@ -264,8 +291,8 @@ const PendingApprovalSection: React.FC = () => {
                     <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.billingCode}</span></td>
                     <td className="ps-conf-td">{v.cpt}</td>
                     <td className="ps-conf-td">{v.rvuWork ?? '—'}</td>
-                    <td className="ps-conf-td">{new Date(v.effectiveFrom).toLocaleDateString()}</td>
-                    <td className="ps-conf-td">{siteLabel(sites, v.siteId)}</td>
+                    <td className="ps-conf-td">{formatDate(v.effectiveFrom, i18n.language)}</td>
+                    <td className="ps-conf-td">{siteLabel(sites, v.siteId, t)}</td>
                     <td className="ps-conf-td">{v.createdBy}</td>
                     <td className="ps-conf-td">{v.submittedForApprovalBy ?? '—'}</td>
                     <td className="ps-conf-td">{v.changeReason ?? '—'}</td>
@@ -321,6 +348,45 @@ const PendingApprovalSection: React.FC = () => {
                 <th key={h} className="ps-conf-th">{h}</th>)}</tr>
             </thead>
             <tbody>
+              {pendingJobs.map(job => {
+                const locked = isImportJobLockedFor(job, currentUserId);
+                const isRejecting = rejectingJobId === job.jobId;
+                return (
+                  <tr key={job.jobId}>
+                    <td className="ps-conf-td">{t('pendingApprovalSection.dictionaries.names.codeImport', { vocabulary: t(`codeImportSection.vocabularies.${job.vocabulary}`) })}</td>
+                    <td className="ps-conf-td">
+                      <span className="ps-conf-identity-name">{job.fileName}</span> ({t('pendingApprovalSection.codeCount', { count: job.codesProcessed.length })})
+                      {job.batchNote && <div className="ps-billing-reason-hint">{job.batchNote}</div>}
+                    </td>
+                    <td className="ps-conf-td">{formatDate(job.timestamp, i18n.language)}</td>
+                    <td className="ps-conf-td">{job.uploadedBy}</td>
+                    <td className="ps-conf-td">
+                      {locked ? (
+                        <span className="ps-billing-reason-hint">
+                          {t('pendingApprovalSection.dictionaries.lockedHint')}
+                        </span>
+                      ) : isRejecting ? (
+                        <div className="ps-conf-row-actions">
+                          <input
+                            className="ps-conf-input"
+                            value={jobRejectionReason}
+                            onChange={e => setJobRejectionReason(e.target.value)}
+                            placeholder={t('pendingApprovalSection.rejectPlaceholder')}
+                            autoFocus
+                          />
+                          <button className="ps-conf-btn-row" onClick={() => handleRejectJob(job)}>{t('pendingApprovalSection.confirmReject')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingJobId(null); setJobRejectionReason(''); setErrorMsg(null); }}>{t('common.cancel')}</button>
+                        </div>
+                      ) : (
+                        <div className="ps-conf-row-actions">
+                          <button className="ps-conf-btn-row" onClick={() => handleApproveJob(job)}>{t('pendingApprovalSection.approve')}</button>
+                          <button className="ps-conf-btn-row" onClick={() => { setRejectingJobId(job.jobId); setJobRejectionReason(''); setErrorMsg(null); }}>{t('pendingApprovalSection.reject')}</button>
+                        </div>
+                      )}
+                    </td>
+                  </tr>
+                );
+              })}
               {pendingModifiers.map(v => {
                 const locked = isModifierLockedForCurrentUser(v);
                 const isRejecting = rejectingModifierId === v.id;
@@ -328,7 +394,7 @@ const PendingApprovalSection: React.FC = () => {
                   <tr key={v.id}>
                     <td className="ps-conf-td">{t('pendingApprovalSection.dictionaries.names.modifier')}</td>
                     <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.label}</span></td>
-                    <td className="ps-conf-td">{new Date(v.effectiveDate).toLocaleDateString()}</td>
+                    <td className="ps-conf-td">{formatDate(v.effectiveDate, i18n.language)}</td>
                     <td className="ps-conf-td">{v.submittedForApprovalBy ?? v.uploadedBy}</td>
                     <td className="ps-conf-td">
                       {locked ? (
@@ -364,7 +430,7 @@ const PendingApprovalSection: React.FC = () => {
                   <tr key={v.id}>
                     <td className="ps-conf-td">{t('pendingApprovalSection.dictionaries.names.ncci')}</td>
                     <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.quarterVersion}</span> ({t('pendingApprovalSection.pairCount', { count: v.pairCount })})</td>
-                    <td className="ps-conf-td">{new Date(v.importedAt).toLocaleDateString()}</td>
+                    <td className="ps-conf-td">{formatDate(v.importedAt, i18n.language)}</td>
                     <td className="ps-conf-td">{v.submittedForApprovalBy ?? v.importedBy}</td>
                     <td className="ps-conf-td">
                       {locked ? (
@@ -400,7 +466,7 @@ const PendingApprovalSection: React.FC = () => {
                   <tr key={v.id}>
                     <td className="ps-conf-td">{t('pendingApprovalSection.dictionaries.names.rvu')}</td>
                     <td className="ps-conf-td"><span className="ps-conf-identity-name">{v.label}</span> ({t('pendingApprovalSection.codeCount', { count: v.entries.length })})</td>
-                    <td className="ps-conf-td">{new Date(v.effectiveDate).toLocaleDateString()}</td>
+                    <td className="ps-conf-td">{formatDate(v.effectiveDate, i18n.language)}</td>
                     <td className="ps-conf-td">{v.submittedForApprovalBy ?? v.uploadedBy}</td>
                     <td className="ps-conf-td">
                       {locked ? (
@@ -429,7 +495,7 @@ const PendingApprovalSection: React.FC = () => {
                   </tr>
                 );
               })}
-              {pendingModifiers.length === 0 && pendingNcci.length === 0 && pendingRvu.length === 0 && (
+              {pendingJobs.length === 0 && pendingModifiers.length === 0 && pendingNcci.length === 0 && pendingRvu.length === 0 && (
                 <tr><td className="ps-conf-empty-row" colSpan={5}>{t('pendingApprovalSection.dictionaries.emptyRow')}</td></tr>
               )}
             </tbody>

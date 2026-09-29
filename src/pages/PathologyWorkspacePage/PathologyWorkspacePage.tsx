@@ -39,12 +39,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../pathscribe.css';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
+import { visibleTiles, type ScreenId } from '@/services/screens/screenAccess';
+import { useCapabilities } from '@/hooks/useCapabilities';
 
 interface SubTile {
   key: string;
+  /** Batch 374: the screen it opens; shown only if the user may open it. */
+  screen: ScreenId;
   title: string;
   description: string;
   route: string;
@@ -68,9 +72,11 @@ export default function PathologyWorkspacePage() {
 
   // Real, same colors each tile already carried as a flat Home tile —
   // see this file's own header for why no re-verification was needed.
-  const tiles: SubTile[] = [
+  const capabilities = useCapabilities();
+  const allTiles: SubTile[] = [
     {
       key: 'cytology',
+      screen: 'cytologyWorkspace',
       title: t('pathologyWorkspace.cytologyTile.title'),
       description: t('pathologyWorkspace.cytologyTile.description'),
       route: '/cytology-worklist',
@@ -79,6 +85,7 @@ export default function PathologyWorkspacePage() {
     },
     {
       key: 'microtomy',
+      screen: 'microtomy',
       title: t('pathologyWorkspace.microtomyTile.title'),
       description: t('pathologyWorkspace.microtomyTile.description'),
       route: '/workstations/microtomy',
@@ -87,6 +94,7 @@ export default function PathologyWorkspacePage() {
     },
     {
       key: 'embedding',
+      screen: 'embedding',
       title: t('pathologyWorkspace.embeddingTile.title'),
       description: t('pathologyWorkspace.embeddingTile.description'),
       route: '/workstations/embedding',
@@ -100,6 +108,7 @@ export default function PathologyWorkspacePage() {
     },
     {
       key: 'slideDistribution',
+      screen: 'slideDistribution',
       title: t('pathologyWorkspace.slideDistributionTile.title'),
       description: t('pathologyWorkspace.slideDistributionTile.description'),
       route: '/workstations/slide-distribution',
@@ -108,13 +117,27 @@ export default function PathologyWorkspacePage() {
     },
     {
       key: 'molecular',
+      screen: 'molecular',
       title: t('pathologyWorkspace.molecularTile.title'),
       description: t('pathologyWorkspace.molecularTile.description'),
       route: '/molecular',
       color: '#7C3AED',
       image: '/molecular.webp',
     },
+    // Batch 375 (Pete): Batch Management moved here from the Home page.
+    {
+      key: 'batchManagement',
+      screen: 'batchManagement',
+      title: t('pathologyWorkspace.batchManagementTile.title'),
+      description: t('pathologyWorkspace.batchManagementTile.description'),
+      route: '/batch-management',
+      color: '#D4A017',
+      image: '/batch_management.webp',
+    },
   ];
+  // Batch 374: only the screens this user may open (services/screens/screenAccess.ts).
+  const shown = new Set(visibleTiles(allTiles.map(x => x.screen), c => capabilities.has(c)));
+  const tiles = allTiles.filter(x => shown.has(x.screen));
 
   return (
     <div className={`ps-page${isLoaded ? ' ps-page--loaded' : ''}`}>
@@ -124,13 +147,10 @@ export default function PathologyWorkspacePage() {
 
       <div className="ps-page-content">
         <main className="ps-home-main">
-          <header
-            className="ps-home-header"
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}
-          >
+          <header className="ps-home-header ps-home-header--split">
             <div>
               <h1 className="ps-home-title">{t('pathologyWorkspace.pageTitle')}</h1>
-              <p className="ps-home-card-desc" style={{ marginTop: 4 }}>{t('pathologyWorkspace.pageSubtitle')}</p>
+              <p className="ps-home-card-desc ps-mt-4">{t('pathologyWorkspace.pageSubtitle')}</p>
             </div>
             <button
               className="ps-btn-ghost-dark"
@@ -160,7 +180,7 @@ export default function PathologyWorkspacePage() {
                     }
                   }}
                   className={`ps-home-card${hovered ? ' ps-home-card--hovered' : ''}`}
-                  style={{ '--card-accent': tile.color, '--card-accent-dim': `${tile.color}40` } as React.CSSProperties}
+                  style={{ '--card-accent': tile.color } as React.CSSProperties}
                 >
                   {tile.image && (
                     <div className="ps-home-card-image" style={{ '--card-image': `url(${tile.image})` } as React.CSSProperties} />

@@ -47,6 +47,12 @@ export interface AbnormalDetectionSignal {
    *  not split into a third 'disputed' state — this app has no real,
    *  reliable way to distinguish those two cases from each other today. */
   outcome: 'confirmed' | 'dismissed';
+  /** The active Validation Study covering this case when the signal was
+   *  captured (services/validationStudies/resolveActiveStudyId.ts), the
+   *  same resolution NarrativeEditSignal.studyId uses. Undefined when no
+   *  active study covers the case. Added Batch 318 (PS-137's one open
+   *  gap). */
+  studyId?: string;
   capturedAt: string;
 }
 
@@ -63,5 +69,8 @@ export interface AbnormalDetectionSignalStats {
 export interface IAbnormalDetectionSignalService {
   recordSignal(input: Omit<AbnormalDetectionSignal, 'id' | 'capturedAt'>): Promise<ServiceResult<AbnormalDetectionSignal>>;
   getByCaseId(caseId: string): Promise<ServiceResult<AbnormalDetectionSignal[]>>;
-  getStats(): Promise<ServiceResult<AbnormalDetectionSignalStats>>;
+  getByStudy(studyId: string): Promise<ServiceResult<AbnormalDetectionSignal[]>>;
+  /** All signals, or only one Validation Study's when `studyId` is given
+   *  (the same filter NarrativeSignalService.getStats takes). */
+  getStats(studyId?: string): Promise<ServiceResult<AbnormalDetectionSignalStats>>;
 }

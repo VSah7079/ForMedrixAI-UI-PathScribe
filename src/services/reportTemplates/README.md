@@ -22,6 +22,10 @@ Real, per direct investigation before building anything: `SynopticReportInstance
 - **Where this is used**: `services/reports/buildOruR01Payload.ts`'s `narrative.diagnosisComment` (every real dispatch) and `narrative.previouslyReportedAs` (Corrected dispatches only) both resolve through this — see `services/reports/README.md`'s own entry for the full account.
 - **Real, honest scope**: there's still no real "save/publish template" UI flow in this app — `validateFinalDiagnosisDesignation.ts` is real and callable the moment one exists, but nothing calls it automatically today. A custom template that never designates a field honestly resolves to `undefined` for both consumers above — a deliberate, honest absence, not a guess.
 
+## `clone(id, name)`: name now required (Batch 317, PS-73)
+
+The copy's name comes from the caller, in the user's language. The English `"(copy)"` fallback is gone, and so is Template List's hard-coded `'My Surgical Pathology Report'` (now `templateListTab.defaultCustomTemplateName`).
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

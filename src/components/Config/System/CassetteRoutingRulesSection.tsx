@@ -15,6 +15,7 @@ import { mockScanStationService } from '../../../services/scanStations/mockScanS
 import { mockFacilityService } from '../../../services/facilities/mockFacilityService';
 import { mockCassetteColorService } from '../../../services/cassetteColors/mockCassetteColorService';
 import type { CassetteRoutingRule, CassetteRuleOrderPriority } from '../../../services/cassetteRouting/ICassetteRoutingRuleService';
+import { duplicateCassetteRoutingRule } from '@/services/duplication/duplicateEntities';
 import type { Protocol } from '../../../services/protocols/IProtocolService';
 import type { ScanStation } from '../../../services/scanStations/IScanStationService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
@@ -251,6 +252,12 @@ const CassetteRoutingRulesSection: React.FC = () => {
     return parts.length > 0 ? parts.join(' · ') : t('cassetteRoutingRulesSection.conditionsSummary.catchAll');
   };
 
+  // Duplicate (PS-73): conditions deep-copied, and the copy starts inactive
+  // so it can't route real cassettes until the admin has made the change it
+  // was copied for (services/duplication/duplicateEntities.ts).
+  const handleDuplicate = (source: CassetteRoutingRule) =>
+    setModal({ mode: 'add', rule: duplicateCassetteRoutingRule(source, name => t('common.copyOfName', { name })) });
+
   const handleSave = async (draft: Draft) => {
     if (modal?.mode === 'add') {
       const res = await mockCassetteRoutingRuleService.create(draft);
@@ -326,6 +333,7 @@ const CassetteRoutingRulesSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
                       <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', rule })}>{t('common.edit')}</button>
+                      <button className="ps-conf-btn-row" onClick={() => handleDuplicate(rule)}>{t('common.duplicate')}</button>
                       <button className="ps-conf-btn-row" onClick={() => handleToggleStatus(rule)}>{rule.active ? t('cassetteRoutingRulesSection.table.deactivateButton') : t('cassetteRoutingRulesSection.table.reactivateButton')}</button>
                     </div>
                   </td>

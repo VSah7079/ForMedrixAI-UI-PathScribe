@@ -39,6 +39,32 @@ The real, narrower gap: `services/reports/buildOruR01Payload.ts` never knew to l
 - **Real, immediate effect**: an Autopsy case now genuinely passes through Component B (print) and Component C (delivery rules) for the first time, exactly like Surg Path and Cytology. Because Autopsy reuses the real, existing `SynopticReportInstance`/PDF-generation infrastructure rather than needing anything new, its print path is already fully real today — unlike Cytology, there's no separate, known PDF gap here.
 - **Not verified live this pass** — no seeded Autopsy case exists in this environment (Autopsy cases are created fresh via the Accession flow), and building one from scratch through that flow just to reach a genuine PAD/FAD sign wasn't attempted. Relying on the direct, layered unit coverage instead: `buildOruR01Payload.test.ts`'s new tests confirm the right snapshot is read for the right dispatch type; `signAutopsyReport.test.ts`'s new tests confirm the publish call fires correctly (or doesn't, for a countersigned release) with the right report type and arguments.
 
+## Signing authority for PAD/FAD (Batch 331, PS-327)
+
+Before this batch, anyone who reached the Sign PAD / Sign FAD button could sign. `signAutopsyReport.ts` now runs the same checks as Surgical Pathology, plus a forensic one (Pete's direction).
+
+1. **Countersign first.** A resident or provisional hire is routed for countersign rather than refused. It uses the same configured countersign types as Surgical Pathology: `resolveCountersignRequiredTypeIds`, per lab and per country.
+2. **Signing authority for everyone else.** `canFinalizeCase` checks the per-lab `authorityOverrides` and the PS-341 country profiles.
+   - **Country profile:** per Pete, the country profile comes from the case's legal/coroner jurisdiction (`autopsy.jurisdiction`), not the performing lab's country. It falls back to the lab's country if the case has none.
+   - **Lab overrides still win.**
+3. **Forensic cases** (`caseAuthority: 'medicolegal_forensic'`) also need an **active jurisdictional appointment**.
+   - **What counts:** a provider credential that normalizes to `FORENSIC_AUTOPSY_SIGNOUT`, for the case's jurisdiction, inside its effective and expiry dates. The rule is `resolveForensicSignOutAuthority.ts` (new, pure, with tests).
+   - **Where it's read:** from the signer's staff record at the moment of signing.
+   - **No admin override:** an administrator account can't sign a forensic report unless it is appointed.
+   - **Recording an appointment:** Staff → edit → **Jurisdictional credentials & appointments**.
+
+- **Error codes:** results now carry an `errorCode` (`NOT_AUTHORIZED`, `NO_FORENSIC_APPOINTMENT`, `PAD_REQUIRED` and others). The page shows translated text for each.
+- **Checked in the browser:**
+  1. A forensic US case was refused for the demo admin with no appointment.
+  2. With a US medicolegal appointment on the staff record, the PAD signed and the FAD banner appeared.
+- **Tests:** `signAutopsyReport.test.ts` gains 4 tests:
+  - non-participant refused;
+  - attending signs a hospital case with no appointment;
+  - forensic case refused without an appointment, with the wrong jurisdiction, and when expired, then allowed;
+  - resident on a forensic case still routed for countersign.
+- **Not done:**
+  - **Sub-national appointments.** Jurisdictions are country-level, so this stops cross-country sign-out but not cross-county. A US medical examiner's county or state, or a coroner's area, would need a region on both the case and the credential. Pete agreed this is a follow-up.
+  - **Still-English text.** The adjacent "Ready for Body Release" banner on the report page is still English. It's outside this change.
 
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*

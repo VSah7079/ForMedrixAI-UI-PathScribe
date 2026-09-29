@@ -26,11 +26,31 @@
 import '@/i18n/config';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { renderHook as rtlRenderHook, act } from '@testing-library/react';
+import { renderHook as rtlRenderHook, act, waitFor } from '@testing-library/react';
 import { AuthProvider } from '@/contexts/AuthContext';
 import { useSpecimenBlockManagement } from '../useSpecimenBlockManagement';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
 import type { Case } from '@/types/case/Case';
+
+// Real, per PS-55 gap-closing pass: the printed-label path
+// (attemptPrintedLabel, above) was already real and already routed
+// through the real QZ Tray dispatch (dispatchZplLabel.ts) whenever a
+// station's configured printer profile has bridgeType 'qz_tray' — but
+// nothing at THIS integration layer (station lookup → printer profile
+// lookup → printCassetteLabel/printSlideLabel call) was ever actually
+// exercised by a test; only the lower-level units
+// (printCassetteSlideLabel.test.ts, dispatchZplLabel's own real
+// routing) were. Mocking only the true external boundary
+// (qzTrayBridge.ts's own qz-tray calls), same real, established
+// pattern printCassetteSlideLabel.test.ts already uses — everything
+// above it (mockScanStationService, printerProfileService,
+// printSettingsService) is the app's own real, seeded mock services,
+// exercised for real here.
+vi.mock('@/utils/labels/qzTrayBridge', () => ({
+  printZplViaQzTray: vi.fn(),
+}));
+import { printZplViaQzTray } from '@/utils/labels/qzTrayBridge';
+import { printSettingsService } from '@/services/index';
 
 // Real fix, per direct follow-up: "I would like to support both slide
 // engraving and printed labels." useSpecimenBlockManagement now calls
@@ -268,7 +288,7 @@ describe('useSpecimenBlockManagement — handleConfirmTriage / handleOverrideTri
       const { caseRouter } = await import('@/services/cases/CaseRouter');
       const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData: withTriage(), showToast })));
       await act(async () => { await result.current.handleReleaseGrossingBlocks('SP-1', ['BLK-1']); });
-      expect(showToast).toHaveBeenCalledWith('Cannot release blocks: Specimen triage is incomplete.');
+      expect(showToast).toHaveBeenCalledWith('Cannot release blocks: Specimen triage is incomplete.', 'warning');
       expect(caseRouter.updateCase).not.toHaveBeenCalled();
     });
 
@@ -354,7 +374,7 @@ describe('useSpecimenBlockManagement — handleAddBlock', () => {
     expect(finalBlock.lisRequestStatus).toBe('rejected');
 
     expect(showToast).toHaveBeenCalledWith(expect.stringContaining('awaiting LIS confirmation'));
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('LIS rejected'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('LIS rejected'), 'warning');
   });
 
   it('adds a real block with the next sequential label once the LIS acknowledges', async () => {
@@ -405,7 +425,7 @@ describe('useSpecimenBlockManagement — handleAddBlock', () => {
     // single-phase flow, not a regression in this count.
     expect(caseRouter.updateCase).toHaveBeenCalledTimes(3);
     // The pathologist must be told this happened, even though it succeeded
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('unsaved changes elsewhere'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('unsaved changes elsewhere'), 'warning');
   });
 });
 
@@ -423,7 +443,7 @@ describe('useSpecimenBlockManagement — handleBatchPrintCassettes / batchPrintB
 
     expect(result.current.batchPrintBlocked).toBe(false);
     act(() => { result.current.handleBatchPrintCassettes(); });
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Printing'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Printing'), 'info', { containsPhi: true });
   });
 
   it('batchPrintBlocked is genuinely true when the lab default is on_demand AND the guardrail is enforced', async () => {
@@ -435,7 +455,7 @@ describe('useSpecimenBlockManagement — handleBatchPrintCassettes / batchPrintB
 
     expect(result.current.batchPrintBlocked).toBe(true);
     act(() => { result.current.handleBatchPrintCassettes(); });
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Batch printing is disabled'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Batch printing is disabled'), 'warning');
   });
 
   it('the guardrail only applies when the default is genuinely on_demand — a batch-default lab is never blocked by this flag', async () => {
@@ -454,6 +474,60 @@ describe('useSpecimenBlockManagement — handleBatchPrintCassettes / batchPrintB
     await act(async () => { await new Promise(r => setTimeout(r, 100)); });
 
     expect(result.current.batchPrintBlocked).toBe(false);
+  });
+});
+
+describe('useSpecimenBlockManagement — attemptPrintedLabel real, end-to-end QZ Tray dispatch (PS-55 gap-closing pass)', () => {
+  beforeEach(async () => {
+    vi.mocked(printZplViaQzTray).mockReset().mockResolvedValue({ ok: true, data: undefined } as any);
+    // Real, seeded station 'station-gross-1' → real, seeded printer
+    // profile 'printer-zt411-example' (bridgeType 'qz_tray', per this
+    // pass's own fix in mockPrinterProfileService.ts) — never a second,
+    // parallel fixture duplicating what the app's own real mock
+    // services already seed. A real GTIN is required here —
+    // printCassetteLabel/printSlideLabel refuse cleanly before ever
+    // reaching bridge dispatch when gs1Gtin is empty (the real default).
+    await printSettingsService.update({ gs1Gtin: '00850000000000' });
+  });
+
+  it('printCassetteForBlock reaches the real QZ Tray dispatch when the effective station is configured for printing', async () => {
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ effectiveStationId: 'station-gross-1' })));
+    act(() => { result.current.printCassetteForBlock('A', '1'); });
+    await waitFor(() => expect(printZplViaQzTray).toHaveBeenCalled());
+    expect(printZplViaQzTray).toHaveBeenCalledWith('ZEBRA-192.168.12.85', expect.any(String), 1);
+  });
+
+  it('printMatrixCassette reaches the real QZ Tray dispatch the same way, for a real matrix block', async () => {
+    const caseWithMatrix = makeTestCase({
+      matrixBlocks: [{ id: 'MB-1', label: 'M1', participants: [{ specimenId: 'SP-1' }, { specimenId: 'SP-2' }] }],
+    } as any);
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ caseData: caseWithMatrix, effectiveStationId: 'station-gross-1' })));
+    act(() => { result.current.printMatrixCassette('MB-1'); });
+    await waitFor(() => expect(printZplViaQzTray).toHaveBeenCalled());
+    expect(printZplViaQzTray).toHaveBeenCalledWith('ZEBRA-192.168.12.85', expect.any(String), 1);
+  });
+
+  it('never attempts a printed-label dispatch when no effective station is configured — the engrave-stub path alone still runs', async () => {
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ effectiveStationId: undefined })));
+    act(() => { result.current.printCassetteForBlock('A', '1'); });
+    await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+    expect(printZplViaQzTray).not.toHaveBeenCalled();
+  });
+
+  it('never attempts a printed-label dispatch at a real station that does not support printing', async () => {
+    // 'station-gross-2' is a real, seeded station with supportsPrinting: false.
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ effectiveStationId: 'station-gross-2' })));
+    act(() => { result.current.printCassetteForBlock('A', '1'); });
+    await act(async () => { await new Promise(r => setTimeout(r, 50)); });
+    expect(printZplViaQzTray).not.toHaveBeenCalled();
+  });
+
+  it('shows a real, honest toast (never a silent failure) when the real QZ Tray dispatch itself fails', async () => {
+    vi.mocked(printZplViaQzTray).mockResolvedValue({ ok: false, message: 'Printer jammed' } as any);
+    const showToast = vi.fn();
+    const { result } = renderHook(() => useSpecimenBlockManagement(baseParams({ showToast, effectiveStationId: 'station-gross-1' })));
+    act(() => { result.current.printCassetteForBlock('A', '1'); });
+    await waitFor(() => expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Printer jammed'), 'warning'));
   });
 });
 
@@ -557,7 +631,7 @@ describe('useSpecimenBlockManagement — handleCancelBlock', () => {
     expect(setCaseData).not.toHaveBeenCalled();
     const { caseRouter } = await import('@/services/cases/CaseRouter');
     expect(caseRouter.updateCase).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('did not acknowledge'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('did not acknowledge'), 'warning');
   });
 });
 
@@ -696,7 +770,7 @@ describe('useSpecimenBlockManagement — handleOrderRestain', () => {
     expect(setCaseData).not.toHaveBeenCalled();
     const { caseRouter } = await import('@/services/cases/CaseRouter');
     expect(caseRouter.updateCase).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('did not acknowledge'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('did not acknowledge'), 'warning');
   });
 });
 
@@ -783,7 +857,7 @@ describe('useSpecimenBlockManagement — handleCreateBiopsyArray', () => {
     expect(setCaseData).not.toHaveBeenCalled();
     const { caseRouter } = await import('@/services/cases/CaseRouter');
     expect(caseRouter.updateCase).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('did not acknowledge'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('did not acknowledge'), 'warning');
   });
 });
 
@@ -902,7 +976,7 @@ describe('useSpecimenBlockManagement — handleUpdateBiopsyArray', () => {
     expect(setCaseData).not.toHaveBeenCalled();
     const { caseRouter } = await import('@/services/cases/CaseRouter');
     expect(caseRouter.updateCase).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('did not acknowledge'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('did not acknowledge'), 'warning');
   });
 });
 

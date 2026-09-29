@@ -1,0 +1,4 @@
+# Licensed release files never ship: only the words the build derives from them.
+*
+!README.md
+!.gitignore

@@ -94,7 +94,7 @@ describe('resolveIdentifierApplication — real, structured result, never a dire
 
   it('a slide value matching neither real slide shape falls back to setting accessionNo directly', () => {
     const res = resolveIdentifierApplication('unrecognized-slide-value', 'slide', ALL_FORMATS, '^[A-Z]\\d{2}-\\d{4,6}$');
-    expect(res).toEqual({ action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: 'unrecognized-slide-value' });
+    expect(res).toEqual({ action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: 'unrecognized-slide-value', orderNo: '', anyIdentifier: '' });
   });
 
   it('a real accession value normalizes and sets accessionNo only', () => {
@@ -110,29 +110,29 @@ describe('resolveIdentifierApplication — real, structured result, never a dire
 
   it('a real MRN sets hospitalId only', () => {
     const res = resolveIdentifierApplication('1234567', 'mrn', ALL_FORMATS, '^[A-Z]\\d{2}-\\d{4,6}$');
-    expect(res).toEqual({ action: 'setFilters', patientName: '', hospitalId: '1234567', patientId: '', accessionNo: '' });
+    expect(res).toEqual({ action: 'setFilters', patientName: '', hospitalId: '1234567', patientId: '', accessionNo: '', orderNo: '', anyIdentifier: '' });
   });
 
   it('a real MPI sets patientId only', () => {
     const res = resolveIdentifierApplication('PID-12345', 'mpi', ALL_FORMATS, '^[A-Z]\\d{2}-\\d{4,6}$');
-    expect(res).toEqual({ action: 'setFilters', patientName: '', hospitalId: '', patientId: 'PID-12345', accessionNo: '' });
+    expect(res).toEqual({ action: 'setFilters', patientName: '', hospitalId: '', patientId: 'PID-12345', accessionNo: '', orderNo: '', anyIdentifier: '' });
   });
 
   it('a real name sets patientName only', () => {
     const res = resolveIdentifierApplication('Smith, John', 'name', ALL_FORMATS, '^[A-Z]\\d{2}-\\d{4,6}$');
-    expect(res).toEqual({ action: 'setFilters', patientName: 'Smith, John', hospitalId: '', patientId: '', accessionNo: '' });
+    expect(res).toEqual({ action: 'setFilters', patientName: 'Smith, John', hospitalId: '', patientId: '', accessionNo: '', orderNo: '', anyIdentifier: '' });
   });
 
-  it('a real requisition sets accessionNo only', () => {
+  it('a requisition number fills the order-number filter (Batch 350: it used to fill the accession filter, which never matched)', () => {
     const res = resolveIdentifierApplication('REQ-123456', 'requisition', ALL_FORMATS, '^[A-Z]\\d{2}-\\d{4,6}$');
-    expect(res).toEqual({ action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: 'REQ-123456' });
+    expect(res).toEqual({ action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: '', orderNo: 'REQ-123456', anyIdentifier: '' });
   });
 
-  it('an ambiguous value sets all three text-search fields at once, same real fallback as the original', () => {
+  it('an ambiguous value matches any identifier (Batch 349, PS-101): it used to fill all three fields, which must all match, so an MRN alone found nothing', () => {
     const res = resolveIdentifierApplication('999999999999999', 'ambiguous', ALL_FORMATS, '^[A-Z]\\d{2}-\\d{4,6}$');
     expect(res).toEqual({
       action: 'setFilters',
-      patientName: '999999999999999', hospitalId: '999999999999999', patientId: '', accessionNo: '999999999999999',
+      patientName: '', hospitalId: '', patientId: '', accessionNo: '', orderNo: '', anyIdentifier: '999999999999999',
     });
   });
 

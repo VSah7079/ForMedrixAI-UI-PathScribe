@@ -11,11 +11,15 @@
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useAuth } from "@contexts/AuthContext";
 import PubMedTicker from '@/components/Common/PubMedTicker';
+import { visibleTiles, type HomeTileId } from '@/services/screens/screenAccess';
+import { useCapabilities } from '@/hooks/useCapabilities';
 
 interface Card {
+  /** Batch 374: which screen (or hub) the tile opens, for the access check. */
+  id: HomeTileId;
   title: string;
   description: string;
   route: string;
@@ -27,6 +31,7 @@ export default function Home() {
   const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
+  const capabilities = useCapabilities();
 
   // --- UI State ---
   const [hoveredCard, setHoveredCard] = useState<number | null>(null);
@@ -75,11 +80,11 @@ export default function Home() {
   // title. Colors are unaffected — each is defined on its own object
   // and travels with its tile, so this reorder doesn't touch the
   // colorblind-safe separation already verified above.
-  const cards: Card[] = [
+  const allCards: Card[] = [
     // ⭐ New tile — pinned first (see reorder note above): the entry
     // point for logging a new case.
     {
-      title: t('home.accessionTile.title'),
+      id: 'accession', title: t('home.accessionTile.title'),
       description: t('home.accessionTile.description'),
       route: '/accession',
       color: '#16A34A',
@@ -88,39 +93,18 @@ export default function Home() {
 
     // Pinned second (see reorder note above): where every case lives
     // day-to-day once accessioned.
-    { title: t('home.worklistTile.title'), description: t('home.worklistTile.description'), route: '/worklist', color: '#0072B2', image: '/worklist.webp' },
+    { id: 'worklist', title: t('home.worklistTile.title'), description: t('home.worklistTile.description'), route: '/worklist', color: '#0072B2', image: '/worklist.webp' },
 
     // — Alphabetical from here down —
 
-    // ⭐ New tile — real, per PS-287 (Pathologist-Initiated Add-On
-    // Orders), fourth sibling workstation in the series. Genuinely
-    // case-scoped (search/open an accession), not scan-to-open like its
-    // three siblings — see AddOnOrderPage.tsx's own header. Color
-    // checked against every other tile's own color above — a genuinely
-    // new rose/red, distinct from both D55E00 (burnt orange) and
-    // CC79A7/B24592 (mauve/pink), same distinct-color discipline the
-    // real regression test (below) checks for.
-    {
-      title: t('home.addOnOrderTile.title'),
-      description: t('home.addOnOrderTile.description'),
-      route: '/add-on-orders',
-      color: '#F43F5E',
-      image: '/add_on_orders.webp'
-    },
-    // ⭐ New tile
-    {
-      title: t('home.batchManagementTile.title'),
-      description: t('home.batchManagementTile.description'),
-      route: '/batch-management',
-      color: '#8B3FD9',
-      image: '/batch_management.webp'
-    },
-    { title: t('home.configurationTile.title'), description: t('home.configurationTile.description'), route: '/configuration', color: '#F0E442', image: '/config.webp' },
-    { title: t('home.cytologyQcQueueTile.title'), description: t('home.cytologyQcQueueTile.description'), route: '/cytology-qc-queue', color: '#5B8DEF', image: '/cytology_qc.webp' },
-    // ⭐ New tile (PS-324): same real, standalone-page-for-now placement
-    // already established for the Cytology QC queue tile immediately
-    // above — not yet folded into the main Worklist's own tiles.
-    { title: t('home.surgicalQaWorklistTile.title'), description: t('home.surgicalQaWorklistTile.description'), route: '/surgical-qa-worklist', color: '#14B8A6', image: '/cytology_qc.webp' },
+    // Batch 375 (Pete): Add-On Orders is no longer a tile. It's an action on
+    // a case (the report page's block row, "Add-on order"), which opens
+    // /add-on-orders with that case already loaded (PS-287's station).
+    // Batch 375 (Pete): Batch Management moved into the Pathology Workspace hub.
+    { id: 'configuration', title: t('home.configurationTile.title'), description: t('home.configurationTile.description'), route: '/configuration', color: '#F0E442', image: '/config.webp' },
+    // Batch 375 (Pete): the Cytology QC Peer Review Queue and Surgical
+    // Post-Sign-Out QA tiles are now views inside the Worklist (its header
+    // tiles), shown to whoever may open them.
     // Real, direct follow-up (Sep 2026): "Molecular Order Queue" removed
     // from here — per direct guidance ("seems like a Testing tool"),
     // it's explicitly a demo/simulation tool (see its own page header
@@ -130,10 +114,10 @@ export default function Home() {
     // real, testing-only utilities — same real /molecular-order-queue
     // route, just a real, discoverable Configuration entry point
     // instead of a flat top-level Home tile aimed at every user.
-    { title: t('home.intraopQueueTile.title'), description: t('home.intraopQueueTile.description'), route: '/intraop-queue', color: '#38BDF8', image: '/intraop.webp' },
+    { id: 'intraopQueue', title: t('home.intraopQueueTile.title'), description: t('home.intraopQueueTile.description'), route: '/intraop-queue', color: '#38BDF8', image: '/intraop.webp' },
     // ⭐ New tile
     {
-      title: t('home.myContributionTile.title'),
+      id: 'myContributions', title: t('home.myContributionTile.title'),
       description: t('home.myContributionTile.description'),
       route: '/contribution',
       color: '#B24592',
@@ -168,7 +152,7 @@ export default function Home() {
     // deliberately NOT moved — per direct guidance, only "Molecular"
     // itself was named for this move.
     {
-      title: t('home.pathologyWorkspaceTile.title'),
+      id: 'pathologyWorkspace', title: t('home.pathologyWorkspaceTile.title'),
       description: t('home.pathologyWorkspaceTile.description'),
       route: '/pathology-workspace',
       color: '#009E73',
@@ -198,13 +182,13 @@ export default function Home() {
     // rather than left orphaned, same real precedent as Pathology
     // Workspace reusing Cytology's old color.
     {
-      title: t('home.qualityComplianceTile.title'),
+      id: 'qualityCompliance', title: t('home.qualityComplianceTile.title'),
       description: t('home.qualityComplianceTile.description'),
       route: '/quality-compliance',
       color: '#D55E00',
       image: '/logs.webp'
     },
-    { title: t('home.searchTile.title'), description: t('home.searchTile.description'), route: '/search', color: '#CC79A7', image: '/search.webp' }
+    { id: 'search', title: t('home.searchTile.title'), description: t('home.searchTile.description'), route: '/search', color: '#CC79A7', image: '/search.webp' }
     // Real, per "Homepage Changes part 1" (direct request): "Move
     // Facilities Ops Dashboards under Configuration." The former
     // Facility Ops Dashboards tile (PS-288, #84CC16 lime) that used to
@@ -215,6 +199,10 @@ export default function Home() {
     // same real, public/unauthenticated kiosk page — only its
     // discovery path moved.
   ];
+  // Batch 374 (Pete): only the tiles for screens this user may open. The
+  // decision is services/screens/screenAccess.ts; each route checks again.
+  const shown = new Set(visibleTiles(allCards.map(c => c.id), c => capabilities.has(c)));
+  const cards = allCards.filter(c => shown.has(c.id));
 
   return (
     <div className={`ps-page${isLoaded ? ' ps-page--loaded' : ''}`}>
@@ -233,6 +221,9 @@ export default function Home() {
             <PubMedTicker />
           </header>
 
+          {!capabilities.loading && cards.length === 0 && (
+            <p className="ps-home-no-tiles" role="status">{t('screenAccess.noTiles')}</p>
+          )}
           <div className="ps-home-cards-grid">
             {cards.map((card, index) => {
               const hovered = hoveredCard === index;
@@ -263,7 +254,7 @@ export default function Home() {
                     }
                   }}
                   className={`ps-home-card${hovered ? ' ps-home-card--hovered' : ''}`}
-                  style={{ '--card-accent': card.color, '--card-accent-dim': `${card.color}40` } as React.CSSProperties}
+                  style={{ '--card-accent': card.color } as React.CSSProperties}
                 >
                   {/* Background Image */}
                   {card.image && (

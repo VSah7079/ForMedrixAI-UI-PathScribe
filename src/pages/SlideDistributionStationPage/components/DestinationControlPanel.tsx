@@ -103,7 +103,7 @@ const DestinationControlPanel: React.FC<DestinationControlPanelProps> = ({
 
   return (
     <div>
-      <div className="ps-slidedist-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-slidedist-panel ps-mb-14">
         <p className="ps-slidedist-panel-title">{t('slideDistribution.destination.title')}</p>
         <div className="ps-slidedist-destination-toggle">
           <button type="button" className={`ps-slidedist-toggle-btn${mode === 'physical' ? ' ps-slidedist-toggle-btn--active' : ''}`} onClick={() => onModeChange('physical')}>
@@ -166,7 +166,7 @@ const DestinationControlPanel: React.FC<DestinationControlPanelProps> = ({
             </button>
           </>
         )}
-        {feedback && <div className="ps-slidedist-scan-error" style={{ marginTop: 8 }}>{feedback}</div>}
+        {feedback && <div className="ps-slidedist-scan-error ps-mt-8">{feedback}</div>}
       </div>
     </div>
   );

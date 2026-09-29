@@ -2,7 +2,7 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useDirtyState } from '@/contexts/DirtyStateContext';
 import { mockMessageService } from '@/services/messages/mockMessageService';
@@ -382,7 +382,7 @@ export default function PatientHistoryModal({ patientName: initialPatientName, m
                   <span className="ps-ph-crumb-sep">›</span>
                   <button type="button" className="ps-ph-crumb-btn" onClick={goBack}>{sourceLabel}</button>
                   <span className="ps-ph-crumb-sep">›</span>
-                  <span className="ps-ph-crumb-current">{selectedId}</span>
+                  <span className="ps-ph-crumb-current" data-phi="accession">{selectedId}</span>
                 </>
               )}
             </div>
@@ -473,7 +473,7 @@ export default function PatientHistoryModal({ patientName: initialPatientName, m
           {showCompose && view === 'report' && (
             <div className="ps-ph-compose-header">
               <div className="ps-ph-compose-meta">
-                {t('patientHistoryModal.compose.messageTo')} <span className="ps-ph-accent-text">{physicianName}</span> · {t('patientHistoryModal.compose.caseLabel')} <span className="ps-ph-bright-text">{caseId}</span>
+                {t('patientHistoryModal.compose.messageTo')} <span className="ps-ph-accent-text">{physicianName}</span> · {t('patientHistoryModal.compose.caseLabel')} <span className="ps-ph-bright-text" data-phi="accession">{caseId}</span>
                 <span className="ps-ph-compose-warn">{t('patientHistoryModal.compose.noIdentifiersWarning')}</span>
               </div>
               <div className="ps-ph-compose-btn-row">

@@ -124,7 +124,7 @@ describe('useGrossingCompletion — required-field gate', () => {
     await act(async () => { await result.current.handleGrossComplete(); });
 
     expect(setCaseData).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/^Specimen B has no grossing entered/));
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/^Specimen B has no grossing entered/), 'warning');
   });
 
   it('blocks with a plural-phrased toast naming every specimen when multiple have no answers entered', async () => {
@@ -137,7 +137,7 @@ describe('useGrossingCompletion — required-field gate', () => {
     const { result } = renderHook(() => useGrossingCompletion(baseParams({ caseData, showToast })));
     await act(async () => { await result.current.handleGrossComplete(); });
 
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/^Specimens A, B, C have no grossing entered/));
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/^Specimens A, B, C have no grossing entered/), 'warning');
   });
 
   it('does NOT block a specimen whose grossing report has a real, non-empty answer', async () => {
@@ -159,7 +159,7 @@ describe('useGrossingCompletion — dictated Gross text as an alternative to str
     await act(async () => { await result.current.handleGrossComplete(); });
 
     expect(setCaseData).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/has no grossing entered/));
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/has no grossing entered/), 'warning');
   });
 
   it('does NOT block when structured answers are empty but real dictated text exists in the Gross Description section', async () => {
@@ -205,7 +205,7 @@ describe('useGrossingCompletion — dictated Gross text as an alternative to str
     await act(async () => { await result.current.handleGrossComplete(); });
 
     expect(setCaseData).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/has no grossing entered/));
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/has no grossing entered/), 'warning');
   });
 });
 
@@ -331,7 +331,7 @@ describe('useGrossingCompletion — first completion vs. update (correction) pat
 
     expect(window.prompt).toHaveBeenCalled();
     expect(setCaseData).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith('Update cancelled — a reason is required');
+    expect(showToast).toHaveBeenCalledWith('Update cancelled — a reason is required', 'warning');
   });
 
   it('on a re-finalize where real diagnostic work has already begun, does NOT overwrite grossCompletedAt or change status — the correction stands alone', async () => {
@@ -480,7 +480,7 @@ describe('useGrossingCompletion — concurrency conflict and generic failure', (
     const { result } = renderHook(() => useGrossingCompletion(baseParams({ showToast })));
     await act(async () => { await result.current.handleGrossComplete(); });
 
-    expect(showToast).toHaveBeenCalledWith('Gross Complete failed — please try again');
+    expect(showToast).toHaveBeenCalledWith('Gross Complete failed — please try again', 'warning');
   });
 });
 
@@ -503,7 +503,7 @@ describe('useGrossingCompletion — per-specimen Gross Description sections', ()
     await act(async () => { await result.current.handleGrossComplete(); });
 
     expect(setCaseData).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/Specimen B has no grossing entered/));
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/Specimen B has no grossing entered/), 'warning');
   });
 
   it('does NOT block when every specimen has its own dictated Gross Description section', async () => {

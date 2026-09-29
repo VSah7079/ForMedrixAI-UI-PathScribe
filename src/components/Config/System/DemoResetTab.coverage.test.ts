@@ -39,7 +39,8 @@ import path from 'path';
 
 const ROOT = process.cwd();
 const SRC_DIR = path.join(ROOT, 'src');
-const RESET_TAB_PATH = path.join(SRC_DIR, 'components/Config/System/DemoResetTab.tsx');
+// Batch 370: the reset lists moved to services/demoReset/demoReset.ts.
+const RESET_TAB_PATH = path.join(SRC_DIR, 'services/demoReset/demoReset.ts');
 
 /** Real, deliberate, and reviewed one at a time (see DemoResetTab.tsx's
  *  own comments for each) — keys that must NEVER be swept by a demo
@@ -55,6 +56,7 @@ const RESET_TAB_PATH = path.join(SRC_DIR, 'components/Config/System/DemoResetTab
  *    dictionary service's own SEED_ constant. */
 const DELIBERATE_EXCLUSIONS = new Set([
   'pathscribe_audit_logs', 'pathscribe_error_logs', 'ps_ai_audit_log_v1',
+  'pathscribe_support_audit', // Batch 372: each organisation's hash-chained support audit stream
   'orSuiteTerminals',
 ]);
 

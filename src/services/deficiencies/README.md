@@ -24,6 +24,11 @@ This folder's own `mockSpecimenDeficiencyService.ts`/`mockDeficiencyTypeService.
 - Deliberately NOT the 'unblock now, admin approves later' governance pattern used for Physician/Client/Department — a deficiency is a workflow event resolved by whoever has bench context, not an entity needing admin-queue deduplication.
 - The *complete*, permanent historical record of `SpecimenDeficiency` data (all statuses, for compliance/inspection purposes) is surfaced separately in `pages/AuditLogPage.tsx`'s "Quality Control" tab — this services layer doesn't distinguish "active work" from "permanent record" itself, that split lives entirely in which UI queries it and how.
 
+## Batch 379: Grossed Without Protocol
+
+- **`def-grossed-without-protocol`** (specimen level) is raised, left open, for each specimen whose grossing was completed without a protocol, where the organisation has switched off the protocol rule (see `services/grossing/`). It is the "secondary review" Pete asked for, reusing the QA deficiency queue rather than a new review mechanism.
+- **`mockDeficiencyTypeService`**: a stored list now gains any built-in type it's missing (by id) when it loads. Before, a new built-in type needed `DEFICIENCY_TYPE_VERSION` bumped, which also wiped the site's own custom types. The version stays at 4.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

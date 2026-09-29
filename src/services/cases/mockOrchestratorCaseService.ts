@@ -13,6 +13,7 @@ import { ConcurrencyConflictError } from './ConcurrencyConflictError';
 import type { Case } from '../../types/case/Case';
 import { storageGet, storageSet, storageClear } from '../mockStorage';
 import { applyCaseFilters, applyCasePagination } from './caseFilterUtils';
+import { recordCaseChange } from '../reportChangeLog/recordCaseChange';
 
 // v3 key forces reset to pick up Stage 0 seed cases (O26-0018/0019/0020) —
 // see Stage 0 Requirements §5 (S0-MD-01). v2 was the reportingMode fix
@@ -1971,8 +1972,10 @@ export const mockOrchestratorCaseService: ICaseService = {
       if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
         throw new ConcurrencyConflictError(caseId, expectedVersion, currentVersion);
       }
+      const before = CASES[idx];
       CASES[idx] = { ...CASES[idx], ...updates, updatedAt: new Date().toISOString(), version: currentVersion + 1 } as any;
       storageSet(STORAGE_KEY, CASES);
+      recordCaseChange(caseId, before, CASES[idx], Object.keys(updates));
     }
   },
 

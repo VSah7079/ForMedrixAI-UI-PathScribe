@@ -62,6 +62,7 @@ type Draft = Omit<Department, 'id' | 'status' | 'autoCreated' | 'autoCreatedAt' 
 const emptyDraft: Draft = {
   name: '', description: '', defaultGrossingTemplateId: 'grossing_standard_tissue',
   active: true, retentionOverrideDays: undefined,
+  directorName: undefined, cliaOrIsoNumber: undefined, headerLogoUrl: undefined,
 };
 
 /** Real, single check — which of the three material types, if any, a
@@ -256,6 +257,54 @@ const DepartmentModal: React.FC<DepartmentModalProps> = ({ mode, department, flo
                   </div>
                 );
               })}
+            </div>
+          </div>
+
+          {/* Real, per PS-277 §1.2.2 gap-closing — Department was
+              already the real, middle fallback tier in
+              resolveFacilityPrintBranding.ts's own Facility →
+              Department → Enterprise resolution (Department gained
+              these three real, typed fields for exactly this reason),
+              but this screen never actually exposed them to an admin —
+              disclosed as a real, deliberate gap until now. Same real,
+              free-text, "not validated against a format" posture as
+              Facility's own equivalent fields (FacilityEditorModal.tsx). */}
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">{t('departmentsSection.modal.brandingSectionTitle')}</label>
+            <div className="ps-participationtypes__modal-hint">
+              {t('departmentsSection.modal.brandingSectionHint')}
+            </div>
+            <div className="ps-conf-form-row">
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label">{t('departmentsSection.modal.brandingDirectorNameLabel')}</label>
+                <input
+                  className="ps-conf-input"
+                  value={draft.directorName ?? ''}
+                  onChange={e => set('directorName', e.target.value || undefined)}
+                  placeholder={t('departmentsSection.modal.brandingDirectorNamePlaceholder')}
+                />
+              </div>
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label">{t('departmentsSection.modal.brandingCliaOrIsoNumberLabel')}</label>
+                <input
+                  className="ps-conf-input"
+                  value={draft.cliaOrIsoNumber ?? ''}
+                  onChange={e => set('cliaOrIsoNumber', e.target.value || undefined)}
+                  placeholder={t('departmentsSection.modal.brandingCliaOrIsoNumberPlaceholder')}
+                />
+              </div>
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label">{t('departmentsSection.modal.brandingHeaderLogoUrlLabel')}</label>
+                <input
+                  className="ps-conf-input"
+                  value={draft.headerLogoUrl ?? ''}
+                  onChange={e => set('headerLogoUrl', e.target.value || undefined)}
+                  placeholder={t('departmentsSection.modal.brandingHeaderLogoUrlPlaceholder')}
+                />
+                <div className="ps-speccat-days-hint">
+                  {t('departmentsSection.modal.brandingHeaderLogoUrlHint')}
+                </div>
+              </div>
             </div>
           </div>
         </div>

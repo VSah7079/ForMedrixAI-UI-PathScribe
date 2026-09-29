@@ -7,9 +7,13 @@
 // with the actual real persistence.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useCallback, useEffect } from 'react';
+import { useState, useCallback, useEffect, useRef } from 'react';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { specimenDeficiencyService } from '@/services';
+import { specimenDeficiencyService, fieldRequirementService, authorizationService, auditService } from '@/services';
+import { resolveFieldRequirements, type ResolvedFieldRequirement } from '@/services/fieldRequirements/fieldRequirementRules';
+import {
+  completeGrossing, missingGrossingItems, specimensForSecondaryReview, type CompleteGrossingRefusal,
+} from '@/services/grossing/grossingCompletion';
 import type { Case } from '@/types/case/Case';
 import type { Specimen } from '@/types/case/Specimen';
 import type { ProtocolPathway } from '@/services/protocols/IProtocolService';
@@ -191,10 +195,65 @@ export function useGrossingScreen({ caseData, setCaseData, signingUser, knownVer
     }
   }, [caseData, signingUser]);
 
+  // Batch 378 (PS-359): Complete grossing, checked against the organisation's
+  // Grossing field requirements. The decisions are in services/grossing.
+  // Batch 379: with the protocol rule switched off, specimens without a
+  // protocol need a confirmation (pendingProtocolConfirmation) and are then
+  // routed for secondary review; the result says which.
+  const [grossingRequirements, setGrossingRequirements] = useState<ResolvedFieldRequirement[]>(() => resolveFieldRequirements('grossing'));
+  useEffect(() => { void fieldRequirementService.forSession('grossing').then(setGrossingRequirements); }, [signingUser?.id]);
+  const missingItems = caseData ? missingGrossingItems(caseData, grossingRequirements) : [];
+  const secondaryReviewSpecimens = caseData ? specimensForSecondaryReview(caseData, grossingRequirements) : [];
+  const [completeRefusal, setCompleteRefusal] = useState<CompleteGrossingRefusal | null>(null);
+  const [pendingProtocolConfirmation, setPendingProtocolConfirmation] = useState<string[] | null>(null);
+  const [completionReview, setCompletionReview] = useState<{ routedForReview: string[]; reviewNotRaised: string[] } | null>(null);
+
+  // One completion at a time: a double click, or a command heard twice,
+  // must not start a second attempt against the same case version.
+  const completingRef = useRef(false);
+  const runCompleteGrossing = useCallback(async (confirmedWithoutProtocol: boolean) => {
+    if (!caseData || completingRef.current) return;
+    completingRef.current = true;
+    try {
+      const result = await completeGrossing(caseData, grossingRequirements, knownVersionRef.current, {
+        authorization: authorizationService,
+        updateCase: (id, patch, version) => caseRouter.updateCase(id, patch, version),
+        audit: entry => auditService.logEvent(entry),
+        raiseDeficiency: input => specimenDeficiencyService.raise(input),
+        actorName: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        actorId: signingUser?.id ?? 'unknown',
+      }, { confirmedWithoutProtocol });
+      if (result.ok === false) {
+        if (result.reason === 'needsConfirmation') { setPendingProtocolConfirmation(result.withoutProtocol ?? []); setCompleteRefusal(null); return; }
+        setCompleteRefusal(result.reason);
+        return;
+      }
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCompleteRefusal(null);
+      setCompletionReview(result.routedForReview.length || result.reviewNotRaised.length
+        ? { routedForReview: result.routedForReview, reviewNotRaised: result.reviewNotRaised } : null);
+      setCaseData(prev => (prev ? ({ ...prev, status: 'gross-complete' } as typeof prev) : prev));
+    } catch (e) {
+      if (!handleConcurrencyConflict(e, setConcurrencyConflict)) setCompleteRefusal('failed');
+    } finally {
+      completingRef.current = false;
+    }
+  }, [caseData, grossingRequirements, knownVersionRef, signingUser, setCaseData, setConcurrencyConflict]);
+
+  const handleCompleteGrossing = useCallback(() => runCompleteGrossing(false), [runCompleteGrossing]);
+  const confirmCompleteWithoutProtocol = useCallback(async () => {
+    setPendingProtocolConfirmation(null);
+    await runCompleteGrossing(true);
+  }, [runCompleteGrossing]);
+  const cancelCompleteWithoutProtocol = useCallback(() => setPendingProtocolConfirmation(null), []);
+
   return {
     handleAddBlock, handleRemoveBlock, handleAddStain, handleRemoveStain,
     pendingStainRemoval, confirmPendingStainRemoval, cancelPendingStainRemoval,
     handleUpdatePieceCount, handleRecordFixationEnded, handleConfirmFixativeRatio,
     handleRaiseFixationDeficiency, specimensWithOpenFixationDeficiency,
+    missingItems, handleCompleteGrossing, completeRefusal,
+    secondaryReviewSpecimens, pendingProtocolConfirmation, confirmCompleteWithoutProtocol, cancelCompleteWithoutProtocol,
+    completionReview,
   };
 }

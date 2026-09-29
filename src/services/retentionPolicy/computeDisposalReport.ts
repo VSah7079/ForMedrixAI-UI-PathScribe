@@ -99,8 +99,18 @@ export interface DisposalReportFilters {
   dateTo?: string;
 }
 
+/** Real fix, found by this app's own inline-CSS/business-logic sweep:
+ *  this used to assume append-order and take the last array element,
+ *  the same bug class MaterialTreePanel.tsx's own mostRecentLocation()
+ *  header comment already documented and fixed for the tree view — a
+ *  late-arriving or backfilled location event should never silently
+ *  look current just because it happened to append last. This
+ *  compliance-facing disposal report needs the exact same real
+ *  "current location" answer the tree view already shows, so it now
+ *  sorts by `at` instead of trusting array order. */
 function mostRecentLocation(history: MaterialLocation[] | undefined): MaterialLocation | undefined {
-  return history && history.length > 0 ? history[history.length - 1] : undefined;
+  if (!history || history.length === 0) return undefined;
+  return [...history].sort((a, b) => new Date(b.at).getTime() - new Date(a.at).getTime())[0];
 }
 
 function inDateRange(disposedAt: string, dateFrom: string | undefined, dateTo: string | undefined): boolean {

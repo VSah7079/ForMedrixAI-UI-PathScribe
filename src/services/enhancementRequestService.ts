@@ -14,6 +14,10 @@
 const CONFIG_KEY = 'ps_enhancement_config_v1';
 
 import { sendEmail }                                        from './communications/notificationService';
+import { supportPageOf }                                    from './supportReferences/supportTicketRules';
+import { mockSupportReferenceService }                      from './supportReferences/mockSupportReferenceService';
+import type { ISupportReferenceService }                    from './supportReferences/ISupportReferenceService';
+import type { ICaseService }                                from './cases/ICaseService';
 import { buildEnhancementSubject, buildEnhancementHtml, buildEnhancementText }
                                                             from './communications/emailTemplates/enhancementEmailTemplates';
 
@@ -56,7 +60,10 @@ export interface EnhancementRequestPayload {
     appVersion:  string;
     browser:     string;
     os:          string;
+    /** Batch 364 (PS-349): the page's route pattern ('/report/:caseId'), never its address. */
     currentPage: string;
+    /** The case the page is about, as its support reference (never the case number). */
+    caseSupportReference?: string;
   };
 }
 
@@ -103,9 +110,17 @@ export function saveEnhancementConfig(config: EnhancementRequestConfig): void {
 
 // ─── Metadata capture ─────────────────────────────────────────────────────────
 
-export function captureMetadata(
-  user: { id: string; name: string; role: string }
-): EnhancementRequestPayload['metadata'] {
+// Batch 364 (PS-349): the page used to be sent as its address
+// (window.location.pathname + search), which on a case is e.g.
+// /report/S26-4403: the case number reached the support inbox even though
+// the screenshot was redacted. It is now the route pattern, and the case
+// goes as its support reference (services/supportReferences/).
+export async function captureMetadata(
+  user: { id: string; name: string; role: string },
+  deps: { supportReferenceService: ISupportReferenceService; pathname: string } = { supportReferenceService: mockSupportReferenceService, pathname: window.location.pathname },
+): Promise<EnhancementRequestPayload['metadata']> {
+  const page = supportPageOf(deps.pathname);
+  const caseRef = page.caseId ? await deps.supportReferenceService.forRecord('case', page.caseId) : null;
   const ua = navigator.userAgent;
   const browser = /Edg/.test(ua)     ? 'Edge'
     : /Chrome/.test(ua)  ? 'Chrome'
@@ -125,8 +140,28 @@ export function captureMetadata(
     appVersion:  (import.meta.env.VITE_APP_VERSION as string) ?? '1.0.0',
     browser,
     os,
-    currentPage: window.location.pathname + window.location.search,
+    currentPage: page.pattern,
+    caseSupportReference: caseRef?.ok ? caseRef.data.ref : undefined,
   };
+}
+
+/**
+ * Batch 364 (PS-349): support references for the case numbers a user typed,
+ * so the ticket can say "SR-7K2Q-9MXD" instead. Only numbers that name a
+ * case PathScribe holds get one; others are left for the user to remove.
+ */
+export async function supportReferencesForCaseNumbers(
+  caseNumbers: readonly string[],
+  deps: { caseService: Pick<ICaseService, 'getCase'>; supportReferenceService: ISupportReferenceService },
+): Promise<Map<string, string>> {
+  const out = new Map<string, string>();
+  for (const n of caseNumbers) {
+    const found = await deps.caseService.getCase(n.toUpperCase()).catch(() => null);
+    if (!found) continue;
+    const ref = await deps.supportReferenceService.forRecord('case', found.id);
+    if (ref.ok) out.set(n, ref.data.ref);
+  }
+  return out;
 }
 
 // ─── Submission ───────────────────────────────────────────────────────────────

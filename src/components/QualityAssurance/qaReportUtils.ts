@@ -15,7 +15,9 @@
 //    for the report to be actionable (someone has to know which case to
 //    go look at).
 // ─────────────────────────────────────────────────────────────────────────────
-import { toCsv, downloadCsv } from '@/utils/csv';
+import { authorizationService, exportQaReport, type QaExportCapability } from '@/services';
+import type { CapabilityContext } from '@/services/authorization/evaluateCapability';
+export { qaScopeContext } from '@/services/qualityAssurance/qaExport';
 
 // Real, per direct follow-up: QaScope and caseMatchesScope moved to
 // services/qualityAssurance/qaScope.ts — a real service must never
@@ -43,20 +45,21 @@ export function scopeLabel(scope: QaScope): string {
 }
 
 /** Exports rows to a CSV file (utils/csv.ts — PS-48 standardized every
- *  manual-maintenance/report export in the app on strict CSV, replacing
- *  the `xlsx` package this used to call directly) rather than introducing
- *  a second export mechanism. Callers are responsible for making sure
- *  `rows` themselves are already PHI-safe — this function doesn't inspect
- *  or filter row content, since it has no way to know which keys are safe
- *  for a given report's shape. Each tab builds its own export rows
- *  explicitly (see IntraopLinkageTab.tsx / ReconciliationTab.tsx) rather
- *  than dumping raw service objects, specifically so nothing PHI-bearing
- *  can slip through by accident (e.g. a future field added to
- *  IntraoperativeEntry).
+ *  manual-maintenance/report export in the app on strict CSV). Callers are
+ *  responsible for making sure `rows` themselves are already PHI-safe — this
+ *  function doesn't inspect or filter row content, since it has no way to
+ *  know which keys are safe for a given report's shape. Each tab builds its
+ *  own export rows explicitly rather than dumping raw service objects, so
+ *  nothing PHI-bearing can slip through by accident.
  *
- *  `filename` is accepted with or without an extension — any trailing
- *  `.xlsx` from a caller not yet updated is stripped so the download
- *  never ends up double-extensioned (`report.xlsx.csv`). */
-export function exportQaReportRows(rows: Record<string, string | number>[], filename: string): void {
-  downloadCsv(filename.replace(/\.xlsx$/i, ''), toCsv(rows));
+ *  PS-355 (Batch 369): each report names its own capability. The export
+ *  service checks it (and audits the check) before producing the file; the
+ *  tab's button is greyed out for anyone without it (CapabilityButton).
+ *  `filename` may end in .csv or .xlsx; either is replaced.
+ *
+ *  PS-356 (Batch 370): `context` is required so no export forgets facility
+ *  scope: `qaScopeContext(scope)` for a tab with a scope switcher, or
+ *  `qaScopeContext()` (all facilities) for one without. */
+export function exportQaReportRows(capability: QaExportCapability, rows: Record<string, string | number>[], filename: string, context: CapabilityContext): Promise<unknown> {
+  return exportQaReport(capability, rows, filename, { authorization: authorizationService }, context);
 }

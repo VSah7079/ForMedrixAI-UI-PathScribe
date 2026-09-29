@@ -15,7 +15,7 @@ import { toast } from 'react-toastify';
 import { batchService, stainTypeService, reagentLotService } from '@/services';
 import { playScanBeep, playScanErrorTone } from '@/utils/playScanBeep';
 import { getDecalTimerState, formatDecalDuration } from '@/services/batches/DecalBatch';
-import { mockReferralTrackingService } from '@/services/referral/mockReferralTrackingService';
+import { referralTrackingService } from '@/services';
 import type { ReferralTracking } from '@/services/referral/IReferralTrackingService';
 import type { ScanEvent } from '@/contexts/ScannerProvider';
 import type { Batch, BatchItem } from '@/services/batches/IBatchService';
@@ -66,7 +66,7 @@ const BatchDetailView: React.FC<Props> = ({ batch, onBack, onBatchUpdated, userI
   const [referralTracking, setReferralTracking] = useState<ReferralTracking | null>(null);
   useEffect(() => {
     if (batch.processingNode !== 'External Referral') { setReferralTracking(null); return; }
-    mockReferralTrackingService.getByBatchId(batch.id).then(res => {
+    referralTrackingService.getByBatchId(batch.id).then(res => {
       if (res.ok) setReferralTracking(res.data);
     });
   }, [batch.id, batch.processingNode, batch.status]);
@@ -285,7 +285,7 @@ const BatchDetailView: React.FC<Props> = ({ batch, onBack, onBatchUpdated, userI
                 )}
               </div>
             </div>
-            <span className="ps-batch-row-status ps-batch-detail-status-pill" style={{ background: `${STATUS_COLOR[batch.status]}22`, color: STATUS_COLOR[batch.status] }}>
+            <span className="ps-batch-row-status ps-batch-row-status--hued ps-batch-detail-status-pill" style={{ '--ps-hue': STATUS_COLOR[batch.status] } as React.CSSProperties}>
               {t(`batchManagement.status.${batch.status}`)}
             </span>
           </div>

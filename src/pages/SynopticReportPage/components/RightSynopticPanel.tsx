@@ -6,8 +6,10 @@ import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import type { Case } from '@/types/case/Case';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  isVisible,
+} from '@/components/Config/Protocols/SynopticEditor';
 import type {
-  
   EditorField,
   EditorSection,
   FieldOption,
@@ -21,27 +23,32 @@ import { resolveEmbeddedCodesForAnswer, appendEmbeddedCodesToSpecimen } from '..
 import { aiBehaviorService } from '@/services';
 import { getOrgOrchestratorDefault, resolveOrchestratorMode } from '@/components/Config/AI/orchestratorModeConfig';
 import { matchSourceText } from '@/utils/sourceTextMatching';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
 
 
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
-type VisCond = EditorField['visibleWhen'];
-
 /**
- * Exported per direct need: the new Microscopic finalize gate
- * (useSignOutWorkflow.ts) needs the exact same real "is this required
- * field currently visible" logic validateRequired() below already
- * uses, to correctly compute per-specimen synoptic completeness
- * outside this component. Reused, not re-implemented — a second copy
- * would be a real, silent drift risk the moment one changes without
- * the other.
+ * Real fix, found by this app's own inline-CSS/business-logic sweep:
+ * this file used to keep its own local copy of isVisible(), even
+ * though this exact header comment already documented the intent
+ * that it be "reused, not re-implemented" by useSignOutWorkflow.ts's
+ * finalize gate. The local copy was never updated for PS-272's
+ * multi-value `answerIds` OR-condition support, which
+ * SynopticEditor.tsx's own isVisible() (the real source of truth —
+ * exported for exactly this reuse) already had. That meant every
+ * consumer of the old local copy — this file's own required-field
+ * checks, unanswered-field counts, and section-progress percentages,
+ * AND useSignOutWorkflow.ts's Microscopic finalize completeness gate
+ * — silently ignored `answerIds` conditions: a real autopsy template
+ * field conditioned on either of two answers (e.g. linear OR
+ * depressed/comminuted skull fracture, from
+ * autopsy_gross_examination.json) would only be recognized as visible
+ * for the first of the two answers, letting a case be signed out with
+ * a genuinely-required field left blank. Now imports the one real
+ * implementation directly instead of shadowing it.
  */
-export function isVisible(cond: VisCond | undefined, ans: Record<string, string | string[]>): boolean {
-  if (!cond) return true;
-  const v = ans[cond.fieldId];
-  if (!v) return false;
-  return Array.isArray(v) ? v.includes(cond.answerId) : v === cond.answerId;
-}
+export { isVisible };
 
 
 
@@ -206,7 +213,7 @@ const FieldRow: React.FC<FieldRowProps> = ({
         <input type="text" value={strVal} onChange={e => onChange(field.id, e.target.value)} className="ps-syn-input" />
       )}
       {field.type === 'longtext' && (
-        <textarea rows={3} value={strVal} onChange={e => onChange(field.id, e.target.value)} className="ps-syn-input ps-syn-input--textarea" />
+        <SpellCheckedTextarea rows={3} value={strVal} onChange={e => onChange(field.id, e.target.value)} className="ps-syn-input ps-syn-input--textarea" />
       )}
       {field.type === 'numeric' && (
         <input
@@ -1380,7 +1387,7 @@ const RightSynopticPanel = forwardRef<RightSynopticPanelHandle, RightSynopticPan
               <span className="ps-syn-progress-track">
                 <span
                   className={`ps-syn-progress-fill${reqAnswered === reqTotal ? ' ps-syn-progress-fill--complete' : ' ps-syn-progress-fill--incomplete'}`}
-                  style={{ width: `${reqTotal > 0 ? (reqAnswered / reqTotal) * 100 : 0}%` }}
+                  style={{ '--syn-progress-pct': `${reqTotal > 0 ? (reqAnswered / reqTotal) * 100 : 0}%` } as React.CSSProperties}
                 />
               </span>
             </span>

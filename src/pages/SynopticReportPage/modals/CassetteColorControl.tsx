@@ -57,7 +57,7 @@ const CassetteColorControl: React.FC<CassetteColorControlProps> = ({ colorId, ov
                 comment in pathscribe.css: a color swatch's background
                 is genuinely dynamic, admin-configured data, not a
                 fixed styling choice. */}
-            <span className="ps-cassette-color-swatch" style={{ background: resolvedColor.hexCode }} />
+            <span className="ps-cassette-color-swatch" style={{ '--swatch-color': resolvedColor.hexCode } as React.CSSProperties} />
             <span className="ps-cassette-color-name">{resolvedColor.displayName}</span>
             {overridden && <span className="ps-cassette-color-overridden-badge">{t('cassetteColorControl.overriddenBadge')}</span>}
           </>

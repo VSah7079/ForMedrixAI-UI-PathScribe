@@ -50,9 +50,7 @@ const PaletteItemRow: React.FC<{ item: PaletteItem }> = ({ item }) => {
       {/* Coloured icon badge — colour is per-item-type data, set via CSS custom properties */}
       <div
         className="ps-tpal-item-icon"
-        style={{
-          ['--tpal-color' as string]: item.color,
-        }}
+        style={{ '--tpal-color': item.color } as React.CSSProperties}
       >
         {item.icon}
       </div>

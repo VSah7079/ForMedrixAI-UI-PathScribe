@@ -56,7 +56,7 @@ export const PatientLinkSearch: React.FC<PatientLinkSearchProps> = ({
       <p className="ps-accession-outside-subtitle ps-accession-outside-subtitle--spaced">{helpText}</p>
       {confirmed ? (
         <div className="ps-accession-outside-link-confirmed">
-          <span>✓ {confirmedLabel}: <strong>{confirmed.firstName} {confirmed.lastName}</strong> ({t('accessionPage.patientLinkSearch.mrnDob', { mrn: confirmed.mrn, dob: new Date(confirmed.dateOfBirth).toLocaleDateString() })})</span>
+          <span data-phi="true">✓ {confirmedLabel}: <strong>{confirmed.firstName} {confirmed.lastName}</strong> ({t('accessionPage.patientLinkSearch.mrnDob', { mrn: confirmed.mrn, dob: new Date(confirmed.dateOfBirth).toLocaleDateString() })})</span>
           <button type="button" className="ps-btn-ghost-dark" onClick={() => onConfirm(null)}>{t('accessionPage.patientLinkSearch.undo')}</button>
         </div>
       ) : (
@@ -71,7 +71,7 @@ export const PatientLinkSearch: React.FC<PatientLinkSearchProps> = ({
             <div className="ps-accession-outside-link-results">
               {results.map(r => (
                 <div key={r.id} className="ps-accession-outside-link-result">
-                  <span>{r.firstName} {r.lastName} — {t('accessionPage.patientLinkSearch.resultMrnDob', { mrn: r.mrn, dob: new Date(r.dateOfBirth).toLocaleDateString() })}</span>
+                  <span data-phi="true">{r.firstName} {r.lastName} — {t('accessionPage.patientLinkSearch.resultMrnDob', { mrn: r.mrn, dob: new Date(r.dateOfBirth).toLocaleDateString() })}</span>
                   <button type="button" className="ps-conf-btn-secondary" onClick={() => { onConfirm(r); setQuery(''); setResults([]); }}>
                     {confirmButtonLabel}
                   </button>

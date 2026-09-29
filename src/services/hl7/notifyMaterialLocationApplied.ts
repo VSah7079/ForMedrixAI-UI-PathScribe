@@ -9,6 +9,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { toast } from 'react-toastify';
+import i18n from '@/i18n/config';
+import { phiToastContent } from '../phi/phiToast';
 import { caseRouter } from '../cases/CaseRouter';
 
 export interface MaterialLocationNotificationPayload {
@@ -28,6 +30,10 @@ export async function notifyMaterialLocationApplied(payload: MaterialLocationNot
   const caseData = await caseRouter.getCase(payload.caseId);
   const accession = caseData?.accession?.fullAccession ?? payload.caseId;
 
-  toast.info(`📍 ${accession}: ${payload.targetDescription} now at "${payload.location}"${payload.action ? ` — ${payload.action}` : ''}${payload.workflowStage ? ` (${payload.workflowStage})` : ''}`);
+  // Batch 363 (PS-72): translated, and redacted in support-ticket screenshots (it names the case).
+  const text = i18n.t('hl7Notifications.materialLocation', { accession, target: payload.targetDescription, location: payload.location })
+    + (payload.action ? i18n.t('hl7Notifications.materialLocationAction', { action: payload.action }) : '')
+    + (payload.workflowStage ? i18n.t('hl7Notifications.materialLocationStage', { stage: payload.workflowStage }) : '');
+  toast.info(phiToastContent(text));
   notifiedMessageIds.add(payload.messageId);
 }

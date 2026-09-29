@@ -32,3 +32,7 @@ one home while staying two, separate real data models.
 at all before this pass, despite being a real, working, pre-existing page
 — found while updating `pages/README.md`'s own subfolder index for the
 Phase 21 restructuring.
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`MolecularBatchManagementPage.tsx`: the patient MRN column is tagged.

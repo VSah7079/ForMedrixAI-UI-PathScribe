@@ -28,6 +28,7 @@ import { useTranslation } from 'react-i18next';
 import CassetteColorControl from '../modals/CassetteColorControl';
 import type { HistologyBlock, SpecimenTriage } from '@/types/case/Specimen';
 import type { CassetteColorDefinition } from '@/services/cassetteColors/ICassetteColorService';
+import { isTriagePending } from '@/pages/WorklistPage/PendingGrossingTriageTile';
 
 interface GrossingReleasePanelProps {
   specimenLabel: string;
@@ -53,7 +54,15 @@ const GrossingReleasePanel: React.FC<GrossingReleasePanelProps> = ({
 
   if (pendingBlocks.length === 0) return null;
 
-  const triageResolved = !triage || !!triage.overrideReason || triage.checklistItems.every(ci => ci.confirmed);
+  // Real fix, found by this app's own inline-CSS/business-logic sweep:
+  // this used to be a second, independent copy of "is this specimen's
+  // triage resolved" alongside PendingGrossingTriageTile.tsx's own
+  // isTriagePending() (exported "for direct unit testing" — the
+  // designated real source of truth) and the actual release-blocking
+  // gate in useSpecimenBlockManagement.ts. All three already agreed,
+  // but nothing enforced that; now this reuses the one real, tested
+  // predicate instead of a parallel copy.
+  const triageResolved = !isTriagePending(triage);
   const triageBlocking = !triageResolved;
 
   return (

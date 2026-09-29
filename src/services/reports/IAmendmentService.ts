@@ -37,6 +37,13 @@ export interface IAmendmentService {
     specimenId?: string;
   }): Promise<ServiceResult<AmendmentRecord>>;
 
+  /** Batch 380: the report page opens every new draft as an amendment, and
+   *  the pathologist can switch it to a minor amendment (correction) or an
+   *  addendum before saving. The draft's type follows that choice, with its
+   *  sequence number recounted for the new type. Only a draft whose fields
+   *  haven't been captured yet can change type. */
+  changeDraftType(id: string, type: AmendmentType): Promise<ServiceResult<AmendmentRecord>>;
+
   /** Stage 1 of the amendment/correction pipeline — fires when "Amend" or
    *  "Correct" is clicked, before any editing happens. Record stays
    *  'draft' — nothing transmitted yet, purely internal tracking while

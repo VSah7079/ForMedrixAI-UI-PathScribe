@@ -20,7 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../pathscribe.css';
 import { lisAmendmentNoticeService, amendmentService } from '@/services';
 
@@ -101,7 +101,7 @@ export const AmendedAddendaTriageTile: React.FC<{ pathologistId: string }> = ({ 
               <span className={`ps-triage-tile-badge ps-triage-tile-badge--${item.kind}`}>
                 {t(BADGE_KEY[item.kind])}
               </span>
-              <span className="ps-triage-tile-case">{item.caseId}</span>
+              <span className="ps-triage-tile-case" data-phi="accession">{item.caseId}</span>
               <span className="ps-triage-tile-label">{t(LABEL_KEY[item.kind])}</span>
               <span className="ps-triage-tile-detail">{item.detail}</span>
             </button>

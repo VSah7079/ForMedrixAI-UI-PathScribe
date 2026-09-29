@@ -22,7 +22,7 @@ vi.mock('qz-tray', () => ({
 
 import * as qz from 'qz-tray';
 import {
-  connectToQzTray, isQzTrayConnected, findQzTrayPrinters, printZplViaQzTray, configureQzTraySigning,
+  connectToQzTray, isQzTrayConnected, findQzTrayPrinters, printZplViaQzTray, printPdfViaQzTray, configureQzTraySigning,
 } from './qzTrayBridge';
 import type { QzTrayError } from './qzTrayBridge';
 
@@ -120,5 +120,80 @@ describe('qzTrayBridge — real integration with the real, existing QZ Tray desk
     configureQzTraySigning(fetchCert, sign);
     expect(qz.security.setCertificatePromise).toHaveBeenCalled();
     expect(qz.security.setSignaturePromise).toHaveBeenCalledWith(sign);
+  });
+
+  describe('printPdfViaQzTray', () => {
+    it('a real, successful PDF print with no paperSize/presentation builds a plain config and reports ok', async () => {
+      (qz.websocket.isActive as any).mockReturnValue(true);
+      (qz.configs.create as any).mockReturnValue({ copies: 1 });
+      (qz.print as any).mockResolvedValue(undefined);
+
+      const result = await printPdfViaQzTray('Front Desk Printer', 'BASE64DATA');
+
+      expect(result.ok).toBe(true);
+      expect(qz.configs.create).toHaveBeenCalledWith('Front Desk Printer', { copies: 1 });
+      expect(qz.print).toHaveBeenCalledWith({ copies: 1 }, [{ type: 'pixel', format: 'pdf', flavor: 'base64', data: 'BASE64DATA' }]);
+    });
+
+    it('not connected to QZ Tray reports a real, honest error rather than attempting to print', async () => {
+      (qz.websocket.isActive as any).mockReturnValue(false);
+      const result = await printPdfViaQzTray('Front Desk Printer', 'BASE64DATA');
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect((result as QzTrayError).message).toContain('Not connected to QZ Tray');
+      expect(qz.print).not.toHaveBeenCalled();
+    });
+
+    it('PS-278/279 gap-closing: DUPLEX presentation maps to QZ Tray’s own real "long-edge" duplex token, the same long-edge default sendIppPrintJob.ts already chose for the identical real reason', async () => {
+      (qz.websocket.isActive as any).mockReturnValue(true);
+      (qz.configs.create as any).mockReturnValue({});
+      (qz.print as any).mockResolvedValue(undefined);
+
+      await printPdfViaQzTray('Theatre 2 Frozen Section Printer', 'BASE64DATA', 1, undefined, { duplexMode: 'DUPLEX' });
+
+      expect(qz.configs.create).toHaveBeenCalledWith('Theatre 2 Frozen Section Printer', { copies: 1, duplex: 'long-edge' });
+    });
+
+    it('PS-278/279 gap-closing: SIMPLEX presentation maps to QZ Tray’s own real "one-sided" duplex token', async () => {
+      (qz.websocket.isActive as any).mockReturnValue(true);
+      (qz.configs.create as any).mockReturnValue({});
+      (qz.print as any).mockResolvedValue(undefined);
+
+      await printPdfViaQzTray('Theatre 2 Frozen Section Printer', 'BASE64DATA', 1, undefined, { duplexMode: 'SIMPLEX' });
+
+      expect(qz.configs.create).toHaveBeenCalledWith('Theatre 2 Frozen Section Printer', { copies: 1, duplex: 'one-sided' });
+    });
+
+    it('PS-278/279 gap-closing: a real paperSource presentation hint maps to a real printerTray value, previously silently dropped on this NATIVE_QZ_TRAY branch', async () => {
+      (qz.websocket.isActive as any).mockReturnValue(true);
+      (qz.configs.create as any).mockReturnValue({});
+      (qz.print as any).mockResolvedValue(undefined);
+
+      await printPdfViaQzTray('Front Desk Printer', 'BASE64DATA', 1, undefined, { paperSource: 'TRAY_1_LETTERHEAD' });
+
+      expect(qz.configs.create).toHaveBeenCalledWith('Front Desk Printer', { copies: 1, printerTray: 'Tray 1' });
+    });
+
+    it('PS-278/279 gap-closing: paperSize, duplexMode, and paperSource all combine into one real config object when all three are given', async () => {
+      (qz.websocket.isActive as any).mockReturnValue(true);
+      (qz.configs.create as any).mockReturnValue({});
+      (qz.print as any).mockResolvedValue(undefined);
+
+      await printPdfViaQzTray('Front Desk Printer', 'BASE64DATA', 3, 'A4', { duplexMode: 'DUPLEX', paperSource: 'TRAY_2_PLAIN' });
+
+      expect(qz.configs.create).toHaveBeenCalledWith('Front Desk Printer', expect.objectContaining({
+        copies: 3, duplex: 'long-edge', printerTray: 'Tray 2',
+      }));
+    });
+
+    it('a real print failure is reported, not thrown', async () => {
+      (qz.websocket.isActive as any).mockReturnValue(true);
+      (qz.configs.create as any).mockReturnValue({});
+      (qz.print as any).mockRejectedValue(new Error('Out of paper'));
+
+      const result = await printPdfViaQzTray('Front Desk Printer', 'BASE64DATA');
+
+      expect(result.ok).toBe(false);
+      if (!result.ok) expect((result as QzTrayError).message).toContain('Out of paper');
+    });
   });
 });

@@ -35,3 +35,11 @@ separate, full-page route (`/molecular-batch/:batchId`) — not re-embedded
 inline inside a tab panel. That page is large, real, and already working;
 forcing it into a tab-constrained space would have been a real, risky
 rewrite for no real, stated benefit.
+
+## Batch 367 (PS-74): no inline CSS
+
+`MolecularWorkcenterPage.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`MolecularWorkcenterPage.tsx` takes `molecularBatchService` from `@/services`, and is off the deployment baseline.

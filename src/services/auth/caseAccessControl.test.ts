@@ -1,6 +1,6 @@
 // src/services/auth/caseAccessControl.test.ts
 import { describe, it, expect } from 'vitest';
-import { resolveCaseAccess, canFinalizeCase, deriveEligibleFinalizerIds, resolveFinalizeEligibleTypeIds, resolvePediatricAccess, resolveOrchestrationAccess, type SessionUser, type CaseAccessSubspecialty, type CaseFinalizeParticipant, type CaseAccessFacility } from './caseAccessControl';
+import { resolveCaseAccess, canFinalizeCase, deriveEligibleFinalizerIds, resolveFinalizeEligibleTypeIds, resolveCountersignRequiredTypeIds, resolvePediatricAccess, resolveOrchestrationAccess, type SessionUser, type CaseAccessSubspecialty, type CaseFinalizeParticipant, type CaseAccessFacility } from './caseAccessControl';
 import type { Facility } from '../facilities/IFacilityService';
 import type { ParticipationTypeRecord } from '../participationTypes/IParticipationTypeService';
 
@@ -204,6 +204,73 @@ describe('resolveFinalizeEligibleTypeIds — the real data-driven lookup replaci
     const types = [PRIMARY_TYPE, ATTENDING_TYPE, overridden];
     expect(resolveFinalizeEligibleTypeIds(types, LAB_A)).toContain('resident');
     expect(resolveFinalizeEligibleTypeIds(types, LAB_B)).not.toContain('resident');
+  });
+});
+
+describe('resolveCountersignRequiredTypeIds — PS-327, the requiresCountersign counterpart to resolveFinalizeEligibleTypeIds above', () => {
+  it('resolves to an empty list when no participationTypes are supplied at all — no fallback list, unlike resolveFinalizeEligibleTypeIds (there is no pre-existing hardcoded literal this replaces)', () => {
+    expect(resolveCountersignRequiredTypeIds(undefined)).toEqual([]);
+    expect(resolveCountersignRequiredTypeIds(null)).toEqual([]);
+    expect(resolveCountersignRequiredTypeIds([])).toEqual([]);
+  });
+
+  it('real, seeded data resolves exactly the one built-in type with requiresCountersign:true (resident) — primary/attending are excluded', () => {
+    expect(resolveCountersignRequiredTypeIds(REAL_TYPES)).toEqual(['resident']);
+  });
+
+  it('a lab override that revokes requiresCountersign for a normally-required type excludes it, only for that lab', () => {
+    const overridden: ParticipationTypeRecord = { ...RESIDENT_TYPE, authorityOverrides: { [LAB_A]: { requiresCountersign: false } } };
+    const types = [PRIMARY_TYPE, ATTENDING_TYPE, overridden];
+    expect(resolveCountersignRequiredTypeIds(types, LAB_A)).not.toContain('resident');
+    expect(resolveCountersignRequiredTypeIds(types, LAB_B)).toContain('resident');
+    expect(resolveCountersignRequiredTypeIds(types)).toContain('resident'); // no lab given → platform default
+  });
+
+  it('a lab override that IMPOSES requiresCountersign on a normally-unrestricted type includes it, only for that lab — the real feature PS-327 closes the loop on', () => {
+    const overridden: ParticipationTypeRecord = { ...ATTENDING_TYPE, authorityOverrides: { [LAB_A]: { requiresCountersign: true } } };
+    const types = [PRIMARY_TYPE, overridden, RESIDENT_TYPE];
+    expect(resolveCountersignRequiredTypeIds(types, LAB_A)).toContain('attending');
+    expect(resolveCountersignRequiredTypeIds(types, LAB_B)).not.toContain('attending');
+  });
+
+  it('a brand-new, admin-defined participation type (not one of the three built-ins) with requiresCountersign:true resolves into the list — this is the real gap this ticket closes: previously nothing outside a display badge ever consulted this flag', () => {
+    const juniorRegistrar: ParticipationTypeRecord = {
+      id: 'junior_registrar', label: 'Junior Registrar', description: '', color: '#f59e0b',
+      allowsMultiple: true, requiresNote: false, active: true, isSystem: false, sortOrder: 9,
+      canFinalize: false, requiresCountersign: true,
+    };
+    expect(resolveCountersignRequiredTypeIds([...REAL_TYPES, juniorRegistrar])).toEqual(['resident', 'junior_registrar']);
+  });
+});
+
+describe('jurisdiction-bound authority — end-to-end through the real sign-out gate', () => {
+  it('a country profile granting canFinalize lets that country\'s participant sign out, and only there', () => {
+    const t: ParticipationTypeRecord = { ...RESIDENT_TYPE, jurisdictionProfiles: { AU: { canFinalize: true } } };
+    const resident: CaseFinalizeParticipant = { staffId: 'resident-1', status: 'active', participationTypeIds: ['resident'] };
+    expect(canFinalizeCase(session({ id: 'resident-1' }), [resident], [PRIMARY_TYPE, ATTENDING_TYPE, t], LAB_A, 'AU').granted).toBe(true);
+    expect(canFinalizeCase(session({ id: 'resident-1' }), [resident], [PRIMARY_TYPE, ATTENDING_TYPE, t], LAB_A, 'NZ').granted).toBe(false);
+  });
+
+  it('a lab-level exception still beats its own country\'s profile at the gate', () => {
+    const t: ParticipationTypeRecord = {
+      ...PRIMARY_TYPE,
+      jurisdictionProfiles: { GB_EW: { canFinalize: true } },
+      authorityOverrides: { [LAB_A]: { canFinalize: false } },
+    };
+    const primary: CaseFinalizeParticipant = { staffId: 'primary-1', status: 'active', participationTypeIds: ['primary'] };
+    expect(canFinalizeCase(session({ id: 'primary-1' }), [primary], [t, ATTENDING_TYPE, RESIDENT_TYPE], LAB_A, 'GB_EW').granted).toBe(false);
+    expect(canFinalizeCase(session({ id: 'primary-1' }), [primary], [t, ATTENDING_TYPE, RESIDENT_TYPE], LAB_B, 'GB_EW').granted).toBe(true);
+  });
+
+  it('resolveCountersignRequiredTypeIds honors a country profile imposing countersign, only in that country', () => {
+    const t: ParticipationTypeRecord = { ...ATTENDING_TYPE, jurisdictionProfiles: { KR: { requiresCountersign: true } } };
+    expect(resolveCountersignRequiredTypeIds([PRIMARY_TYPE, t, RESIDENT_TYPE], undefined, 'KR')).toContain('attending');
+    expect(resolveCountersignRequiredTypeIds([PRIMARY_TYPE, t, RESIDENT_TYPE], undefined, 'CA')).not.toContain('attending');
+  });
+
+  it('omitting jurisdiction reproduces the pre-existing lab-only behavior exactly', () => {
+    const t: ParticipationTypeRecord = { ...RESIDENT_TYPE, jurisdictionProfiles: { AU: { canFinalize: true } } };
+    expect(resolveFinalizeEligibleTypeIds([PRIMARY_TYPE, ATTENDING_TYPE, t], LAB_A)).toEqual(resolveFinalizeEligibleTypeIds(REAL_TYPES, LAB_A));
   });
 });
 
@@ -443,5 +510,16 @@ describe('resolveOrchestrationAccess — the real, unified Orchestration/Outreac
   it('denies by default when canViewOrchestration is simply absent (undefined), not just explicitly false', () => {
     const result = resolveOrchestrationAccess(session({}), { reportingMode: 'orchestrator' });
     expect(result.granted).toBe(false);
+  });
+});
+
+describe('isCrossTenantSupportAccess (Batch 371)', async () => {
+  const { isCrossTenantSupportAccess } = await import('./caseAccessControl');
+  it('is true only for a superadmin session opening another organisation\'s case', () => {
+    expect(isCrossTenantSupportAccess(session({ role: 'superadmin' }), { originHospitalId: 'HOSP-OTHER' }, ENTERPRISES)).toBe(true);
+    expect(isCrossTenantSupportAccess(session({ role: 'superadmin', organisationId: undefined }), { originHospitalId: HOSP_A }, ENTERPRISES)).toBe(true);
+    expect(isCrossTenantSupportAccess(session({ role: 'superadmin' }), { originHospitalId: HOSP_A }, ENTERPRISES)).toBe(false);
+    expect(isCrossTenantSupportAccess(session(), { originHospitalId: 'HOSP-OTHER' }, ENTERPRISES)).toBe(false);
+    expect(isCrossTenantSupportAccess(null, { originHospitalId: HOSP_A }, ENTERPRISES)).toBe(false);
   });
 });

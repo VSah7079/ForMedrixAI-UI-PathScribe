@@ -95,7 +95,7 @@ describe('mockBatchService — real referral dispatch on completion, per direct 
     });
     expect(tracking).not.toBeNull();
     if (tracking?.ok) expect(tracking.data?.transitStatus).toBe('dispatched');
-  }, 20000);
+  });
 
   it('real, completing a genuine, non-referral batch (e.g. Processing) never enqueues anything to the referral queue', async () => {
     const { mockBatchService } = await import('./mockBatchService');
@@ -112,5 +112,5 @@ describe('mockBatchService — real referral dispatch on completion, per direct 
 
     const queueEntries = await mockReferralOutboundQueueService.getByBatchId(created.data.id);
     if (queueEntries.ok) expect(queueEntries.data).toHaveLength(0);
-  }, 20000);
+  });
 });

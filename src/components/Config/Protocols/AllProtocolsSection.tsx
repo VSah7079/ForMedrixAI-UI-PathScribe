@@ -4,15 +4,17 @@
  * Renders the complete protocol library across all lifecycle states.
  * Consumed by index.tsx (ProtocolsTab).
  *
- * Adds a status filter pill-bar (All / Draft / In Review / Needs Changes /
- * Approved / Published) above the grouped list.
+ * Adds a status filter pill-bar (All / Published / Approved / In Review /
+ * Needs Changes / Draft / Archived) above the grouped list. "All" excludes
+ * archived protocols (Batch 317). Row actions: ProtocolCardParts.tsx →
+ * ProtocolRowActions, rules in services/templates/protocolLifecycle.ts.
  *
  * i18n note: `p.category`/`p.source`/`p.type`/`p.owner`/`p.lastModified`/
  * `p.name`/`p.reviewNote` are persisted mock registry data (protocolShared.
  * tsx's own posture) and stay untouched/English here too. This file reuses
- * several of ActiveProtocolsSection.tsx's (batch 148) already-translated
- * shared mini-components (SearchBar/CategoryGroup/EmptyState/ActionBtn/
- * OutlineBtn/TealBtn) as-is, its `.ps-activeprotocols-*` CSS class family
+ * the shared, already-translated mini-components in ProtocolCardParts.tsx
+ * (SearchBar/CategoryGroup/EmptyState/OutlineBtn/TealBtn, moved there from
+ * ActiveProtocolsSection.tsx in Batch 317), the `.ps-activeprotocols-*` CSS class family
  * for the layout this card shares with that file's own, and its exact
  * `protocolShared.lifecycle.*`/`activeProtocolsSection.*` translation keys
  * for the concepts both files display identically, rather than duplicating
@@ -23,32 +25,33 @@
 import React, { useState } from 'react';
 import '../../../pathscribe.css';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Protocol,
   useProtocols,
   LifecycleState,
-  LIFECYCLE_STYLES,
-  SOURCE_STYLES,
-  CATEGORY_COLORS,
-  LIFECYCLE_ORDER,
   LifecycleBadge,
   CoverageBar,
   UploadProtocolModal,
   BuildCustomiseModal,
+  sourceBadgeClass,
+  categoryHueVar,
+  lifecycleHueClass,
 } from './protocolShared';
 import {
-  ActionBtn,
+  LifecycleTracker,
+  ProtocolRowActions,
   OutlineBtn,
   TealBtn,
   SearchBar,
   CategoryGroup,
   EmptyState,
-} from './ActiveProtocolsSection';
+} from './ProtocolCardParts';
+import { matchesStatusFilter } from '@/services/templates/protocolLifecycle';
 
 type StatusFilter = 'all' | LifecycleState;
 
-const STATUS_FILTERS: StatusFilter[] = ['all', 'published', 'approved', 'in_review', 'needs_changes', 'draft'];
+const STATUS_FILTERS: StatusFilter[] = ['all', 'published', 'approved', 'in_review', 'needs_changes', 'draft', 'archived'];
 
 // Reuses the exact protocolShared.lifecycle.* keys LifecycleBadge (and
 // ActiveProtocolsSection.tsx's own lifecycle tracker) already render for
@@ -60,29 +63,14 @@ const STATUS_FILTER_LABEL_KEY: Record<StatusFilter, string> = {
   in_review:     'protocolShared.lifecycle.inReview',
   needs_changes: 'protocolShared.lifecycle.needsChanges',
   draft:         'protocolShared.lifecycle.draft',
-};
-
-// Same reasoning/reuse as ActiveProtocolsSection.tsx's own identical map:
-// LIFECYCLE_ORDER only ever contains these four real stages.
-const LIFECYCLE_STEP_LABEL_KEY: Partial<Record<Protocol['status'], string>> = {
-  draft:     'protocolShared.lifecycle.draft',
-  in_review: 'protocolShared.lifecycle.inReview',
-  approved:  'protocolShared.lifecycle.approved',
-  published: 'protocolShared.lifecycle.published',
+  archived:      'protocolShared.lifecycle.archived',
 };
 
 // ─── ProtocolCard (all-protocols variant — shows both reviewer + editor) ──────
 
 const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
   const { t }            = useTranslation();
-  const navigate        = useNavigate();
   const [open, setOpen] = useState(false);
-  const catColor        = CATEGORY_COLORS[p.category] ?? '#64748b';
-  const srcStyle        = SOURCE_STYLES[p.source]     ?? SOURCE_STYLES.Custom;
-
-  const stepIndex = LIFECYCLE_ORDER.indexOf(
-    p.status === 'needs_changes' ? 'in_review' : p.status
-  );
 
   return (
     <div className="ps-activeprotocols-card">
@@ -90,13 +78,13 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
         onClick={() => setOpen(o => !o)}
         className={`ps-activeprotocols-row${open ? ' ps-activeprotocols-row--open' : ''}`}
       >
-        <div className="ps-activeprotocols-cat-bar" style={{ background: catColor }} />
+        <div className="ps-activeprotocols-cat-bar" style={categoryHueVar(p.category)} />
         <div className="ps-activeprotocols-info">
           <div className="ps-activeprotocols-name" data-phi="name">{p.name}</div>
           <div className="ps-activeprotocols-meta">
             <span className="ps-activeprotocols-version">{p.version}</span>
             <span className="ps-activeprotocols-dot">&bull;</span>
-            <span className="ps-activeprotocols-source-badge" style={{ background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
+            <span className={`ps-activeprotocols-source-badge ${sourceBadgeClass(p.source)}`}>{p.source}</span>
             <span className="ps-activeprotocols-dot">&bull;</span>
             <span className="ps-activeprotocols-type">{p.type}</span>
             <span className="ps-activeprotocols-dot">&bull;</span>
@@ -139,48 +127,10 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
           )}
 
           {/* Lifecycle tracker */}
-          <div className="ps-activeprotocols-lifecycle">
-            {LIFECYCLE_ORDER.map((s, i) => {
-              const sStyle    = LIFECYCLE_STYLES[s];
-              const isCurrent = i === stepIndex;
-              const isPast    = i < stepIndex;
-              return (
-                <React.Fragment key={s}>
-                  <div className="ps-activeprotocols-step">
-                    <div
-                      className={`ps-activeprotocols-step-circle${isPast ? ' ps-activeprotocols-step-circle--past' : ''}`}
-                      style={isCurrent && !isPast ? { background: sStyle.bg, color: sStyle.color, border: `1px solid ${sStyle.border}` } : undefined}
-                    >
-                      {isPast ? '✓' : i + 1}
-                    </div>
-                    <span
-                      className={`ps-activeprotocols-step-label${isCurrent ? ' ps-activeprotocols-step-label--current' : isPast ? ' ps-activeprotocols-step-label--past' : ''}`}
-                      style={isCurrent ? { color: sStyle.color } : undefined}
-                    >
-                      {t(LIFECYCLE_STEP_LABEL_KEY[s] ?? 'protocolShared.lifecycle.draft')}
-                    </span>
-                  </div>
-                  {i < LIFECYCLE_ORDER.length - 1 && <span className="ps-activeprotocols-step-sep">—</span>}
-                </React.Fragment>
-              );
-            })}
-            {p.status === 'needs_changes' && (
-              <span className="ps-activeprotocols-needs-changes-pill">↩ {t('protocolShared.lifecycle.needsChanges')}</span>
-            )}
-          </div>
+          <LifecycleTracker protocol={p} showNeedsChanges />
 
-          {/* Actions */}
-          <div className="ps-activeprotocols-actions">
-            {p.status === 'published'
-              ? <ActionBtn color="#38bdf8" bg="rgba(56,189,248,0.1)" border="rgba(56,189,248,0.25)" onClick={() => navigate(`/template-review/${p.id}`)}>👁 {t('activeProtocolsSection.viewProtocolButton')}</ActionBtn>
-              : <ActionBtn color="#0891B2" bg="rgba(8,145,178,0.15)" border="rgba(8,145,178,0.35)" onClick={() => navigate(`/template-review/${p.id}`)}>🔍 {t('allProtocolsSection.openReviewerButton')}</ActionBtn>
-            }
-            {p.status !== 'published' && <ActionBtn onClick={() => navigate(`/template-editor/${p.id}?from=all`)}>✏️ {t('allProtocolsSection.openEditorButton')}</ActionBtn>}
-            <ActionBtn onClick={() => {}}>📋 {t('common.duplicate')}</ActionBtn>
-            <ActionBtn onClick={() => {}}>{'{ }'} {t('activeProtocolsSection.exportJsonButton')}</ActionBtn>
-            {p.status === 'published' && <ActionBtn onClick={() => {}}>🔁 {t('activeProtocolsSection.newVersionButton')}</ActionBtn>}
-            <ActionBtn danger onClick={() => {}}>🗑 {t('common.archive')}</ActionBtn>
-          </div>
+          {/* Actions — which ones show is decided in services/templates/protocolLifecycle.ts */}
+          <ProtocolRowActions protocol={p} from="all" />
         </div>
       )}
     </div>
@@ -199,7 +149,7 @@ const AllProtocolsSection: React.FC = () => {
 
   const allProtocols = useProtocols();
   const filtered = allProtocols.filter(p => {
-    const matchStatus = statusFilter === 'all' || p.status === statusFilter;
+    const matchStatus = matchesStatusFilter(p, statusFilter);
     const q = search.trim().toLowerCase();
     const matchSearch = !q || p.name.toLowerCase().includes(q) || p.category.toLowerCase().includes(q) || p.source.toLowerCase().includes(q);
     return matchStatus && matchSearch;
@@ -224,25 +174,17 @@ const AllProtocolsSection: React.FC = () => {
         </div>
       </div>
 
-      {/* Status filter pills — active color is genuinely per-status data
-          (LIFECYCLE_STYLES), so it's set via CSS custom properties on a
-          fixed-layout class, same technique as ActionBtn's own
-          --ps-abtn-* overrides. */}
+      {/* Status filter pills — each pill's colour is its lifecycle state's
+          CSS hue class (.ps-lc-hue--*); the active pill is tinted from it. */}
       <div className="ps-activeprotocols-filter-row">
         {STATUS_FILTERS.map(f => {
-          const active   = statusFilter === f;
-          const lcStyle  = f !== 'all' ? LIFECYCLE_STYLES[f as LifecycleState] : null;
-          const count    = f === 'all' ? allProtocols.length : allProtocols.filter(p => p.status === f).length;
+          const active = statusFilter === f;
+          const count  = allProtocols.filter(p => matchesStatusFilter(p, f)).length;
           return (
             <button
               key={f}
               onClick={() => setStatusFilter(f)}
-              className="ps-activeprotocols-status-filter-btn"
-              style={active ? ({
-                '--ps-statusfilter-bg':     lcStyle ? lcStyle.bg     : 'rgba(8,145,178,0.15)',
-                '--ps-statusfilter-color':  lcStyle ? lcStyle.color  : '#0891B2',
-                '--ps-statusfilter-border': lcStyle ? lcStyle.border : 'rgba(8,145,178,0.3)',
-              } as React.CSSProperties) : undefined}
+              className={`ps-activeprotocols-status-filter-btn ${lifecycleHueClass(f)}${active ? ' ps-activeprotocols-status-filter-btn--active' : ''}`}
             >
               {t(STATUS_FILTER_LABEL_KEY[f])} <span className="ps-activeprotocols-filter-count">({count})</span>
             </button>

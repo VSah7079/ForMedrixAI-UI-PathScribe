@@ -29,3 +29,11 @@ never affected by that.
 (`(p: any)`/`(o: any)`/`(e: any)` on `.filter()` callbacks) — the
 underlying service results were already properly typed, confirmed via
 clean compilation after removing each cast.
+
+## Batch 317
+
+`referenceCheckService.ts` now imports `TATEntry` from `types/quality/TatConfigEntry.ts` instead of from the `TATConfigSection.tsx` component. The types moved there with the TAT rules (`services/tatConfig/`). Behaviour is unchanged.
+
+## Batch 353
+
+TAT entries now come from `mockTatTargetService` (`services/tatConfig/`). This file used to import the storage key from the TAT settings component and read browser storage itself.

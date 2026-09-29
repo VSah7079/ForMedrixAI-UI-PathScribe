@@ -20,6 +20,171 @@ translate from the start; updating an existing page or modal's own UI
 text means converting it to the same real i18n framework as part of
 that change. See `src/i18n/README.md` for the full account.
 
+## Admin guide: label printing routes (Batch 321, PS-52)
+
+[printerProfiles/README.md → "Admin guide: how a site prints labels"](./printerProfiles/README.md#admin-guide-how-a-site-prints-labels) is customer-facing material for the Admin Guide. It covers:
+- which printing route a site should use;
+- what IT must approve before the PathScribe Agent is installed on workstations;
+- what to ask during onboarding;
+- which routes are available today.
+
+## AI models: global catalog + per-tenant adoption (Batch 320, PS-58)
+
+Per Pete's decision on PS-58 (Option 2):
+- **Catalog:** AI models are platform assets in one global catalog (`/modelCatalog`, vendor-staff write only).
+- **Adoption:** each organisation keeps its own adoption records under its `organisationId` (`/organisations/{orgId}/adoptedModels/{modelId}`), holding status, its default, case counts and overrides.
+- **Reads:** `modelService` returns the joined view scoped to the organisation in session, and fails closed without one.
+- **Rules:** in `models/modelAdoption.ts`; see [models/README.md](./models/README.md).
+
+## Assist-mode LIS polling (Batch 322, PS-87)
+
+In Assist mode the external LIS owns the case and rarely pushes preliminary results, so PathScribe polls it.
+- **Gross Complete:** the AI picks the synoptic templates and fills what the gross supports.
+- **Microscopic/Diagnosis Complete:** the AI completes the draft.
+- **Always a draft for pathologist review.**
+
+Since Batch 323 the updates come through the vendor-agnostic ingestion layer, built to Pete's design: HL7 v2, JSON webhook and polling adapters all feed one staging queue, and the Assist worker reads only from that queue. See [lisIngestion/README.md](./lisIngestion/README.md).
+
+Still open: the real LIS source, the server-side schedule, and the inbound endpoints. See [assistPolling/README.md](./assistPolling/README.md).
+
+## PathScribe Agent printing (Batch 325, PS-52)
+
+`printerProfiles/`: a printer with Bridge Type `pathscribe_agent` now prints through PathScribe's agent client (`utils/labels/pathscribeAgent/`). The Admin Guide availability table in [printerProfiles/README.md](./printerProfiles/README.md) now says so. Batch 346 added the optional **Agent Port** (`agentPort`) and moved the editor's save checks into `validatePrinterProfileDraft.ts`.
+
+## Cytology signing authority, pathologist track (Batch 332, PS-327)
+
+`cytology/resolveCytologySignOutAuthority.ts` applies per-lab and country signing authority to Cytology's pathologist track. The cytotechnologist track (the CLIA independent NILM GYN rule) is unchanged. With Surgical Pathology and Autopsy, every sign-out path now uses the same authority lookup.
+
+## Autopsy signing authority and forensic appointments (Batch 331, PS-327)
+
+- **`autopsy/signAutopsyReport.ts`:**
+  - **Signing authority:** it now applies the same per-lab and country signing authority as Surgical Pathology, using the coroner jurisdiction for the country profile.
+  - **Forensic cases:** these also need an active jurisdictional appointment, recorded as a staff credential. There's no admin override.
+- **Shared authority context:** `auth/resolveFinalizeAuthorityContext.ts` (moved from the Surgical Pathology hook) is the lookup every sign-out path uses.
+- **New folder:** [staff/README.md](./staff/README.md) documents the credential capabilities and the Staff editor's rules.
+
+## Template review governance (Batch 328, PS-63)
+
+`templates/`: Approve and Publish are enforced by the service. They need:
+- an approver role;
+- no self-approval, unless the site's setting allows it;
+- the site's Required Reviewers;
+- at least 80% SNOMED coverage for diagnostic templates.
+
+The rules are pure, in `templatePublishingRules.ts`. See [templates/README.md](./templates/README.md).
+
+**Batch 329:**
+- **Drafting:** limited to Template Author, and Admin inherits it.
+- **Built-in roles:** Template Author, Template Approver and Lab Director are built-in roles with fixed ids (`roles/systemRoles.ts`). Stored catalogs gain them on load, and a rename is carried over to staff records.
+- **By id:** the checks use role ids, read live from the staff record. (Batch 328's `staffRoles` session field was removed.)
+
+## Sign-in and single sign-on (Batch 343, PS-60)
+
+[`auth/`](./auth/README.md) now also signs people in and out.
+- **SSO:** OpenID Connect with the hospital's identity provider, via `oidc-client-ts` (authorization code + PKCE, no secret). Only provisioned, active staff can sign in, matched by the provider's permanent account id and linked by trusted email at first sign-in. `docs/architecture/AUTHENTICATION_OIDC.md` has the setup and the API server's part.
+- **Demo accounts:** password sign-in only in demo builds, against PBKDF2 hashes. They're left out of `VITE_AUTH_MODE=sso` builds.
+- **Barrel exports:** `@/services` exports `authSession` and `authConfig`. `AuthContext` uses them and is off the deployment baselines.
+- **Hub token:** `liveUpdates/` gets the signed-in user's access token through `auth/accessTokenSource.ts`.
+- **Signer confirmation (Batch 344):** `@/services` also exports `signerConfirmation`.
+  - **What it does:** every signature confirms who is signing first, with the password again (demo) or the identity provider's sign-in popup (SSO). Five failures lock signing for 15 minutes, and everything is audited.
+  - **Barrel addition:** `biometricService` (the simulated WebAuthn module) is exported too.
+- **Spec:** `docs/architecture/AUTHENTICATION_OIDC.md` now has the token contract (§5) and SCIM provisioning (§6) for the API server.
+- **Signature check at the save (Batch 345):** `@/services` exports `signatureGate` and `signatureRecordService`.
+  - **What it does:** every signed state change checks the confirmation the way the API server will: signer, action, case, 5-minute age, one use, and for SSO the provider's ID token for the same account, freshly authenticated. It then stores a signature record ([`signatures/`](./signatures/README.md)).
+  - **Also added:** `auth/linkedAccounts.ts`, for listing and unlinking a person's sign-in accounts.
+
+## Case search (Batch 350)
+
+`caseSearch/`: server-side case search for the Search page, with the user's access rules applied first, then matching, sorting, counting and one page per request. It also produces CSV export rows (up to 5,000, audited). `@/services` exports it as `caseSearchService`, along with its option lists and `actionRegistryService`. The Search-only filters left `cases/ICaseService.ts → CaseFilterParams`. Saved searches from the Search page now go through `savedSearches/`. Contract for the API server: `docs/architecture/CASE_SEARCH_API.md`. See [caseSearch/README.md](./caseSearch/README.md).
+
+**Batch 351:** `caseSearch/` gained the section 3 filters: case type, sign-out and release dates, pathologist role, revisions, holds, result flag, pending work, TAT, subspecialty, performing lab, location, intake, payer, CPT and autopsy. Matching joins reference data (dictionaries, amendments, countersigns, delegations, TAT) loaded through one dependency. See [caseSearch/README.md](./caseSearch/README.md).
+
+**Batch 352:** `facilities/` gained 11 ordering clients that the demo cases already referenced, each linked to its performing lab (Manchester Trust, Midwest, Henry Ford, Desert Valley). Searching by those labs now finds their cases. See [facilities/README.md](./facilities/README.md).
+
+**Batch 361:** `equipment/equipmentLogRules.ts` gained `isServiceAlert` and `serviceStatesById`: which devices the screens show in red.
+
+**Batch 360:** `equipment/` gained the service log: maintenance, calibration, function checks, repairs and malfunctions. It is append-only and audited, and computes due and overdue status from each device's schedule. `@/services` exports `equipmentLogService`.
+
+**Batch 359:** `printerProfiles/` and `grossingHardware/` records name their physical device in `equipment/` (`equipmentId`, checked by kind). `grossingHardware/` gained its rules and a screen. `mockSeedMerge.ts` gained `withSeedFieldBackfill`. `@/services` exports `grossingHardwareProfileService`.
+
+**Batch 358:** new `equipment/`: the equipment register. Pete chose to centralise equipment, as a hybrid:
+- the register holds every device's identity, lab, station and status;
+- workflow settings stay in their own folders and point at it.
+
+It replaced Batch 356's `instruments/`; molecular target instruments are analysers in the register. `@/services` exports `equipmentService` (`instrumentService` is gone). See [equipment/README.md](./equipment/README.md).
+
+**Batch 357:** new `mockSeedMerge.ts`: `withMissingSeedRecords` lets a demo list gain seed records added after a browser stored it, without Demo Reset and without touching stored edits. Used by `scanStations/` and `instruments/`.
+
+**Batch 356:** new `instruments/`: the lab's analytical instruments, each with a performing lab and an optional scan station. Molecular batches pick their target instrument from it, and worklist dispatch checks the instrument's station (PS-326). `@/services` exports `instrumentService` and `scanStationService`. See [instruments/README.md](./instruments/README.md).
+
+**Batch 355:** `delegations/`: `findPendingInformalReview` was removed with the orphaned informal-review banner (PS-346).
+
+**Batch 354:** in `caseSearch/`, choosing an organisation now includes everything under it: an NHS Trust finds its sites' cases (`facilities/facilityHierarchy.ts`). The Manchester demo clients now sit under their hospital sites.
+
+## TAT targets and delegations (Batch 353)
+
+Two new services, so the API server can own this data (Pete: "They'll need to move to services the API server owns"). Contract: `docs/architecture/TAT_AND_DELEGATION_API.md`.
+- **`tatConfig/`:** `tatTargetService` (`ITatTargetService`), the built-in targets, and the target resolver. The resolver moved from `components/Contribution/qualityCalculations.ts`. See [tatConfig/README.md](./tatConfig/README.md).
+- **`delegations/`:** `delegationService` (`IDelegationService`), and the rules the screens used to apply. The records moved out of `cases/mockCaseService.ts`. See [delegations/README.md](./delegations/README.md).
+- **Also exported:** `delegationTypeService`.
+- **Readers switched:** Search, the facility and subspecialty reference check, and the quality inputs (`quality/qualityTatInputs.ts`) all read through these services.
+
+## Macro permissions (Batch 349, PS-126)
+
+`macros/macroAccess.ts`: administrators see every macro grouped by type and alone may create or change Enterprise macros. See [macros/README.md](./macros/README.md).
+
+## Network print results (Batch 347, PS-54)
+
+[`networkPrint/`](./networkPrint/README.md) tracks labels sent to *Direct via Interface Engine* printers.
+- **Answers:** the engine's answer arrives over the live-update connection, and the user sees printed, or the reason it didn't print, with a manual **Retry**. A retry keeps the idempotency key, so an engine that enforces it prints the label once.
+- **Audit:** results and retries are audited.
+- **Barrel export:** `@/services` exports `networkPrintJobs`.
+- **Server side:** specified in `docs/architecture/LIVE_UPDATES_SIGNALR.md` §10.
+
+## Live updates (Batch 342, PS-262)
+
+[`liveUpdates/`](./liveUpdates/README.md) keeps the OR Suite Live Boards and the Intraop Queue current across devices.
+- **Production:** the SignalR hub on the ASP.NET Core API server, reached with `@microsoft/signalr`. `docs/architecture/LIVE_UPDATES_SIGNALR.md` is the hub spec.
+- **Without a hub:** this browser's own windows update each other, fed by the mock services, and polling covers other devices.
+- **Barrel exports:** `@/services` exports `liveUpdateService`, plus `orSuiteTerminalService` and `orEventLogService`, so the OR board no longer imports mocks.
+
+## Medical spell checking (Batch 336, PS-342)
+
+[`spellcheck/`](./spellcheck/README.md) is the spell-check engine. It runs real Hunspell (WebAssembly) in a Web Worker and checks each word through the tiers in order: personal → facility → the other-convention regional check → jurisdiction medical lexicon → clinical vocabularies → base language dictionary. Codes (SNOMED, LOINC, ICD, TNM, markers, measurements) are never flagged.
+- **Language:** the case's choice → the assigned pathologist's preference → the facility default.
+- **Dictionaries:** personal and facility dictionaries; facility words are admin-only, immediate and audited.
+- **Coverage:** English (US, UK, Australian, Canadian), French, Dutch, Korean and (Batch 337) German, which is used under the GPL, shipped unmodified with its licence and source offer.
+- **Licensed sources (Batch 339):** the build reads the SPECIALIST Lexicon, SNOMED CT releases and LOINC from `spellcheck-data/licensed/` into the medical and clinical tiers (tested on sample files; waiting on the licences, PS-343).
+- **Screens (Batch 338):** the report editor and every report text box are checked (`components/SpellCheck/`, `hooks/useCaseSpellCheck.ts`); the AI spelling check in `aiIntegration/` is retired. The barrel now also exports `voiceMacroService`.
+
+## Generic Code Engine (Batch 333, PS-89)
+
+`billing/codeEngine/` holds storage-neutral rules for effective-dated code systems. `billing/mockCodeImportService.ts` stores bulk imports as jobs.
+- **Import jobs:** per Pete, each import is **one PENDING_APPROVAL job** that a second person approves or rejects as a whole. An approved job can be rolled back.
+- **Natural-sunset fix:** approving a future-dated rule no longer retires the current one early. The current rule stays in force until the new one starts.
+- **Screens (Batch 334):** System → Code Import (Bulk) uploads, maps, checks and imports a CSV and lists every job with rollback; Pending Billing Rule Approvals decides a job as a whole. Every step is audited by the service. `services/index.ts` now exports the billing services the screens need (`codeImportService`, `billingRuleService`, `modifierDictionaryService`, `ncciEditService`, `rvuCodeMapService`).
+
+See [billing/codeEngine/README.md](./billing/codeEngine/README.md).
+
+## Deployment-readiness guard (Batch 330)
+
+[`deploymentReadiness/`](./deploymentReadiness/README.md) keeps the UI deployment-neutral, for public or private cloud. UI code may not:
+- import a mock service directly;
+- use browser storage directly;
+- import Firebase.
+
+Existing files are baselined in a list that only shrinks. The same rule is in `CLAUDE.md` as standing rule 4.
+
+## HTTPS only for back-end calls (Batch 327)
+
+- **`interfaceDispatch/`:** the receiver URL now goes through `utils/serviceEndpoint.ts`. A production build needs `VITE_INTERFACE_RECEIVER_ENDPOINT` set to an `https://` URL. Without one, dispatch fails with a clear message and sends nothing, instead of posting to `http://localhost:8080/`.
+- **`grossingHardware/`:** the scale agent's address must be `https://`. The service refuses plain HTTP, and the capture won't read over it.
+- The report renderer (`pages/SynopticReportPage/`) follows the same rule. See [reports/README.md](./reports/README.md).
+
+## Template editor address fix (Batch 326, PS-63)
+
+`templates/protocolLifecycle.ts → editorUrlAfterSave`: after a new template or a copy is saved, the editor points at that saved protocol, so a refresh no longer starts another copy. See [templates/README.md](./templates/README.md).
+
 ---
 
 ## The core pattern: interface / mock / firestore
@@ -30,9 +195,18 @@ Most folders here follow the same three-file shape:
 - **`mock<Name>Service.ts`** — the real, currently-active implementation.
   Despite the name "mock," this is what the running app actually uses
   today — it's `localStorage`-backed rather than a placeholder.
-- **`firestore<Name>Service.ts`** — a *deliberate, forward-looking stub*
-  for the eventual real backend. Not dead code, not wired in yet. When a
-  real backend exists, swapping it in is meant to be a one-line change in
+- **`firestore<Name>Service.ts`** — a forward-looking stub, written when
+  Firestore was the planned backend. **That has changed:** the production
+  database is Microsoft SQL Server (Pete, Sep 2026). SQL Server can't be
+  reached from the browser, so the real services will call a PathScribe
+  API server, which talks to the database. The interfaces (`I<Name>Service`)
+  are what carry over. The Firestore stubs, `firestore.rules`, the Firebase
+  emulator tests and the Engine webhook's Firebase Admin backend will be
+  replaced. **The API server is ASP.NET Core, with SignalR for live
+  updates** (Pete, Sep 26, 2026; `liveUpdates/` below and
+  `docs/architecture/LIVE_UPDATES_SIGNALR.md`). Still to decide: the
+  data-access library, and how database migrations are run.
+  Swapping the real services in is still meant to be a change in
   `services/index.ts`.
 
 Where a folder deviates from this pattern, its own `README.md` explains
@@ -50,7 +224,7 @@ still follows the interface/mock/firestore split despite that).
   Most of the app imports services from here, not from individual folders.
 - **`types.ts`** — shared types used by every service interface in the
   app: `ServiceResult<T>` (the `{ ok: true, data } | { ok: false, error }`
-  result shape every service method returns) and `ID`. **Extended (Aug
+  result shape every service method returns) and `ID`. Since Batch 348 (PS-67) it is the only result shape: the older `{ success, data, error }` in `types/serviceResult.ts` is gone. **Extended (Aug
   2026)** with an optional `meta?: ServiceResultMeta` on the success
   branch (`hasMore`/`nextCursor`) for real, cursor-based pagination —
   currently used by `cases/ICaseService.ts`'s `getAll()`. Deliberately
@@ -99,7 +273,9 @@ other consumers of the root-level file, deleted it. Full detail in
 
 | Folder | What it is |
 |---|---|
-| [abnormalDetection/](./abnormalDetection/README.md) | **NEW (Sep 2026)** — PS-105/PS-129: real, admin-configurable discrete trigger-rule dictionary (synoptic field/value → Abnormal/Critical/Malignant severity) |
+| [lisIngestion/](./lisIngestion/README.md) | **NEW (Batch 323, PS-87)**: vendor-agnostic LIS ingestion. HL7 v2, JSON webhook and polling adapters feed one staging queue that workers read from |
+| [assistPolling/](./assistPolling/README.md) | **NEW (Batch 322, PS-87)**: the Assist worker. Staged LIS updates for Gross Complete or Microscopic/Diagnosis Complete become AI synoptic drafts for review |
+| [abnormalDetection/](./abnormalDetection/README.md) | **NEW (Sep 2026)** — PS-105/PS-129: real, admin-configurable discrete trigger-rule dictionary (synoptic field/value → Abnormal/Critical/Malignant severity); PS-137 agreement signals, tagged with the covering Validation Study since Batch 318 |
 | [access/](./access/README.md) | **NEW (August 2026)** — real, tracked AccessRequest tickets (Pediatric, Pool, Orchestration) — replaces message-only requests with a real status lifecycle and quality-metric turnaround time |
 | [accessioning/](./accessioning/README.md) | **NEW (Sep 2026)** — Structured Clinical History Dictionary spec's own User Story 5: real, accession-wide validation combining case + specimen clinical history, order-level `accessionStatus`, and the outbound `order.accessioned`/`order.deficiency.created` queue |
 | [actionRegistry/](./actionRegistry/README.md) | Voice/shortcut action catalog |
@@ -107,8 +283,10 @@ other consumers of the root-level file, deleted it. Full detail in
 | [aiBehavior/](./aiBehavior/README.md) | Admin AI behavior settings (confidence thresholds etc.) |
 | [aiIntegration/](./aiIntegration/README.md) | Higher-level AI features: transcript refine, suggestions, spellcheck |
 | [assetLocation/](./assetLocation/README.md) | **NEW (Sep 2026)** — governed physical/asset location dictionary (mortuary storage, workstations, archive shelves), following the exact Department/Physician `findOrCreateByName` governance pattern; built to address `MaterialLocation.location`'s own free-text drift risk without losing its real external-system tolerance |
-| [auditlog/](./auditlog/README.md) | System-wide audit log |
-| [auth/](./auth/README.md) | Case access control + institution/session resolution (not login) |
+| [authorization/](./authorization/README.md) | **Batch 369 (PS-355)**: capabilities and the permission check. The catalog, `can()` with the granting role, audit of every high-risk check, day-one grants, dependency planning for the Role Dictionary. No bypass for any role |
+| [auditlog/](./auditlog/README.md) | System-wide audit log (incl. signing-authority facility-override events, Sep 2026) |
+| [auth/](./auth/README.md) | Case access control + institution/session resolution; `canFinalizeCase()` / countersign resolution are lab- **and** jurisdiction-scoped (Sep 2026). Since Batch 343 also sign-in: demo password accounts and SSO (PS-60) |
+| [signatures/](./signatures/README.md) | Signature records, one per signature applied to a case, with how the signer was confirmed. Append-only (Batch 345, PS-60) |
 | [autopsy/](./autopsy/README.md) | **NEW (Sep 2026)** — Autopsy Pathology Module (PS-261, RFP-APLIS-2026-GLOBAL §3.1.C): case authority (forensic/hospital-consented), the real legal hard-stop gross-examination gate, temporary accession, mortuary storage occupancy (via `Specimen.locationHistory`, not a parallel mechanism), and jurisdiction-specific consent/HTA rules |
 | [batches/](./batches/README.md) | **NEW (August 2026)** — cassette/slide chain-of-custody through histology processing nodes via container barcode scanning, plus the real, computed pending-batch-load queue |
 | [billing/](./billing/README.md) | **NEW (August 2026)** — real CPT-to-work-RVU mapping table and calculation, workload/productivity tracking only (not a billing system) |
@@ -133,10 +311,11 @@ other consumers of the root-level file, deleted it. Full detail in
 | [diagnosisCodes/](./diagnosisCodes/README.md) | Referring physician's order-time diagnosis code |
 | [digitalPathology/](./digitalPathology/README.md) | **NEW (Sep 2026)** — shared computational-pathology/AI vendor integration (Paige, Ibex, PathAI, Proscia, Hologic) and WSI scan-batch infrastructure, relocated out of `cytology/` since surgical pathology needs it equally |
 | [drafts/](./drafts/README.md) | **NEW (July 2026)** — local caching of in-progress unsaved work (Inactivity Timeout & Draft Recovery Phase 2) |
+| [duplication/](./duplication/README.md) | **NEW (Sep 2026, PS-73)**: which admin screens offer Duplicate and why (policy registry + guard test), and the per-entity copy rules: what a copy keeps, deep-copies and clears |
 | [encounters/](./encounters/README.md) | **NEW (August 2026)** — Patient/Encounter Management Subsystem: real encounter tracking, sibling to `patients/`'s identifier crosswalk |
 | [events/](./events/README.md) | **NEW (August 2026)** — real-time event distribution layer for critical patient state changes (Patient/Encounter Management Subsystem Phase 4) |
 | [externalResources/](./externalResources/README.md) | **NEW (July 2026)** — admin-managed reference links (CAP protocols, WHO classification, lab systems), org-scoped with real per-viewer relevance filtering |
-| [facilities/](./facilities/README.md) | **NEW (August 2026)** — canonical `Facility` entity, replaces the old `clients/` (`Client`) entirely |
+| [facilities/](./facilities/README.md) | **NEW (August 2026)** — canonical `Facility` entity, replaces the old `clients/` (`Client`) entirely; `resolveCasePerformingLabScope()` (Sep 2026) resolves a case's performing lab + its jurisdiction |
 | [facilityOpsDashboard/](./facilityOpsDashboard/README.md) | **NEW (Sep 2026)** — PS-288, fifth of the PS-284→285→286→287→288 workstation-build sequence: the Display Profile/device registry plus five real, pure aggregation functions (one per department dashboard view) over `batches/`, `referral/`, and `digitalPathology/`'s own existing data — no new parallel data model |
 | [flags/](./flags/README.md) | Case/specimen flag dictionary |
 | [fonts/](./fonts/README.md) | Editor font dictionary |
@@ -147,7 +326,7 @@ other consumers of the root-level file, deleted it. Full detail in
 | [hardware/](./hardware/README.md) | **NEW (August 2026)** — `ModeAInterfaceService`: dispatches hardware/LIS orders through the existing HL7 seam |
 | [hardwareContainers/](./hardwareContainers/README.md) | **NEW (August 2026)** — check-in/check-out registry for semi-permanent, laser-engraved reusable racks/baskets |
 | [hl7/](./hl7/README.md) | Standard HL7 ORM^O01 builder — deliberate pre-integration scaffolding |
-| [interfaceEngine/](./interfaceEngine/README.md) | **NEW (August 2026)** — real Category E (Order Creation) dispatch for the JSON/REST interface spec; mock-backed, no real backend/transport yet |
+| [interfaceEngine/](./interfaceEngine/README.md) | **NEW (August 2026)** — Category E (Order Creation) dispatch for the JSON/REST interface spec, sent through the generic interface dispatcher; since Batch 318 each send's outcome is stored and listed in the Audit Log's Outbound Dispatches trail (PS-86) |
 | [interfaceExceptions/](./interfaceExceptions/README.md) | **NEW (August 2026)** — real holding queue for inbound ADT/patient-management messages that can't be safely auto-processed (unresolved identity, missing MRG-5) |
 | [internalNotes/](./internalNotes/README.md) | Lab-internal case notes + management reviews |
 | [intraop/](./intraop/README.md) | Intraoperative Pre-Check queue |
@@ -159,14 +338,14 @@ other consumers of the root-level file, deleted it. Full detail in
 | [messages/](./messages/README.md) | Internal staff messaging |
 | [migration/](./migration/README.md) | **NEW (Sep 2026)** — RFP-APLIS-2026-GLOBAL Historical Data Migration Engine: real field-mapping pipeline, MPI dedup reuse, and cross-validation reporting for legacy LIS import — deliberately not the full Case-creation transform, confirmed to be a genuine backend-heavy piece |
 | [mockInterfaceEngine/](./mockInterfaceEngine/README.md) | **NEW (Sep 2026)** — dev/demo-only MSW mock for PS-239's own real, not-yet-built backend endpoint, double-gated (dev-only build + explicit opt-in) |
-| [models/](./models/README.md) | AI model registry |
+| [models/](./models/README.md) | AI models: global ForMedrixAI catalog + per-organisation adoption records (PS-58) |
 | [molecular/](./molecular/README.md) | **NEW (Sep 2026)** — the Full Molecular Testing Execution Module, 21 real phases (see this folder's own README for the full account) |
 | [molecularOrders/](./molecularOrders/README.md) | **NEW (Sep 2026)** — Protocol-Driven Workflow Infrastructure story Part 2b: outbound queue for real assay orders (`order.molecular`) and instrument orders (`order.instrument`), fed by an accession trigger, an HPV-positive reflex trigger, and a cytology batch-creation trigger |
 | [narrativeSignals/](./narrativeSignals/README.md) | AI-vs-pathologist edit-diff capture + PHI de-identification |
 | [orderIntake/](./orderIntake/README.md) | Pending-orders queue + Client/Department resolution |
 | [organisation/](./organisation/README.md) | Organization/Site/Lab hierarchy (Enterprise + participating hospitals) |
 | [patients/](./patients/README.md) | **NEW (July 2026)** — real Master Patient Index (MPI), org-scoped identity resolution with a genuine ambiguous-match review workflow |
-| [participationTypes/](./participationTypes/README.md) | Case Team role dictionary |
+| [participationTypes/](./participationTypes/README.md) | Case Team role dictionary — **and (Sep 2026) the source of jurisdiction-bound signing authority**: per-country profiles, country-scoped regional roles (UK/EU BMS), three-tier resolution, facility-override provenance + audit, and the editor/save services behind the admin UI. See "Signing authority" below |
 | [performanceTargets/](./performanceTargets/README.md) | Admin productivity targets |
 | [physicians/](./physicians/README.md) | Physician directory |
 | [priority/](./priority/README.md) | Display metadata for the 3 fixed priority tiers |
@@ -193,11 +372,12 @@ other consumers of the root-level file, deleted it. Full detail in
 | [stains/](./stains/README.md) | Stain catalog (3 sub-concepts: type/sectioning/order macro) |
 | [subspecialties/](./subspecialties/README.md) | Subspecialty/pool/workgroup dictionary |
 | [systemConfig/](./systemConfig/README.md) | Lab-wide system configuration |
+| [tatConfig/](./tatConfig/README.md) | **NEW (Sep 2026, Batch 317)**: TAT/escalation editor rules (scope-conflict check, add-vs-edit by mode, role scope kept) |
 | [templateSuggestions/](./templateSuggestions/README.md) | AI-driven synoptic template suggestion (split from templates/ 2026) |
-| [templates/](./templates/README.md) | Synoptic template library management |
+| [templates/](./templates/README.md) | Synoptic template library management; protocol lifecycle rules (Duplicate, New Version, Archive/Restore, Export JSON), Batch 317 |
 | [terminologySearch/](./terminologySearch/README.md) | Live REST API terminology search (SNOMED/ICD/LOINC/CPT) |
 | [users/](./users/README.md) | Staff user directory |
-| [validationStudies/](./validationStudies/README.md) | Validation Study governance workflow |
+| [validationStudies/](./validationStudies/README.md) | Validation Study governance workflow; `resolveActiveStudyId` (shared by both AI-learning signal captures) |
 | [voicemacro/](./voicemacro/README.md) | Voice-triggered macro dictionary |
 
 ## Known issues (as of this review — see PRIORITY_FIXES.md in project root)
@@ -576,3 +756,180 @@ other consumers of the root-level file, deleted it. Full detail in
   `MatrixBlock`'s own comment UI was not wired in this pass — the
   data-model field is real and ready, matrix-block editing is a
   separate, not-yet-explored surface.
+
+## Duplication policy (Sep 2026, PS-73)
+
+Pete's framework decides which admin records can be duplicated:
+
+- **Yes:** complex configuration (facilities, stain/lab protocol templates, routing rulesets, escalation paths), template entities (specimen categories, test panels, document templates, alert profiles) and multi-site variants (printer profiles, workstation groups).
+- **No:** real people or entities (physicians, users, patients), flat lookups of a few fields (cassette colours, container types, delegation types, code-map rows), and transactional or audit-logged records.
+
+The decisions and their reasons live in [`duplication/duplicatePolicy.ts`](./duplication/README.md). Its guard test fails the build if a screen offers Duplicate without being registered, or if any source file stores an English "(Copy)" marker. Copy names come from `t('common.copyOfName')` in the user's language. Each entity's copy rules (what is cleared, what is deep-copied) are in `duplication/duplicateEntities.ts`.
+
+## Signing authority — jurisdiction-bound, human-in-the-loop (Sep 2026, PS-327 / PS-341)
+
+Who may sign out, and whose work needs a countersign, is decided across
+five folders. Read them in this order:
+
+1. **`participationTypes/`** holds the rules. Each role type has
+   platform-default flags (`canFinalize`, `requiresCountersign`,
+   `canViewWholeCase`), per-country `jurisdictionProfiles` (the local
+   title, the regulatory citation, and the flags), optional
+   `scopedJurisdictions` for roles that only exist in some countries,
+   and facility-level `authorityOverrides` that carry who/when/why.
+   Resolution is facility override → jurisdiction default → platform
+   default. The seeded data is Pete's own AU/NZ/EU/UK/IE/CA/KR role
+   hierarchy.
+2. **`facilities/`** holds `resolveCasePerformingLabScope()`, which
+   works out which lab and jurisdiction govern a given case. It is
+   always the performing lab, never the ordering site.
+3. **`auth/`** is where the rules are enforced: `canFinalizeCase()`
+   and `resolveCountersignRequiredTypeIds()`.
+4. **`cases/`** holds `resolveResidentCountersignRequired()`, which
+   routes a sign-out that needs a countersign into release-for-
+   countersign.
+5. **`auditlog/`** receives an entry for every facility override that
+   is added, changed, reverted, or re-justified, and (Batch 335) for
+   every change to a country profile.
+
+Wired today:
+- **Sign-out:** Surg Path sign-out and Assist-mode finalize (`useSignOutWorkflow.ts`), plus Autopsy and Cytology's pathologist track (Batches 331–332, through `auth/resolveFinalizeAuthorityContext.ts`).
+- **Screens:** the case-team editor, the Participation Types admin screen (lab exceptions), and System → **Country Signing Rules** (Batch 335). Country Signing Rules is the platform-level editor for the country profiles and country scope; only a platform administrator can change them.
+
+Not yet wired, and disclosed: `deriveEligibleFinalizerIds()`. The repo-root `firestore.rules` has no finalize-eligibility rule, and production will use SQL Server behind an API server, so that function has no server-side consumer yet.
+
+(Corrected in Batch 335: this section said Cytology and Autopsy weren't wired, which stopped being true in Batches 331–332.)
+
+**Batch 335 cache fix:** `utils/participationTypeLookup.ts` used to cache participation types for the whole session. A saved rule change (country profile or lab override) therefore didn't reach the sign-out check until a reload. Every save now clears the cache.
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+**`phi/`** (new): `phiRenderAudit.ts` finds patient data the UI shows outside a redacted element, and `phiTagging.guard.test.ts` runs it over all of `src/` (no exceptions; the app passes with none). `phiToast.ts` gives services a redacted toast message. `hl7/` notifications use it and are now translated. `deploymentReadiness/`: seven files came off the mock-import baseline.
+
+## Batch 364 (PS-349, PS-350): support references
+
+**`supportReferences/`** (new): non-identifying support references (`SR-7K2Q-9MXD`) for cases, audit entries, errors and interface exceptions. They are random, stored, and audited when resolved, and `@/services` exports `supportReferenceService`. `enhancementRequestService.ts` no longer sends the page address, which carried the case number: it sends the route pattern and the case's reference. `communications/emailTemplates/` shows the reference.
+
+## Batch 365 (PS-347): Belgian French, Netherlands dates
+
+`@/services` exports `patientIndexService`, so `OrderLookupModal.tsx` no longer imports the mock directly. `deploymentReadiness/deploymentBaseline.ts` loses that file.
+
+## Batch 366 (PS-68)
+
+`cytology/`: comments that pointed to the removed `ReportSnapshot` type now name `ReportVersionRecord`. No code changed.
+
+## Batch 367 (PS-74): no inline CSS
+
+**`styleRules/`** (new): `inlineStyleAudit.ts` and the app-wide guard `inlineCss.guard.test.ts`, which enforces standing rule 1 with no exception list. See its README.
+
+## Batch 368 (PS-353): report change log
+
+**`reportChangeLog/`** (new): one entry per case save, recording who, when, the workstation, and every field changed old → new. `cases/mockCaseService.ts` and `cases/mockOrchestratorCaseService.ts` call `recordCaseChange` on every write. `@/services` exports `reportChangeLogService` and `REPORT_CHANGE_LOGGED_EVENT`. See its README and `docs/architecture/REPORT_CHANGE_LOG_API.md`.
+
+`@/services` also exports ten services and helpers that screens used to import straight from their mock files (deployment-readiness rule 4): `cytologyCategoryService`, `placeOfServiceCodeService`, `cytologyQaReportService`, `referralTrackingService`, `cassetteColorService`, `molecularBatchService`, `reportPartService` / `onReportPartsChanged`, `labelLayoutService`, `getAiFeedbackLog`, and `FROZEN_FINAL_ACTIVITY_TYPE_ID`.
+
+## Batch 369 (PS-355): capabilities
+
+- **`authorization/`** (new): the capability catalog, the check, and its audit. `@/services` exports:
+  - `authorizationService` and `createAuthorizationService`;
+  - the catalog helpers and dependency plans;
+  - `roleCapabilityProblem` / `roleCapabilityChangeAudit`.
+- **`qualityAssurance/qaExport.ts`** (new): the checked path for every QA report export.
+- **`reportChangeLog/exportChangeLog`** checks `report:change-history:export`.
+- **`roles/`** has two new built-in roles (QA Reviewer, Superadmin), seeds capabilities on load, and refuses inconsistent grants.
+- **`auth/sessionRole`** ignores roles that can't be assigned.
+- **New `@/services` exports for the QA page:** `billingDeficiencyService`, `outboundChargeQueueService`, `codeReviewPoolService`, `reasonDictionaryService`.
+
+## Batch 370 (PS-356): phase 2 of capabilities
+
+- **The self-escalation path is closed:**
+  - `roles/roleAdministration.ts` (`config:roles:manage`, with the lockout guard);
+  - `staff/staffAdministration.ts` (`config:staff:edit`, plus `config:staff-access:assign` for roles, facilities, access flags and credentials);
+  - `demoReset/` (new; `config:demo-data:reset`).
+- **Facility scope:** `users/IUserService` has `StaffUser.facilityIds`, and `authorization/evaluateCapability` applies it.
+- **Retired:** the role-level pediatric, orchestration and facility switches are removed from `roles/`.
+
+## Batch 371: Superadmin reserved for ForMedrixAI support
+
+- **`authorization/`:** platform-only capabilities (`platform:cross-tenant-cases:view`, `platform:governing-bodies:manage`), and `lockPlatformRoles`.
+- **`roles/`:** Superadmin can't be edited.
+- **`cases/CaseRouter`:** support opening another organisation's case is checked and audited.
+- **`governingBodies/`:** the settings save is checked.
+- **`auth/demo`:** only ForMedrixAI people sign in as superadmin.
+- **`users/`:** Sarah Johnson has a staff record.
+
+## Batch 372: ForMedrixAI support access
+
+- **`supportAccess/` (new):** each organisation's support access policy (Disabled / Approval required, the default / Always allowed) and access window (default 2 hours); support's requests per ticket and the hospital's approvals; the organisation's own hash-chained support audit stream, with CSV/JSON export. See [supportAccess/README.md](./supportAccess/README.md).
+- **`authorization/`:** `config:support-access:policy`, `config:support-access:approve`, `config:support-audit:view`, seeded to Admin.
+- **`cases/CaseRouter`:** support's opens, lists and edits of another organisation's cases go through the policy gate.
+- **`caseSearch/`:** support's searches are recorded (criteria names only).
+- **`demoReset/`:** the Full Reset now keeps the audit trails it always claimed to keep (it had been clearing them).
+
+## Batch 373: every hospital id linked to its organisation
+
+- **`facilities/`:** `linkFacilitiesToOrganisations` links each facility's id to its organisation, and the ten international screening labs are their own organisations. All 99 demo cases now have an owner.
+- **`supportAccess/`:** demo starting policies. Organisations with an approver start at Approval required; the others start at Always allowed.
+
+## Batch 374: screens by role
+
+- **`screens/` (new):** each screen reached from Home has a capability. Home, the hubs and the routes show or open only what the user's roles grant.
+- **`authorization/`:** 17 screen capabilities, with starting grants per role.
+- **`roles/`:** four bench roles (Accessioner, Histotechnologist, Cytotechnologist, Molecular Technologist).
+- **`auth/demo`, `users/`:** bench demo users, and a staff record for Michelle Nimmo.
+
+## Batch 375: fewer Home tiles
+
+- **`screens/`:** `TILE_SCREENS` (a tile opens when any of its screens may be opened), and the Worklist's views.
+- **`index.ts`:** exports `externalResourceService`, `wsiScanBatchService`, `aiScreeningResultService` and the lis-sync state types, so the Worklist and report header no longer import mock files.
+- **`deploymentReadiness/`:** `HeaderBar.tsx` off both baselines, and `WorklistPage.tsx` off the mock-import one.
+
+## Batch 376: field requirements (PS-359)
+
+- **`fieldRequirements/` (new):** which fields each page requires before saving, per organisation. Locked fields are always required. Accession is the first page.
+- **`authorization/`:** `config:field-requirements:manage`, seeded to Admin.
+- **`index.ts`:** exports for the services the Accession page used by mock path, so it came off the mock-import baseline.
+
+## Batch 377
+
+- **`accessioning/patientIdGeneration.ts`:** the generated Patient ID, and whether a required one can be supplied.
+- **`fieldRequirements/`:** `autoFilled` fields (a blank value is filled in when saving).
+
+## Batch 378: Complete grossing (PS-359)
+
+- **`grossing/grossingCompletion.ts`:** checks the Grossing field requirements and `case:grossing:complete`, moves the case to Gross Complete, and audits it.
+- **`fieldRequirements/`:** the Grossing page (blocks, piece count, fixation).
+- **`actionRegistry/`:** the `GROSSING_COMPLETE` voice and keyboard command.
+
+## Batch 379: the protocol rule for grossing, switchable per organisation (PS-359)
+
+- **`fieldRequirements/`:** Grossing's new `protocol` requirement (required by default). "At least one block" moved from locked to required by default, applying to specimens with a protocol that aren't cytology preparations.
+- **`grossing/grossingCompletion.ts`:** with the protocol rule off, completion asks for confirmation. It then routes each protocol-less specimen for secondary review with an open deficiency, and audits it.
+- **`deficiencies/`:** the `def-grossed-without-protocol` type. Stored type lists now gain new built-in types without a version bump.
+- **`actionRegistry/`:** voice and keyboard answers to the confirmation.
+
+## Batch 380: Field Requirements for the case report page, group 1 (PS-359)
+
+- **`fieldRequirements/`:** new page `report` (Add/Edit specimen, amendments and addenda, critical findings) and `reportPageChecks.ts`.
+- **`reports/`:** `changeDraftType`, which fixes minor amendments and addenda that couldn't be saved from a new draft.
+- **`actionRegistry/`:** voice and keyboard save commands for the three modals.
+- **`deploymentReadiness/`:** `AmendmentModal.tsx` and `useAmendmentWorkflow.ts` came off the mock-import baseline.
+- **`index.ts`:** exports the report checks, `generateAiSuggestionsForReport` and `generateGrossingFieldSuggestionsFromDictation`.
+
+## Batch 381: Field Requirements for the case report page, group 2 (PS-359)
+
+- **`fieldRequirements/`:** holds, comments, delegation, biopsy arrays, block cancellation and restains. All locked except "Note on every delegation".
+- **`cases/caseHolds.ts`:** placing and releasing case and retention holds, with the capability check and an audit entry. Fixes the report page's next save being refused after a hold.
+- **`authorization/`:** five capabilities for holds and delegation, seeded to every role with case access.
+- **`delegations/`:** `delegate()` checks `case:delegation:create`.
+- **`actionRegistry/`:** voice commands for placing and releasing holds, posting comments and saving biopsy arrays.
+- **`index.ts`:** exports `serviceChargeService`, `molecularTargetService` and the group 2 checks.
+
+## Batch 382: Field Requirements for the case report page, group 3 part 1 (PS-359)
+
+- **`fieldRequirements/`:** the Case report page gains Frozen-final reconciliation and Billing changes after sign-out (all locked), with `discordanceMissing`, `billingChangeMissing` and `correctedCodeCheck`.
+- **`quality/discordanceRecord.ts`:** builds the reconciliation record the modal saves.
+- **`billing/correctServiceCharge.ts`:** `enforceAppliedCodeCorrection`; correcting an applied code needs `billing:applied-code:correct`.
+- **`authorization/`:** that capability, in a new Billing group, seeded to today's users.
+- **`actionRegistry/`:** voice commands for the three modals' buttons.
+- **`deploymentReadiness/`:** three modals came off the mock-import baseline.

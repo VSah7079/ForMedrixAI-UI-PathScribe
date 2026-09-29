@@ -21,7 +21,9 @@ import { useTranslation } from 'react-i18next';
 import { fppeAssignmentService, subspecialtyService } from '@/services';
 import type { Subspecialty } from '@/services';
 import type { FppeAssignment } from '@/types/case/FppeAssignment';
-import { exportQaReportRows } from './qaReportUtils';
+import { computeFppeProgress } from '@/services/cases/fppeEndCondition';
+import { exportQaReportRows, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
 
 export const FppeTrackingTab: React.FC = () => {
   const { t } = useTranslation();
@@ -38,14 +40,13 @@ export const FppeTrackingTab: React.FC = () => {
   }, []);
 
   const subspecialtyName = (id?: string) => id ? (subspecialties.find(s => s.id === id)?.name ?? id) : t('fppeAssignmentsSection.form.allSubspecialties');
-  const progressPercent = (a: FppeAssignment): number | null => {
-    const daysSince = (Date.now() - new Date(a.startedAt).getTime()) / 86400000;
-    if (a.endCondition.type === 'case_count') return Math.min(100, (a.casesReviewedCount / a.endCondition.threshold) * 100);
-    if (a.endCondition.type === 'duration_days') return Math.min(100, (daysSince / a.endCondition.threshold) * 100);
-    const byCases = a.casesReviewedCount / a.endCondition.caseCountThreshold;
-    const byDuration = daysSince / a.endCondition.durationDaysThreshold;
-    return Math.min(100, Math.max(byCases, byDuration) * 100);
-  };
+  // Real fix, found by this app's own inline-CSS/business-logic sweep:
+  // delegates to fppeEndCondition.ts's shared computeFppeProgress() —
+  // the same real source of truth mockFppeAssignmentService.ts's actual
+  // completion enforcement and FppeAssignmentsSection.tsx's admin
+  // progress label both use — instead of a third, independently
+  // maintained copy of the same threshold math.
+  const progressPercent = (a: FppeAssignment): number => Math.min(100, computeFppeProgress(a).fraction * 100);
 
   const active = assignments.filter(a => a.status === 'active');
   const completed = assignments.filter(a => a.status === 'completed');
@@ -63,7 +64,7 @@ export const FppeTrackingTab: React.FC = () => {
       'Completion Reason': a.completedReason ?? '',
       'Progress %': progressPercent(a)?.toFixed(0) ?? '',
     }));
-    exportQaReportRows(rows, `fppe-tracking-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:fppe-tracking:export', rows, `fppe-tracking-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext());
   };
 
   if (loading) return <div className="ps-conf-loading">{t('fppeAssignmentsSection.loading')}</div>;
@@ -72,20 +73,20 @@ export const FppeTrackingTab: React.FC = () => {
     <div>
       <div className="ps-qa-tab-toolbar">
         <div />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('qualityAssurance.common.export')}</button>
+        <CapabilityButton capability="qa:fppe-tracking:export" context={qaScopeContext()} className="ps-conf-btn-secondary" onClick={handleExport}>{t('qualityAssurance.common.export')}</CapabilityButton>
       </div>
 
       <div className="ps-qa-summary-tiles">
         <div className="ps-qa-tile"><div className="ps-qa-tile-value">{active.length}</div><div className="ps-qa-tile-label">{t('fppeTrackingTab.tileActiveAssignments')}</div></div>
         <div className="ps-qa-tile"><div className="ps-qa-tile-value">{completed.length}</div><div className="ps-qa-tile-label">{t('fppeAssignmentsSection.table.headers.completed')}</div></div>
-        <div className="ps-qa-tile" style={overdue.length > 0 ? { borderColor: '#f59e0b' } : undefined}>
-          <div className="ps-qa-tile-value" style={overdue.length > 0 ? { color: '#f59e0b' } : undefined}>{overdue.length}</div>
+        <div className={`ps-qa-tile${overdue.length > 0 ? ' ps-qa-tile--overdue' : ''}`}>
+          <div className={`ps-qa-tile-value${overdue.length > 0 ? ' ps-qa-tile-value--overdue' : ''}`}>{overdue.length}</div>
           <div className="ps-qa-tile-label">{t('fppeTrackingTab.tileThresholdReached')}</div>
         </div>
       </div>
 
-      <div className="ps-defic-review-banner" style={{ marginTop: 20, marginBottom: 8 }}>
-        <span style={{ fontWeight: 600 }}>{t('fppeAssignmentsSection.banners.active', { count: active.length })}</span>
+      <div className="ps-defic-review-banner ps-mt-20 ps-mb-8">
+        <span className="ps-fw-600">{t('fppeAssignmentsSection.banners.active', { count: active.length })}</span>
       </div>
       <div className="ps-conf-table-wrap">
         <table className="ps-conf-table">
@@ -100,7 +101,7 @@ export const FppeTrackingTab: React.FC = () => {
                   <td className="ps-conf-td">{a.proctorUserName}</td>
                   <td className="ps-conf-td">{subspecialtyName(a.subspecialtyId)}</td>
                   <td className="ps-conf-td">{a.casesReviewedCount}</td>
-                  <td className="ps-conf-td" style={pct !== null && pct >= 100 ? { color: '#f59e0b', fontWeight: 600 } : undefined}>{pct !== null ? `${pct.toFixed(0)}%` : '—'}</td>
+                  <td className={`ps-conf-td${pct !== null && pct >= 100 ? ' ps-conf-td--overdue' : ''}`}>{pct !== null ? `${pct.toFixed(0)}%` : '—'}</td>
                   <td className="ps-conf-td">{new Date(a.startedAt).toLocaleDateString()}</td>
                 </tr>
               );
@@ -109,8 +110,8 @@ export const FppeTrackingTab: React.FC = () => {
         </table>
       </div>
 
-      <div className="ps-defic-review-banner" style={{ marginTop: 20, marginBottom: 8 }}>
-        <span style={{ fontWeight: 600 }}>{t('fppeAssignmentsSection.banners.completed', { count: completed.length })}</span>
+      <div className="ps-defic-review-banner ps-mt-20 ps-mb-8">
+        <span className="ps-fw-600">{t('fppeAssignmentsSection.banners.completed', { count: completed.length })}</span>
       </div>
       <div className="ps-conf-table-wrap">
         <table className="ps-conf-table">

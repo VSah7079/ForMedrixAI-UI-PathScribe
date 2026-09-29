@@ -18,6 +18,7 @@ import '../../../pathscribe.css';
 import { actionGroupService } from '../../../services';
 import { mockActionRegistryService } from '../../../services/actionRegistry/mockActionRegistryService';
 import type { ActionGroup } from '../../../services/actionGroups/IActionGroupService';
+import { duplicateActionGroup } from '@/services/duplication/duplicateEntities';
 import type { SystemAction } from '../../../services/actionRegistry/IActionRegistryService';
 
 type Draft = Omit<ActionGroup, 'id' | 'createdAt' | 'createdBy' | 'status'> & { active: boolean };
@@ -183,6 +184,8 @@ const ActionGroupsSection: React.FC = () => {
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
                       <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', actionGroup: g })}>{t('common.edit')}</button>
+                      {/* Duplicate (PS-73): a new bundle starting from this one's actions. */}
+                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'add', actionGroup: duplicateActionGroup(g, name => t('common.copyOfName', { name })) })}>{t('common.duplicate')}</button>
                       <button className="ps-conf-btn-row" onClick={() => handleToggleStatus(g)}>{g.status === 'Active' ? t('common.deactivate') : t('common.reactivate')}</button>
                     </div>
                   </td>

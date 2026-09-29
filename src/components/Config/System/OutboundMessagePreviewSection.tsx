@@ -135,12 +135,12 @@ const OutboundMessagePreviewSection: React.FC = () => {
 
       <div className="ps-conf-form-grid ps-mt-12">
         {messageType === 'A08' && (
-          <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.patientId')} value={patientId} onChange={e => setPatientId(e.target.value)} />
+          <input className="ps-conf-input" data-phi="mrn" placeholder={t('outboundMessagePreviewSection.fields.patientId')} value={patientId} onChange={e => setPatientId(e.target.value)} />
         )}
         {messageType === 'A40' && (
           <>
-            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.priorPatientId')} value={priorPatientId} onChange={e => setPriorPatientId(e.target.value)} />
-            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.survivingPatientId')} value={survivingPatientId} onChange={e => setSurvivingPatientId(e.target.value)} />
+            <input className="ps-conf-input" data-phi="mrn" placeholder={t('outboundMessagePreviewSection.fields.priorPatientId')} value={priorPatientId} onChange={e => setPriorPatientId(e.target.value)} />
+            <input className="ps-conf-input" data-phi="mrn" placeholder={t('outboundMessagePreviewSection.fields.survivingPatientId')} value={survivingPatientId} onChange={e => setSurvivingPatientId(e.target.value)} />
           </>
         )}
         {messageType === 'A47' && (
@@ -153,7 +153,7 @@ const OutboundMessagePreviewSection: React.FC = () => {
         )}
         {messageType === 'ORU_R01' && (
           <>
-            <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.caseId')} value={caseId} onChange={e => setCaseId(e.target.value)} />
+            <input className="ps-conf-input" data-phi="accession" placeholder={t('outboundMessagePreviewSection.fields.caseId')} value={caseId} onChange={e => setCaseId(e.target.value)} />
             <input className="ps-conf-input" placeholder={t('outboundMessagePreviewSection.fields.instanceId')} value={instanceId} onChange={e => setInstanceId(e.target.value)} />
             <select className="ps-conf-select" value={resultState} onChange={e => setResultState(e.target.value as OruResultState)}>
               <option value="FINAL">{t('outboundMessagePreviewSection.resultStates.final')}</option>

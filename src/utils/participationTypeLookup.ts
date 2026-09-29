@@ -23,6 +23,11 @@
 // concurrent callers share one fetch rather than firing several. A failed
 // fetch doesn't poison the cache forever — cleared so the next call
 // retries instead of permanently resolving to an empty list.
+//
+// Batch 335 fix: the cache used to live for the whole session, so a saved
+// change to signing rules (a country profile, or a Batch 314 lab override)
+// didn't reach the sign-out check until the page was reloaded. Every save
+// of participation types now calls invalidateParticipationTypeLookup().
 // ─────────────────────────────────────────────────────────────────────────────
 import { mockParticipationTypeService } from '../services/participationTypes/mockParticipationTypeService';
 import type { ParticipationTypeRecord } from '../services/participationTypes/IParticipationTypeService';
@@ -37,4 +42,11 @@ export function getParticipationTypeLookup(): Promise<ParticipationTypeRecord[]>
     participationTypeLookupPromise.catch(() => { participationTypeLookupPromise = null; });
   }
   return participationTypeLookupPromise;
+}
+
+/** Drops the cached list so the next lookup reads the saved data. Called
+ *  after every participation-type save (saveParticipationType.ts,
+ *  saveCountryProfiles.ts). */
+export function invalidateParticipationTypeLookup(): void {
+  participationTypeLookupPromise = null;
 }

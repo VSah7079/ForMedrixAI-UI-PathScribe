@@ -15,7 +15,6 @@ import { physicianService, facilityService } from '../../../services';
 import type { Physician } from '../../../services';
 import { SuffixSelect } from '../../Common/SuffixSelect';
 import { formatFullDisplayName } from '../../../utils/personName';
-import { preparePersonDuplicate } from '../../../utils/duplicateEntry';
 import { findDuplicate } from '../../../utils/validateUnique';
 
 // Physician imported from services/physicians/IPhysicianService.ts (via
@@ -26,17 +25,12 @@ import { findDuplicate } from '../../../utils/validateUnique';
 function initials(p: Physician) { return (p.givenNames[0] + p.familyNames[0]).toUpperCase(); }
 function fullName(p: Physician) { return formatFullDisplayName(p); }
 
-// Person-specific/identity fields cleared when duplicating a physician
-// (PS-73) — name, NPI, physician code, and direct contact info. NOT
-// cleared: specialty, clientIds, preferredContact, status — those are
-// organizational context, the actual point of the starting-template
-// clone (see preparePersonDuplicate's own header for the full
-// reasoning on why this isn't prepareDuplicate's generic "(Copy)"
-// suffix behavior).
-const PHYSICIAN_PERSON_FIELDS: (keyof Physician)[] = [
-  'namePrefix', 'givenNames', 'familyNames', 'preferredName', 'nameSuffix',
-  'firstName', 'lastName', 'npi', 'physicianCode', 'phone', 'fax', 'email',
-];
+// No Duplicate action (PS-73, per Pete's duplication framework): a
+// physician is a real, individual person tied to NPI/licence identity.
+// Cloning one creates stale or inaccurate personal data and risks mixing
+// identity attributes, so this screen deliberately offers Add only. The
+// policy is recorded in services/duplication/duplicatePolicy.ts and
+// enforced by its guard test.
 
 // Data key ('Email' | 'Fax' | 'Phone', stored on Physician.preferredContact)
 // stays English; only the displayed label is translated.
@@ -74,26 +68,31 @@ const emptyDraft: Draft = {
   namePrefix: 'Dr.', givenNames: '', familyNames: '', preferredName: '', nameSuffix: '',
   firstName: '', lastName: '', // stale by design — mockPhysicianService always recomputes these from givenNames/familyNames on save
   physicianCode: '', npi: '', specialty: '', phone: '', fax: '', smsCapablePhone: '',
+  smsCarrier: undefined, smsCarrierOtherDomain: '',
   email: '', preferredContact: 'Email', clientIds: [], status: 'Active', active: true,
+};
+
+// Data key (stored on Physician.smsCarrier) stays English; only the
+// displayed label is translated — same convention as
+// PREFERRED_CONTACT_LABEL_KEY/STATUS_LABEL_KEY just above.
+const SMS_CARRIER_LABEL_KEY: Record<Exclude<Physician['smsCarrier'], undefined>, string> = {
+  verizon: 'physiciansSection.modal.smsCarrierVerizon',
+  att: 'physiciansSection.modal.smsCarrierAtt',
+  tmobile: 'physiciansSection.modal.smsCarrierTmobile',
+  uscellular: 'physiciansSection.modal.smsCarrierUsCellular',
+  other: 'physiciansSection.modal.smsCarrierOther',
 };
 
 interface PhysicianModalProps {
   mode: 'add' | 'edit';
   physician?: Physician;
-  /** Display name of the source physician, when `physician` is a
-   *  duplicate-template prefill rather than the real record being
-   *  edited. Header-only — the draft's own name fields are already
-   *  cleared by preparePersonDuplicate before this modal ever opens
-   *  (see PhysiciansSection's own handleClonePhysician), so there's no
-   *  name left in `physician` to read for the header text. */
-  cloneSourceName?: string;
   facilities: { id: string; name: string }[];
   existingEntries: Physician[];
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneSourceName, facilities, existingEntries, onSave, onClose }) => {
+const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, facilities, existingEntries, onSave, onClose }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<Draft>(
     physician
@@ -112,11 +111,9 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
     }));
   };
 
-  // excludeId only applies in real 'edit' mode — in 'add' mode
-  // (including a duplicate template, which prefills but is still a
-  // real add) nothing is excluded, so saving a clone without giving it
-  // its own physician code/NPI is correctly caught, same convention as
-  // every sibling dictionary's own required+unique field.
+  // excludeId only applies in real 'edit' mode — in 'add' mode nothing
+  // is excluded, so a new physician's code/NPI is checked against every
+  // existing record, same convention as every sibling dictionary.
   const excludeId = mode === 'edit' ? physician?.id : undefined;
 
   const validate = () => {
@@ -161,9 +158,7 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
         <div className="ps-ms-header">
           {mode === 'edit'
             ? t('physiciansSection.modal.editHeader', { name: formatFullDisplayName(physician!) })
-            : cloneSourceName
-              ? t('physiciansSection.modal.addFromTemplateHeader', { name: cloneSourceName })
-              : t('physiciansSection.modal.addHeader')}
+            : t('physiciansSection.modal.addHeader')}
         </div>
 
         <div className="ps-ms-body">
@@ -245,6 +240,36 @@ const PhysicianModal: React.FC<PhysicianModalProps> = ({ mode, physician, cloneS
           <div className="ps-conf-form-field">
             <label className="ps-conf-label">{t('physiciansSection.modal.smsLabel')}</label>
             <input className="ps-conf-input" value={draft.smsCapablePhone ?? ''} onChange={e => set('smsCapablePhone', e.target.value)} placeholder={t('physiciansSection.modal.smsPlaceholder')} />
+          </div>
+
+          {/* Carrier — real, per direct follow-up: closes the data-model
+              gap services/clinical/postGaAlertChannels/README.md's own
+              research documented (a post-GA email-to-SMS gateway needs
+              to know which carrier this number belongs to). US-specific
+              — see SmsCarrierId's own doc comment; leave unset for a
+              non-US physician or when genuinely unknown. */}
+          <div className="ps-conf-form-row">
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" htmlFor="physician-sms-carrier">{t('physiciansSection.modal.smsCarrierLabel')}</label>
+              <select id="physician-sms-carrier" className="ps-conf-select"
+                value={draft.smsCarrier ?? ''}
+                onChange={e => set('smsCarrier', e.target.value ? e.target.value : undefined)}>
+                <option value="">{t('physiciansSection.modal.smsCarrierNone')}</option>
+                <option value="verizon">{t(SMS_CARRIER_LABEL_KEY.verizon)}</option>
+                <option value="att">{t(SMS_CARRIER_LABEL_KEY.att)}</option>
+                <option value="tmobile">{t(SMS_CARRIER_LABEL_KEY.tmobile)}</option>
+                <option value="uscellular">{t(SMS_CARRIER_LABEL_KEY.uscellular)}</option>
+                <option value="other">{t(SMS_CARRIER_LABEL_KEY.other)}</option>
+              </select>
+            </div>
+            {draft.smsCarrier === 'other' && (
+              <div className="ps-conf-form-field">
+                <label className="ps-conf-label">{t('physiciansSection.modal.smsCarrierOtherDomainLabel')}</label>
+                <input className="ps-conf-input" value={draft.smsCarrierOtherDomain ?? ''}
+                  onChange={e => set('smsCarrierOtherDomain', e.target.value)}
+                  placeholder={t('physiciansSection.modal.smsCarrierOtherDomainPlaceholder')} />
+              </div>
+            )}
           </div>
 
           {/* Email + Preferred Contact */}
@@ -339,7 +364,7 @@ const PhysiciansSection: React.FC = () => {
   const [loading,      setLoading]      = useState(true);
   const [search,       setSearch]       = useState('');
   const [statusFilter, setStatusFilter] = useState<'All' | 'Active' | 'Inactive' | 'Unverified'>('All');
-  const [modal,        setModal]        = useState<{ mode: 'add' | 'edit'; physician?: Physician; cloneSourceName?: string } | null>(null);
+  const [modal,        setModal]        = useState<{ mode: 'add' | 'edit'; physician?: Physician } | null>(null);
 
   // ── Spreadsheet import/export — same two-step preview-then-apply
   // shape as Stain Dictionary/Specimen Dictionary, matched rather than
@@ -386,27 +411,6 @@ const PhysiciansSection: React.FC = () => {
     setModal(null);
   };
 
-  // Opens the Add modal pre-filled as a real starting TEMPLATE, not a
-  // literal duplicate (PS-73) — a physician is a real person, so
-  // cloning must clear identity/direct-contact fields (name, NPI,
-  // physician code, phone/fax/email) rather than suffix a "(Copy)"
-  // onto a name like every other dictionary's own generic
-  // prepareDuplicate does. specialty/clientIds/preferredContact carry
-  // over as the actual organizational starting point; status resets to
-  // Active and autoCreated/autoCreatedAt reset — this is a fresh,
-  // staff-initiated record, not a snapshot from intake. mode: 'add' is
-  // what makes handleSave treat this as a real create(), matching the
-  // proven, confirmed-working pattern already used by
-  // ContainerTypesSection.tsx/StainDictionarySection.tsx (PS-73).
-  const handleClonePhysician = (source: Physician) => {
-    const template = preparePersonDuplicate(source, PHYSICIAN_PERSON_FIELDS);
-    setModal({
-      mode: 'add',
-      physician: { ...template, id: '__clone__', status: 'Active', autoCreated: false, autoCreatedAt: undefined },
-      cloneSourceName: fullName(source),
-    });
-  };
-
   const handleVerify = async (id: string) => {
     const res = await physicianService.verify(id);
     if (res.ok) setPhysicians(prev => prev.map(p => p.id === id ? res.data : p));
@@ -417,6 +421,12 @@ const PhysiciansSection: React.FC = () => {
       NamePrefix: p.namePrefix ?? '', GivenNames: p.givenNames, FamilyNames: p.familyNames, NameSuffix: p.nameSuffix ?? '',
       PhysicianCode: p.physicianCode, NPI: p.npi, Specialty: p.specialty,
       Phone: p.phone, Fax: p.fax, Email: p.email, PreferredContact: p.preferredContact,
+      // Real, per direct follow-up closing this export's own gap:
+      // smsCapablePhone previously had no column at all; smsCarrier/
+      // smsCarrierOtherDomain are new fields closing the carrier
+      // data-model gap (see IPhysicianService.ts's own doc comments) —
+      // both round-trip through handlePhysicianFileUpload below.
+      SmsCapablePhone: p.smsCapablePhone ?? '', SmsCarrier: p.smsCarrier ?? '', SmsCarrierOtherDomain: p.smsCarrierOtherDomain ?? '',
       Facilities: p.clientIds.map(id => facilities.find(c => c.id === id)?.name ?? id).join('; '),
       Status: p.status,
     }));
@@ -479,6 +489,17 @@ const PhysiciansSection: React.FC = () => {
         const preferredContact = (['Email', 'Fax', 'Phone'] as const).find(c => c.toLowerCase() === preferredContactText.toLowerCase())
           ?? existing?.preferredContact ?? 'Email';
 
+        // Real, per direct follow-up closing this import's own gap —
+        // same validate-against-curated-list pattern as status/
+        // preferredContact above; an unrecognized or blank cell falls
+        // back to whatever the matched existing record already has
+        // (never silently invented for a genuinely new row).
+        const smsCapablePhone = get(row, 'SmsCapablePhone', 'SMS Capable Phone', 'Mobile', 'Cell') || existing?.smsCapablePhone;
+        const smsCarrierText = get(row, 'SmsCarrier', 'SMS Carrier', 'Carrier');
+        const smsCarrier = (['verizon', 'att', 'tmobile', 'uscellular', 'other'] as const)
+          .find(c => c.toLowerCase() === smsCarrierText.toLowerCase()) ?? existing?.smsCarrier;
+        const smsCarrierOtherDomain = get(row, 'SmsCarrierOtherDomain', 'SMS Carrier Other Domain', 'Carrier Domain') || existing?.smsCarrierOtherDomain;
+
         return {
           namePrefix: get(row, 'NamePrefix', 'Name Prefix', 'Prefix') || existing?.namePrefix || 'Dr.',
           givenNames: givenNames || existing?.givenNames || '',
@@ -491,6 +512,7 @@ const PhysiciansSection: React.FC = () => {
           phone: get(row, 'Phone', 'phone') || existing?.phone || '',
           fax: get(row, 'Fax', 'fax') || existing?.fax || '',
           email: get(row, 'Email', 'email') || existing?.email || '',
+          smsCapablePhone, smsCarrier, smsCarrierOtherDomain,
           preferredContact, clientIds, status,
           existingId: existing?.id, codeWasGenerated,
         };
@@ -618,7 +640,6 @@ const PhysiciansSection: React.FC = () => {
                         <button className="ps-conf-btn-verify" onClick={() => handleVerify(p.id)}>{t('physiciansSection.table.verifyBtn')}</button>
                       )}
                       <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', physician: p })}>{t('common.edit')}</button>
-                      <button className="ps-conf-btn-row" onClick={() => handleClonePhysician(p)}>{t('common.duplicate')}</button>
                     </div>
                   </td>
                 </tr>
@@ -635,7 +656,6 @@ const PhysiciansSection: React.FC = () => {
         <PhysicianModal
           mode={modal.mode}
           physician={modal.physician}
-          cloneSourceName={modal.cloneSourceName}
           facilities={facilities}
           existingEntries={physicians}
           onSave={handleSave}

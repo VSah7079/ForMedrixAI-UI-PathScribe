@@ -251,7 +251,7 @@ const SequencerPanel: React.FC<SequencerPanelProps> = ({
                             </span>
                             <span className="ps-seq-syn-progress">{syn.filledCount}/{syn.totalCount}</span>
                             <div className="ps-seq-progress-track">
-                              <div className={`ps-seq-progress-fill${pct === 100 ? ' ps-seq-progress-fill--complete' : ''}`} style={{ width: `${pct}%` }} />
+                              <div className={`ps-seq-progress-fill${pct === 100 ? ' ps-seq-progress-fill--complete' : ''}`} style={{ '--bar-pct': `${pct}%` } as React.CSSProperties} />
                             </div>
                             {isActive && <span className="ps-seq-syn-active-badge">{t('sequencerPanel.activeBadge')}</span>}
                           </div>

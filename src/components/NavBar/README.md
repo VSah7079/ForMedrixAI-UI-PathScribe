@@ -22,5 +22,18 @@
   honest default — groups seed empty) means no button, never a
   disabled placeholder.
 
+## Batch 362
+
+`LanguageSwitcher.tsx` offers Belgian Dutch: the menu reads "Nederlands (Nederland)" and "Nederlands (België)", and the button shows NL-BE.
+
+## Batch 365 (PS-347)
+
+`LanguageSwitcher.tsx` offers Belgian French: the menu reads "Français (France)" and "Français (Belgique)", and the button shows FR-BE.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*
+
+## Batch 374
+
+- The quick case search shows only to people who may open Search (`screen:search:open`).
+- The credentials under the user's name are theirs, from their staff record. It said "MD, FCAP" for everyone.

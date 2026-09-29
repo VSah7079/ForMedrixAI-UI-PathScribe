@@ -13,13 +13,22 @@
 // Personal (owned by exactly one real user, visible only to them).
 // See services/macros/IMacroService.ts's own isMacroVisibleTo() for
 // the shared resolution rule this panel's own filtering matches.
+//
+// Batch 349 (PS-126): administrators get an "All" tab listing every macro,
+// other users' personal ones included, grouped Enterprise, then each
+// facility, then each user. Only administrators are offered Enterprise
+// visibility or can change an Enterprise macro; for anyone else it is read
+// only. The rules live in services/macros/macroAccess.ts. The tip above the
+// list was near-invisible (about 2.3:1 contrast) and is now readable.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
-import { macroService } from '../../../services';
+import { macroService, userService } from '../../../services';
+import { useConfigDirtyGuard } from '../configDirtyGuardContext';
 import { isMacroVisibleTo } from '../../../services/macros/IMacroService';
+import { canEditMacro, canManageAllMacros, groupAllMacros, macroTiersFor } from '../../../services/macros/macroAccess';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
 import { getActivePerformingLabs } from '@/utils/performingLabs';
 import type { Facility } from '@/services/facilities/IFacilityService';
@@ -32,6 +41,8 @@ interface MacroPanelProps {
 }
 
 type Tier = 'enterprise' | 'facility' | 'personal';
+/** The list tabs: the three tiers, plus "All" for administrators (Batch 349). */
+type ListTab = Tier | 'all';
 
 // i18n note: Tier ('enterprise'/'facility'/'personal') is this panel's
 // own internal visibility-scope identifier, not persisted server-side
@@ -55,6 +66,17 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
   const { t } = useTranslation();
   const sessionUser = getSessionUser();
   const currentUserId = sessionUser?.id ?? 'unknown';
+  const role = sessionUser?.role;
+  const isMacroAdmin = canManageAllMacros(role);
+  const allowedTiers = macroTiersFor(role) as Tier[];
+  // Batch 349: other users' names, for the administrator's "All" list.
+  const [userNames, setUserNames] = useState<Record<string, string>>({});
+  useEffect(() => {
+    if (!isMacroAdmin) return;
+    void userService.getAll().then(res => {
+      if (res.ok) setUserNames(Object.fromEntries(res.data.map(u => [u.id, `${u.firstName} ${u.lastName}`.trim()])));
+    });
+  }, [isMacroAdmin]);
 
   const [rawMacros, setRawMacros] = useState<import('../../../services/macros/IMacroService').Macro[]>([]);
   const [macros, setMacros] = useState<Macro[]>([]);
@@ -68,7 +90,7 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
   // unlike the real, separate Personal Quick Text capture flow inside
   // the case editor itself.
   const [facilityFilter, setFacilityFilter] = useState('');
-  const [activeTier, setActiveTier] = useState<Tier>('enterprise');
+  const [activeTier, setActiveTier] = useState<ListTab>(isMacroAdmin ? 'all' : 'enterprise');
 
   // Real, per direct guidance ("a mechanism to take MS Word AutoText /
   // Building Blocks and load them into personal macros"): the actual
@@ -154,7 +176,7 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
   const [macroName, setMacroName] = useState('');
   const [editorContent, setEditorContent] = useState('');
   const [isCreatingNew, setIsCreatingNew] = useState(false);
-  const [draftTier, setDraftTier] = useState<Tier>('enterprise');
+  const [draftTier, setDraftTier] = useState<Tier>(allowedTiers[0]);
   const [draftFacilityId, setDraftFacilityId] = useState('');
 
   const rawSelected = rawMacros.find(m => m.id === selectedMacroId) ?? null;
@@ -171,8 +193,14 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
     : [];
   const personalMacros = rawMacros.filter(m => m.ownerUserId === currentUserId);
 
-  const tierList = activeTier === 'enterprise' ? enterpriseMacros : activeTier === 'facility' ? facilityMacros : personalMacros;
+  const tierList = activeTier === 'enterprise' ? enterpriseMacros : activeTier === 'facility' ? facilityMacros : activeTier === 'personal' ? personalMacros : rawMacros;
   const tierMacros = tierList.map(m => ({ id: m.id, trigger: m.shortcut, name: m.name, content: m.content }));
+  const allGroups = activeTier === 'all'
+    ? groupAllMacros(rawMacros, id => labs.find(l => l.id === id)?.name, id => userNames[id])
+    : [];
+  // Batch 349: an Enterprise macro (or someone else's) is read only unless the user may change it.
+  const canEditSelected = !rawSelected || canEditMacro(rawSelected, currentUserId, role);
+  const tierOptions: Tier[] = allowedTiers.includes(draftTier) ? allowedTiers : [draftTier, ...allowedTiers];
 
   const handleSelectMacro = (id: string) => {
     const macro = rawMacros.find(m => m.id === id);
@@ -197,8 +225,9 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
     // Enterprise — an admin browsing their facility's macros and
     // clicking + New almost always means "add another one for this
     // facility," not "add an Enterprise-wide one."
-    setDraftTier(activeTier);
-    setDraftFacilityId(activeTier === 'facility' ? facilityFilter : '');
+    const startTier: Tier = activeTier !== 'all' && allowedTiers.includes(activeTier) ? activeTier : allowedTiers[0];
+    setDraftTier(startTier);
+    setDraftFacilityId(startTier === 'facility' ? facilityFilter : '');
   };
 
   const handleSave = async () => {
@@ -212,6 +241,10 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
     }
     if (draftTier === 'facility' && !draftFacilityId) {
       alert(t('macroPanel.errors.selectDraftFacility'));
+      return;
+    }
+    if (!canEditSelected || !allowedTiers.includes(draftTier)) {
+      alert(t('macroPanel.errors.notAllowed'));
       return;
     }
 
@@ -265,6 +298,22 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
       || draftFacilityId !== (rawSelected?.performingLabFacilityId ?? '')
     : isCreatingNew;
 
+  // Real fix, PS-128: this isDirty was previously known only to this
+  // component's own Save button (disabled={!isDirty}) — ConfigurationPage.tsx's
+  // tab bar, voice-nav, and search-driven navigation had no way to see it and
+  // would silently discard an in-progress macro edit on any tab switch. Now
+  // reported into the shared page-level guard (see configDirtyGuardContext.ts)
+  // so those navigations can confirm before discarding it. The cleanup on
+  // unmount guards against this tab's own dirty flag outliving the component
+  // itself in some future navigation path that doesn't route through
+  // ConfigurationPage.tsx's own tab-change reset.
+  const { setDirty } = useConfigDirtyGuard();
+  useEffect(() => {
+    setDirty(isDirty);
+    return () => setDirty(false);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDirty]);
+
   if (loadingMacros) return (
     <div className="ps-macro-loading">{t('macroPanel.loading')}</div>
   );
@@ -303,17 +352,18 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
           💡 {t('macroPanel.sidebar.hint')}
         </div>
 
-        {/* Real, per direct guidance: three real, filtered tiers, not one flat list */}
-        <div className="ps-macro-tier-tabs">
-          {(['enterprise', 'facility', 'personal'] as Tier[]).map(tier => (
+        {/* Real, per direct guidance: three real, filtered tiers, not one flat list.
+            Batch 349: plus "All" for administrators. */}
+        <div className={`ps-macro-tier-tabs${isMacroAdmin ? ' ps-macro-tier-tabs--grid' : ''}`}>
+          {((isMacroAdmin ? ['all', 'enterprise', 'facility', 'personal'] : ['enterprise', 'facility', 'personal']) as ListTab[]).map(tier => (
             <button
               key={tier}
               className={`ps-macro-tier-tab${activeTier === tier ? ' ps-macro-tier-tab--active' : ''}`}
               onClick={() => setActiveTier(tier)}
             >
-              {t(TIER_LABEL_KEY[tier])}
+              {tier === 'all' ? t('macroPanel.tier.all') : t(TIER_LABEL_KEY[tier])}
               <span className="ps-macro-tier-count">
-                {tier === 'enterprise' ? enterpriseMacros.length : tier === 'facility' ? facilityMacros.length : personalMacros.length}
+                {tier === 'all' ? rawMacros.length : tier === 'enterprise' ? enterpriseMacros.length : tier === 'facility' ? facilityMacros.length : personalMacros.length}
               </span>
             </button>
           ))}
@@ -327,7 +377,27 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
         )}
 
         <div className="ps-macro-list">
-          {tierMacros.map(macro => (
+          {activeTier === 'all' && allGroups.map(group => (
+            <div key={`${group.tier}:${group.key}`} className="ps-macro-group">
+              <div className="ps-macro-group-header">
+                {group.tier === 'enterprise'
+                  ? t('macroPanel.tier.enterprise')
+                  : t(group.tier === 'facility' ? 'macroPanel.group.facility' : 'macroPanel.group.personal', { name: group.label })}
+                <span className="ps-macro-tier-count">{group.macros.length}</span>
+              </div>
+              {group.macros.map(macro => (
+                <button
+                  key={macro.id}
+                  onClick={() => handleSelectMacro(macro.id)}
+                  className={`ps-macro-list-item${selectedMacroId === macro.id ? ' ps-macro-list-item--selected' : ''}`}
+                >
+                  <div className="ps-macro-list-item-name">{macro.name}</div>
+                  <div className="ps-macro-list-item-trigger">{macro.shortcut}</div>
+                </button>
+              ))}
+            </div>
+          ))}
+          {activeTier !== 'all' && tierMacros.map(macro => (
             <button
               key={macro.id}
               onClick={() => handleSelectMacro(macro.id)}
@@ -342,7 +412,7 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
             <div className="ps-macro-list-empty">
               {activeTier === 'facility' && !facilityFilter
                 ? t('macroPanel.sidebar.noFacilitySelected')
-                : <>{t('macroPanel.sidebar.emptyTier', { tier: t(TIER_LABEL_KEY[activeTier]) })}<br />{t('macroPanel.sidebar.emptyTierCta')}</>}
+                : <>{t('macroPanel.sidebar.emptyTier', { tier: activeTier === 'all' ? t('macroPanel.tier.all') : t(TIER_LABEL_KEY[activeTier]) })}<br />{t('macroPanel.sidebar.emptyTierCta')}</>}
             </div>
           )}
         </div>
@@ -384,9 +454,9 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
                 <label className="ps-macro-field-label">
                   {t('macroPanel.editor.visibilityLabel')}
                 </label>
-                <select className="ps-conf-select" value={draftTier} onChange={e => setDraftTier(e.target.value as Tier)}>
-                  {(['enterprise', 'facility', 'personal'] as Tier[]).map(tier => (
-                    <option key={tier} value={tier}>{t(TIER_OPTION_LABEL_KEY[tier])}</option>
+                <select className="ps-conf-select" value={draftTier} onChange={e => setDraftTier(e.target.value as Tier)} disabled={!canEditSelected}>
+                  {tierOptions.map(tier => (
+                    <option key={tier} value={tier} disabled={!allowedTiers.includes(tier)}>{t(TIER_OPTION_LABEL_KEY[tier])}</option>
                   ))}
                 </select>
               </div>
@@ -417,9 +487,13 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
             />
             </div>
 
+            {!canEditSelected && (
+              <p className="ps-macro-readonly-note" role="note">{t('macroPanel.editor.readOnly')}</p>
+            )}
+
             {/* Action buttons */}
             <div className="ps-macro-actions-row">
-              {selectedMacroId && (
+              {selectedMacroId && canEditSelected && (
                 <button
                   onClick={handleDelete}
                   className="ps-btn-ghost-danger"
@@ -429,7 +503,7 @@ const MacroPanel: React.FC<MacroPanelProps> = ({ approvedFonts }) => {
               )}
               <button
                 onClick={handleSave}
-                disabled={!isDirty}
+                disabled={!isDirty || !canEditSelected}
                 className="ps-conf-btn-primary"
               >
                 {selectedMacroId ? t('macroPanel.editor.saveChanges') : t('macroPanel.editor.createMacro')}

@@ -9,6 +9,7 @@
 
 import type { ServiceResult } from '../types';
 import type { BillingRuleVersion } from '@/types/billing/BillingRuleVersion';
+import type { BillingRuleResolutionOptions } from './resolveBillingRuleAt';
 
 export interface IBillingRuleService {
   /** Every real version, across every billingCode AND every site -
@@ -33,7 +34,7 @@ export interface IBillingRuleService {
    *  site's own override when one covers the date, falls back to the
    *  enterprise-wide rule otherwise - exactly resolveBillingRuleAt's
    *  own real algorithm. */
-  getActiveRuleAt(billingCode: string, dateOfService: string, siteId?: string): Promise<ServiceResult<BillingRuleVersion | null>>;
+  getActiveRuleAt(billingCode: string, dateOfService: string, siteId?: string, options?: BillingRuleResolutionOptions): Promise<ServiceResult<BillingRuleVersion | null>>;
 
   /** Creates a new version for a (billingCode, siteId) scope - version
    *  is always auto-computed as (highest existing version within that

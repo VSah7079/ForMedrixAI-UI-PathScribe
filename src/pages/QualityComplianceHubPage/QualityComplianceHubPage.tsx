@@ -50,12 +50,16 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../pathscribe.css';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
+import { visibleTiles, type ScreenId } from '@/services/screens/screenAccess';
+import { useCapabilities } from '@/hooks/useCapabilities';
 
 interface SubTile {
   key: string;
+  /** Batch 374: the screen it opens; shown only if the user may open it. */
+  screen: ScreenId;
   title: string;
   description: string;
   route: string;
@@ -79,9 +83,11 @@ export default function QualityComplianceHubPage() {
 
   // Real, same colors each tile already carried as a flat Home tile —
   // same real precedent as PathologyWorkspacePage.tsx's own tiles.
-  const tiles: SubTile[] = [
+  const capabilities = useCapabilities();
+  const allTiles: SubTile[] = [
     {
       key: 'audit',
+      screen: 'auditLog',
       title: t('qualityComplianceHub.auditTile.title'),
       description: t('qualityComplianceHub.auditTile.description'),
       route: '/audit',
@@ -90,6 +96,7 @@ export default function QualityComplianceHubPage() {
     },
     {
       key: 'qualityAssurance',
+      screen: 'qualityAssurance',
       title: t('qualityComplianceHub.qualityAssuranceTile.title'),
       description: t('qualityComplianceHub.qualityAssuranceTile.description'),
       route: '/quality-assurance',
@@ -97,6 +104,9 @@ export default function QualityComplianceHubPage() {
       image: '/deficiencies.webp',
     },
   ];
+  // Batch 374: only the screens this user may open (services/screens/screenAccess.ts).
+  const shown = new Set(visibleTiles(allTiles.map(x => x.screen), c => capabilities.has(c)));
+  const tiles = allTiles.filter(x => shown.has(x.screen));
 
   return (
     <div className={`ps-page${isLoaded ? ' ps-page--loaded' : ''}`}>
@@ -106,13 +116,10 @@ export default function QualityComplianceHubPage() {
 
       <div className="ps-page-content">
         <main className="ps-home-main">
-          <header
-            className="ps-home-header"
-            style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap: 16 }}
-          >
+          <header className="ps-home-header ps-home-header--split">
             <div>
               <h1 className="ps-home-title">{t('qualityComplianceHub.pageTitle')}</h1>
-              <p className="ps-home-card-desc" style={{ marginTop: 4 }}>{t('qualityComplianceHub.pageSubtitle')}</p>
+              <p className="ps-home-card-desc ps-mt-4">{t('qualityComplianceHub.pageSubtitle')}</p>
             </div>
             <button
               className="ps-btn-ghost-dark"
@@ -142,7 +149,7 @@ export default function QualityComplianceHubPage() {
                     }
                   }}
                   className={`ps-home-card${hovered ? ' ps-home-card--hovered' : ''}`}
-                  style={{ '--card-accent': tile.color, '--card-accent-dim': `${tile.color}40` } as React.CSSProperties}
+                  style={{ '--card-accent': tile.color } as React.CSSProperties}
                 >
                   {tile.image && (
                     <div className="ps-home-card-image" style={{ '--card-image': `url(${tile.image})` } as React.CSSProperties} />

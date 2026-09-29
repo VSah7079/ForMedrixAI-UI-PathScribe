@@ -42,11 +42,32 @@ import type { Jurisdiction } from '@/types/systemConfig';
  *  earlier, honest placeholder had left Germany's accepted-credential
  *  list empty pending this exact name — that placeholder is now
  *  resolved by this real mapping. */
+/** Normalized capability: may sign a forensic (medicolegal) autopsy's
+ *  PAD/FAD in the credential's jurisdiction (Batch 331, PS-327, per Pete:
+ *  forensic sign-out is restricted to the legally appointed medical
+ *  examiner, forensic pathologist or coroner's pathologist for that
+ *  jurisdiction). */
+export const FORENSIC_AUTOPSY_SIGNOUT = 'FORENSIC_AUTOPSY_SIGNOUT';
+export const CYTO_ADVANCED_SPECIALIST = 'CYTO_ADVANCED_SPECIALIST';
+
 const RAW_TO_NORMALIZED_CAPABILITY: Record<string, string> = {
-  IBMS_ASD: 'CYTO_ADVANCED_SPECIALIST',
-  NL_KCA_ADVANCED: 'CYTO_ADVANCED_SPECIALIST',
-  DE_ZYTO_ASSISTENT_ADV: 'CYTO_ADVANCED_SPECIALIST',
+  IBMS_ASD: CYTO_ADVANCED_SPECIALIST,
+  NL_KCA_ADVANCED: CYTO_ADVANCED_SPECIALIST,
+  DE_ZYTO_ASSISTENT_ADV: CYTO_ADVANCED_SPECIALIST,
+  // Batch 331: a jurisdiction's appointment to perform and sign
+  // medicolegal autopsies — a medical examiner / forensic pathologist /
+  // coroner's pathologist appointment, recorded against the jurisdiction
+  // that issued it. The generic type covers any jurisdiction; the UK Home
+  // Office register is named because it is the statutory list for
+  // forensic post-mortems in England & Wales.
+  MEDICOLEGAL_APPOINTMENT: FORENSIC_AUTOPSY_SIGNOUT,
+  UK_HO_REGISTERED_FORENSIC_PATHOLOGIST: FORENSIC_AUTOPSY_SIGNOUT,
 };
+
+/** Raw credential types an administrator can record on a staff member
+ *  (Staff → edit → Credentials). Each has a display name under
+ *  `staffTab.credentials.types.<type>`. */
+export const KNOWN_CREDENTIAL_TYPES: readonly string[] = Object.keys(RAW_TO_NORMALIZED_CAPABILITY);
 
 export function resolveNormalizedCredentialCapabilities(
   credentials: ProviderCredential[] | undefined,

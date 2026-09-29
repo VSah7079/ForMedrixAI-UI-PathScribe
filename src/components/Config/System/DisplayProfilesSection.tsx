@@ -11,7 +11,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../../pathscribe.css';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
 import { mockDisplayProfileService } from '../../../services/facilityOpsDashboard/mockDisplayProfileService';
@@ -128,7 +128,7 @@ const DisplayProfilesSection: React.FC = () => {
         <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'add' })}>{t('displayProfiles.addButton')}</button>
       </div>
 
-      <label className="ps-conf-toggle-label-row" style={{ marginBottom: 12 }}>
+      <label className="ps-conf-toggle-label-row ps-mb-12">
         <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="ps-conf-radio-input" />
         <span className="ps-conf-option-text">{t('displayProfiles.showInactive')}</span>
       </label>
@@ -138,7 +138,7 @@ const DisplayProfilesSection: React.FC = () => {
           <div key={e.id} className="ps-conf-row">
             <span className="ps-conf-value">
               {e.name}
-              <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--ps-conf-text-3, #94a3b8)' }}>
+              <span className="ps-cytqc-priority-inline">
                 {' · '}{e.assignedViews.map(v => t(VIEW_LABEL_KEYS[v])).join(', ')}
                 {e.status === 'Inactive' ? ` · ${t('displayProfiles.inactive')}` : ''}
               </span>

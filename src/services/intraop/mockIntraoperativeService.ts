@@ -26,6 +26,20 @@ import { mockAuditService } from '../auditlog/mockAuditService';
 import { mockCriticalResultNotificationService } from '../clinical/mockCriticalResultNotificationService';
 import { mockFacilityService } from '../facilities/mockFacilityService';
 import { mockLocationService } from '../locations/mockLocationService';
+import { localLiveUpdateService } from '../liveUpdates/localLiveUpdateService';
+import type { IntraopChangeKind } from '../liveUpdates/liveUpdateContract';
+
+/** PS-262: what the API server will do after each committed write — tell
+ *  the live boards and queues that something changed (ids only, no PHI). */
+function announceIntraopChange(kind: IntraopChangeKind, entry: IntraoperativeEntry, specimenId?: string) {
+  localLiveUpdateService.publish({
+    kind,
+    sessionId: entry.id,
+    ...(specimenId ? { specimenId } : {}),
+    ...(entry.locationId ? { locationId: entry.locationId } : {}),
+    ...(entry.facilityId ? { facilityId: entry.facilityId } : {}),
+  });
+}
 
 const STORAGE_KEY = 'intraop_entries';
 const INTRAOP_VERSION = '5'; // bumped: added MERGED_TAT_SEED batch for the linkage TAT trend chart
@@ -493,6 +507,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     };
     const entries = load();
     persist([...entries, newEntry]);
+    announceIntraopChange('session.created', newEntry);
     return ok(newEntry);
   },
 
@@ -510,6 +525,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     };
     entries[idx] = { ...entries[idx], specimens: [...entries[idx].specimens, newSpecimen] };
     persist(entries);
+    announceIntraopChange('specimen.added', entries[idx], newSpecimen.id);
     return ok({ ...entries[idx] });
   },
 
@@ -562,6 +578,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     updatedSpecimens[specIdx] = updatedSpecimen;
     entries[idx] = { ...entries[idx], specimens: updatedSpecimens };
     persist(entries);
+    announceIntraopChange('specimen.progressed', entries[idx], specimenId);
     return ok({ ...entries[idx] });
   },
 
@@ -589,6 +606,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     updatedSpecimens[specIdx] = updatedSpecimen;
     entries[idx] = { ...entries[idx], specimens: updatedSpecimens };
     persist(entries);
+    announceIntraopChange('specimen.progressed', entries[idx], specimenId);
     return ok({ ...entries[idx] });
   },
 
@@ -625,6 +643,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     updatedSpecimens[specIdx] = updatedSpecimen;
     entries[idx] = { ...entries[idx], specimens: updatedSpecimens };
     persist(entries);
+    announceIntraopChange('specimen.progressed', entries[idx], specimenId);
     return ok({ ...entries[idx] });
   },
 
@@ -644,6 +663,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     };
     entries[idx] = { ...entries[idx], specimens: updatedSpecimens };
     persist(entries);
+    announceIntraopChange('diagnosis.rendered', entries[idx], specimenId);
     return ok({ ...entries[idx] });
   },
 
@@ -665,6 +685,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     };
     entries[idx] = { ...entries[idx], specimens: updatedSpecimens };
     persist(entries);
+    announceIntraopChange('specimen.dismissed', entries[idx], specimenId);
     return ok({ ...entries[idx] });
   },
 
@@ -713,6 +734,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
 
     const entries = load().filter(e => !e.id.startsWith('demo-orboard-'));
     persist([...entries, ...demoEntries]);
+    for (const demo of demoEntries) announceIntraopChange('session.created', demo);
     return ok(demoEntries);
   },
 
@@ -753,6 +775,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
     if (idx === -1) return err(`Intraoperative session ${entryId} not found`);
     entries[idx] = { ...entries[idx], status: 'merged', mergedIntoCaseId: caseId, mergedAt: new Date().toISOString() };
     persist(entries);
+    announceIntraopChange('session.merged', entries[idx]);
 
     // Real audit trail for the merge decision itself — previously only
     // the entry's own mergedAt/mergedIntoCaseId fields recorded that a
@@ -811,6 +834,7 @@ export const mockIntraoperativeService: IIntraoperativeService = {
       verbalReportLog: { timestamp: new Date().toISOString(), note: note?.trim() || '(no note recorded)' },
     };
     persist(entries);
+    announceIntraopChange('verbal.reported', entries[idx]);
     return ok({ ...entries[idx] });
   },
 };

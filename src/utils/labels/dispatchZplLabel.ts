@@ -21,9 +21,16 @@
 // direct_interface_engine here gets the same real, honest
 // "not yet implemented" refusal as every other unimplemented bridge
 // type, never a silent no-op or a fabricated success.
+//
+// Batch 346: the agent's port from the printer profile (agentPort) is
+// passed through, so a custom port is tried first, and every message here
+// is translated (printLabels.*). The "agent not found" message lists the
+// ports actually tried.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import i18n from '@/i18n/config';
 import { printZplViaQzTray } from './qzTrayBridge';
+import { getPathScribeAgentClient, type PathScribeAgentClient } from './pathscribeAgent/pathscribeAgentClient';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
 
 export interface DispatchZplLabelResult {
@@ -34,8 +41,21 @@ export interface DispatchZplLabelError {
   message: string;
 }
 
-const NOT_IMPLEMENTED_MESSAGE = (bridgeType: string) =>
-  `Printer bridge "${bridgeType}" is a real, configured option but has no working dispatch implementation for this label type yet — only qz_tray is wired up here. See PrinterBridgeType's own doc comment.`;
+/** The printLabels.agent.* key for each agent error; the print callers
+ *  show the message as-is. */
+const AGENT_ERROR_KEY: Record<string, string> = {
+  AGENT_NOT_FOUND:     'printLabels.agent.notFound',
+  AGENT_TIMEOUT:       'printLabels.agent.timeout',
+  AGENT_DISCONNECTED:  'printLabels.agent.disconnected',
+  PRINTER_NOT_FOUND:   'printLabels.agent.printerNotFound',
+  PRINTER_UNREACHABLE: 'printLabels.agent.printerUnreachable',
+  PAPER_OUT:           'printLabels.agent.paperOut',
+  RIBBON_OUT:          'printLabels.agent.ribbonOut',
+  HEAD_OPEN:           'printLabels.agent.headOpen',
+  MALFORMED_ZPL:       'printLabels.agent.malformedZpl',
+  INVALID_GS1:         'printLabels.agent.invalidGs1',
+  UNSUPPORTED_PROTOCOL_VERSION: 'printLabels.agent.unsupportedProtocol',
+};
 
 /**
  * Real, shared routing — given an already-built ZPL string and a real
@@ -48,6 +68,7 @@ export async function dispatchZplLabel(
   printer: PrinterProfile,
   zpl: string,
   copies: number,
+  agent: Pick<PathScribeAgentClient, 'printZpl' | 'portsTried'> = getPathScribeAgentClient(),
 ): Promise<DispatchZplLabelResult | DispatchZplLabelError> {
   if (printer.bridgeType === 'qz_tray') {
     const result = await printZplViaQzTray(printer.printerId, zpl, copies);
@@ -58,5 +79,14 @@ export async function dispatchZplLabel(
     // own identical situation already uses.
     return result.ok ? { ok: true } : { ok: false, message: (result as { ok: false; message: string }).message };
   }
-  return { ok: false, message: NOT_IMPLEMENTED_MESSAGE(printer.bridgeType) };
+  if (printer.bridgeType === 'pathscribe_agent') {
+    // PS-52: the workstation agent (utils/labels/pathscribeAgent/). The
+    // agent queues jobs from every tab and reports this job's own outcome.
+    const result = await agent.printZpl(printer.printerId, zpl, copies, { preferredPort: printer.agentPort ?? null });
+    if (result.ok === true) return { ok: true };
+    const key = AGENT_ERROR_KEY[result.error];
+    if (key) return { ok: false, message: i18n.t(key, { ports: agent.portsTried(printer.agentPort ?? null).map(String) }) };
+    return { ok: false, message: result.message ?? i18n.t('printLabels.agent.otherError', { code: result.error }) };
+  }
+  return { ok: false, message: i18n.t('printLabels.bridgeNotImplemented', { bridgeType: printer.bridgeType }) };
 }

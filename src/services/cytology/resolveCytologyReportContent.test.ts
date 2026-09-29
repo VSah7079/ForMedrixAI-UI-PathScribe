@@ -66,6 +66,28 @@ describe('resolveCytologyReportContent — the real, complete, 7-section standar
     expect(content.signedAt).toBe('2026-09-03T10:00:00.000Z');
   });
 
+  it('real, per PS-277 §1.2.2 — an omitted printContext leaves printBranding/componentSplitBillingType genuinely undefined, never a default object', () => {
+    const content = resolveCytologyReportContent(
+      { primaryInterpretationId: 'nilm', requiresPathologistReview: false }, CATEGORIES, { name: 'Linda Chen' }, { accessionNumber: 'S26-5003-CYT-001' },
+      { typeDescription: 'Cervical/Vaginal Pap Smear, liquid-based' },
+      undefined, { name: 'Jane CT', isPathologist: false }, '2026-09-03T00:00:00.000Z',
+    );
+    expect(content.printBranding).toBeUndefined();
+    expect(content.componentSplitBillingType).toBeUndefined();
+  });
+
+  it('real, per PS-277 §1.2.2 — a real printContext is passed straight through unchanged, never re-resolved by this pure assembly function', () => {
+    const printBranding = { facilityName: 'Real Lab', address: '1 Test St', directorName: 'Dr. Signer' };
+    const content = resolveCytologyReportContent(
+      { primaryInterpretationId: 'nilm', requiresPathologistReview: false }, CATEGORIES, { name: 'Linda Chen' }, { accessionNumber: 'S26-5003-CYT-001' },
+      { typeDescription: 'Cervical/Vaginal Pap Smear, liquid-based' },
+      undefined, { name: 'Jane CT', isPathologist: false }, '2026-09-03T00:00:00.000Z',
+      { printBranding, componentSplitBillingType: 'TC' },
+    );
+    expect(content.printBranding).toBe(printBranding);
+    expect(content.componentSplitBillingType).toBe('TC');
+  });
+
   it('a real, minimal case (primary interpretation only, no screener on record) still assembles without throwing', () => {
     const content = resolveCytologyReportContent(
       { primaryInterpretationId: 'nilm', requiresPathologistReview: false }, CATEGORIES, { name: 'Linda Chen' }, { accessionNumber: 'S26-5003-CYT-001' },

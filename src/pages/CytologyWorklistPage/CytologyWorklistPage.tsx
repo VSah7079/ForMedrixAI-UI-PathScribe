@@ -29,7 +29,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../pathscribe.css';
 import { useAuth } from '@contexts/AuthContext';
 import { caseRouter } from '@/services/cases/CaseRouter';
@@ -397,23 +397,18 @@ const CytologyWorklistPage: React.FC = () => {
 
   return (
     <>
-        <main style={{ maxWidth: 1100, margin: '0 auto', padding: '32px 24px' }}>
-          <h1 style={{ fontSize: 24, fontWeight: 700, color: '#fff', margin: '0 0 4px' }}>Cytology Worklist</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', margin: '0 0 24px' }}>
+        <main className="ps-cytoworklist-main">
+          <h1 className="ps-cytoworklist-title">Cytology Worklist</h1>
+          <p className="ps-cytoworklist-subtitle">
             Your assigned GYN cytology cases, the shared pool, and cases flagged for mandatory QC.
           </p>
 
           {/* Real, per direct guidance's own confirmed domain switcher —
               GYN vs Non-GYN, each with its own real, separate tile set. */}
-          <div style={{ display: 'flex', gap: 8, marginBottom: 16 }}>
+          <div className="ps-cytoworklist-domain-switch">
             {(['gyn', 'non_gyn'] as CytologyDomain[]).map(d => (
               <button key={d} onClick={() => { setDomain(d); setActiveTab('assigned'); setOrganSiteFilter(null); }}
-                style={{
-                  padding: '10px 20px', borderRadius: 10, cursor: 'pointer', fontSize: 13, fontWeight: 700,
-                  background: domain === d ? '#009E7318' : 'rgba(255,255,255,0.03)',
-                  border: `1px solid ${domain === d ? '#009E73' : 'rgba(255,255,255,0.08)'}`,
-                  color: domain === d ? '#009E73' : '#9ca3af',
-                }}>
+                className={`ps-cytoworklist-domain-btn ${domain === d ? 'ps-cytoworklist-domain-btn--active' : 'ps-cytoworklist-domain-btn--inactive'}`}>
                 {d === 'gyn' ? t('cytologyWorklist.domain.gyn') : t('cytologyWorklist.domain.nonGyn')}
               </button>
             ))}
@@ -428,14 +423,14 @@ const CytologyWorklistPage: React.FC = () => {
             const availableSites = Array.from(new Set(rows.filter(r => !r.isGynCytology && r.organSite).map(r => r.organSite as string)));
             if (availableSites.length === 0) return null;
             return (
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap', marginBottom: 16 }}>
+              <div className="ps-cytoworklist-organsite-row">
                 <button onClick={() => setOrganSiteFilter(null)}
-                  style={{ padding: '5px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 600, background: !organSiteFilter ? '#37415155' : 'transparent', border: '1px solid rgba(255,255,255,0.1)', color: !organSiteFilter ? '#e5e7eb' : '#6b7280' }}>
+                  className={`ps-cytoworklist-pill ${!organSiteFilter ? 'ps-cytoworklist-pill--all-active' : 'ps-cytoworklist-pill--all-inactive'}`}>
                   {t('cytologyWorklist.organSite.all')}
                 </button>
                 {availableSites.map(site => (
                   <button key={site} onClick={() => setOrganSiteFilter(site)}
-                    style={{ padding: '5px 12px', borderRadius: 999, cursor: 'pointer', fontSize: 11.5, fontWeight: 600, background: organSiteFilter === site ? '#38bdf822' : 'transparent', border: `1px solid ${organSiteFilter === site ? '#38bdf8' : 'rgba(255,255,255,0.1)'}`, color: organSiteFilter === site ? '#38bdf8' : '#9ca3af' }}>
+                    className={`ps-cytoworklist-pill ${organSiteFilter === site ? 'ps-cytoworklist-pill--site-active' : 'ps-cytoworklist-pill--site-inactive'}`}>
                     {t(`cytologyWorklist.organSite.${site}`)}
                   </button>
                 ))}
@@ -444,19 +439,15 @@ const CytologyWorklistPage: React.FC = () => {
           })()}
 
           {/* Real, three-tile row — matches the existing WorklistPage.tsx's own real stat-tile pattern */}
-          <div style={{ display: 'flex', gap: 12, marginBottom: 24 }}>
+          <div className="ps-cytoworklist-tiles">
             {(domain === 'gyn' ? GYN_TILES : NON_GYN_TILES).map(tile => {
               const active = activeTab === tile.key;
               return (
                 <button key={tile.key} onClick={() => setActiveTab(tile.key)}
-                  style={{
-                    flex: 1, padding: '16px 18px', borderRadius: 12, cursor: 'pointer', textAlign: 'left',
-                    background: active ? `${tile.color}18` : 'rgba(255,255,255,0.03)',
-                    border: `1px solid ${active ? tile.color : 'rgba(255,255,255,0.08)'}`,
-                    boxShadow: active ? `0 0 12px ${tile.color}40` : 'none',
-                  }}>
-                  <div style={{ fontSize: 24, fontWeight: 700, color: active ? tile.color : '#e5e7eb' }}>{counts[tile.key]}</div>
-                  <div style={{ fontSize: 13, fontWeight: 600, color: active ? tile.color : '#9ca3af', marginTop: 4 }}>{tile.label}</div>
+                  className={`ps-cytoworklist-tile ${active ? 'ps-cytoworklist-tile--active' : 'ps-cytoworklist-tile--inactive'}`}
+                  style={{ '--ps-hue': tile.color } as React.CSSProperties}>
+                  <div className="ps-cytoworklist-tile-count">{counts[tile.key]}</div>
+                  <div className="ps-cytoworklist-tile-label">{tile.label}</div>
                 </button>
               );
             })}
@@ -466,45 +457,42 @@ const CytologyWorklistPage: React.FC = () => {
               Compliance stays its own, separate section — a genuinely
               different, aggregate purpose than either screening domain
               above, not folded into GYN or Non-GYN specifically. */}
-          <div style={{ marginBottom: 20 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.4, marginBottom: 8 }}>
+          <div className="ps-cytoworklist-qa-section">
+            <div className="ps-cytoworklist-qa-section-label">
               {t('cytologyWorklist.qaComplianceSectionLabel')}
             </div>
-            <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+            <div className="ps-cytoworklist-qa-tiles">
               {QA_COMPLIANCE_TILES.map(tile => {
                 const active = activeTab === tile.key;
                 return (
                   <button key={tile.key} onClick={() => setActiveTab(tile.key)}
-                    style={{
-                      padding: '10px 14px', borderRadius: 10, cursor: 'pointer', textAlign: 'left', minWidth: 130,
-                      background: active ? `${tile.color}18` : 'rgba(255,255,255,0.03)',
-                      border: `1px solid ${active ? tile.color : 'rgba(255,255,255,0.08)'}`,
-                    }}>
-                    <div style={{ fontSize: 18, fontWeight: 700, color: active ? tile.color : '#e5e7eb' }}>{counts[tile.key]}</div>
-                    <div style={{ fontSize: 11.5, fontWeight: 600, color: active ? tile.color : '#9ca3af', marginTop: 2 }}>{tile.label}</div>
+                    className={`ps-cytoworklist-qa-tile ${active ? 'ps-cytoworklist-qa-tile--active' : 'ps-cytoworklist-qa-tile--inactive'}`}
+                    style={{ '--ps-hue': tile.color } as React.CSSProperties}>
+                    <div className="ps-cytoworklist-qa-tile-count">{counts[tile.key]}</div>
+                    <div className="ps-cytoworklist-qa-tile-label">{tile.label}</div>
                   </button>
                 );
               })}
             </div>
           </div>
 
-          {loading && <div style={{ padding: 32, textAlign: 'center', color: '#4b5563', fontSize: 13 }}>Loading…</div>}
+          {loading && <div className="ps-cytoworklist-empty">Loading…</div>}
 
           {!loading && activeTab === 'hpv_triage' && (
             triageRows.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: '#4b5563', fontSize: 13 }}>No cases currently awaiting a primary hrHPV result.</div>
+              <div className="ps-cytoworklist-empty">No cases currently awaiting a primary hrHPV result.</div>
             ) : (
-              <div style={{ border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
+              <div className="ps-cytoworklist-list">
                 {triageRows.map((c, i) => (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: i < triageRows.length - 1 ? '1px solid #111827' : 'none' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }} data-phi="mrn">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Case {c.id} · MRN {c.patient?.mrn ?? '—'}</div>
+                  <div key={c.id} className={`ps-cytoworklist-row ${i === triageRows.length - 1 ? 'ps-cytoworklist-row--last' : ''}`}>
+                    <div className="ps-cytoworklist-row-main">
+                      <div className="ps-cytoworklist-row-title" data-phi="name">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || t('cytologyWorklist.unknownPatient')}</div>
+                      <div className="ps-cytoworklist-row-subtitle" data-phi="true">{t('cytologyWorklist.rowSubtitle', { caseId: c.id, mrn: c.patient?.mrn ?? '—' })}</div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#8B5CF618', color: '#8B5CF6', border: '1px solid #8B5CF633' }}>Awaiting hrHPV Result</span>
-                    <div style={{ display: 'flex', gap: 8 }}>
-                      <button onClick={() => handleRecordHpvResult(c, 'Negative')} style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#9ca3af', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}>Record Negative</button>
-                      <button onClick={() => handleRecordHpvResult(c, 'Positive')} style={{ padding: '6px 16px', fontSize: 12, fontWeight: 600, color: '#0a0a0a', background: '#8B5CF6', border: 'none', borderRadius: 7, cursor: 'pointer' }}>Record Positive</button>
+                    <span className="ps-cytoworklist-badge ps-cytoworklist-badge--violet">Awaiting hrHPV Result</span>
+                    <div className="ps-cytoworklist-row-actions">
+                      <button onClick={() => handleRecordHpvResult(c, 'Negative')} className="ps-cytoworklist-action-btn">Record Negative</button>
+                      <button onClick={() => handleRecordHpvResult(c, 'Positive')} className="ps-cytoworklist-action-btn--violet">Record Positive</button>
                     </div>
                   </div>
                 ))}
@@ -519,16 +507,16 @@ const CytologyWorklistPage: React.FC = () => {
               vanishing from every real cytology tile. */}
           {!loading && activeTab === 'recall_needed' && (
             recallRows.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: '#4b5563', fontSize: 13 }}>No cases currently need a recall for clinician-collected LBC.</div>
+              <div className="ps-cytoworklist-empty">No cases currently need a recall for clinician-collected LBC.</div>
             ) : (
-              <div style={{ border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
+              <div className="ps-cytoworklist-list">
                 {recallRows.map((c, i) => (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: i < recallRows.length - 1 ? '1px solid #111827' : 'none' }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }} data-phi="mrn">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Case {c.id} · MRN {c.patient?.mrn ?? '—'}</div>
+                  <div key={c.id} className={`ps-cytoworklist-row ${i === recallRows.length - 1 ? 'ps-cytoworklist-row--last' : ''}`}>
+                    <div className="ps-cytoworklist-row-main">
+                      <div className="ps-cytoworklist-row-title" data-phi="name">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || t('cytologyWorklist.unknownPatient')}</div>
+                      <div className="ps-cytoworklist-row-subtitle" data-phi="true">{t('cytologyWorklist.rowSubtitle', { caseId: c.id, mrn: c.patient?.mrn ?? '—' })}</div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#DC262618', color: '#DC2626', border: '1px solid #DC262633' }}>
+                    <span className="ps-cytoworklist-badge ps-cytoworklist-badge--red-strong">
                       Positive (Self-Collected) — Recall for Clinician-Collected LBC
                     </span>
                   </div>
@@ -539,17 +527,17 @@ const CytologyWorklistPage: React.FC = () => {
 
           {!loading && activeTab === 'scans_completed' && (
             scansCompletedRows.length === 0 ? (
-              <div style={{ padding: 32, textAlign: 'center', color: '#4b5563', fontSize: 13 }}>No cases currently have a completed WSI scan awaiting screening.</div>
+              <div className="ps-cytoworklist-empty">No cases currently have a completed WSI scan awaiting screening.</div>
             ) : (
-              <div style={{ border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
+              <div className="ps-cytoworklist-list">
                 {scansCompletedRows.map((c, i) => (
-                  <div key={c.id} style={{ display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px', borderBottom: i < scansCompletedRows.length - 1 ? '1px solid #111827' : 'none', cursor: 'pointer' }}
+                  <div key={c.id} className={`ps-cytoworklist-row ps-cytoworklist-row--clickable ${i === scansCompletedRows.length - 1 ? 'ps-cytoworklist-row--last' : ''}`}
                     onClick={() => navigate(`/cytology-worklist/${c.id}`)}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }} data-phi="mrn">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>Case {c.id} · MRN {c.patient?.mrn ?? '—'}</div>
+                    <div className="ps-cytoworklist-row-main">
+                      <div className="ps-cytoworklist-row-title" data-phi="name">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || t('cytologyWorklist.unknownPatient')}</div>
+                      <div className="ps-cytoworklist-row-subtitle" data-phi="true">{t('cytologyWorklist.rowSubtitle', { caseId: c.id, mrn: c.patient?.mrn ?? '—' })}</div>
                     </div>
-                    <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#22C55E18', color: '#22C55E', border: '1px solid #22C55E33' }}>Scan Complete — Ready to Screen</span>
+                    <span className="ps-cytoworklist-badge ps-cytoworklist-badge--green">Scan Complete — Ready to Screen</span>
                   </div>
                 ))}
               </div>
@@ -557,7 +545,7 @@ const CytologyWorklistPage: React.FC = () => {
           )}
 
           {!loading && activeTab !== 'hpv_triage' && activeTab !== 'recall_needed' && activeTab !== 'scans_completed' && visible.length === 0 && (
-            <div style={{ padding: 32, textAlign: 'center', color: '#4b5563', fontSize: 13 }}>
+            <div className="ps-cytoworklist-empty">
               {activeTab === 'assigned' && 'No cases currently assigned to you.'}
               {activeTab === 'pool' && 'No cases in the pool right now.'}
               {activeTab === 'qc' && 'No cases currently flagged for QC.'}
@@ -571,76 +559,64 @@ const CytologyWorklistPage: React.FC = () => {
           )}
 
           {!loading && activeTab !== 'hpv_triage' && activeTab !== 'recall_needed' && activeTab !== 'scans_completed' && visible.length > 0 && (
-            <div style={{ border: '1px solid #1f2937', borderRadius: 12, overflow: 'hidden' }}>
+            <div className="ps-cytoworklist-list">
               {visible.map((row, i) => {
                 const c = row.caseData;
                 const hasFinalDiagnosis = c.specimens?.some((sp: any) => sp.cytologyScreening?.finalDiagnosis);
                 return (
                   <div key={c.id}
                     onClick={() => activeTab !== 'pool' && navigate(`/cytology-worklist/${c.id}`)}
-                    style={{
-                      display: 'flex', alignItems: 'center', gap: 16, padding: '14px 16px',
-                      borderBottom: i < visible.length - 1 ? '1px solid #111827' : 'none',
-                      cursor: activeTab !== 'pool' ? 'pointer' : 'default',
-                    }}>
-                    <div style={{ flex: 1, minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e5e7eb' }} data-phi="mrn">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || 'Unknown Patient'}</div>
-                      <div style={{ fontSize: 12, color: '#6b7280', marginTop: 2 }}>
-                        Case {c.id} · MRN {c.patient?.mrn ?? '—'}
+                    className={`ps-cytoworklist-row ${activeTab !== 'pool' ? 'ps-cytoworklist-row--clickable' : 'ps-cytoworklist-row--static'} ${i === visible.length - 1 ? 'ps-cytoworklist-row--last' : ''}`}>
+                    <div className="ps-cytoworklist-row-main">
+                      <div className="ps-cytoworklist-row-title" data-phi="name">{formatFullDisplayName(c.patient as any) || c.patient?.mrn || t('cytologyWorklist.unknownPatient')}</div>
+                      <div className="ps-cytoworklist-row-subtitle" data-phi="true">
+                        {t('cytologyWorklist.rowSubtitle', { caseId: c.id, mrn: c.patient?.mrn ?? '—' })}
                       </div>
                     </div>
                     {activeTab === 'qc' && (
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#ef444418', color: '#ef4444', border: '1px solid #ef444433' }}>
+                      <span className="ps-cytoworklist-badge ps-cytoworklist-badge--red">
                         {(c.specimens as any[])?.find(sp => sp.id === row.specimenId)?.cytologyScreening?.qcFlag?.reason === 'targeted_high_risk' ? 'High-Risk QC' : 'Random QC'}
                       </span>
                     )}
                     {activeTab === 'csms_qa' && (
                       <>
-                        <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#0ea5e918', color: '#38bdf8', border: '1px solid #0ea5e933' }}>
+                        <span className="ps-cytoworklist-badge ps-cytoworklist-badge--sky">
                           CSMS Eligibility Verification Needed
                         </span>
                         <button
                           onClick={() => openFlagManager(c)}
-                          style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#1c1c1c', border: '1px solid #374151', color: '#9ca3af', cursor: 'pointer' }}
+                          className="ps-cytoworklist-badge ps-cytoworklist-badge--gray-action"
                         >
                           Manage Flags
                         </button>
                       </>
                     )}
                     {row.aiScreeningResult?.slideTriage && (
-                      <span style={{
-                        fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
-                        background: row.aiScreeningResult.slideTriage.reviewRecommended ? '#f59e0b18' : '#22c55e18',
-                        color: row.aiScreeningResult.slideTriage.reviewRecommended ? '#f59e0b' : '#22c55e',
-                        border: `1px solid ${row.aiScreeningResult.slideTriage.reviewRecommended ? '#f59e0b33' : '#22c55e33'}`,
-                      }} title="AI slide-level triage, per RFP-APLIS-2026-GLOBAL Story 10">
+                      <span
+                        className={`ps-cytoworklist-badge ${row.aiScreeningResult.slideTriage.reviewRecommended ? 'ps-cytoworklist-badge--amber' : 'ps-cytoworklist-badge--green'}`}
+                        title="AI slide-level triage, per RFP-APLIS-2026-GLOBAL Story 10">
                         {row.aiScreeningResult.slideTriage.reviewRecommended ? '🤖 AI: Review' : '🤖 AI: No Further Review'}
                         {row.aiScreeningResult.slideTriage.rankGroup != null && row.aiScreeningResult.slideTriage.totalRankGroups != null
                           ? ` (${row.aiScreeningResult.slideTriage.rankGroup}/${row.aiScreeningResult.slideTriage.totalRankGroups})` : ''}
                       </span>
                     )}
                     {!row.aiScreeningResult?.slideTriage && (row.aiScreeningResult?.findings?.length ?? 0) > 0 && (
-                      <span style={{ fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6, background: '#38bdf818', color: '#38bdf8', border: '1px solid #38bdf833' }}
+                      <span className="ps-cytoworklist-badge ps-cytoworklist-badge--cyan"
                         title="AI-flagged fields of view, per RFP-APLIS-2026-GLOBAL Story 10">
                         🤖 {row.aiScreeningResult!.findings.length} AI-Flagged FOV{row.aiScreeningResult!.findings.length === 1 ? '' : 's'}
                       </span>
                     )}
-                    <span style={{
-                      fontSize: 11, fontWeight: 600, padding: '3px 10px', borderRadius: 6,
-                      background: hasFinalDiagnosis ? '#22c55e18' : '#f59e0b18',
-                      color: hasFinalDiagnosis ? '#22c55e' : '#f59e0b',
-                      border: `1px solid ${hasFinalDiagnosis ? '#22c55e33' : '#f59e0b33'}`,
-                    }}>
+                    <span className={`ps-cytoworklist-badge ${hasFinalDiagnosis ? 'ps-cytoworklist-badge--green' : 'ps-cytoworklist-badge--amber'}`}>
                       {hasFinalDiagnosis ? 'Final Diagnosis Recorded' : 'Awaiting Review'}
                     </span>
                     {activeTab === 'pool' && (
-                      <div style={{ display: 'flex', gap: 8 }}>
+                      <div className="ps-cytoworklist-row-actions">
                         <button onClick={(e) => { e.stopPropagation(); handlePass(c.id); }} disabled={claimingId === c.id}
-                          style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#9ca3af', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}>
+                          className="ps-cytoworklist-action-btn">
                           Pass
                         </button>
                         <button onClick={(e) => { e.stopPropagation(); handleClaim(c.id); }} disabled={claimingId === c.id}
-                          style={{ padding: '6px 16px', fontSize: 12, fontWeight: 600, color: '#0a0a0a', background: '#009E73', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+                          className="ps-cytoworklist-action-btn--claim">
                           {claimingId === c.id ? 'Claiming…' : 'Claim'}
                         </button>
                       </div>

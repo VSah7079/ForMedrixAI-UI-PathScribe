@@ -50,3 +50,20 @@ elsewhere in `pathscribe.css` (`.ps-del-header` appears 4 times,
 here since it's a different, larger problem than this file's own inline
 styles. Not logging a new tracking entry for it yet; flagging here so
 it's not lost if a future CSS consolidation pass happens.
+
+## FacilityDictionaryPage: Duplicate via the service (Batch 317, PS-73)
+
+`handleDuplicateFacility` now calls `services/duplication` → `duplicateFacility`, which lists every cleared field with its reason. Compared with the old inline version, the copy now also clears:
+
+- CLIA/ISO number;
+- director;
+- city, state and zip;
+- legacy tenant ids;
+- pediatric pathologist authorizations;
+- the interface endpoint, and `credentialConfigured` (a copy must not claim credentials it doesn't have).
+
+The copy's name is localized. The page test was updated to match.
+
+## Batch 368
+
+`FacilityDictionaryPage.test.tsx` mocks `placeOfServiceCodeService` through `@/services`, since the editor now takes it from there.

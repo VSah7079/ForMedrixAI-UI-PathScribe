@@ -13,6 +13,7 @@ import type { ServiceChargeRecord } from '@/types/billing/ServiceChargeRecord';
 import type { ServiceResult } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
 import { canDraftOrApproveBillingCharge } from './canDraftOrApproveBillingCharge';
+import { ruleReferenceKey } from './codeEngine/planImportJob';
 
 const STORAGE_KEY = 'pathscribe_service_charges';
 
@@ -163,6 +164,11 @@ export const mockServiceChargeService: IServiceChargeService = {
   async getChargesForCase(caseId) {
     await delay();
     return ok(loadAll().filter(r => r.caseId === caseId));
+  },
+
+  async listRuleReferenceKeys() {
+    await delay();
+    return ok([...new Set(loadAll().map(r => ruleReferenceKey(r.billingCode, r.siteId, r.ruleVersion)))]);
   },
 
   async findActiveChargeForSource(caseId, specimenId, blockId, billingCode) {

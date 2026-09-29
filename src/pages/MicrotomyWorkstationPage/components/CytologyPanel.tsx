@@ -27,7 +27,7 @@ const CytologyPanel: React.FC<CytologyPanelProps> = ({ decant, onUpdateFields, o
   );
 
   return (
-    <div className="ps-microtomy-panel" style={{ marginBottom: 14 }}>
+    <div className="ps-microtomy-panel ps-mb-14">
       <p className="ps-microtomy-panel-title">{t('microtomyWorkstation.cytology.title')}</p>
       <div className="ps-microtomy-cytology-grid">
         <div>
@@ -70,7 +70,7 @@ const CytologyPanel: React.FC<CytologyPanelProps> = ({ decant, onUpdateFields, o
             {t('microtomyWorkstation.cytology.suggestionIntro')}{' '}
             {suggestions.map(s => `${s.count}× ${t(`microtomyWorkstation.cytology.prepMethod.${s.preparationMethod.replace(/[^A-Za-z]/g, '')}`)}`).join(', ')}
           </div>
-          <button type="button" className="ps-btn-secondary" style={{ marginTop: 8 }} onClick={() => onApplySuggestions(suggestions)}>
+          <button type="button" className="ps-btn-secondary ps-mt-8" onClick={() => onApplySuggestions(suggestions)}>
             {t('microtomyWorkstation.cytology.acceptSuggestion')}
           </button>
         </div>

@@ -22,9 +22,9 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
-import type { IncomingOrder } from '@/services';
+import { patientIndexService, type IncomingOrder } from '@/services';
 import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
-import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
+import type { JurisdictionDateFormat } from '@/types/systemConfig';
 import { isoDateForSearch, dobIncludesQuery } from '@/utils/isoDateForSearch';
 import { normalizeIdForSearch } from '@/utils/normalizeIdForSearch';
 
@@ -40,13 +40,13 @@ interface Props {
    *  own searchDobFormat comment), rather than a hardcoded US
    *  mm/dd/yyyy — passed down rather than re-resolved here, so the
    *  omnibox and this modal can never disagree about which format is
-   *  correct for the current context. An explicit 'MM/DD/YYYY' |
-   *  'DD/MM/YYYY' string, not a BCP-47 locale — see
-   *  isoDateForSearch.ts's own header comment for why real
-   *  toLocaleDateString locale behavior isn't trustworthy enough for
-   *  this (confirmed 'en-CA' disagrees with this app's own declared
-   *  jurisdiction format). */
-  searchDobFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY';
+   *  correct for the current context. The jurisdiction's own format
+   *  (DD.MM.YYYY in Germany, DD-MM-YYYY in the Netherlands, …), not a
+   *  BCP-47 locale — see isoDateForSearch.ts's own header comment for
+   *  why real toLocaleDateString locale behavior isn't trustworthy
+   *  enough for this (confirmed 'en-CA' disagrees with this app's own
+   *  declared jurisdiction format). */
+  searchDobFormat: JurisdictionDateFormat;
   dobFormatHint: string;
   onSelectOrder: (orderId: string) => void;
   onSelectPatient: (patient: MasterPatientRecord) => void;
@@ -106,7 +106,7 @@ export const OrderLookupModal: React.FC<Props> = ({
     let cancelled = false;
     setPatientSearchLoading(true);
     const timer = setTimeout(() => {
-      mockPatientIndexService.searchPatients(organisationId, q)
+      patientIndexService.searchPatients(organisationId, q)
         .then(results => { if (!cancelled) setPatientResults(results); })
         .catch(() => { if (!cancelled) setPatientResults([]); })
         .finally(() => { if (!cancelled) setPatientSearchLoading(false); });
@@ -156,7 +156,7 @@ export const OrderLookupModal: React.FC<Props> = ({
                   {orderMatches.map(o => (
                     <div key={o.id} className="ps-order-lookup-grid-row" onClick={() => onSelectOrder(o.id)}>
                       <div><strong>{o.externalOrderNumber}</strong></div>
-                      <div>{o.patient.firstName} {o.patient.lastName}</div>
+                      <div data-phi="name">{o.patient.firstName} {o.patient.lastName}</div>
                       <div data-phi="mrn">{o.patient.mrn || '—'}</div>
                       <div data-phi="dob">{o.patient.dateOfBirth ? isoDateForSearch(o.patient.dateOfBirth, searchDobFormat) : '—'}</div>
                       <div>{o.externalAssigningAuthority}</div>

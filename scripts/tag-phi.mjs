@@ -18,6 +18,12 @@
  *                                          pass targets a named file, not a
  *                                          whole-tree pass.
  *
+ * Batch 363 (PS-72): this audit matches lines, so it also flags class names,
+ * comments, filters and props, and can't see a data-phi on an enclosing
+ * element. The count that decides PS-72 is the structure-aware check in
+ * src/services/phi/ (phiTagging.guard.test.ts). This script remains useful
+ * for --write on simple cases.
+ *
  * What it detects:
  *   JSX expressions like {patient.name}, {mrn}, {accessionNumber} etc.
  *   wrapped in inline elements: <span>, <td>, <div>, <p>, <label>, <strong>

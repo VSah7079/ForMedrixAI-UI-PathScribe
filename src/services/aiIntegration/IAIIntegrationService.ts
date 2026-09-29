@@ -1,4 +1,6 @@
-import { ServiceResult, VoiceMacro } from '../../types';
+import type { VoiceMacro } from '../../types';
+// PS-67 (Batch 348): the app's one result shape, { ok, data } | { ok: false, error }.
+import type { ServiceResult } from '../types';
 import type { ProtocolChange } from '@/types/case/Case';
 
 export interface AIProcessingOptions {

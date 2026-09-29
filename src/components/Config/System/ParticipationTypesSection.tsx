@@ -30,19 +30,23 @@ import { mockParticipationTypeService } from '../../../services/participationTyp
 import type { ParticipationTypeRecord as ParticipationType, NewParticipationType } from '../../../services/participationTypes/IParticipationTypeService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
+import { saveParticipationTypeWithAudit, resolveAuditActor } from '../../../services/participationTypes/saveParticipationType';
+import { getSessionUser } from '../../../services/auth/caseAccessControl';
+import { auditService } from '../../../services';
+import { duplicateParticipationType } from '@/services/duplication/duplicateEntities';
 
 export type { ParticipationType };
 
 // ─── Attribute chip ───────────────────────────────────────────────────────────
 
+// No inline CSS: the only per-instance value (the chip's own "on" hue)
+// crosses into markup as the --ps-hue custom property; tints, borders,
+// and the off state are real CSS rules (color-mix(), the same pattern
+// used elsewhere in pathscribe.css).
 const AttrChip: React.FC<{ label: string; value?: boolean; onColor?: string }> = ({ label, value, onColor = '#22c55e' }) => (
   <span
-    className="ps-participationtypes__attr-chip"
-    style={{
-      background: value ? onColor + '18' : 'rgba(255,255,255,0.04)',
-      color: value ? onColor : '#4b5563',
-      border: `1px solid ${value ? onColor + '33' : 'rgba(255,255,255,0.06)'}`,
-    }}
+    className={`ps-participationtypes__attr-chip ps-participationtypes__attr-chip--${value ? 'on' : 'off'}`}
+    style={value ? ({ '--ps-hue': onColor } as React.CSSProperties) : undefined}
   >
     {value ? '✓' : '—'} {label}
   </span>
@@ -72,14 +76,25 @@ const ParticipationTypesSection: React.FC = () => {
 
   useEffect(() => { refresh(); getActivePerformingLabs().then(setLabs); }, []);
 
-  const handleSave = async (draft: Draft) => {
+  // Save + compliance audit trail for facility-level sign-out authority
+  // overrides (who/when/why) — all logic in
+  // services/participationTypes/saveParticipationType.ts; this screen only
+  // supplies the session actor and facility names.
+  const handleSave = async (draft: Draft, justifications: Record<string, string>) => {
     setSaving(true);
     try {
-      if (modal?.mode === 'add') {
-        await mockParticipationTypeService.add(draft as NewParticipationType);
-      } else if (modal?.type) {
-        await mockParticipationTypeService.update(modal.type.id, draft);
-      }
+      await saveParticipationTypeWithAudit(
+        {
+          mode: modal?.mode ?? 'add',
+          // Only an edit has a stored record; a duplicate's pre-filled type is not one.
+          existing: modal?.mode === 'edit' ? modal.type : undefined,
+          draft: draft as NewParticipationType,
+          justifications,
+          facilityNames: Object.fromEntries(labs.map(l => [l.id, l.name])),
+          actor: resolveAuditActor(getSessionUser()),
+        },
+        { typeService: mockParticipationTypeService, auditService },
+      );
       refresh();
       setModal(null);
     } finally {
@@ -158,7 +173,7 @@ const ParticipationTypesSection: React.FC = () => {
                     <div className="ps-participationtypes__type-cell">
                       <span
                         className="ps-participationtypes__abbr-chip"
-                        style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}
+                        style={{ '--ps-hue': pt.color } as React.CSSProperties}
                       >
                         {pt.abbreviation}
                       </span>
@@ -197,6 +212,13 @@ const ParticipationTypesSection: React.FC = () => {
                   <td className="ps-participationtypes__td ps-participationtypes__td--right">
                     <button onClick={() => setModal({ mode: 'edit', type: pt })} className="ps-participationtypes__edit-btn">
                       {t('common.edit')}
+                    </button>
+                    {/* Duplicate (PS-73): capabilities and each country's authority
+                        flags carry over; abbreviation, facility overrides (audited
+                        decisions about ONE role) and regional titles do not. See
+                        services/duplication/duplicateEntities.ts. */}
+                    <button onClick={() => setModal({ mode: 'add', type: duplicateParticipationType(pt, name => t('common.copyOfName', { name })) })} className="ps-participationtypes__edit-btn">
+                      {t('common.duplicate')}
                     </button>
                   </td>
                 </tr>

@@ -103,7 +103,7 @@ const MolecularOrderQueuePage: React.FC = () => {
 
       <div className="ps-molq-demo-panel">
         <div className="ps-molq-demo-title">{t('molecularOrderQueue.demoPanelTitle')}</div>
-        <p className="ps-molq-demo-description">{t('molecularOrderQueue.demoPanelDescription', { accession: DEMO_ACCESSION })}</p>
+        <p className="ps-molq-demo-description" data-phi="accession">{t('molecularOrderQueue.demoPanelDescription', { accession: DEMO_ACCESSION })}</p>
 
         <label className="ps-molq-field-label">{t('molecularOrderQueue.assayLabel')}</label>
         <select className="ps-batch-select" value={assayChoice} onChange={e => setAssayChoice(e.target.value as typeof assayChoice)}>
@@ -148,7 +148,7 @@ const MolecularOrderQueuePage: React.FC = () => {
             {entries.map(entry => (
               <tr key={entry.id} className={isMolecularPayload(entry.payload) && entry.payload.reflexFromMessageId ? 'ps-molq-row--reflex' : ''}>
                 <td>{entry.eventType === 'order.molecular' ? t('molecularOrderQueue.typeMolecular') : t('molecularOrderQueue.typeInstrument')}</td>
-                <td>{isMolecularPayload(entry.payload) ? `${entry.payload.accessionNumber}-${entry.payload.specimenLetter}` : entry.payload.masterBarcode}</td>
+                <td data-phi="accession">{isMolecularPayload(entry.payload) ? `${entry.payload.accessionNumber}-${entry.payload.specimenLetter}` : entry.payload.masterBarcode}</td>
                 <td>{isMolecularPayload(entry.payload) ? entry.payload.assayCode : entry.payload.instrumentVendor}</td>
                 <td>
                   {isMolecularPayload(entry.payload) ? (

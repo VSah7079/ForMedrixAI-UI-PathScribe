@@ -206,6 +206,58 @@ context, and renders real charts/tables client-side.
   the fuller history of how these two concepts ended up disconnected in
   the first place.
 
+## Batch 353
+
+**`EnterpriseRollupTab.tsx`:**
+- It gets TAT targets from `tatTargetService`, and facilities, RVU tables and the audit log through `@/services`. It is off both deployment baselines.
+- Jurisdiction names on screen now use `jurisdictionNames.*`. The CSV keeps English, per its export convention.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+Case numbers and MRNs in these tables and pickers are tagged: `AccessRequestResponseTab`, `CytologyHistologyCorrelationPrintView`, `CytologyQaTab` (patient MRN columns), `DriftCorrectionTab`, `InspectionModeTab`, `PatientManagementSection` (the move-case picker).
+
+## Batch 367 (PS-74): no inline CSS
+
+`CytologyQaTab.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`CytologyQaTab.tsx` takes `cytologyQaReportService` from `@/services`, and is off the deployment baseline.
+
+## Export capabilities (Batch 369, PS-355)
+
+- **One capability per report, 14 in all.** `exportQaReportRows(capability, rows, filename)` now takes the report's capability and goes through `services/qualityAssurance/qaExport.ts`, which checks it (audited) before any file is produced.
+
+  | Report | Where | Capability |
+  |---|---|---|
+  | Deficiencies (active and closed) | `QualityAssurancePage.tsx` | `qa:deficiencies:export` |
+  | Management reviews | `QualityAssurancePage.tsx` | `qa:management-reviews:export` |
+  | Billing deficiencies | `QualityAssurancePage.tsx` | `qa:billing-deficiencies:export` |
+  | Frozen section linkage | `IntraopLinkageTab` | `qa:intraop-linkage:export` |
+  | Discordance and reconciliation | `ReconciliationTab` | `qa:reconciliation:export` |
+  | Countersign turnaround | `CountersignTurnaroundTab` | `qa:countersign-turnaround:export` |
+  | Credentialing review (FPPE) | `FppeTrackingTab` | `qa:fppe-tracking:export` |
+  | Post-final drift | `DriftCorrectionTab` | `qa:drift-correction:export` |
+  | Patient match review | `PatientMatchReviewSection` | `qa:patient-match-review:export` |
+  | Access requests | `AccessRequestResponseTab` | `qa:access-request-response:export` |
+  | Cytology–histology correlation (CSV and print) | `CytologyQaTab` | `qa:cytology-histology-correlation:export` |
+  | QA dashboard | `QaDashboardTab` | `qa:activity-dashboard:export` |
+  | Inspection evidence binder | `InspectionModeTab` | `qa:inspection-evidence:export` (requires the dashboard's) |
+  | Enterprise rollup | `EnterpriseRollupTab` | `qa:enterprise-rollup:export` |
+
+- **Buttons:** every export button is a `CapabilityButton`, greyed out with the reason for anyone without the capability. The cytology–histology **Print** button checks the capability through `authorizationService.enforce` before opening the print view.
+- **Deployment baseline:** `InspectionModeTab`, `IntraopLinkageTab`, `PatientMatchReviewSection`, `QaDashboardTab` and `ReconciliationTab` take their services from `@/services` and are off the baseline.
+- **Found, not fixed:** this file's `qaReportUtils.ts` header says QA exports never include patient name, MRN or DOB. The cytology–histology correlation export includes a `Patient MRN` column. Now it at least needs its own capability and is audited, but either the column or the stated convention should change. That's Pete's call.
+
+## Batch 370 (PS-356): facility scope on exports
+
+`exportQaReportRows` now requires a context:
+- tabs with a scope switcher pass `qaScopeContext(scope)`;
+- the others pass `qaScopeContext()` (all facilities).
+
+The same context goes on each export `CapabilityButton`. Someone limited to some facilities sees enterprise-wide exports greyed out, with "your facility assignment doesn't cover it", and can export a client scope within their facilities. `CytologyQaTab`'s histology table receives the context as a prop.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

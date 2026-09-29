@@ -34,7 +34,7 @@
 
 import { useState, useEffect } from "react";
 import '../pathscribe.css';
-import { useParams, useNavigate, useLocation } from "react-router-dom";
+import { useParams, useNavigate, useLocation } from "react-router";
 import { useTranslation } from "react-i18next";
 import type { Case } from "@/types/case/Case";
 import { caseRouter } from "@/services/cases/CaseRouter";
@@ -174,7 +174,7 @@ export default function FullReportPage() {
             {t('fullReport.notFoundTitle')}
           </h1>
           <p className="ps-report-notfound-sub">
-            {t('fullReport.notFoundCasePrefix')} <code className="ps-report-notfound-code">{cleanedCaseId || "—"}</code> {t('fullReport.notFoundCaseSuffix')}
+            {t('fullReport.notFoundCasePrefix')} <code className="ps-report-notfound-code" data-phi="accession">{cleanedCaseId || "—"}</code> {t('fullReport.notFoundCaseSuffix')}
           </p>
           <button onClick={handleBack} className="ps-report-notfound-btn">
             {t('fullReport.goBackBtn')}

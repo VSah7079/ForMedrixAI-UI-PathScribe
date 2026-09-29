@@ -36,7 +36,7 @@
 import React, { useState, useEffect, useMemo } from 'react';
 import '../pathscribe.css';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
@@ -61,14 +61,11 @@ import { FppeTrackingTab } from '@/components/QualityAssurance/FppeTrackingTab';
 import { DriftCorrectionTab } from '@/components/QualityAssurance/DriftCorrectionTab';
 import { PatientMatchReviewSection } from '@/components/QualityAssurance/PatientMatchReviewSection';
 import { PatientManagementSection } from '@/components/QualityAssurance/PatientManagementSection';
-import { exportQaReportRows } from '@/components/QualityAssurance/qaReportUtils';
-import { mockBillingDeficiencyService } from '@/services/billing/mockBillingDeficiencyService';
-import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundChargeQueueService';
-import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
+import { exportQaReportRows, qaScopeContext } from '@/components/QualityAssurance/qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { billingDeficiencyService, outboundChargeQueueService, codeReviewPoolService, caseService, reasonDictionaryService } from '@/services';
 import { correctServiceCharge } from '@/services/billing/correctServiceCharge';
-import { mockCaseService } from '@/services/cases/mockCaseService';
 import type { Case } from '@/types/case/Case';
-import { mockReasonDictionaryService } from '@/services/reasons/mockReasonDictionaryService';
 import { isCaseSignedOutForBilling } from '@/services/billing/isCaseSignedOutForBilling';
 import type { ReasonDictionaryEntry } from '@/types/reasons/ReasonDictionaryEntry';
 import { auditService } from '@/services';
@@ -161,7 +158,7 @@ const ResolveModal: React.FC<{
       <div className="ps-ms-modal">
         <div className="ps-ms-header">{t('qualityAssurance.modals.resolve.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-fixgate-intro">
+          <p className="ps-fixgate-intro" data-phi="accession">
             {deficiency.specimenLabel
               ? t('qualityAssurance.modals.shared.introWithSpecimen', { specimen: deficiency.specimenLabel, caseId: deficiency.caseId, detail: deficiency.comment || t('qualityAssurance.modals.resolve.detailFallback') })
               : t('qualityAssurance.modals.shared.introNoSpecimen', { caseId: deficiency.caseId, detail: deficiency.comment || t('qualityAssurance.modals.resolve.detailFallback') })}
@@ -226,7 +223,7 @@ const ContainModal: React.FC<{
       <div className="ps-ms-modal">
         <div className="ps-ms-header">{t('qualityAssurance.modals.contain.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-fixgate-intro">
+          <p className="ps-fixgate-intro" data-phi="accession">
             {deficiency.specimenLabel
               ? t('qualityAssurance.modals.shared.introWithSpecimen', { specimen: deficiency.specimenLabel, caseId: deficiency.caseId, detail: deficiency.comment || t('qualityAssurance.modals.resolve.detailFallback') })
               : t('qualityAssurance.modals.shared.introNoSpecimen', { caseId: deficiency.caseId, detail: deficiency.comment || t('qualityAssurance.modals.resolve.detailFallback') })}
@@ -282,7 +279,7 @@ const RaiseDeficiencyModal: React.FC<{
   const handleLookup = () => {
     if (!caseId.trim()) return;
     setLookupState('loading');
-    mockCaseService.getCase(caseId.trim()).then(c => {
+    caseService.getCase(caseId.trim()).then(c => {
       setFoundCase(c ?? null);
       setLookupState(c ? 'found' : 'not-found');
       setSpecimenId('');
@@ -308,7 +305,7 @@ const RaiseDeficiencyModal: React.FC<{
           <div className="ps-conf-form-field">
             <label className="ps-conf-label" htmlFor="raise-def-case-id">{t('qualityAssurance.modals.raise.caseIdLabel')} <span className="ps-conf-required">*</span></label>
             <div className="ps-qa-tab-toolbar">
-              <input id="raise-def-case-id" className="ps-conf-input" value={caseId}
+              <input id="raise-def-case-id" className="ps-conf-input" data-phi="accession" value={caseId}
                 onChange={e => { setCaseId(e.target.value); setLookupState('idle'); }} placeholder={t('qualityAssurance.modals.raise.caseIdPlaceholder')} />
               <button className="ps-conf-btn-secondary" onClick={handleLookup} disabled={!caseId.trim()}>{t('qualityAssurance.modals.raise.lookup')}</button>
             </div>
@@ -370,7 +367,7 @@ const VerifyModal: React.FC<{
       <div className="ps-ms-modal">
         <div className="ps-ms-header">{t('qualityAssurance.modals.verify.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-fixgate-intro">
+          <p className="ps-fixgate-intro" data-phi="accession">
             {deficiency.specimenLabel
               ? t('qualityAssurance.modals.verify.introWithSpecimen', { specimen: deficiency.specimenLabel, caseId: deficiency.caseId })
               : t('qualityAssurance.modals.verify.introNoSpecimen', { caseId: deficiency.caseId })}
@@ -445,11 +442,11 @@ const ResolveBillingDeficiencyModal: React.FC<{
 
   useEffect(() => {
     let cancelled = false;
-    mockCaseService.getCase(deficiency.caseId).then(c => {
+    caseService.getCase(deficiency.caseId).then(c => {
       if (cancelled) return;
       setIsSignedOut(!!c && isCaseSignedOutForBilling(c.status));
     });
-    mockReasonDictionaryService.getAll('POST_SIGNOUT_BILLING_CHANGE').then(res => {
+    reasonDictionaryService.getAll('POST_SIGNOUT_BILLING_CHANGE').then(res => {
       if (cancelled) return;
       if (res.ok) setReasonOptions(res.data.filter(r => r.status === 'Active'));
     });
@@ -473,7 +470,7 @@ const ResolveBillingDeficiencyModal: React.FC<{
       <div className="ps-ms-modal">
         <div className="ps-ms-header">{t('qualityAssurance.modals.resolveBilling.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-fixgate-intro">{t('qualityAssurance.modals.resolveBilling.intro', { caseId: deficiency.caseId, notes: deficiency.auditorNotes })}</p>
+          <p className="ps-fixgate-intro" data-phi="accession">{t('qualityAssurance.modals.resolveBilling.intro', { caseId: deficiency.caseId, notes: deficiency.auditorNotes })}</p>
           <div className="ps-conf-form-field">
             <label className="ps-conf-label" htmlFor="resolve-billing-reason">{t('qualityAssurance.modals.resolveBilling.resolutionReason')} <span className="ps-conf-required">*</span></label>
             <select id="resolve-billing-reason" className="ps-conf-select" value={reasonCode} onChange={e => setReasonCode(e.target.value as BillingDeficiencyRecord['resolutionReasonCode'])}>
@@ -591,7 +588,7 @@ const ReviewPoolEntryModal: React.FC<{
       <div className="ps-ms-modal">
         <div className="ps-ms-header">{t('qualityAssurance.modals.reviewPool.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-fixgate-intro">
+          <p className="ps-fixgate-intro" data-phi="accession">
             {t('qualityAssurance.modals.reviewPool.intro', { caseId: entry.caseId, sourceText, notesSuffix: entry.notes ? `: ${entry.notes}` : '' })}
           </p>
           <div className="ps-conf-form-field">
@@ -728,9 +725,9 @@ const QualityAssurancePage: React.FC = () => {
       setFirestoreDeficiencyIds(new Set(firestoreDefs.map(d => d.id)));
     });
     managementReviewService.getAll().then(res => { if (res.ok) setManagementReviews(res.data); });
-    mockBillingDeficiencyService.getAll().then(res => { if (res.ok) setBillingDeficiencies(res.data); });
-    mockOutboundChargeQueueService.getFailed().then(res => { if (res.ok) setFailedDlqCount(res.data.length); });
-    mockCodeReviewPoolService.getAll().then(res => { if (res.ok) setCodeReviewPool(res.data); });
+    billingDeficiencyService.getAll().then(res => { if (res.ok) setBillingDeficiencies(res.data); });
+    outboundChargeQueueService.getFailed().then(res => { if (res.ok) setFailedDlqCount(res.data.length); });
+    codeReviewPoolService.getAll().then(res => { if (res.ok) setCodeReviewPool(res.data); });
   };
   useEffect(() => {
     loadAll();
@@ -782,7 +779,7 @@ const QualityAssurancePage: React.FC = () => {
       'Verification Due': d.verificationDueDate ?? '',
       'Reopen Count': d.reopenCount ?? 0,
     }));
-    exportQaReportRows(rows, `quality-assurance-active-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:deficiencies:export', rows, `quality-assurance-active-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext());
   };
 
   const exportClosed = () => {
@@ -796,7 +793,7 @@ const QualityAssurancePage: React.FC = () => {
       'Reopen Count': d.reopenCount ?? 0,
       'Management Review': d.managementReviewId ?? 'not yet reviewed',
     }));
-    exportQaReportRows(rows, `quality-assurance-closed-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:deficiencies:export', rows, `quality-assurance-closed-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext());
   };
 
   const exportManagementReviews = () => {
@@ -806,7 +803,7 @@ const QualityAssurancePage: React.FC = () => {
       'Items in Scope': r.deficiencyIds.length,
       'Findings': r.findings,
     }));
-    exportQaReportRows(rows, `quality-assurance-management-reviews-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:management-reviews:export', rows, `quality-assurance-management-reviews-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext());
   };
 
   // 'closed' stays its own simple status filter, sorted by when raised
@@ -906,7 +903,7 @@ const QualityAssurancePage: React.FC = () => {
 
     applyCorrection()
       .catch(e => console.error('[PathScribe] Code correction failed (deficiency resolution still proceeds):', e))
-      .then(() => mockBillingDeficiencyService.resolve(resolvingBillingDeficiencyId, { resolutionReasonCode, resolvedBy }))
+      .then(() => billingDeficiencyService.resolve(resolvingBillingDeficiencyId, { resolutionReasonCode, resolvedBy }))
       .then(() => { setResolvingBillingDeficiencyId(null); loadAll(); });
   };
 
@@ -935,7 +932,7 @@ const QualityAssurancePage: React.FC = () => {
     if (!reviewingPoolEntry) return;
     let raisedDeficiencyId: string | undefined;
     if (outcome === 'DEFICIENCY_RAISED' && deficiencyType && auditorNotes) {
-      const raised = await mockBillingDeficiencyService.raise({
+      const raised = await billingDeficiencyService.raise({
         caseId: reviewingPoolEntry.caseId,
         deficiencyType,
         severity: 'COMPLIANCE_WARNING',
@@ -945,7 +942,7 @@ const QualityAssurancePage: React.FC = () => {
       });
       if (raised.ok) raisedDeficiencyId = raised.data.id;
     }
-    await mockCodeReviewPoolService.review(reviewingPoolEntry.id, {
+    await codeReviewPoolService.review(reviewingPoolEntry.id, {
       reviewOutcome: outcome,
       reviewedBy: user?.id ?? 'unknown',
       reviewedByName: user?.name,
@@ -1130,7 +1127,9 @@ const QualityAssurancePage: React.FC = () => {
           on the container (.ps-qa-tab-tiles) is the real fix itself —
           tiles stack onto additional rows instead of requiring
           horizontal scrolling once they don't all fit on one line. */}
-      <div className="ps-auditlog-tabswitch">
+      {/* PS-98 (Batch 381): the pillar row has its own spacing, so the
+          tiles or tab content under it don't sit against it. */}
+      <div className="ps-auditlog-tabswitch ps-qa-pillar-switch">
         {([
           { key: 'operations', label: t('qualityAssurance.pillars.operations') },
           { key: 'financials', label: t('qualityAssurance.pillars.financials') },
@@ -1173,14 +1172,10 @@ const QualityAssurancePage: React.FC = () => {
           return (
             <button
               key={tile.key}
-              className="ps-wl-filter-tile"
+              className={`ps-wl-filter-tile ps-wl-filter-tile--hued${isActive ? ' ps-wl-filter-tile--hued-active' : ''}`}
               title={isActive ? t('qualityAssurance.tiles.showingTitle', { label: tile.label }) : t('qualityAssurance.tiles.viewTitle', { label: tile.label })}
               onClick={() => setTab(tile.key as typeof tab)}
-              style={{
-                '--tile-bg': isActive ? `${tile.color}2e` : `${tile.color}0d`,
-                '--tile-border': isActive ? tile.color : `${tile.color}2e`,
-                '--tile-shadow': isActive ? `0 0 12px ${tile.color}66` : 'none',
-              } as React.CSSProperties}
+              style={{ '--ps-hue': tile.color } as React.CSSProperties}
             >
               <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? tile.color : '#8899aa' } as React.CSSProperties}>
                 {tile.label}
@@ -1202,14 +1197,13 @@ const QualityAssurancePage: React.FC = () => {
           // QA module. Navigates to Configuration, not a tab switch -
           // this tile has no real tab of its own on this page.
           <button
-            className="ps-wl-filter-tile"
+            className="ps-wl-filter-tile ps-qa-dlq-tile"
             title={t('qualityAssurance.tiles.failedDispatchesTitle')}
             onClick={() => navigate('/configuration?tab=system&section=outbound_charge_dlq')}
-            style={{ '--tile-bg': '#f59e0b0d', '--tile-border': '#f59e0b2e', '--tile-shadow': 'none' } as React.CSSProperties}
           >
-            <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>{t('qualityAssurance.tiles.failedDispatches')}</div>
-            <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#f59e0b' } as React.CSSProperties}>{failedDlqCount}</div>
-            <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#f59e0b', '--tile-sublabel-opacity': 0.75 } as React.CSSProperties}>{t('qualityAssurance.tiles.failedDispatchesSublabel')}</div>
+            <div className="ps-wl-filter-tile__label ps-batch-tile-label--muted">{t('qualityAssurance.tiles.failedDispatches')}</div>
+            <div className="ps-wl-filter-tile__count ps-qa-dlq-tile-count">{failedDlqCount}</div>
+            <div className="ps-wl-filter-tile__sublabel ps-qa-dlq-tile-count">{t('qualityAssurance.tiles.failedDispatchesSublabel')}</div>
           </button>
         )}
       </div>
@@ -1233,7 +1227,7 @@ const QualityAssurancePage: React.FC = () => {
                 {codeReviewPending.map(e => (
                   <tr key={e.id} className="ps-conf-tr">
                     <td className="ps-conf-td">
-                      <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${e.caseId}/synoptic`)}>{e.caseId}</button>
+                      <button className="ps-conf-btn-row" data-phi="accession" onClick={() => navigate(`/case/${e.caseId}/synoptic`)}>{e.caseId}</button>
                     </td>
                     <td className="ps-conf-td">{e.source === 'MANUAL' ? t('qualityAssurance.codeReview.sourceManual') : t('qualityAssurance.codeReview.sourceRandom')}</td>
                     <td className="ps-conf-td">{e.flaggedByName ?? '—'}</td>
@@ -1256,7 +1250,7 @@ const QualityAssurancePage: React.FC = () => {
       {pillar === 'financials' && tab !== 'financials-code-review' && (
         <>
         <div className="ps-qa-tab-toolbar">
-          <button className="ps-conf-btn-secondary" onClick={() => exportQaReportRows(
+          <CapabilityButton capability="qa:billing-deficiencies:export" context={qaScopeContext()} className="ps-conf-btn-secondary" onClick={() => void exportQaReportRows('qa:billing-deficiencies:export',
             (tab === 'financials-open' ? billingDeficienciesOpen : billingDeficienciesResolved).map(d => ({
               'Case': d.caseId,
               'Type': d.deficiencyType,
@@ -1267,8 +1261,9 @@ const QualityAssurancePage: React.FC = () => {
               'Resolution': d.resolutionReasonCode ?? '',
               'Resolved': d.resolvedAt ?? '',
             })),
-            `quality-assurance-financials-${tab === 'financials-open' ? 'open' : 'resolved'}-${new Date().toISOString().slice(0, 10)}.csv`
-          )}>{t('qualityAssurance.common.export')}</button>
+            `quality-assurance-financials-${tab === 'financials-open' ? 'open' : 'resolved'}-${new Date().toISOString().slice(0, 10)}.csv`,
+            qaScopeContext(),
+          )}>{t('qualityAssurance.common.export')}</CapabilityButton>
         </div>
         <div className="ps-conf-table-wrap">
           <div className="ps-conf-table-scroll">
@@ -1285,7 +1280,7 @@ const QualityAssurancePage: React.FC = () => {
                 {(tab === 'financials-open' ? billingDeficienciesOpen : billingDeficienciesResolved).map(d => (
                   <tr key={d.id} className="ps-conf-tr">
                     <td className="ps-conf-td">
-                      <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
+                      <button className="ps-conf-btn-row" data-phi="accession" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
                     </td>
                     <td className="ps-conf-td">{d.deficiencyType}</td>
                     <td className="ps-conf-td">{d.severity}</td>
@@ -1345,7 +1340,7 @@ const QualityAssurancePage: React.FC = () => {
 
       {(tab === 'case-specimen' || tab === 'escalated' || tab === 'closed') && (
         <div className="ps-qa-tab-toolbar">
-          <button className="ps-conf-btn-secondary" onClick={(tab === 'case-specimen' || tab === 'escalated') ? exportActiveQueue : exportClosed}>{t('qualityAssurance.common.export')}</button>
+          <CapabilityButton capability="qa:deficiencies:export" context={qaScopeContext()} className="ps-conf-btn-secondary" onClick={(tab === 'case-specimen' || tab === 'escalated') ? exportActiveQueue : exportClosed}>{t('qualityAssurance.common.export')}</CapabilityButton>
           {tab === 'case-specimen' && (
             <button className="ps-conf-btn-primary" onClick={() => setShowRaiseDeficiencyModal(true)}>{t('qualityAssurance.operations.raiseDeficiency')}</button>
           )}
@@ -1375,7 +1370,7 @@ const QualityAssurancePage: React.FC = () => {
                         </div>
                       </td>
                       <td className="ps-conf-td">
-                        <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
+                        <button className="ps-conf-btn-row" data-phi="accession" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
                       </td>
                       <td className="ps-conf-td">
                         {d.specimenLabel ? `${t('qualityAssurance.common.specimen')} ${d.specimenLabel}` : <em className="ps-defic-caselevel">{t('qualityAssurance.operations.caseLevel')}</em>}
@@ -1418,7 +1413,7 @@ const QualityAssurancePage: React.FC = () => {
                 {tab === 'closed' && filtered.map(d => (
                   <tr key={d.id} id={`deficiency-row-${d.id}`} className={`ps-conf-tr${d.id === highlightId ? ' ps-conf-tr--highlight' : ''}`}>
                     <td className="ps-conf-td">
-                      <button className="ps-conf-btn-row" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
+                      <button className="ps-conf-btn-row" data-phi="accession" onClick={() => navigate(`/case/${d.caseId}/synoptic`)}>{d.caseId}</button>
                     </td>
                     <td className="ps-conf-td">
                       {d.specimenLabel ? `${t('qualityAssurance.common.specimen')} ${d.specimenLabel}` : <em className="ps-defic-caselevel">{t('qualityAssurance.operations.caseLevel')}</em>}
@@ -1441,7 +1436,7 @@ const QualityAssurancePage: React.FC = () => {
         </div>
       ) : tab === 'reviews' ? (
         <div className="ps-qa-tab-toolbar">
-          <button className="ps-conf-btn-secondary" onClick={exportManagementReviews}>{t('qualityAssurance.common.export')}</button>
+          <CapabilityButton capability="qa:management-reviews:export" context={qaScopeContext()} className="ps-conf-btn-secondary" onClick={exportManagementReviews}>{t('qualityAssurance.common.export')}</CapabilityButton>
         </div>
       ) : null}
       {tab === 'reviews' && (

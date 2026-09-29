@@ -1,20 +1,17 @@
 // src/pages/WorklistPage/WorklistPage.tsx
 import React, { useState, useEffect, useCallback, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { getDelegations } from '@/services/cases/mockCaseService';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { mockExternalResourceService } from '@/services/externalResources/mockExternalResourceService';
-import { mockFacilityService } from '@/services/facilities/mockFacilityService';
+import { externalResourceService, facilityService, actionRegistryService, wsiScanBatchService, aiScreeningResultService, specimenDictionaryService } from '@/services';
 import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
 import { getSessionUser, resolvePediatricAccess, resolveOrchestrationAccess } from '@/services/auth/caseAccessControl';
 import type { Case } from '@/types/case/Case';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { toast } from 'react-toastify';
 import { useLogout } from '@hooks/useLogout';
 import WorklistTable      from '../../components/Worklist/WorklistTable';
 import ResourcesModal     from './ResourcesModal';
 import LogoutWarningModal from '@/components/Common/LogoutWarningModal';
-import { mockActionRegistryService } from '../../services/actionRegistry/mockActionRegistryService';
 import { VOICE_CONTEXT } from '../../constants/systemActions';
 import { useAuditLog } from '../../components/Audit/useAuditLog';
 import { PoolClaimModal } from '../../components/Worklist/PoolClaimModal';
@@ -25,13 +22,15 @@ import { isUrgentCase } from '@/utils/caseUrgency';
 import { AmendedAddendaTriageTile } from './AmendedAddendaTriageTile';
 import { PendingGrossingTriageTile } from './PendingGrossingTriageTile';
 import { flagService }    from '@/services';
-import { amendmentService, lisAmendmentNoticeService, informalReviewService } from '@/services';
+import { amendmentService, lisAmendmentNoticeService, informalReviewService, delegationService } from '@/services';
+import { pendingDelegationsTo } from '@/services/delegations/delegationRules';
 import type { AmendmentType } from '@/types/reports/AmendmentRecord';
-import { mockWsiScanBatchService } from '@/services/digitalPathology/mockWsiScanBatchService';
-import { mockAiScreeningResultService } from '@/services/digitalPathology/mockAiScreeningResultService';
 import type { WsiScanSlide } from '@/services/digitalPathology/IWsiScanBatchService';
 import type { AiScreeningResult } from '@/types/digitalPathology/AiScreeningResult';
-import { mockSpecimenDictionaryService } from '@/services/specimenDictionary/mockSpecimenDictionaryService';
+import { worklistViews, resolveWorklistView, type WorklistView } from '@/services/screens/screenAccess';
+import { useCapabilities } from '@/hooks/useCapabilities';
+import CytologyQcQueuePage from '../CytologyQcQueuePage';
+import SurgicalQaWorklistPage from '../SurgicalQaWorklistPage';
 import { resolveCaseHasSpecimenCategory } from '@/services/specimenDictionary/resolveCaseHasSpecimenCategory';
 import { resolveCaseDisciplineBranch } from '@/services/specimenDictionary/resolveCaseDisciplineBranch';
 import { caseViewTrackingService } from '@/services';
@@ -141,6 +140,18 @@ const WorklistPage: React.FC = () => {
     }
     navigate('/worklist', { replace: true });
   }, [location.search, navigate, t]);
+
+  // Batch 375 (Pete): the Cytology QC Peer Review Queue and Surgical
+  // Post-Sign-Out QA live here as views beside the case list, shown to whoever
+  // may open them (services/screens/screenAccess.ts). `?view=` picks one, so
+  // the old /cytology-qc-queue and /surgical-qa-worklist addresses still land
+  // on them. Until the user's capabilities are known, nothing is shown.
+  const capabilities = useCapabilities();
+  const allowedViews = worklistViews(c => capabilities.has(c));
+  const [viewChoice, setViewChoice] = useState<WorklistView | null>(null);
+  const view: WorklistView | null = capabilities.loading
+    ? null
+    : resolveWorklistView(viewChoice ?? new URLSearchParams(location.search).get('view'), allowedViews);
 
   // contextFilter: which data source (LIS or Outreach) — the "home" context
   // Sticky for the session — restored from sessionStorage on mount
@@ -281,8 +292,9 @@ const WorklistPage: React.FC = () => {
       .then(setRealCases)
       .catch(() => {});
     // Load delegated-to-me count + case IDs
-    getDelegations().then(all => {
-      const mine = all.filter(d => d.toUserId === CURRENT_USER_ID && d.status === 'pending');
+    // Batch 353: through delegationService (was the demo case service).
+    delegationService.list().then(res => {
+      const mine = res.ok ? pendingDelegationsTo(res.data, CURRENT_USER_ID) : [];
       setDelegatedToMeCount(mine.length);
       setDelegatedCaseIds(mine.map(d => d.caseId).filter(Boolean));
     }).catch(() => {});
@@ -317,7 +329,7 @@ const WorklistPage: React.FC = () => {
   // every real batch, not just the most recent one, since a real
   // case's own slides can span multiple real batches.
   useEffect(() => {
-    Promise.all([mockWsiScanBatchService.getAll(), mockAiScreeningResultService.getAll()]).then(([batchRes, aiRes]) => {
+    Promise.all([wsiScanBatchService.getAll(), aiScreeningResultService.getAll()]).then(([batchRes, aiRes]) => {
       if (batchRes.ok) {
         const slideMap = new Map<string, WsiScanSlide[]>();
         for (const batch of batchRes.data) {
@@ -344,7 +356,7 @@ const WorklistPage: React.FC = () => {
   // fetched once, same real dictionary CytologyWorklistPage.tsx
   // already fetches for the exact same real reason.
   useEffect(() => {
-    mockSpecimenDictionaryService.getAll().then(res => {
+    specimenDictionaryService.getAll().then(res => {
       if (res.ok) setSpecimenDictionary(res.data);
     }).catch(() => {});
   }, [location.key]);
@@ -470,7 +482,7 @@ const WorklistPage: React.FC = () => {
     if (!session?.organisationId) return;
     if (realCases.length === 0) return;
 
-    mockFacilityService.getAll().then(clientsRes => {
+    facilityService.getAll().then(clientsRes => {
       if (!clientsRes.ok) return;
       const clientsById = new Map(clientsRes.data.map(c => [c.id, c]));
       const labIds = new Set<string>();
@@ -481,7 +493,7 @@ const WorklistPage: React.FC = () => {
         if (labId) labIds.add(labId);
       });
 
-      mockExternalResourceService.resolveForViewer({
+      externalResourceService.resolveForViewer({
         organisationId: session.organisationId!,
         performingLabFacilityIds: Array.from(labIds),
       }).then(resolved => {
@@ -876,8 +888,8 @@ const WorklistPage: React.FC = () => {
   // as sayable, but with no handler left to respond when invoked.
 
   useEffect(() => {
-    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
-    return () => mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
+    actionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
+    return () => actionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
   }, []);
 
   // ── Voice: table navigation listeners ────────────────────────────────────────
@@ -1141,12 +1153,11 @@ const WorklistPage: React.FC = () => {
     };
   }, [filteredCases, selectedIndex, navigate, realCases, selectedCaseId]);
 
+  // Batch 375: hoisted out of the JSX; the table now renders only in the case view, and a hook can't be conditional.
+  const handleDisplayOrder = useCallback((ids: string[]) => setDisplayOrder(ids), []);
+
   return (
-    <div style={{
-      position: 'relative', width: '100vw', height: 'var(--app-height, var(--app-height, 100vh))',
-      fontFamily: "'Inter', sans-serif",
-      display: 'flex', flexDirection: 'column',
-    }}>
+    <div className="ps-wl-page">
       {/* Real, per direct UI-review follow-up ("Fix the root"): this
           page's own competing background image/gradient (and the
           backgroundColor/color pairing that went with them) removed
@@ -1156,17 +1167,19 @@ const WorklistPage: React.FC = () => {
           style block (position/width/height/fontFamily/display/
           flexDirection) left as-is — a full inline-style-to-CSS-class
           conversion for this page is separate, larger, pre-existing
-          work (tracked elsewhere as PS-74), not part of this pass. */}
+          work (tracked elsewhere as PS-74), not part of this pass.
+          Batch 353: the page layout's inline styles are now the
+          .ps-wl-page / -content / -main / -main-inner classes. */}
 
       {/* All content — fills viewport exactly, no overflow */}
-      <div style={{ position: 'relative', zIndex: 10, display: 'flex', flexDirection: 'column', height: '100%' }}>
+      <div className="ps-wl-page-content">
 
         {/* Main — fills remaining height */}
-        <main style={{ flex: 1, minHeight: 0, padding: 'clamp(8px,1.5vw,12px) clamp(12px,2vw,20px)', display: 'flex', flexDirection: 'column' }}>
-          <div style={{ width: '100%', display: 'flex', flexDirection: 'column', flex: 1, minHeight: 0 }}>
+        <main className="ps-wl-page-main">
+          <div className="ps-wl-page-main-inner">
 
             {/* ── Header: Row 1 = Title + Search, Row 2 = Mode tiles + Filter tiles ── */}
-            <div data-capture-hide="true" className="ps-wl-header" style={{ marginBottom: '12px', flexShrink: 0 }}>
+            <div data-capture-hide="true" className="ps-wl-header ps-wl-header--page">
 
               {/* Row 1 — Real feature, per direct follow-up: "move the two
                   main Tiles (LIS Cases and OutReach) up a line and to the
@@ -1183,14 +1196,14 @@ const WorklistPage: React.FC = () => {
                 {/* Left: LIS Cases + Outreach */}
                 <div className="ps-wl-mode-tiles">
                   {/* LIS TILE */}
-                  {(() => {
-                    const isActive  = contextFilter === 'lis';
+                  {allowedViews.includes('cases') && (() => {
+                    const isActive  = view === 'cases' && contextFilter === 'lis';
                     const showBadge = contextFilter === 'outreach';
                     return (
                       <button
                         className="ps-wl-mode-tile"
                         title={isActive ? t('worklistPage.lisTile.currently') : t('worklistPage.lisTile.switch')}
-                        onClick={() => { setContextFilter('lis'); setActiveFilter('all'); setSelectedIndex(-1); setSelectedCaseId(null); }}
+                        onClick={() => { setViewChoice('cases'); setContextFilter('lis'); setActiveFilter('all'); setSelectedIndex(-1); setSelectedCaseId(null); }}
                         style={{
                           '--tile-bg': isActive ? 'rgba(255,255,255,0.10)' : 'rgba(255,255,255,0.04)',
                           '--tile-border': isActive ? 'rgba(255,255,255,0.5)' : 'rgba(255,255,255,0.14)',
@@ -1210,15 +1223,15 @@ const WorklistPage: React.FC = () => {
                     );
                   })()}
                   {/* OUTREACH TILE */}
-                  {(() => {
-                    const isActive  = contextFilter === 'outreach';
+                  {allowedViews.includes('cases') && (() => {
+                    const isActive  = view === 'cases' && contextFilter === 'outreach';
                     const showBadge = contextFilter === 'lis';
                     const poolColor = hasUrgentPool ? '#EF4444' : '#F97316';
                     return (
                       <button
                         className="ps-wl-mode-tile"
                         title={isActive ? t('worklistPage.outreachTile.currently') : t('worklistPage.outreachTile.switch')}
-                        onClick={() => { setContextFilter('outreach'); setActiveFilter('all'); setSelectedIndex(-1); setSelectedCaseId(null); }}
+                        onClick={() => { setViewChoice('cases'); setContextFilter('outreach'); setActiveFilter('all'); setSelectedIndex(-1); setSelectedCaseId(null); }}
                         style={{
                           '--tile-bg': isActive ? 'rgba(245,158,11,0.18)' : 'rgba(245,158,11,0.05)',
                           '--tile-border': isActive ? '#F59E0B' : 'rgba(245,158,11,0.18)',
@@ -1238,14 +1251,31 @@ const WorklistPage: React.FC = () => {
                       </button>
                     );
                   })()}
+                  {/* Batch 375: the peer-review queues, as views of this page. */}
+                  {allowedViews.filter(v => v !== 'cases').map(v => (
+                    <button
+                      key={v}
+                      type="button"
+                      className={`ps-wl-mode-tile ps-wl-queue-tile${view === v ? ' ps-wl-queue-tile--active' : ''}`}
+                      aria-pressed={view === v}
+                      onClick={() => { setViewChoice(v); setSelectedIndex(-1); setSelectedCaseId(null); }}
+                    >
+                      <div className="ps-wl-mode-tile__main">
+                        <div className="ps-wl-queue-tile__label">{t(`worklistPage.queues.${v}`)}</div>
+                      </div>
+                    </button>
+                  ))}
                 </div>
 
-                <h1 className="ps-wl-title">
-                  {t(FILTER_LABEL_KEY[activeFilter] ?? FILTER_LABEL_KEY.all)}
-                </h1>
+                {view === 'cases' && (
+                  <h1 className="ps-wl-title">
+                    {t(FILTER_LABEL_KEY[activeFilter] ?? FILTER_LABEL_KEY.all)}
+                  </h1>
+                )}
 
               </div>
 
+              {view === 'cases' && (<>
               {/* Real, per direct follow-up ("Surg Path, Cytology and
                   Autopsy... almost belong together") — the real
                   branch tabs. 'All Cases' is the real, unchanged
@@ -1274,10 +1304,10 @@ const WorklistPage: React.FC = () => {
               {/* Row 2 — filter tiles now have the full row's width to
                   themselves, real breathing room instead of sharing it
                   with the LIS Cases/Outreach tiles above. */}
-              <div style={{ display: 'flex', alignItems: 'center', minWidth: 0, paddingTop: '3px' }}>
+              <div className="ps-wl-filter-row">
 
                 {/* Filter tiles */}
-                <div className="ps-wl-filter-strip" style={{ display: 'flex', gap: '6px', alignItems: 'center', overflowX: 'auto', flexShrink: 1, minWidth: 0, paddingBottom: '2px', paddingTop: '2px' }}>
+                <div className="ps-wl-filter-strip">
 
                 {/* Real simplification found while converting: every tile
                     below computed this exact same "← Back to LIS Cases" /
@@ -1439,22 +1469,24 @@ const WorklistPage: React.FC = () => {
                 })()}
 
                 {activeFilter === 'physician' && physicianFilter && (
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px', padding: '6px 12px', background: 'rgba(139,92,246,0.15)', border: '1.5px solid rgba(139,92,246,0.4)', borderRadius: '8px', fontSize: '12px', color: '#a78bfa', fontWeight: 600 }}>
+                  <div className="ps-wl-physician-chip">
                     👤 {physicianFilter}
-                    <button onClick={() => { setActiveFilter('all'); setPhysicianFilter(''); }} style={{ background: 'none', border: 'none', color: '#a78bfa', cursor: 'pointer', fontSize: '14px', padding: '0 0 0 4px', lineHeight: 1 }}>✕</button>
+                    <button onClick={() => { setActiveFilter('all'); setPhysicianFilter(''); }} className="ps-wl-physician-chip-clear">✕</button>
                   </div>
                 )}
 
 
               </div>
             </div>
+              </>)}
             </div>
 
+            {view === 'cases' && (<>
             {/* Physician voice prompt — conditional, fixed height */}
             {physicianPrompt && (
-              <div style={{ flexShrink: 0, marginBottom: '8px', padding: '8px 14px', background: 'rgba(245,158,11,0.1)', border: '1px solid rgba(245,158,11,0.25)', borderRadius: '8px', display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px' }}>
-                <span style={{ fontSize: '13px', color: '#fbbf24', fontWeight: 500 }}>🎙️ {physicianPrompt}</span>
-                <button onClick={() => setPhysicianPrompt(null)} style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: '16px' }}>✕</button>
+              <div className="ps-wl-voice-prompt">
+                <span className="ps-wl-voice-prompt-text">🎙️ {physicianPrompt}</span>
+                <button onClick={() => setPhysicianPrompt(null)} className="ps-wl-voice-prompt-close">✕</button>
               </div>
             )}
 
@@ -1464,11 +1496,10 @@ const WorklistPage: React.FC = () => {
             <div
               ref={wrapperRef}
               data-capture-hide="true"
-              className="ps-table-scroll-wrap"
+              className="ps-table-scroll-wrap ps-table-scroll-wrap--relative"
               tabIndex={0}
               role="region"
               aria-label={t('worklistPage.tableRegionLabel')}
-              style={{ position: 'relative' }}
             >
               <WorklistTable
                 flagDefinitions={allFlags}
@@ -1508,9 +1539,15 @@ const WorklistPage: React.FC = () => {
                   if (selectedCaseId) return;
                   if (id) { setSelectedIndex(0); setSelectedCaseId(id); }
                 }}
-                onDisplayOrder={useCallback((ids: string[]) => setDisplayOrder(ids), [])}
+                onDisplayOrder={handleDisplayOrder}
               />
             </div>
+            </>)}
+            {(view === 'cytologyQc' || view === 'surgicalQa') && (
+              <div className="ps-wl-queue-view">
+                {view === 'cytologyQc' ? <CytologyQcQueuePage /> : <SurgicalQaWorklistPage />}
+              </div>
+            )}
 
           </div>
         </main>

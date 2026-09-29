@@ -142,7 +142,7 @@ const CytologyQcQueuePage: React.FC = () => {
 
           return (
             <div key={assignment.id} className="ps-qcqueue-row">
-              <div className="ps-qcqueue-row-patient">
+              <div className="ps-qcqueue-row-patient" data-phi="true">
                 {(relatedCase && resolvePatientFullDisplayName(relatedCase.patient)) ?? assignment.caseId}
                 <span className="ps-qcqueue-row-accession" data-phi="accession">{relatedCase?.accession.accessionNumber}</span>
               </div>

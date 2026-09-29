@@ -207,7 +207,7 @@ const TestPanel: React.FC<{ rules: DeliveryRule[]; facilities: Facility[]; physi
       {result && (
         <div className="ps-rr-test-result-box">
           <div className="ps-rr-test-result-label">{t('deliveryRulesSection.testPanel.resolvedActionLabel')}</div>
-          <div className="ps-rr-test-result-value" style={{ color: ACTION_COLORS[result.action] }}>{t(ACTION_LABEL_KEY[result.action])}</div>
+          <div className="ps-rr-test-result-value ps-hue-text" style={{ '--ps-hue': ACTION_COLORS[result.action] } as React.CSSProperties}>{t(ACTION_LABEL_KEY[result.action])}</div>
           <div className="ps-rr-test-result-matched">
             {matchedRule
               ? t('deliveryRulesSection.testPanel.matchedRule', { note: matchedRule.note || matchedRule.id })
@@ -312,7 +312,7 @@ const DeliveryRulesSection: React.FC = () => {
               {rules.map(rule => (
                 <tr key={rule.id} className={rule.active ? undefined : 'ps-rr-delivery-row--inactive'}>
                   <td>{describeCriteria(rule)}</td>
-                  <td><span className="ps-rr-action-label" style={{ color: ACTION_COLORS[rule.action] }}>{t(ACTION_LABEL_KEY[rule.action])}</span></td>
+                  <td><span className="ps-rr-action-label ps-hue-text" style={{ '--ps-hue': ACTION_COLORS[rule.action] } as React.CSSProperties}>{t(ACTION_LABEL_KEY[rule.action])}</span></td>
                   <td>{rule.note ?? '—'}</td>
                   <td>
                     <button className="ps-rr-btn" onClick={() => handleToggle(rule)}>{rule.active ? t('common.active') : t('common.inactive')}</button>

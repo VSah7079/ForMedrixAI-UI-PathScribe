@@ -1,6 +1,8 @@
 # BUG: Molecular instruments (`targetInstrumentId`) have no real dictionary entity or station linkage
 
-**Status: OPEN — filed, not fixed.** Per direct request while reviewing
+**Status: FIXED in Batch 356 (PS-326).** See `services/instruments/README.md`. The text below is the original filing, kept for history.
+
+**Original status: OPEN — filed, not fixed.** Per direct request while reviewing
 the Molecular module: "are the target instruments also [tied] to the
 station?" Confirmed directly before filing this: **no.**
 
@@ -80,3 +82,6 @@ fixed as part of this pass. A real effort estimate and full design
 `targetInstrumentId` values need backfilling into the new dictionary,
 whether this becomes a Tier 1/Tier 2 cascade like other facility-
 scoped entities) is real, separate work for whoever picks this up.
+
+---
+**Batch 358:** the instrument list became the equipment register, `services/equipment/`. Instruments are equipment of kind `analyser`.

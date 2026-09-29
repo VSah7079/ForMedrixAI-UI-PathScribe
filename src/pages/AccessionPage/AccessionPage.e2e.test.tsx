@@ -24,7 +24,7 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { render, screen, cleanup, fireEvent, waitFor } from '@testing-library/react';
-import { MemoryRouter } from 'react-router-dom';
+import { MemoryRouter } from 'react-router';
 import { SystemConfigProvider } from '@/contexts/SystemConfigContext';
 import { MessagingProvider } from '@/contexts/MessagingContext';
 import { SpecimenDictionaryProvider } from '@/components/Config/System/useSpecimenDictionary';
@@ -44,7 +44,7 @@ beforeEach(() => {
 afterEach(() => { cleanup(); vi.restoreAllMocks(); });
 
 vi.mock('react-i18next', () => ({
-  useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key) }),
+  useTranslation: () => ({ t: (key: string, opts?: Record<string, unknown>) => (opts ? `${key}:${JSON.stringify(opts)}` : key), i18n: { language: 'en' } }),
   // Real shape from react-i18next's own initReactI18next.js (type +
   // no-op init) — needed as of caseAccessControl.ts's own i18n
   // conversion, since CaseRouter.ts's import chain now reaches
@@ -57,8 +57,8 @@ vi.mock('react-i18next', () => ({
 }));
 
 const mockNavigate = vi.fn();
-vi.mock('react-router-dom', async () => {
-  const actual = await vi.importActual('react-router-dom');
+vi.mock('react-router', async () => {
+  const actual = await vi.importActual('react-router');
   return { ...actual, useNavigate: () => mockNavigate };
 });
 
@@ -180,5 +180,5 @@ describe('AccessionPage \u2014 real, full form-submission walkthrough (Autopsy s
     // the 'C' specimen-letter prefix lives only on displayId.
     expect(specimen.blocks?.length).toBe(6);
     expect(specimen.blocks[0].label).toBe('1');
-  }, 20000);
+  });
 });

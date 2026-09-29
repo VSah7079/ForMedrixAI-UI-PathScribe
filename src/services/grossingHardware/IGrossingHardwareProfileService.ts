@@ -56,9 +56,15 @@ export interface GrossingHardwareProfile {
   stationId?: string;
   /** Real, only meaningful when bridgeType is 'pathscribe_agent' —
    *  the real, local agent's own listening address (e.g.
-   *  "http://localhost:9191"), same real shape as PrinterProfile's
-   *  own ipAddress/port fields for its own local bridges. */
+   *  "https://127.0.0.1:9100"), same real shape as PrinterProfile's
+   *  own ipAddress/port fields for its own local bridges. Must be
+   *  https:// (Batch 327); the service refuses plain HTTP. */
   agentBaseUrl?: string;
+  /** Batch 359: the physical camera or scale in the equipment register
+   *  (services/equipment/, kind matching `kind`) these settings are for.
+   *  Optional; the service refuses a link of the wrong kind
+   *  (EQUIPMENT_LINK_INVALID). */
+  equipmentId?: string;
   isActive: boolean;
   createdAt: string;
   updatedAt: string;

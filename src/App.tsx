@@ -1,6 +1,8 @@
 import React, { Suspense, lazy } from "react";
-import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router-dom";
-import { ToastContainer } from "react-toastify";
+import { BrowserRouter as Router, Routes, Route, Navigate } from "react-router";
+import { ToastContainer, toast } from "react-toastify";
+// PS-100 (Batch 349): warnings, errors and long toasts stay until closed.
+import { installToastPolicy } from "./utils/installToastPolicy";
 // react-toastify's stylesheet must load BEFORE pathscribe.css: both declare
 // `:root { --toastify-* }`, and the later declaration wins regardless of
 // selector specificity. pathscribe.css's own toast section (search
@@ -27,8 +29,14 @@ import { ScannerProvider } from "./contexts/ScannerProvider";
 import { MaterialScanTrackingBridge } from "./components/MaterialScanTrackingBridge";
 import { DefaultActionOnScanBridge } from "./components/DefaultActionOnScanBridge";
 
+// PathScribe Agent print progress (Batch 346, PS-52)
+import { AgentPrintStatus } from "./components/Printing/AgentPrintStatus";
+// Network print results and Retry (Batch 347, PS-54)
+import { NetworkPrintJobs } from "./components/Printing/NetworkPrintJobs";
+
 // Standard Wrappers
 import ProtectedRoute from "./ProtectedRoute";
+import ScreenGate from "./components/Common/ScreenGate";
 import MobileRestrictedRoute from "./MobileRestrictedRoute";
 import AppShell from "./components/AppShell/AppShell";
 
@@ -42,6 +50,7 @@ import MockWsiViewerPage from './pages/MockWsiViewerPage';
 // ── Lazy-loaded pages ─────────────────────────────────────────────────────────
 const Home = lazy(() => import("./pages/Home"));
 const LoginPage = lazy(() => import("./pages/LoginPage"));
+const AuthCallbackPage = lazy(() => import("./pages/AuthCallbackPage"));
 const AccessionPage = lazy(() => import("./pages/AccessionPage/AccessionPage"));
 
 const WorklistPage = lazy(() => import("./pages/WorklistPage/WorklistPage"));
@@ -65,6 +74,7 @@ const IntraopQueuePage = lazy(() => import("./pages/IntraopQueuePage"));
 const OrSuiteDashboardPage = lazy(() => import("./pages/OrSuiteDashboardPage"));
 const FacilityOpsDashboardPage = lazy(() => import("./pages/FacilityOpsDashboard/FacilityOpsDashboardPage"));
 const ExternalConsultViewPage = lazy(() => import("./pages/ExternalConsultViewPage/ExternalConsultViewPage"));
+const CriticalAlertReferencePage = lazy(() => import("./pages/CriticalAlertReferencePage/CriticalAlertReferencePage"));
 const MigrationJobsPage = lazy(() => import("./pages/MigrationJobsPage"));
 const AuditLogPage = lazy(() => import("./pages/AuditLogPage"));
 const ConfigurationPage = lazy(() => import("./pages/ConfigurationPage"));
@@ -94,8 +104,6 @@ const AddOnOrderPage = lazy(() =>
 const MolecularOrderQueuePage = lazy(() =>
   import("./pages/MolecularOrderQueuePage/MolecularOrderQueuePage")
 );
-const CytologyQcQueuePage = lazy(() => import("./pages/CytologyQcQueuePage"));
-const SurgicalQaWorklistPage = lazy(() => import("./pages/SurgicalQaWorklistPage"));
 const FullReportPage = lazy(() => import("./pages/FullReportPage"));
 
 const SynopticEditor = lazy(() =>
@@ -127,10 +135,16 @@ const PageLoader: React.FC = () => (
   </div>
 );
 
+installToastPolicy(toast);
+
 // ── App ───────────────────────────────────────────────────────────────────────
 const App: React.FC = () => (
-  <Router future={{ v7_startTransition: true, v7_relativeSplatPath: true }}>
+  <Router>
     <ToastContainer />
+    <div className="ps-print-feedback">
+      <NetworkPrintJobs />
+      <AgentPrintStatus />
+    </div>
     <SystemConfigProvider>
       <AuthProvider>
         <MessagingProvider>
@@ -143,6 +157,8 @@ const App: React.FC = () => (
                       
                       {/* Public route — shown when not authenticated */}
                       <Route path="/login" element={<LoginPage />} />
+                      {/* PS-60: where the identity provider returns after SSO sign-in. */}
+                      <Route path="/auth/callback/:providerId" element={<AuthCallbackPage />} />
 
                       {/* Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
                           Intraoperative/Frozen Section Dashboard — deliberately
@@ -179,53 +195,72 @@ const App: React.FC = () => (
                           same explicit caveat. */}
                       <Route path="/consult/:token" element={<ExternalConsultViewPage />} />
 
+                      {/* PS-136 — the reference-resolution landing page
+                          behind the SMS/secure-email non-PHI "tap to
+                          view" deep link. This IS the "any other
+                          unauthenticated PHI-bearing page" the comment
+                          just above warns against becoming — the
+                          answer, not an exception to it: this route
+                          never displays PHI or clinical content at all
+                          (no findingTerm/findingSeverity/sourceQuote),
+                          precisely because it has no real
+                          authentication to gate that with. See
+                          services/clinical/ICriticalAlertReferenceTokenService.ts's
+                          own header and CriticalAlertReferencePage.tsx's
+                          own header for the full reasoning. Do not add
+                          real clinical content to this route without
+                          first adding the same "same explicit caveat"
+                          this file's own comments require. */}
+                      <Route path="/critical-alert/:token" element={<CriticalAlertReferencePage />} />
+
                       {/* Protected Routes — ScannerProvider only active when authenticated */}
                       <Route element={<ProtectedRoute />}>
                         <Route element={<MobileRestrictedRoute />}>
                         <Route element={<ScannerProvider><MaterialScanTrackingBridge /><DefaultActionOnScanBridge /><AppShell /></ScannerProvider>}>
                           <Route path="/" element={<Home />} />
-                          <Route path="/accession" element={<AccessionPage />} />
-                          <Route path="/worklist" element={<WorklistPage />} />
+                          <Route path="/accession" element={<ScreenGate screen="accession"><AccessionPage /></ScreenGate>} />
+                          <Route path="/worklist" element={<ScreenGate screen="worklist"><WorklistPage /></ScreenGate>} />
                           {/* "Homepage Changes part 1" — direct request: new second-level
                               hub grouping Cytology Workspace, Microtomy Workspace, Embedding
                               Workspace, and Slide Distribution Workspace behind one Home tile. */}
-                          <Route path="/pathology-workspace" element={<PathologyWorkspacePage />} />
+                          <Route path="/pathology-workspace" element={<ScreenGate screen="pathologyWorkspace"><PathologyWorkspacePage /></ScreenGate>} />
                           {/* Real, direct follow-up (Sep 2026) — Quality & Compliance hub
                               grouping Audit and Quality Assurance behind one Home tile,
                               same real second-level-hub pattern as Pathology Workspace. */}
-                          <Route path="/quality-compliance" element={<QualityComplianceHubPage />} />
-                          <Route path="/cytology-worklist" element={<CytologyWorklistPage />} />
-                          <Route path="/cytology-worklist/:caseId" element={<CytologyScreeningPage />} />
-                          <Route path="/molecular" element={<MolecularWorkcenterPage />} />
-                          <Route path="/molecular-batch/:batchId" element={<MolecularPlateBuilderPage />} />
-                          <Route path="/molecular-rack" element={<MolecularRackWorklistPage />} />
-                          <Route path="/molecular-rack/:rackId" element={<MolecularRackLoadingPage />} />
-                          <Route path="/molecular-control-rules" element={<MolecularControlRulesPage />} />
+                          <Route path="/quality-compliance" element={<ScreenGate screen="qualityCompliance"><QualityComplianceHubPage /></ScreenGate>} />
+                          <Route path="/cytology-worklist" element={<ScreenGate screen="cytologyWorkspace"><CytologyWorklistPage /></ScreenGate>} />
+                          <Route path="/cytology-worklist/:caseId" element={<ScreenGate screen="cytologyWorkspace"><CytologyScreeningPage /></ScreenGate>} />
+                          <Route path="/molecular" element={<ScreenGate screen="molecular"><MolecularWorkcenterPage /></ScreenGate>} />
+                          <Route path="/molecular-batch/:batchId" element={<ScreenGate screen="molecular"><MolecularPlateBuilderPage /></ScreenGate>} />
+                          <Route path="/molecular-rack" element={<ScreenGate screen="molecular"><MolecularRackWorklistPage /></ScreenGate>} />
+                          <Route path="/molecular-rack/:rackId" element={<ScreenGate screen="molecular"><MolecularRackLoadingPage /></ScreenGate>} />
+                          <Route path="/molecular-control-rules" element={<ScreenGate screen="molecular"><MolecularControlRulesPage /></ScreenGate>} />
                           <Route path="/dev/mock-interface-engine" element={<MockInterfaceEnginePage />} />
-                          <Route path="/quality-assurance" element={<QualityAssurancePage />} />
-                          <Route path="/batch-management" element={<BatchManagementPage />} />
-                          <Route path="/batch-management/disposal" element={<DisposalQueuePage />} />
-                          <Route path="/batch-management/disposal-report" element={<DisposalReportPage />} />
-                          <Route path="/batch-management/pending-load" element={<PendingBatchQueuePage />} />
-                          <Route path="/batch-management/engraver-monitor" element={<EngraverMonitorPage />} />
-                          <Route path="/workstations/microtomy" element={<MicrotomyWorkstationPage />} />
-                          <Route path="/workstations/embedding" element={<EmbeddingStationPage />} />
-                          <Route path="/workstations/slide-distribution" element={<SlideDistributionStationPage />} />
-                          <Route path="/add-on-orders" element={<AddOnOrderPage />} />
-                          <Route path="/intraop-queue" element={<IntraopQueuePage />} />
+                          <Route path="/quality-assurance" element={<ScreenGate screen="qualityAssurance"><QualityAssurancePage /></ScreenGate>} />
+                          <Route path="/batch-management" element={<ScreenGate screen="batchManagement"><BatchManagementPage /></ScreenGate>} />
+                          <Route path="/batch-management/disposal" element={<ScreenGate screen="batchManagement"><DisposalQueuePage /></ScreenGate>} />
+                          <Route path="/batch-management/disposal-report" element={<ScreenGate screen="batchManagement"><DisposalReportPage /></ScreenGate>} />
+                          <Route path="/batch-management/pending-load" element={<ScreenGate screen="batchManagement"><PendingBatchQueuePage /></ScreenGate>} />
+                          <Route path="/batch-management/engraver-monitor" element={<ScreenGate screen="batchManagement"><EngraverMonitorPage /></ScreenGate>} />
+                          <Route path="/workstations/microtomy" element={<ScreenGate screen="microtomy"><MicrotomyWorkstationPage /></ScreenGate>} />
+                          <Route path="/workstations/embedding" element={<ScreenGate screen="embedding"><EmbeddingStationPage /></ScreenGate>} />
+                          <Route path="/workstations/slide-distribution" element={<ScreenGate screen="slideDistribution"><SlideDistributionStationPage /></ScreenGate>} />
+                          <Route path="/add-on-orders" element={<ScreenGate screen="addOnOrders"><AddOnOrderPage /></ScreenGate>} />
+                          <Route path="/intraop-queue" element={<ScreenGate screen="intraopQueue"><IntraopQueuePage /></ScreenGate>} />
                           <Route path="/molecular-order-queue" element={<MolecularOrderQueuePage />} />
-                          <Route path="/cytology-qc-queue" element={<CytologyQcQueuePage />} />
-                          <Route path="/surgical-qa-worklist" element={<SurgicalQaWorklistPage />} />
+                          {/* Batch 375: the two peer-review queues are views of the Worklist now; the old addresses land there. */}
+                          <Route path="/cytology-qc-queue" element={<Navigate to="/worklist?view=cytologyQc" replace />} />
+                          <Route path="/surgical-qa-worklist" element={<Navigate to="/worklist?view=surgicalQa" replace />} />
                           <Route path="/migration-jobs" element={<MigrationJobsPage />} />
-                          <Route path="/search" element={<SearchPage />} />
-                          <Route path="/audit" element={<AuditLogPage />} />
+                          <Route path="/search" element={<ScreenGate screen="search"><SearchPage /></ScreenGate>} />
+                          <Route path="/audit" element={<ScreenGate screen="auditLog"><AuditLogPage /></ScreenGate>} />
                           <Route
                             path="/configuration"
-                            element={<ConfigurationPage />}
+                            element={<ScreenGate screen="configuration"><ConfigurationPage /></ScreenGate>}
                           />
                           <Route
                             path="/contribution"
-                            element={<ContributionDashboardPage />}
+                            element={<ScreenGate screen="myContributions"><ContributionDashboardPage /></ScreenGate>}
                           />
                         </Route>
 

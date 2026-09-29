@@ -11,11 +11,16 @@
 // header comment for the full real account.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { IInterfaceEngineService, OrderCreationEventPayload } from './IInterfaceEngineService';
+import type { DispatchOutcome, IInterfaceEngineService, OrderCreatedDispatchRecord, OrderCreationEventPayload } from './IInterfaceEngineService';
 import type { ServiceResult } from '../types';
 import { dispatchInterfaceMessage } from '../interfaceDispatch/dispatchInterfaceMessage';
+import { buildDispatchTrail, shouldResendRedelivery } from './buildDispatchTrail';
 
 const STORAGE_KEY = 'pathscribe_interface_engine_dispatched_events';
+/** Dispatch outcome per messageId (Batch 318, PS-86). Kept beside the event
+ *  log rather than inside it, so the stored events stay exactly the payloads
+ *  that were sent. */
+const OUTCOME_KEY = 'pathscribe_interface_engine_dispatch_outcomes';
 const delay = (ms = 60) => new Promise(res => setTimeout(res, ms));
 
 function loadEvents(): OrderCreationEventPayload[] {
@@ -29,6 +34,36 @@ function saveEvents(events: OrderCreationEventPayload[]): void {
   try { localStorage.setItem(STORAGE_KEY, JSON.stringify(events)); } catch { /* non-critical */ }
 }
 
+function loadOutcomes(): Record<string, DispatchOutcome> {
+  try {
+    const raw = localStorage.getItem(OUTCOME_KEY);
+    return raw ? JSON.parse(raw) : {};
+  } catch { return {}; }
+}
+
+function saveOutcome(messageId: string, outcome: DispatchOutcome): void {
+  try {
+    const all = loadOutcomes();
+    all[messageId] = outcome;
+    localStorage.setItem(OUTCOME_KEY, JSON.stringify(all));
+  } catch { /* non-critical */ }
+}
+
+/** Sends the event and stores what happened. */
+async function sendAndRecord(payload: OrderCreationEventPayload, previousAttempts: number): Promise<{ delivered: boolean; error?: string }> {
+  // payload.messageId doubles as the queue-entry id: this service has no
+  // separate queue-entry concept the way the other outbound queues do, and
+  // messageId is already the dedup key.
+  const result = await dispatchInterfaceMessage(payload.messageId, 'ORDER_CREATED', payload);
+  saveOutcome(payload.messageId, {
+    status: result.ok ? 'delivered' : 'failed',
+    attemptedAt: new Date().toISOString(),
+    attempts: previousAttempts + 1,
+    ...(result.ok ? {} : { error: result.error, errorCode: result.errorCode }),
+  });
+  return { delivered: result.ok, error: result.ok ? undefined : result.error };
+}
+
 export const mockInterfaceEngineService: IInterfaceEngineService = {
   async postOrderCreated(payload) {
     await delay();
@@ -36,28 +71,32 @@ export const mockInterfaceEngineService: IInterfaceEngineService = {
       return { ok: false, error: 'postOrderCreated requires a real messageId and organisationId — malformed payload, per the spec\'s own §2.3/§3.1 non-negotiable requirements.' };
     }
     const events = loadEvents();
-    // Real idempotency, matching the spec's own §2.3 requirement: a
-    // redelivered event with the same messageId is recognized, not
-    // double-recorded, and — same real reasoning — not re-dispatched
-    // either; the receiving system already has it.
+    // Idempotency (spec §2.3): a redelivered event with the same messageId
+    // is never double-recorded. Batch 318 fix: it used to report
+    // `delivered: true` unconditionally, even when the first send had
+    // FAILED, so a caller could never learn that the receiver never got
+    // it. Now a previously failed event is re-sent (and its outcome
+    // updated); a delivered one isn't.
     if (events.some(e => e.messageId === payload.messageId)) {
+      const previous = loadOutcomes()[payload.messageId];
+      if (shouldResendRedelivery(previous)) {
+        return { ok: true, data: await sendAndRecord(payload, previous!.attempts) };
+      }
       return { ok: true, data: { delivered: true } };
     }
     events.unshift(payload);
     saveEvents(events);
-    // Real, per direct guidance: the real dispatch itself, using
-    // payload.messageId as the real queue-entry-equivalent id — this
-    // service has no separate queue-entry concept the way the other
-    // four real transaction types do, so the real messageId (already
-    // required, already the real dedup key above) does that same real
-    // job for the receiving endpoint's own dedup/logging.
-    const result = await dispatchInterfaceMessage(payload.messageId, 'ORDER_CREATED', payload);
-    return { ok: true, data: { delivered: result.ok, error: result.ok ? undefined : result.error } };
+    return { ok: true, data: await sendAndRecord(payload, 0) };
   },
 
   async listDispatchedEvents(organisationId): Promise<ServiceResult<OrderCreationEventPayload[]>> {
     await delay();
     const events = loadEvents().filter(e => e.organisationId === organisationId);
     return { ok: true, data: events };
+  },
+
+  async listDispatchTrail(): Promise<ServiceResult<OrderCreatedDispatchRecord[]>> {
+    await delay();
+    return { ok: true, data: buildDispatchTrail(loadEvents(), loadOutcomes()) };
   },
 };

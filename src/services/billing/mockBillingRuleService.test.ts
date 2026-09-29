@@ -316,7 +316,11 @@ describe('mockBillingRuleService - PS-94 real Draft / Pending Approval / Approve
     expect(resolved.data?.version).toBe(created.data.version);
   });
 
-  it('approving a real new version genuinely retires whichever version was previously ACTIVE in the same scope', async () => {
+  // PS-89 natural sunset (Batch 333): the prior version used to be
+  // RETIRED on approval, which left dates before a future-dated change
+  // with no rule. It now stays ACTIVE and is closed just before the new
+  // version starts.
+  it('approving a new version closes the prior ACTIVE version the moment before it starts, keeping it ACTIVE for earlier dates', async () => {
     const created = await mockBillingRuleService.createVersion({
       billingCode: 'IHC-FIRST', level: 'specimen', billingType: 'Global', effectiveFrom: '2028-01-01', effectiveTo: null,
       cpt: '88342', rvuWork: 0.80, country: 'US', changeReason: 'Real test change', createdBy: 'drafter-1',
@@ -328,8 +332,25 @@ describe('mockBillingRuleService - PS-94 real Draft / Pending Approval / Approve
     const all = await mockBillingRuleService.getVersionsForBillingCode('IHC-FIRST');
     if (!all.ok) throw new Error('lookup failed');
     const v1 = all.data.find(v => v.version === 1);
-    expect(v1?.status).toBe('RETIRED');
-    expect(v1?.effectiveTo).toBe('2028-01-01');
+    expect(v1?.status).toBe('ACTIVE');
+    expect(v1?.effectiveTo).toBe('2027-12-31T23:59:59.999Z');
+    const before = await mockBillingRuleService.getActiveRuleAt('IHC-FIRST', '2027-12-31');
+    const after = await mockBillingRuleService.getActiveRuleAt('IHC-FIRST', '2028-01-01');
+    if (!before.ok || !after.ok) throw new Error('lookup failed');
+    expect(before.data?.version).toBe(1);
+    expect(after.data?.version).toBe(created.data.version);
+  });
+
+  it('backfills vocabulary CPT (and country) on rows stored before PS-89, and defaults new versions to CPT', async () => {
+    const all = await mockBillingRuleService.getAll();
+    if (!all.ok) throw new Error('lookup failed');
+    expect(all.data.every(v => v.vocabulary === 'CPT' && !!v.country)).toBe(true);
+    const created = await mockBillingRuleService.createVersion({
+      billingCode: 'BRAND-NEW', level: 'specimen', billingType: 'Global', effectiveFrom: '2026-01-01', effectiveTo: null,
+      cpt: '88305', country: 'US', createdBy: 'drafter-1',
+    });
+    if (!created.ok) throw new Error('create failed');
+    expect(created.data.vocabulary).toBe('CPT');
   });
 
   it('rejectVersion requires a real rejection reason', async () => {

@@ -1,9 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef, createContext, useContext } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { X } from "../Icons";
 import type { PathScribeEditorHandle } from './PathScribeEditorRef';
+import { getUiPreference, setUiPreference } from '@/utils/uiPreferences';
+import { useSpellCheckContext } from '../SpellCheck/SpellCheckContext';
+import { SpellCheckMenu, type SpellMenuRequest } from '../SpellCheck/SpellCheckMenu';
+import { createSpellCheckExtension, requestSpellRecheck } from '../SpellCheck/spellCheckExtension';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   Subscript as SubscriptIcon, Superscript as SuperscriptIcon,
@@ -69,7 +73,7 @@ export interface PathScribeEditorProps {
   /** Shows a real toggle button in the toolbar letting the user switch
    *  themes themselves. `theme` above becomes only the STARTING point --
    *  once the user has ever clicked the toggle anywhere it appears, that
-   *  becomes their real preference (persisted to localStorage), shared
+   *  becomes their real preference (kept by utils/uiPreferences.ts), shared
    *  across every editor instance that opts into this, overriding
    *  whatever `theme` any individual screen was built with. Off by
    *  default so contexts that shouldn't show it (e.g. a small font
@@ -78,7 +82,7 @@ export interface PathScribeEditorProps {
   // ── Tab width — industry-standard user preference ────────────────────────────
   // Number of spaces a Tab keypress inserts. Word/Docs/Notion all expose this as
   // a user setting rather than hardcoding it. Defaults to 4, persisted by the
-  // parent (e.g. via localStorage or user profile) and passed back in on mount.
+  // parent (e.g. via utils/uiPreferences or the user profile) and passed back in on mount.
   tabWidthChars?: number;
   onTabWidthChange?: (chars: number) => void;
 }
@@ -130,11 +134,25 @@ const DARK_THEME: EditorThemeTokens = {
   accent: '#22b8d8', accentText: 'white',
 };
 
-// IMPORTANT: default context value is LIGHT_THEME, not undefined.
-// Any sub-component rendered outside a ThemeProvider (or before one mounts)
-// gets a safe, correct theme instead of crashing on `theme.whatever`.
-const EditorThemeContext = createContext<EditorThemeTokens>(LIGHT_THEME);
-const useEditorTheme = () => useContext(EditorThemeContext);
+/** Batch 338 (standing rule: no inline CSS): the theme as CSS custom
+ *  properties, set on the editor wrapper and on the toolbar (which can be
+ *  portalled outside the wrapper); pathscribe.css's .pse-* rules read them. */
+const themeVars = (theme: EditorThemeTokens): React.CSSProperties => ({
+  '--pse-toolbar-bg': theme.toolbarBg, '--pse-toolbar-border': theme.toolbarBorder,
+  '--pse-btn-hover-bg': theme.btnHoverBg, '--pse-btn-text': theme.btnText, '--pse-btn-text-disabled': theme.btnTextDisabled,
+  '--pse-divider-color': theme.dividerColor, '--pse-panel-bg': theme.panelBg, '--pse-panel-text': theme.panelText,
+  '--pse-input-bg': theme.inputBg, '--pse-input-border': theme.inputBorder, '--pse-input-text': theme.inputText,
+  '--pse-content-bg': theme.contentBg, '--pse-content-border': theme.contentBorder, '--pse-accent': theme.accent,
+  '--pse-content-text': theme.contentText,
+} as React.CSSProperties);
+
+/** The editor wrapper's custom properties: theme, minimum height and font (Batch 367). */
+const editorWrapVars = (theme: EditorThemeTokens, minHeight: string, font?: string): React.CSSProperties => ({
+  ...themeVars(theme),
+  '--pse-min-height': minHeight,
+  '--pse-font-family': `${font || 'Arial'}, sans-serif`,
+} as React.CSSProperties);
+
 
 // ─── IMPERATIVE HANDLE ────────────────────────────────────────────────────────
 // Exposed via forwardRef so the Orchestrator Engine and NarrativeEditor
@@ -406,46 +424,24 @@ const FormatMarksExtension = Extension.create({
 });
 
 // ─── TOOLBAR BUTTON ───────────────────────────────────────────────────────────
-// Reads theme from context — no prop needed, no way to forget passing it.
+// Colours come from the --pse-* custom properties themeVars() sets on the
+// toolbar (see pathscribe.css), so no theme prop or context is needed.
 
 const TBtn: React.FC<{
   onClick: () => void; isActive?: boolean; title?: string;
   disabled?: boolean; children: React.ReactNode; width?: string;
 }> = ({ onClick, isActive, title, disabled, children, width }) => {
-  const theme = useEditorTheme();
   return (
     <button onClick={onClick} title={title} disabled={disabled}
-      style={{
-        padding: '5px 7px',
-        minWidth: width || '28px',
-        height: '26px',
-        background: isActive ? theme.btnHoverBg : 'transparent',
-        color: disabled ? theme.btnTextDisabled : (isActive ? theme.accent : theme.btnText),
-        border: 'none',
-        borderRadius: '5px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontSize: '12px',
-        fontWeight: 500,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '3px',
-        transition: 'background 0.12s, color 0.12s',
-        flexShrink: 0,
-        whiteSpace: 'nowrap',
-      }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = theme.btnHoverBg; }}
-      onMouseLeave={e => { if (!disabled) e.currentTarget.style.background = isActive ? theme.btnHoverBg : 'transparent'; }}
+      className={isActive ? 'pse-tbtn pse-tbtn--active' : 'pse-tbtn'}
+      style={width ? ({ '--pse-tbtn-min': width } as React.CSSProperties) : undefined}
     >
       {children}
     </button>
   );
 };
 
-const Divider = () => {
-  const theme = useEditorTheme();
-  return <div style={{ width: '1px', height: '18px', background: theme.dividerColor, margin: '0 5px', flexShrink: 0 }} />;
-};
+const Divider = () => <div className="pse-divider" />;
 
 // ─── FIND/REPLACE PANEL ───────────────────────────────────────────────────────
 
@@ -501,7 +497,7 @@ const InsertTableModal: React.FC<{ onInsert: (rows: number, cols: number) => voi
   return (
     <div className="pse-dropdown-panel pse-inserttable-panel">
       <div className="pse-inserttable-label">{hovered ? t('pathScribeEditor.insertTable.size', { rows: hovered.rows, cols: hovered.cols }) : t('pathScribeEditor.insertTable.selectSize')}</div>
-      <div className="pse-inserttable-grid" style={{ gridTemplateColumns: `repeat(${maxC}, 20px)` }}>
+      <div className="pse-inserttable-grid" style={{ '--pse-grid-cols': maxC } as React.CSSProperties}>
         {Array.from({ length: maxR }, (_, r) =>
           Array.from({ length: maxC }, (_, c) => (
             <div key={`${r}-${c}`} onMouseEnter={() => setHovered({ rows: r + 1, cols: c + 1 })} onMouseLeave={() => setHovered(null)} onClick={() => { onInsert(r + 1, c + 1); onClose(); }}
@@ -591,7 +587,7 @@ const ColorPicker: React.FC<{ onSelect: (color: string | null) => void; onClose:
         {COLORS.map(color => (
           <div key={color} onClick={() => { onSelect(color); onClose(); }}
             className={`pse-colorpicker-swatch${color === '#ffffff' ? ' pse-colorpicker-swatch--outlined' : ''}`}
-            style={{ background: color }} />
+            style={{ '--swatch-color': color } as React.CSSProperties} />
         ))}
       </div>
       <button onClick={() => { onSelect(null); onClose(); }} className="pse-colorpicker-noneBtn">{t('pathScribeEditor.colorPicker.noColor')}</button>
@@ -651,20 +647,18 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
   // themeProp is only the STARTING point -- see allowThemeToggle's doc
   // comment above. A real saved user preference, once one exists, always
   // wins over whatever theme an individual screen was built with.
-  const THEME_PREF_KEY = 'ps-editor-theme-preference';
+  // Batch 338: kept through utils/uiPreferences.ts (deployment-neutral UI).
+  const THEME_PREF_KEY = 'editorTheme';
   const [activeThemeName, setActiveThemeName] = useState<'light' | 'dark'>(() => {
     if (!allowThemeToggle) return themeProp;
-    try {
-      const saved = localStorage.getItem(THEME_PREF_KEY);
-      if (saved === 'light' || saved === 'dark') return saved;
-    } catch { /* ignore */ }
-    return themeProp;
+    const saved = getUiPreference<string>(THEME_PREF_KEY, '');
+    return saved === 'light' || saved === 'dark' ? saved : themeProp;
   });
   const theme = activeThemeName === 'dark' ? DARK_THEME : LIGHT_THEME;
   const toggleTheme = () => {
     const next = activeThemeName === 'dark' ? 'light' : 'dark';
     setActiveThemeName(next);
-    try { localStorage.setItem(THEME_PREF_KEY, next); } catch { /* ignore quota errors */ }
+    setUiPreference(THEME_PREF_KEY, next);
   };
 
   // ── UI State ──────────────────────────────────────────────────────────────
@@ -710,6 +704,21 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
   // generation, template switch). See the content-sync useEffect below.
   const isInternalChange = useRef(false);
 
+  // ── Spell check (PS-342, Batch 338) ───────────────────────────────────────
+  // Inside a report screen's SpellCheckProvider the report's own checker
+  // (the case's language + medical/facility/personal dictionaries) draws the
+  // squiggles and the browser's spell check is switched off; elsewhere the
+  // browser's spell check stays on. The extension is always installed and
+  // reads the context through a ref, since TipTap fixes extensions at mount.
+  const spell = useSpellCheckContext();
+  const spellRef = useRef(spell);
+  spellRef.current = spell;
+  const [spellMenu, setSpellMenu] = useState<SpellMenuRequest | null>(null);
+  const spellExtension = React.useMemo(
+    () => createSpellCheckExtension(() => spellRef.current, setSpellMenu),
+    []
+  );
+
   const editor = useEditor({
     extensions: [
       StarterKit.configure({ underline: false, paragraph: false }),
@@ -720,6 +729,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
       Table.configure({ resizable: true }),
       TableRow, TableHeader, TableCell,
       macroExtension, tabExtension, FormatMarksExtension, placeholderExtension,
+      spellExtension,
     ],
     content,
     editable: !readOnly,
@@ -741,9 +751,16 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
       setFontSize(sizeAttr ? sizeAttr.replace(/pt$/, '') : '12');
     },
     editorProps: {
-      attributes: { class: 'ps-editor-content', spellcheck: 'true' },
+      attributes: () => ({ class: 'ps-editor-content', spellcheck: spellRef.current ? 'false' : 'true' }),
     },
   });
+
+  // Re-check when the language or the word lists change (and when the
+  // provider appears or goes away, which also flips the browser check).
+  const spellActive = !!spell;
+  useEffect(() => {
+    requestSpellRecheck(editor?.view);
+  }, [editor, spellActive, spell?.locale, spell?.revision]);
 
   // Keep the module-level ref in sync with state, and force ProseMirror to
   // recompute decorations immediately (decorations() only re-runs when the
@@ -848,7 +865,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
   }, []);
 
   if (!editor) return (
-    <div className="pse-loading-wrap" style={{ minHeight }}>
+    <div className="pse-loading-wrap" style={{ '--pse-min-height': minHeight } as React.CSSProperties}>
       <span className="pse-loading-text">{t('pathScribeEditor.loadingEditor')}</span>
     </div>
   );
@@ -856,12 +873,12 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
   const IC = 14;
 
   const renderToolbar = () => (
-    <div onMouseDown={e => e.stopPropagation()} style={{ display: 'flex', flexWrap: 'wrap', gap: '1px', alignItems: 'center', padding: '6px 8px', background: theme.toolbarBg, borderBottom: `1px solid ${theme.toolbarBorder}`, borderRadius: '10px 10px 0 0' }}>
-      <select value={selectedFont} onChange={e => { setSelectedFont(e.target.value); editor.chain().focus().setFontFamily(e.target.value).run(); }} style={{ padding: '3px 6px', height: '26px', border: `1px solid ${theme.inputBorder}`, borderRadius: '5px', fontSize: '12px', fontWeight: 500, color: theme.inputText, background: theme.inputBg, cursor: 'pointer', maxWidth: '140px' }}>
-        {approvedFonts.map(f => <option key={f} value={f} style={{ color: theme.panelText, background: theme.panelBg }}>{f}</option>)}
+    <div onMouseDown={e => e.stopPropagation()} className="pse-toolbar" style={themeVars(theme)}>
+      <select value={selectedFont} onChange={e => { setSelectedFont(e.target.value); editor.chain().focus().setFontFamily(e.target.value).run(); }} className="pse-toolbar-font-select">
+        {approvedFonts.map(f => <option key={f} value={f}>{f}</option>)}
       </select>
-      <select value={fontSize} onChange={e => { setFontSize(e.target.value); (editor.chain().focus() as any).setFontSize(`${e.target.value}pt`).run(); }} style={{ padding: '3px 4px', height: '26px', border: `1px solid ${theme.inputBorder}`, borderRadius: '5px', fontSize: '12px', color: theme.inputText, background: theme.inputBg, cursor: 'pointer', width: '48px' }}>
-        {['8','9','10','11','12','14','16','18','20','24','28','32','36','48','72'].map(s => <option key={s} value={s} style={{ color: theme.panelText, background: theme.panelBg }}>{s}</option>)}
+      <select value={fontSize} onChange={e => { setFontSize(e.target.value); (editor.chain().focus() as any).setFontSize(`${e.target.value}pt`).run(); }} className="pse-toolbar-size-select">
+        {['8','9','10','11','12','14','16','18','20','24','28','32','36','48','72'].map(s => <option key={s} value={s}>{s}</option>)}
       </select>
       <Divider />
       <TBtn onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive('bold')} title={t('pathScribeEditor.toolbar.bold')}><Bold size={IC} /></TBtn>
@@ -871,13 +888,13 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
       <TBtn onClick={() => editor.chain().focus().toggleSubscript().run()} isActive={editor.isActive('subscript')} title={t('pathScribeEditor.toolbar.subscript')}><SubscriptIcon size={IC} /></TBtn>
       <TBtn onClick={() => editor.chain().focus().toggleSuperscript().run()} isActive={editor.isActive('superscript')} title={t('pathScribeEditor.toolbar.superscript')}><SuperscriptIcon size={IC} /></TBtn>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
         <TBtn onClick={() => { setShowFontColor(v => !v); setShowHighlight(false); setShowShading(false); setShowBorder(false); setShowSpacing(false); }} title={t('pathScribeEditor.toolbar.fontColor')}>
           <span className="pse-toolbar-swatch-icon"><Baseline size={IC} /><span className="pse-toolbar-swatch-bar pse-toolbar-swatch-bar--red" /></span>
         </TBtn>
         {showFontColor && <ColorPicker title={t('pathScribeEditor.toolbar.fontColor')} onSelect={color => color ? editor.chain().focus().setColor(color).run() : editor.chain().focus().unsetColor().run()} onClose={() => setShowFontColor(false)} />}
       </div>
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
         <TBtn onClick={() => { setShowHighlight(v => !v); setShowFontColor(false); setShowShading(false); setShowBorder(false); setShowSpacing(false); }} title={t('pathScribeEditor.toolbar.highlightColor')}>
           <span className="pse-toolbar-swatch-icon"><Highlighter size={IC} /><span className="pse-toolbar-swatch-bar pse-toolbar-swatch-bar--yellow" /></span>
         </TBtn>
@@ -899,13 +916,13 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
       <TBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} isActive={editor.isActive('heading', { level: 2 })} title={t('pathScribeEditor.toolbar.heading2')}><Heading2 size={IC} /></TBtn>
       <TBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} isActive={editor.isActive('heading', { level: 3 })} title={t('pathScribeEditor.toolbar.heading3')}><Heading3 size={IC} /></TBtn>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
         <TBtn onClick={() => { setShowSpacing(v => !v); setShowFontColor(false); setShowHighlight(false); setShowShading(false); setShowBorder(false); }} title={t('pathScribeEditor.toolbar.lineParagraphSpacing')}><ArrowUpDown size={IC} /></TBtn>
         {showSpacing && <SpacingDropdown editor={editor} onClose={() => setShowSpacing(false)} />}
       </div>
       <TBtn onClick={() => setShowFormatMarks(v => !v)} isActive={showFormatMarks} title={t('pathScribeEditor.toolbar.toggleFormattingMarks')}><PilcrowSquare size={IC} /></TBtn>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
         <TBtn onClick={() => { setShowShading(v => !v); setShowFontColor(false); setShowHighlight(false); setShowBorder(false); setShowSpacing(false); }} title={t('pathScribeEditor.toolbar.paragraphShading')}>
           <PaintBucket size={IC} />
         </TBtn>
@@ -917,7 +934,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
           />
         )}
       </div>
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
         <TBtn onClick={() => { setShowBorder(v => !v); setShowFontColor(false); setShowHighlight(false); setShowShading(false); setShowSpacing(false); }} title={t('pathScribeEditor.toolbar.borders')}><SquareDashedBottom size={IC} /></TBtn>
         {showBorder && (
           <BorderDropdown
@@ -927,7 +944,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
         )}
       </div>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
         <TBtn onClick={() => { setShowTablePicker(v => !v); setShowFindReplace(false); }} isActive={showTablePicker} title={t('pathScribeEditor.toolbar.insertTable')}><TableIcon size={IC} /></TBtn>
         {showTablePicker && <InsertTableModal onInsert={(rows, cols) => { editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run(); }} onClose={() => setShowTablePicker(false)} />}
       </div>
@@ -936,11 +953,11 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
           <Divider />
           <TBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title={t('pathScribeEditor.toolbar.addColumnAfter')}><Columns3 size={IC} /></TBtn>
           <TBtn onClick={() => editor.chain().focus().addRowAfter().run()} title={t('pathScribeEditor.toolbar.addRowAfter')}><Rows3 size={IC} /></TBtn>
-          <TBtn onClick={() => editor.chain().focus().deleteColumn().run()} title={t('pathScribeEditor.toolbar.deleteColumn')}><span className="pse-toolbar-icon-badge"><Columns3 size={IC} /><X size={8} style={{ position: 'absolute', top: -2, right: -3, color: '#ef4444' }} /></span></TBtn>
-          <TBtn onClick={() => editor.chain().focus().deleteRow().run()} title={t('pathScribeEditor.toolbar.deleteRow')}><span className="pse-toolbar-icon-badge"><Rows3 size={IC} /><X size={8} style={{ position: 'absolute', top: -2, right: -3, color: '#ef4444' }} /></span></TBtn>
+          <TBtn onClick={() => editor.chain().focus().deleteColumn().run()} title={t('pathScribeEditor.toolbar.deleteColumn')}><span className="pse-toolbar-icon-badge"><Columns3 size={IC} /><span className="pse-toolbar-icon-x"><X size={8} /></span></span></TBtn>
+          <TBtn onClick={() => editor.chain().focus().deleteRow().run()} title={t('pathScribeEditor.toolbar.deleteRow')}><span className="pse-toolbar-icon-badge"><Rows3 size={IC} /><span className="pse-toolbar-icon-x"><X size={8} /></span></span></TBtn>
           <TBtn onClick={() => editor.chain().focus().mergeCells().run()} title={t('pathScribeEditor.toolbar.mergeCells')}><Combine size={IC} /></TBtn>
           <TBtn onClick={() => editor.chain().focus().splitCell().run()} title={t('pathScribeEditor.toolbar.splitCell')}><SplitSquareHorizontal size={IC} /></TBtn>
-          <TBtn onClick={() => editor.chain().focus().deleteTable().run()} title={t('pathScribeEditor.toolbar.deleteTable')}><span className="pse-toolbar-icon-badge"><TableIcon size={IC} /><X size={8} style={{ position: 'absolute', top: -2, right: -3, color: '#ef4444' }} /></span></TBtn>
+          <TBtn onClick={() => editor.chain().focus().deleteTable().run()} title={t('pathScribeEditor.toolbar.deleteTable')}><span className="pse-toolbar-icon-badge"><TableIcon size={IC} /><span className="pse-toolbar-icon-x"><X size={8} /></span></span></TBtn>
         </>
       )}
       <Divider />
@@ -948,7 +965,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
       <Divider />
       <TBtn onClick={() => { const sig = `<p><br/></p><p>_____________________________ &nbsp;&nbsp;&nbsp; ${t('pathScribeEditor.signatureLine.date')}: ___________</p><p><em>${t('pathScribeEditor.signatureLine.pathologistSignature')}</em></p><p><br/></p>`; editor.chain().focus().insertContent(sig).run(); }} title={t('pathScribeEditor.toolbar.insertSignatureLine')}><PenLine size={IC} /></TBtn>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
         <TBtn onClick={() => { setShowFindReplace(v => !v); setShowTablePicker(false); }} isActive={showFindReplace} title={t('pathScribeEditor.toolbar.findReplace')}><Search size={IC} /></TBtn>
         {showFindReplace && <FindReplacePanel editor={editor} onClose={() => setShowFindReplace(false)} />}
       </div>
@@ -961,7 +978,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
         </TBtn>
       )}
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
         <TBtn onClick={() => setShowTabWidthMenu(v => !v)} isActive={showTabWidthMenu} title={t('pathScribeEditor.toolbar.tabWidth', { count: tabWidthChars })} width="auto">
           {t('pathScribeEditor.toolbar.tabShort', { count: tabWidthChars })}
         </TBtn>
@@ -988,8 +1005,11 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
   );
 
   return (
-    <EditorThemeContext.Provider value={theme}>
-    <div ref={editorWrapperRef} style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${theme.contentBorder}`, borderRadius: '12px', background: theme.contentBg }}>
+    <div
+      ref={editorWrapperRef}
+      className={`pse-editor-wrap${showFormatMarks ? ' pse-editor-wrap--marks' : ''}`}
+      style={editorWrapVars(theme, minHeight, approvedFonts[0])}
+    >
 
       {/* Toolbar — portal-aware:
           suppressToolbar=false (default) → inline (backward compat for every
@@ -1002,7 +1022,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
         return node ? createPortal(renderToolbar(), node) : null;
       })()}
 
-      <div style={{ flex: 1, overflowY: 'auto', minHeight, borderRadius: '0 0 12px 12px' }}>
+      <div className="pse-editor-body" style={{ '--pse-min-height': minHeight } as React.CSSProperties}>
         <EditorContent editor={editor} />
       </div>
 
@@ -1010,58 +1030,9 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
         <MacroModal macros={macros} initialSearch={macroModalSearch} onSelect={insertMacro} onClose={() => { setShowMacroModal(false); setMacroModalSearch(''); }} />
       )}
 
-      <style>{`
-        .ps-editor-content { padding: 20px 24px; min-height: ${minHeight}; outline: none; font-size: 12pt; line-height: 1.8; color: ${theme.contentText}; font-family: ${approvedFonts[0] || 'Arial'}, sans-serif; }
-        .ps-editor-content:focus { outline: none; }
-        .ps-editor-content p.is-editor-empty:first-child::before {
-          content: attr(data-placeholder);
-          float: left;
-          color: ${theme.btnTextDisabled};
-          pointer-events: none;
-          height: 0;
-        }
-        .ps-editor-content p { margin: 0 0 10px 0; }
-        .ps-editor-content strong { font-weight: 700; }
-        .ps-editor-content em { font-style: italic; }
-        .ps-editor-content u { text-decoration: underline; }
-        .ps-editor-content s { text-decoration: line-through; }
-        .ps-editor-content ul, .ps-editor-content ol { padding-left: 28px; margin: 10px 0; }
-        .ps-editor-content li { margin: 4px 0; }
-        .ps-editor-content h1 { font-size: 24px; font-weight: 700; margin: 16px 0 10px; }
-        .ps-editor-content h2 { font-size: 20px; font-weight: 700; margin: 14px 0 8px; }
-        .ps-editor-content h3 { font-size: 16px; font-weight: 700; margin: 12px 0 6px; }
-        .ps-editor-content table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-        .ps-editor-content th, .ps-editor-content td { border: 1px solid #cbd5e1; padding: 8px 12px; min-width: 60px; vertical-align: top; }
-        .ps-editor-content th { background: #f1f5f9; font-weight: 700; text-align: left; }
-        .ps-editor-content .selectedCell:after { background: rgba(8,145,178,0.12); content: ''; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; position: absolute; z-index: 2; }
-        .ps-editor-content .tableWrapper { overflow-x: auto; }
-        .ps-editor-content .ps-tab { display: inline-block; white-space: pre; }
-        /* Show Formatting Marks — visible dots over space characters.
-           Regular spaces (typed by hitting spacebar) get a light grey dot;
-           non-breaking spaces (inserted by Tab) get a teal dot so the two
-           are visually distinguishable when debugging whitespace. */
-        .ps-fm-space, .ps-fm-nbsp { position: relative; }
-        .ps-fm-space::after, .ps-fm-nbsp::after {
-          content: '·';
-          position: absolute;
-          left: 0; right: 0; top: -2px;
-          text-align: center;
-          font-weight: 700;
-          pointer-events: none;
-        }
-        .ps-fm-space::after { color: #94a3b8; }
-        .ps-fm-nbsp::after  { color: #0891B2; }
-        .ai-generated-content { background: rgba(8,145,178,0.04); border-left: 2px solid rgba(8,145,178,0.25); padding-left: 8px; transition: background 0.2s; }
-        .user-edited-content  { background: rgba(251,191,36,0.04); border-left: 2px solid rgba(251,191,36,0.25); padding-left: 8px; }
-        ${showFormatMarks ? `
-          .ps-editor-content p::after { content: '¶'; color: #94a3b8; font-size: 10px; margin-left: 2px; }
-          .ps-editor-content br::after { content: '↵'; color: #94a3b8; font-size: 10px; }
-          .ps-editor-content .ps-tab { background: rgba(8,145,178,0.08); outline: 1px dashed #bae6fd; position: relative; }
-          .ps-editor-content .ps-tab::before { content: '→'; color: #94a3b8; font-size: 9px; position: absolute; left: 2px; top: 50%; transform: translateY(-50%); }
-        ` : ''}
-      `}</style>
+      {spellMenu && <SpellCheckMenu request={spellMenu} onClose={() => setSpellMenu(null)} />}
+
     </div>
-    </EditorThemeContext.Provider>
   );
 });
 

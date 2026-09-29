@@ -9,14 +9,15 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useRef } from 'react';
-import { useTranslation } from 'react-i18next';
+import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
-import { stainTypeService } from '@/services';
+import { stainTypeService, molecularTargetService, cassetteColorService, blockCancelMissing, restainMissing, chosenReason, type ResolvedFieldRequirement } from '@/services';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
+import { formatDateTime } from '@/utils/formatDate';
 import { WsiViewerLaunchButton } from '../components/WsiViewerLaunchButton';
 import type { StainType } from '@/services/stains/IStainService';
 import type { MaterialComment } from '@/types/case/MaterialComment';
 import CameraCaptureControl from '@/components/GrossingHardware/CameraCaptureControl';
-import { mockMolecularTargetService } from '@/services/stains/mockMolecularTargetService';
 import type { MolecularTarget } from '@/types/billing/MolecularBillingRule';
 import type { CasePriority } from '@/services/cases/ICaseService';
 import { suggestSpecimenAncillaryCptCodes, computeNewSuggestionsWithSources } from '@/services/billing/codeMapTable';
@@ -30,7 +31,6 @@ import { getLabelSizePreset } from '@/types/labels/LabelSizePreset';
 import ForeignIdFields from './ForeignIdFields';
 import CassetteColorControl from './CassetteColorControl';
 import type { CassetteColorDefinition } from '@/services/cassetteColors/ICassetteColorService';
-import { mockCassetteColorService } from '@/services/cassetteColors/mockCassetteColorService';
 import { DECANT_TYPE_LABEL } from '@/types/case/Material';
 
 const BLOCK_STATUSES = ['Pending', 'Grossed', 'Embedded', 'Exhausted', 'Lost', 'Damaged'] as const;
@@ -478,6 +478,7 @@ const StainCommentControl: React.FC<{
   currentUserName: string;
   onUpdateStainComments: (nextComments: MaterialComment[]) => void;
 }> = ({ stain, currentUserId, currentUserName, onUpdateStainComments }) => {
+  const { i18n } = useTranslation();
   const [open, setOpen] = useState(false);
   const count = (stain.comments ?? []).length;
 
@@ -494,7 +495,7 @@ const StainCommentControl: React.FC<{
         <div className="ps-blockstain-comment-list">
           {(stain.comments ?? []).map((c: MaterialComment) => (
             <div key={c.id} className="ps-blockstain-comment-row">
-              <strong className="ps-blockstain-comment-author">{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+              <Trans i18nKey="blockStainEditorModal.commentMeta" values={{ author: c.authorName, when: formatDateTime(c.createdAt, i18n.language) }} components={{ author: <strong className="ps-blockstain-comment-author" /> }} />
               <div className="ps-blockstain-comment-text">{c.text}</div>
             </div>
           ))}
@@ -512,16 +513,17 @@ const StainCommentControl: React.FC<{
 
 const CancelBlockControl: React.FC<{
   block: any;
+  requirements: readonly ResolvedFieldRequirement[];
   onCancel: (reason: string) => void;
-}> = ({ block, onCancel }) => {
-  const { t } = useTranslation();
+}> = ({ block, requirements, onCancel }) => {
+  const { t, i18n } = useTranslation();
   const [confirming, setConfirming] = useState(false);
   const [reasonChoice, setReasonChoice] = useState<string>(CANCEL_REASONS[0]);
   const [otherDetail, setOtherDetail] = useState('');
 
   if (block.status === 'Cancelled') {
     const cancelledAtDisplay = block.cancelledAt
-      ? new Date(block.cancelledAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+      ? formatDateTime(block.cancelledAt, i18n.language)
       : '—';
     return (
       <div className="ps-fixgate-intro ps-blockstain-cancelled-block">
@@ -544,8 +546,9 @@ const CancelBlockControl: React.FC<{
     );
   }
 
-  const finalReason = reasonChoice === 'Other' ? otherDetail.trim() : reasonChoice;
-  const canConfirm = finalReason.length > 0;
+  // Batch 381: the reason is required (Field Requirements, locked; reportPageChecks).
+  const finalReason = chosenReason(reasonChoice, otherDetail);
+  const canConfirm = blockCancelMissing(finalReason, requirements).length === 0;
 
   return (
     <div className="ps-fixgate-intro ps-blockstain-cancel-form">
@@ -598,9 +601,10 @@ const CancelBlockControl: React.FC<{
 const RestainControl: React.FC<{
   stain: any;
   stainTypes: StainType[];
+  requirements: readonly ResolvedFieldRequirement[];
   onOrderRestain: (stainName: string, reason: string) => void;
-}> = ({ stain, stainTypes, onOrderRestain }) => {
-  const { t } = useTranslation();
+}> = ({ stain, stainTypes, requirements, onOrderRestain }) => {
+  const { t, i18n } = useTranslation();
   const isUnstained = stain.stainName === UNSTAINED_LABEL;
   const [ordering, setOrdering] = useState(false);
   const [stainName, setStainName] = useState(isUnstained ? '' : stain.stainName);
@@ -609,7 +613,7 @@ const RestainControl: React.FC<{
 
   if (stain.restainReason) {
     const orderedAtDisplay = stain.restainOrderedAt
-      ? new Date(stain.restainOrderedAt).toLocaleString('en-US', { dateStyle: 'medium', timeStyle: 'short' })
+      ? formatDateTime(stain.restainOrderedAt, i18n.language)
       : '—';
     return (
       <div className="ps-blockstain-restain-record">
@@ -630,8 +634,9 @@ const RestainControl: React.FC<{
     );
   }
 
-  const finalReason = reasonChoice === 'Other' ? otherDetail.trim() : reasonChoice;
-  const canConfirm = finalReason.length > 0 && stainName.trim().length > 0;
+  // Batch 381: the stain and the reason are required (Field Requirements, locked; reportPageChecks).
+  const finalReason = chosenReason(reasonChoice, otherDetail);
+  const canConfirm = restainMissing(stainName, finalReason, requirements).length === 0;
 
   return (
     <div className="ps-blockstain-restain-form">
@@ -678,7 +683,9 @@ const RestainControl: React.FC<{
 };
 
 export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePriority, fullAccession, onUpdateBlock, onUpdateDecant, onPrintDecantContainerLabel, onSendStainOrder, onCancelBlock, onCreateSpareSlide, onOrderRestain, currentUserId, currentUserName, onClose, initialFocusBlockId, initialFocusDecantId }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  // Batch 381 (PS-359): the cancel-block and restain forms' requirements.
+  const requirements = useFieldRequirements('report');
   const [stainTypes, setStainTypes] = useState<StainType[]>([]);
   const [masterTargets, setMasterTargets] = useState<MolecularTarget[]>([]);
   // Real, per the RFP-APLIS-2026-GLOBAL Grossing Station Hardware
@@ -687,7 +694,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
   const [capturingPhotoForBlockId, setCapturingPhotoForBlockId] = useState<string | null>(null);
   useEffect(() => {
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
-    mockMolecularTargetService.getAll().then(res => { if (res.ok) setMasterTargets(res.data.filter(tgt => tgt.active)); });
+    molecularTargetService.getAll().then(res => { if (res.ok) setMasterTargets(res.data.filter(tgt => tgt.active)); });
   }, []);
 
   // Real feature, per direct follow-up: "Additional Requirements for
@@ -696,7 +703,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
   // above — fetched locally here, not passed in as a prop.
   const [cassetteColors, setCassetteColors] = useState<CassetteColorDefinition[]>([]);
   useEffect(() => {
-    mockCassetteColorService.getAll().then(res => { if (res.ok) setCassetteColors(res.data); });
+    cassetteColorService.getAll().then(res => { if (res.ok) setCassetteColors(res.data); });
   }, []);
 
   // Real fix, item #28: scroll to the block that was actually clicked
@@ -1115,7 +1122,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                   <label className="ps-conf-label">{t('blockStainEditorModal.blockCommentsLabel')}</label>
                   {(block.comments ?? []).map(c => (
                     <div key={c.id} className="ps-blockstain-comment-row">
-                      <strong className="ps-blockstain-comment-author">{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+                      <Trans i18nKey="blockStainEditorModal.commentMeta" values={{ author: c.authorName, when: formatDateTime(c.createdAt, i18n.language) }} components={{ author: <strong className="ps-blockstain-comment-author" /> }} />
                       <div className="ps-blockstain-comment-text">{c.text}</div>
                     </div>
                   ))}
@@ -1216,6 +1223,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                         <RestainControl
                           stain={s}
                           stainTypes={stainTypes}
+                          requirements={requirements}
                           onOrderRestain={(stainName, reason) => onOrderRestain(specimenId, block.id, {
                             targetSlideId: s.id,
                             stainName, reason,
@@ -1256,6 +1264,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                 />
                 <CancelBlockControl
                   block={block}
+                  requirements={requirements}
                   onCancel={reason => onCancelBlock(specimenId, block.id, reason)}
                 />
               </div>
@@ -1332,7 +1341,7 @@ export const BlockStainEditorModal: React.FC<Props> = ({ blocks, decants, casePr
                       <label className="ps-conf-label">{t('blockStainEditorModal.decantCommentsLabel')}</label>
                       {(decant.comments ?? []).map(c => (
                         <div key={c.id} className="ps-blockstain-comment-row">
-                          <strong className="ps-blockstain-comment-author">{c.authorName}</strong> — {new Date(c.createdAt).toLocaleString()}
+                          <Trans i18nKey="blockStainEditorModal.commentMeta" values={{ author: c.authorName, when: formatDateTime(c.createdAt, i18n.language) }} components={{ author: <strong className="ps-blockstain-comment-author" /> }} />
                           <div className="ps-blockstain-comment-text">{c.text}</div>
                         </div>
                       ))}

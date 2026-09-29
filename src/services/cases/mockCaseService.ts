@@ -22,7 +22,12 @@ import { syncPrimaryAssignee, syncClaimAssignee } from './caseAssignmentSync';
 import { resolveClaimParticipationType } from './resolveClaimParticipationType';
 import { mockSubspecialtyService } from '../subspecialties/mockSubspecialtyService';
 import { mapDelegationTypeToParticipationRole } from '../delegationTypeMapper';
+// Batch 353: delegation records are stored by services/delegations/; this file
+// records one when it delegates a case, assigns a synoptic or accepts a pool case.
+import type { DelegationRecord } from '../delegations/IDelegationService';
+import { appendDelegation, markPendingDelegationAccepted } from '../delegations/delegationStore';
 import { isOrchCaseId } from './reportingModeRouting';
+import { recordCaseChange } from '../reportChangeLog/recordCaseChange';
 import { mockUserService } from '../users/mockUserService';
 import { mockRoleService } from '../roles/mockRoleService';
 import { mockParticipationTypeService } from '../participationTypes/mockParticipationTypeService';
@@ -4566,43 +4571,6 @@ export async function saveReportSuggestions(
 // ─── Delegation & Pool Claim Functions ───────────────────────────────────────
 
 const CLAIM_TTL_MS        = 30_000;
-const DELEGATION_STORE_KEY = 'ps_delegations_v1';
-
-// Real fix: zero seed delegation data existed anywhere (loadDelegations
-// fell back to an empty array) - meant CONSULTATION_RESPONSE/
-// CONSULTATION_AWAITING (components/Contribution/qualityCalculations.ts)
-// would show genuinely empty results for a fresh demo, same as every
-// other TAT type before its own seed-data fix tonight. References real,
-// existing case IDs (the same ten enriched earlier for lifecycle
-// timestamps) and real seeded pathologist user IDs - not fabricated
-// ones. Genuine mix: some completed late (real CONSULTATION_RESPONSE
-// breaches), one completed on time (not a breach), some still pending
-// past target (real CONSULTATION_AWAITING breaches).
-const DELEGATION_SEED: DelegationRecord[] = [
-  // Informal reviews asked OF PATH-001 (Pete) - CONSULTATION_RESPONSE
-  { id: 'deleg-seed-1', caseId: 'S26-4401-BX-001', fromUserId: '1', toUserId: 'PATH-001',
-    delegationType: 'CASUAL_REVIEW', note: 'Can you eyeball the margin call on this one?',
-    timestamp: '2026-07-20T09:00:00.000Z', status: 'completed', completedAt: '2026-07-22T15:00:00.000Z' }, // 54h, real breach
-  { id: 'deleg-seed-2', caseId: 'S26-4404', fromUserId: '6', toUserId: 'PATH-001',
-    delegationType: 'CASUAL_REVIEW', note: 'Second set of eyes on the mitotic count?',
-    timestamp: '2026-07-25T10:00:00.000Z', status: 'completed', completedAt: '2026-07-25T20:00:00.000Z' }, // 10h, on time
-  { id: 'deleg-seed-3', caseId: 'S26-4407', fromUserId: '7', toUserId: 'PATH-001',
-    delegationType: 'CASUAL_REVIEW', timestamp: '2026-07-18T08:00:00.000Z',
-    status: 'completed', completedAt: '2026-07-21T08:00:00.000Z' }, // 72h, real breach
-  // Informal reviews asked BY PATH-001 (Pete), still awaiting - CONSULTATION_AWAITING
-  { id: 'deleg-seed-4', caseId: 'S26-4405', fromUserId: 'PATH-001', toUserId: '9',
-    delegationType: 'CASUAL_REVIEW', note: 'Curious if you agree on the grade here.',
-    timestamp: '2026-07-15T09:00:00.000Z', status: 'pending' }, // real, still-ongoing wait
-  { id: 'deleg-seed-5', caseId: 'S26-4408', fromUserId: 'PATH-001', toUserId: '1',
-    delegationType: 'CASUAL_REVIEW', timestamp: '2026-07-28T09:00:00.000Z', status: 'pending' },
-];
-
-function loadDelegations(): DelegationRecord[] {
-  try {
-    const raw = localStorage.getItem(DELEGATION_STORE_KEY);
-    return raw ? JSON.parse(raw) : DELEGATION_SEED;
-  } catch { return DELEGATION_SEED; }
-}
 const CLAIM_STORE_KEY      = 'ps_claims_v1';
 
 export interface ClaimResult {
@@ -4611,32 +4579,6 @@ export interface ClaimResult {
   error?: string;
 }
 
-export interface DelegationRecord {
-  id: string;
-  caseId: string;
-  fromUserId: string;
-  toUserId?: string;
-  toPoolId?: string;
-  toPoolName?: string;
-  delegationType: string;
-  note?: string;
-  timestamp: string;
-  status: 'pending' | 'accepted' | 'passed' | 'completed';
-  /** Real fix: status alone was never actually transitioned anywhere in
-   *  this codebase - every delegation ever created stayed 'pending'
-   *  forever, which silently broke WorklistPage.tsx's existing
-   *  "delegated to me" count (it could only ever grow, never shrink,
-   *  even after someone genuinely responded). Also needed, separately,
-   *  for real CONSULTATION_RESPONSE/CONSULTATION_AWAITING TAT
-   *  calculation (components/Contribution/qualityCalculations.ts) -
-   *  timestamp above is the request moment; this is the real completion
-   *  moment, set once at completeDelegation. */
-  completedAt?: string;
-}
-
-function saveDelegations(records: DelegationRecord[]): void {
-  try { localStorage.setItem(DELEGATION_STORE_KEY, JSON.stringify(records)); } catch {}
-}
 function loadClaims(): Record<string, { userId: string; expiresAt: number }> {
   try { return JSON.parse(localStorage.getItem(CLAIM_STORE_KEY) ?? '{}'); } catch { return {}; }
 }
@@ -4707,7 +4649,7 @@ export async function claimPoolCase(caseId: string, userId: string): Promise<Cla
 // mockCaseService, so importing caseRouter back here would create a
 // circular import. This means delegation/pool-claim actions don't produce
 // CaseRouter's own case.write audit-log entries the way ordinary case
-// edits do — DelegationRecord (below) is this flow's own audit trail, and
+// edits do — DelegationRecord (services/delegations/) is this flow's own audit trail, and
 // that split isn't new here, it's how delegateCase already worked before
 // this change; just noting the boundary explicitly.
 //
@@ -4742,8 +4684,10 @@ async function updateCaseAnyMode(caseId: string, updates: Partial<Case>, expecte
     if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
       throw new ConcurrencyConflictError(caseId, expectedVersion, currentVersion);
     }
+    const before = CASES[idx];
     CASES[idx] = { ...CASES[idx], ...updates, updatedAt: new Date().toISOString(), version: currentVersion + 1 } as any;
     storageSet(STORAGE_KEY, CASES);
+    recordCaseChange(caseId, before, CASES[idx], Object.keys(updates));
   }
 }
 
@@ -4816,9 +4760,7 @@ export async function acceptPoolCase(caseId: string, userId: string, userName?: 
     await updateCaseAnyMode(caseId, updates);
   }
 
-  const delegations = loadDelegations();
-  const delIdx = delegations.findIndex(d => d.caseId === caseId && d.status === 'pending');
-  if (delIdx >= 0) { delegations[delIdx].status = 'accepted'; saveDelegations(delegations); }
+  markPendingDelegationAccepted(caseId);
 }
 
 /** Pass on a pool case — release claim, case stays in pool */
@@ -4924,37 +4866,12 @@ export async function delegateCase(payload: DelegatePayload): Promise<Delegation
     }
   }
 
-  const delegations = loadDelegations();
-  delegations.push(record);
-  saveDelegations(delegations);
+  appendDelegation(record);
   return record;
 }
 
-/** Get delegation history, optionally filtered by case */
-export async function getDelegations(caseId?: string): Promise<DelegationRecord[]> {
-  await delay(100);
-  const all = loadDelegations();
-  return caseId ? all.filter(d => d.caseId === caseId) : all;
-}
-
-/** Real fix: this function didn't exist anywhere before - status was
- *  defined as a real lifecycle ('pending' | 'accepted' | 'passed' |
- *  'completed') but nothing in this codebase ever actually transitioned
- *  it, meaning WorklistPage.tsx's existing "delegated to me" count could
- *  only ever grow. Marks a delegation genuinely completed, once, with a
- *  real timestamp - idempotent (a second call on an already-completed
- *  record is a no-op success, not an error, since a pathologist
- *  double-clicking shouldn't see a failure). */
-export async function completeDelegation(delegationId: string): Promise<{ ok: boolean; error?: string }> {
-  await delay(150);
-  const delegations = loadDelegations();
-  const idx = delegations.findIndex(d => d.id === delegationId);
-  if (idx === -1) return { ok: false, error: `Delegation ${delegationId} not found` };
-  if (delegations[idx].status === 'completed') return { ok: true }; // already done, idempotent
-  delegations[idx] = { ...delegations[idx], status: 'completed', completedAt: new Date().toISOString() };
-  saveDelegations(delegations);
-  return { ok: true };
-}
+// Batch 353: getDelegations and completeDelegation moved to
+// services/delegations/mockDelegationService.ts (delegationService.list / complete).
 
 // ─── Synoptic-level Assignment ────────────────────────────────────────────────
 
@@ -4978,14 +4895,14 @@ export async function assignSynoptic(
   assignedBy: string,
   requiresCountersign = true,
   note?: string,
-): Promise<void> {
+): Promise<DelegationRecord | null> {
   await delay(300);
   const idx = CASES.findIndex((c: any) => c.id === caseId);
-  if (idx < 0) return;
+  if (idx < 0) return null;
   const reportIdx = (CASES[idx].synopticReports ?? []).findIndex(
     (r: any) => r.instanceId === instanceId
   );
-  if (reportIdx < 0) return;
+  if (reportIdx < 0) return null;
 
   const updated = { ...CASES[idx] };
   const reports = [...(updated.synopticReports ?? [])];
@@ -5010,9 +4927,8 @@ export async function assignSynoptic(
     delegationType: 'SYNOPTIC_ASSIGN',
     note, timestamp: new Date().toISOString(), status: 'pending',
   };
-  const delegations = loadDelegations();
-  delegations.push(record);
-  saveDelegations(delegations);
+  appendDelegation(record);
+  return record;
 }
 
 /** Countersign a synoptic that was finalised by an assigned pathologist */
@@ -5753,8 +5669,10 @@ export const mockCaseService: ICaseService = {
       if (expectedVersion !== undefined && currentVersion !== expectedVersion) {
         throw new ConcurrencyConflictError(caseId, expectedVersion, currentVersion);
       }
+      const before = CASES[index];
       CASES[index] = { ...CASES[index], ...updates, updatedAt: new Date().toISOString(), version: currentVersion + 1 } as any;
       storageSet(STORAGE_KEY, CASES);
+      recordCaseChange(caseId, before, CASES[index], Object.keys(updates));
     }
   },
 

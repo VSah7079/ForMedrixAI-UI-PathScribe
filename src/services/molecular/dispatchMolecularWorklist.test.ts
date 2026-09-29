@@ -106,4 +106,17 @@ describe('dispatchMolecularWorklist — real, per §3.4 scan-gated dispatch, now
     const updated = await mockMolecularBatchService.getById('mb-001');
     if (updated.ok) expect(updated.data.worklistDispatchedAt).toBeDefined();
   });
+
+  it('Batch 356 (PS-326): refuses when this workstation is not the instrument\'s scan station, and says which check failed', async () => {
+    const fetchMock = vi.fn().mockResolvedValue({ ok: true, status: 200 });
+    vi.stubGlobal('fetch', fetchMock);
+    const batch = makeBatch();
+    // PANTHER_02 sits at station-molecular-1 in the seeded instrument list.
+    const wrong = await dispatchMolecularWorklist(batch, 'PLT-HPV-20260906-012', 'LOC-INST-PANTHER_02-SLOT_A1', NO_SESSION, 'station-gross-1');
+    expect(wrong.dispatched).toBe(false);
+    expect('verificationFailures' in wrong && wrong.verificationFailures).toEqual(['station']);
+    expect(fetchMock).not.toHaveBeenCalled();
+    const right = await dispatchMolecularWorklist(batch, 'PLT-HPV-20260906-012', 'LOC-INST-PANTHER_02-SLOT_A1', NO_SESSION, 'station-molecular-1');
+    expect(right.dispatched).toBe(true);
+  });
 });

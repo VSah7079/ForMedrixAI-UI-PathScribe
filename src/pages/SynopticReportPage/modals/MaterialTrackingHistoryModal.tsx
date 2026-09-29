@@ -530,7 +530,7 @@ const MaterialTrackingHistoryModal: React.FC<MaterialTrackingHistoryModalProps> 
         <div className="ps-mth-header">
           <div>
             <div className="ps-mth-title">📍 {t('materialTrackingHistoryModal.header.title')}</div>
-            <div className="ps-mth-case">{fullAccession}</div>
+            <div className="ps-mth-case" data-phi="accession">{fullAccession}</div>
           </div>
           <div className="ps-mth-header-actions">
             <button className="ps-btn-secondary ps-mth-print-btn" onClick={handlePrint}>🖨️ {t('materialTrackingHistoryModal.header.printButton')}</button>

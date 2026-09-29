@@ -678,14 +678,14 @@ export const mockReportTemplateService: IReportTemplateService = {
     return ok({ ...updated });
   },
 
-  async clone(id: ID, name?: string) {
+  async clone(id: ID, name: string) {
     await delay();
     const src = TEMPLATES.find(t => t.id === id);
     if (!src) return err<ReportTemplate>(`Template ${id} not found`);
     const cloned: ReportTemplate = {
       ...JSON.parse(JSON.stringify(src)),
       id:        `tmpl-${Date.now()}`,
-      name:      name ?? `${src.name} (copy)`,
+      name,
       status:    'draft' as const,
       assembly:  (src as any).assembly ?? [],
       createdAt: new Date().toISOString(),

@@ -12,24 +12,22 @@
  *   "Open Editor"   → /template-editor/:id  (SynopticEditor)
  *
  * i18n note: `p.name`/`p.version`/`p.source`/`p.type`/`p.owner`/
- * `p.reviewNote` are real protocol data — never translated. The
- * per-category/per-source accent colors (`CATEGORY_COLORS`/
- * `SOURCE_STYLES`) are genuinely dynamic per-instance values from an
- * open-ended lookup map, so — matching this same card's sibling in
- * `ActiveProtocolsSection.tsx` — they stay as a small inline `style`
- * on their own class rather than being forced into fixed modifiers.
+ * `p.reviewNote` are real protocol data — never translated. Source badge
+ * colours are CSS classes (sourceBadgeClass); a category's accent colour is
+ * the one per-instance value and crosses into markup only as the --ps-hue
+ * custom property (Batch 317 — no inline CSS).
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import {
   Protocol,
   useProtocols,
-  SOURCE_STYLES,
-  CATEGORY_COLORS,
+  sourceBadgeClass,
+  categoryHueVar,
   LifecycleBadge,
   UploadProtocolModal,
   BuildCustomiseModal,
@@ -40,15 +38,13 @@ import {
   SearchBar,
   CategoryGroup,
   EmptyState,
-} from './ActiveProtocolsSection';
+} from './ProtocolCardParts';
 
 // ─── ProtocolCard ─────────────────────────────────────────────────────────────
 
 const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const catColor = CATEGORY_COLORS[p.category] ?? '#64748b';
-  const srcStyle = SOURCE_STYLES[p.source]     ?? SOURCE_STYLES.Custom;
 
   // Industry standard: clicking the card navigates to the appropriate view
   // based on status — reviewer route for in_review/approved, editor for needs_changes
@@ -73,7 +69,7 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
       title={actionLabel}
     >
       {/* Category accent */}
-      <div className="ps-reviewqueue-card-accent" style={{ background: catColor }} />
+      <div className="ps-reviewqueue-card-accent" style={categoryHueVar(p.category)} />
 
       {/* Name + meta */}
       <div className="ps-reviewqueue-info">
@@ -81,7 +77,7 @@ const ProtocolCard: React.FC<{ protocol: Protocol }> = ({ protocol: p }) => {
         <div className="ps-reviewqueue-meta">
           <span className="ps-reviewqueue-version">{p.version}</span>
           <span className="ps-reviewqueue-dot">&bull;</span>
-          <span className="ps-reviewqueue-source-badge" style={{ background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
+          <span className={`ps-reviewqueue-source-badge ${sourceBadgeClass(p.source)}`}>{p.source}</span>
           <span className="ps-reviewqueue-dot">&bull;</span>
           <span className="ps-reviewqueue-meta-text">{p.type}</span>
           {p.owner && <>

@@ -32,14 +32,15 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
-import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
 import { listOrganisations } from '@/services/organisation/organisationService';
 import type { Organisation } from '@/services/organisation/organisationService';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import ConfirmModal from '../Common/ConfirmModal';
-import { exportQaReportRows } from './qaReportUtils';
+import { exportQaReportRows, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { patientIndexService } from '@/services';
 
 const ALL_ORGS_VALUE = '__all__';
 
@@ -79,8 +80,8 @@ export const PatientMatchReviewSection: React.FC = () => {
     // the whole system - a real "See All" sentinel, aggregating across
     // every active org, closes that gap.
     const records = selectedOrgId === ALL_ORGS_VALUE
-      ? (await Promise.all(organisations.map(o => mockPatientIndexService.listPendingReview(o.id)))).flat()
-      : await mockPatientIndexService.listPendingReview(selectedOrgId);
+      ? (await Promise.all(organisations.map(o => patientIndexService.listPendingReview(o.id)))).flat()
+      : await patientIndexService.listPendingReview(selectedOrgId);
     setPending(records);
     // Real candidate detail lookup — the queue needs to show WHO each
     // flagged record might actually be (name, MRN, DOB), not just an
@@ -88,7 +89,7 @@ export const PatientMatchReviewSection: React.FC = () => {
     const ids = Array.from(new Set(records.flatMap(r => r.reviewCandidateIds ?? [])));
     const details: Record<string, MasterPatientRecord> = {};
     await Promise.all(ids.map(async id => {
-      const rec = await mockPatientIndexService.getById(id);
+      const rec = await patientIndexService.getById(id);
       if (rec) details[id] = rec;
     }));
     setCandidateDetails(details);
@@ -125,7 +126,7 @@ export const PatientMatchReviewSection: React.FC = () => {
   const handleConfirmNewConfirmed = async () => {
     if (!confirmNewTarget) return;
     setActionInFlight(confirmNewTarget.id);
-    await mockPatientIndexService.confirmAsNewPatient(confirmNewTarget.id);
+    await patientIndexService.confirmAsNewPatient(confirmNewTarget.id);
     setActionInFlight(null);
     setConfirmNewTarget(null);
     loadQueue();
@@ -134,7 +135,7 @@ export const PatientMatchReviewSection: React.FC = () => {
   const handleMergeConfirmed = async () => {
     if (!mergeTarget) return;
     setActionInFlight(mergeTarget.provisional.id);
-    const result = await mockPatientIndexService.mergeIntoExistingPatient(mergeTarget.provisional.id, mergeTarget.candidate.id);
+    const result = await patientIndexService.mergeIntoExistingPatient(mergeTarget.provisional.id, mergeTarget.candidate.id);
     setActionInFlight(null);
     setLastMergeCount(result.casesRepointed);
     setMergeTarget(null);
@@ -144,7 +145,7 @@ export const PatientMatchReviewSection: React.FC = () => {
   const handleLinkConfirmed = async () => {
     if (!linkTarget) return;
     setActionInFlight(linkTarget.provisional.id);
-    await mockPatientIndexService.linkPatients(
+    await patientIndexService.linkPatients(
       linkTarget.provisional.id,
       linkTarget.candidate.id,
       // Real, per direct guidance: this real review queue only ever
@@ -190,7 +191,7 @@ export const PatientMatchReviewSection: React.FC = () => {
         'Possible Matches': candidates || 'none',
       };
     });
-    exportQaReportRows(rows, `patient-match-review-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:patient-match-review:export', rows, `patient-match-review-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext());
   };
 
   const candidateCount = confirmNewTarget?.reviewCandidateIds?.length ?? 0;
@@ -259,7 +260,7 @@ export const PatientMatchReviewSection: React.FC = () => {
       )}
 
       <div className="ps-qa-tab-toolbar">
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
+        <CapabilityButton capability="qa:patient-match-review:export" context={qaScopeContext()} className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</CapabilityButton>
       </div>
 
       {lastMergeCount !== null && (

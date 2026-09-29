@@ -91,7 +91,7 @@ const Textarea: React.FC<{
     value={value}
     onChange={e => onChange(e.target.value)}
     placeholder={placeholder}
-    style={{ height }}
+    style={{ '--tinsp-textarea-h': `${height}px` } as React.CSSProperties}
     className={`ps-tinsp-input ps-tinsp-textarea${mono ? ' ps-tinsp-input--mono' : ''}`}
   />
 );
@@ -179,11 +179,11 @@ const ExpressionBuilder: React.FC<{
           {/* "context.field" is an example binding-key path — internal
               schema syntax, deliberately left untranslated (see file header). */}
           <input value={c.field} onChange={e => upd(i, { field: e.target.value })}
-            placeholder="context.field" className="ps-tinsp-input ps-tinsp-input--mono ps-tinsp-col" style={{ minWidth: 80 }} />
+            placeholder="context.field" className="ps-tinsp-input ps-tinsp-input--mono ps-tinsp-col ps-tinsp-col--w80" />
           <Sel value={c.operator} onChange={v => upd(i, { operator: v as ExpressionOperator })} options={OPERATORS} />
           {!['notEmpty','isEmpty'].includes(c.operator) && (
             <input value={String(c.value ?? '')} onChange={e => upd(i, { value: e.target.value })}
-              placeholder={t('templateInspector.expressionBuilder.valuePlaceholder')} className="ps-tinsp-input ps-tinsp-col" style={{ minWidth: 60 }} />
+              placeholder={t('templateInspector.expressionBuilder.valuePlaceholder')} className="ps-tinsp-input ps-tinsp-col ps-tinsp-col--w60" />
           )}
           <button onClick={() => rm(i)} className="ps-tinsp-rm-btn">✕</button>
         </div>
@@ -354,7 +354,7 @@ const LabelConfigEditor: React.FC<{ config: LabelConfig; onChange: (c: LabelConf
             { value: 'none',       label: t('templateInspector.labelConfig.transform.asTyped') },
           ]} fullWidth />
 
-        <div className="ps-tinsp-row" style={{ marginTop: 4 }}>
+        <div className="ps-tinsp-row ps-mt-4">
           <Toggle
             checked={config.weight === 'bold'}
             onChange={v => onChange({ ...config, weight: v ? 'bold' : 'normal' })}
@@ -630,7 +630,7 @@ const IfBlockEditor: React.FC<{ node: IfBlockNode; u: (n: TemplateNode) => void 
       onChange={condition => u({ ...node, condition })}
       title={t('templateInspector.ifBlock.showChildrenWhenTitle')}
     />
-    <div style={{ marginTop: 8 }}>
+    <div className="ps-mt-8">
       <Label>{t('templateInspector.ifBlock.elseBranchLabel')}</Label>
       <div className="ps-tinsp-hint-line--block">
         {t('templateInspector.ifBlock.elseHint', { count: (node.elseChildren ?? []).length })}

@@ -43,7 +43,7 @@ describe('processLegacyRecordImport — real, per the RFP\'s own "MPI deduplicat
     );
     expect(result.outcome).toBe('succeeded');
     expect(result.patientId).toBeDefined();
-  }, 15000);
+  });
 
   it('real, a record genuinely missing patient date of birth fails validation, never silently proceeds', async () => {
     const { processLegacyRecordImport } = await import('./processLegacyRecordImport');

@@ -62,7 +62,7 @@ const BLOCK_STATUS_BADGE: Record<string, { labelKey: string; color: string }> = 
 
 function Badge({ label, color }: { label: string; color: string }) {
   return (
-    <span className="ps-dht-badge" style={{ background: `${color}22`, color }}>
+    <span className="ps-dht-badge" style={{ '--ps-hue': color } as React.CSSProperties}>
       {label}
     </span>
   );
@@ -85,7 +85,7 @@ const DispatchHistoryTimeline: React.FC<Props> = ({ entries, colorNames }) => {
           const requested = resolveColor(payload.requestedColorKey, colorNames);
           const actual = resolveColor(payload.actualColorKey, colorNames);
           return (
-            <div key={i} className="ps-dht-entry" style={{ borderLeftColor: badge.color }}>
+            <div key={i} className="ps-dht-entry" style={{ '--ps-hue': badge.color } as React.CSSProperties}>
               <div className="ps-dht-entry-row">
                 <span className="ps-dht-entry-title">
                   {payload.specimenLabel ? t('dispatchHistoryTimeline.specimenLabel', { label: payload.specimenLabel }) : t('dispatchHistoryTimeline.cassetteDispatch')}
@@ -106,7 +106,7 @@ const DispatchHistoryTimeline: React.FC<Props> = ({ entries, colorNames }) => {
         const badge: { labelKey?: string; color: string } = BLOCK_STATUS_BADGE[payload.status] ?? { color: '#8899aa' };
         const badgeLabel = badge.labelKey ? t(badge.labelKey) : payload.status;
         return (
-          <div key={i} className="ps-dht-entry" style={{ borderLeftColor: badge.color }}>
+          <div key={i} className="ps-dht-entry" style={{ '--ps-hue': badge.color } as React.CSSProperties}>
             <div className="ps-dht-entry-row">
               <span className="ps-dht-entry-title">
                 {payload.specimenLetter}{payload.blockNumber}

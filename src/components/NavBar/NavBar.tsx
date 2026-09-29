@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../pathscribe.css';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMessaging } from '../../contexts/MessagingContext';
@@ -11,6 +11,7 @@ import { VoiceToggleButton } from '../Voice/VoiceToggleButton';
 import { NavBarScanStation } from './NavBarScanStation';
 import LanguageSwitcher from './LanguageSwitcher';
 import CaseSearchBar from '../Search/CaseSearchBar';
+import { useCapabilities } from '@/hooks/useCapabilities';
 import { VoiceCommandOverlay } from '../Voice/VoiceCommandOverlay';
 import { VoiceMissPrompt } from '../Voice/VoiceMissPrompt';
 import { isConstrainedMobileDevice, hasDesktopViewOverride, clearDesktopViewOverride } from '../../utils/deviceDetection';
@@ -233,6 +234,8 @@ interface NavBarProps {
 const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }) => {
   const { t } = useTranslation();
   const { user }                                   = useAuth();
+  // Batch 374: the quick case search is shown only to people who may open Search.
+  const capabilities                               = useCapabilities();
   const { unreadCount, hasUrgent, setPortalOpen } = useMessaging();
   const messagesLabel = unreadCount > 0 ? t('navBar.messagesUnread', { count: unreadCount }) : t('navBar.messages');
   const [linksOpen, setLinksOpen]                 = useState(false);
@@ -353,7 +356,7 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
 
         {/* Centre — case search */}
         <div className="ps-nav-centre">
-          <CaseSearchBar compact />
+          {capabilities.has('screen:search:open') && <CaseSearchBar compact />}
         </div>
 
         {/* Right */}
@@ -393,12 +396,14 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAvatarClick(); } }}
           >
             <div className="ps-nav-user-text">
-              {/* "Dr. Sarah Johnson" / "MD, FCAP" are literal fallback
-                  mock-user data, matching this sweep's established
-                  precedent (WorklistPage's own CURRENT_USER_NAME
-                  fallback) — not translatable UI copy. */}
+              {/* "Dr. Sarah Johnson" is a literal fallback mock-user name,
+                  matching this sweep's established precedent (WorklistPage's
+                  own CURRENT_USER_NAME fallback) — not translatable UI copy.
+                  Batch 374: the credentials line is the signed-in person's
+                  own (from their staff record); it was "MD, FCAP" for
+                  everyone, bench staff included. */}
               <div className="ps-nav-user-name">{user?.name || 'Dr. Sarah Johnson'}</div>
-              <div className="ps-nav-user-role">MD, FCAP</div>
+              {user?.credentials && <div className="ps-nav-user-role">{user.credentials}</div>}
             </div>
             <div className="ps-nav-avatar">{userInitials}</div>
           </div>

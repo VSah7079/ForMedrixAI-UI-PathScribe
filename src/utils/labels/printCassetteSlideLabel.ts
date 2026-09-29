@@ -29,7 +29,9 @@ import { validateGs1Fields, buildGs1DataMatrix } from './gs1DataMatrix';
 import type { Gs1LabelFields } from './gs1DataMatrix';
 import { buildCassetteZplTemplate, buildSlideZplTemplate } from './zplTemplates';
 import { dispatchZplLabel } from './dispatchZplLabel';
-import { buildNetworkPrintPayload, dispatchNetworkPrintJob } from './dispatchNetworkPrintJob';
+import { buildNetworkPrintPayload } from './dispatchNetworkPrintJob';
+import { networkPrintJobs } from '@/services/networkPrint/networkPrintJobsInstance';
+import i18n from '@/i18n/config';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
 import type { CassetteLabelLayoutConfig } from '@/services/printSettings/IPrintSettingsService';
 
@@ -108,7 +110,7 @@ export async function printCassetteLabel(
   cassetteLabelLayout: CassetteLabelLayoutConfig,
 ): Promise<PrintCassetteSlideLabelResult | PrintCassetteSlideLabelError> {
   if (!gtin.trim()) {
-    return { ok: false, message: 'No GS1 GTIN configured — set one in Print Settings before printing a real GS1 cassette label.' };
+    return { ok: false, message: i18n.t('networkPrint.label.noGtinCassette') };
   }
 
   // Real, deliberate application to BOTH the barcode payload and the
@@ -130,19 +132,21 @@ export async function printCassetteLabel(
     return { ok: false, message: validationErrors.map(e => e.message).join('; ') };
   }
   const gs1 = buildGs1DataMatrix(gs1Fields);
-  if (!gs1) return { ok: false, message: 'GS1 encoding failed unexpectedly after passing validation — see gs1DataMatrix.ts.' };
+  if (!gs1) return { ok: false, message: i18n.t('networkPrint.payload.gs1Failed') };
 
   if (printer.bridgeType === 'direct_interface_engine') {
     const built = buildNetworkPrintPayload({
       caseId: input.fullAccession, fullAccession: input.fullAccession, specimenDesignator: input.specimenLabel,
       blockId: cassetteId, patientName: input.patientName, gtin, printer,
-      copies: input.copies ?? 1, callbackUrl: 'https://pathscribe/api/print-status',
+      copies: input.copies ?? 1,
     });
     // Real, deliberate cast — same tsconfig-driven strictNullChecks
     // narrowing limitation as the qz_tray branch above; see that
     // branch's own comment for the full reasoning.
-    if (!built.ok) return { ok: false, message: (built as { ok: false; errors: string[] }).errors.join('; ') };
-    await dispatchNetworkPrintJob((built as { ok: true; payload: Parameters<typeof dispatchNetworkPrintJob>[0] }).payload);
+    if (built.ok === false) return { ok: false, message: built.errors.join('; ') };
+    // Batch 347 (PS-54): sent through the tracker, which shows the engine's
+    // answer (printed, or why not, with Retry).
+    await networkPrintJobs.send(built.payload);
     return { ok: true };
   }
 
@@ -177,7 +181,7 @@ export async function printSlideLabel(
   gtin: string,
 ): Promise<PrintCassetteSlideLabelResult | PrintCassetteSlideLabelError> {
   if (!gtin.trim()) {
-    return { ok: false, message: 'No GS1 GTIN configured — set one in Print Settings before printing a real GS1 slide label.' };
+    return { ok: false, message: i18n.t('networkPrint.label.noGtinSlide') };
   }
 
   // Same real, deliberate suffix application as printCassetteLabel —
@@ -195,15 +199,20 @@ export async function printSlideLabel(
     return { ok: false, message: validationErrors.map(e => e.message).join('; ') };
   }
   const gs1 = buildGs1DataMatrix(gs1Fields);
-  if (!gs1) return { ok: false, message: 'GS1 encoding failed unexpectedly after passing validation — see gs1DataMatrix.ts.' };
+  if (!gs1) return { ok: false, message: i18n.t('networkPrint.payload.gs1Failed') };
 
   if (printer.bridgeType === 'direct_interface_engine') {
-    // Real, honest gap: buildNetworkPrintPayload's own labelData shape
-    // (Section 5.1) has no real slide-specific fields (level, stain) —
-    // it was built for cassettes. A real slide payload for the
-    // Interface Engine path is genuinely separate, not-yet-built work,
-    // not something to silently force through the cassette shape.
-    return { ok: false, message: 'direct_interface_engine dispatch for slide labels needs its own, real payload shape — not yet built (the existing NetworkPrintPayload was built for cassettes specifically).' };
+    // Batch 347 (PS-54): slides now have their own payload (labelType
+    // SLIDE, with level and stain; template ZPL-SLIDE-V1). Until then this
+    // path refused, because the cassette shape had nowhere for them.
+    const built = buildNetworkPrintPayload({
+      caseId: input.fullAccession, fullAccession: input.fullAccession, specimenDesignator: input.specimenLabel,
+      blockId: slideId, patientName: '', gtin, printer,
+      copies: input.copies ?? 1, slide: { level: input.level, stainName: input.stainName },
+    });
+    if (built.ok === false) return { ok: false, message: built.errors.join('; ') };
+    await networkPrintJobs.send(built.payload);
+    return { ok: true };
   }
 
   const zpl = buildSlideZplTemplate({

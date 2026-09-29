@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+// Batch 381 (PS-359): posting needs text (Field Requirements, locked;
+// services/fieldRequirements/reportPageChecks.commentMissing), and can also be
+// said ("post comment", COMMENT_POST).
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
+import { actionRegistryService, commentMissing } from '../../../services';
+import { useFieldRequirements } from '../../../hooks/useFieldRequirements';
+import { formatDateTime } from '../../../utils/formatDate';
 import PathScribeEditor from '../../../components/Editor/PathScribeEditor';
 import { CommentModalShell } from './CommentModalShell';
 import { OriginBadge } from './OriginBadge';
@@ -15,14 +21,6 @@ interface CaseCommentModalProps {
   onClose: () => void;
 }
 
-const formatTimestamp = (iso: string) => {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      dateStyle: 'medium', timeStyle: 'short',
-    });
-  } catch { return iso; }
-};
-
 const CaseCommentModal: React.FC<CaseCommentModalProps> = ({
   accession, comments, currentUserId: _currentUserId, currentUserName, onAddComment, onClose,
   // _currentUserId: genuine prop, no consumer yet — no delete/edit-own-
@@ -30,15 +28,24 @@ const CaseCommentModal: React.FC<CaseCommentModalProps> = ({
   // intended for a future authorship permission check ("can this user
   // edit/delete their own comment"), not dead code to remove.
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const requirements = useFieldRequirements('report');
+  const formatTimestamp = (iso: string) => formatDateTime(iso, i18n.language);
   const [draft, setDraft] = useState('');
-  const isDraftEmpty = !draft.trim() || draft === '<p></p>';
+  const isDraftEmpty = commentMissing(draft, requirements).length > 0;
 
   const handlePost = () => {
     if (isDraftEmpty) return;
     onAddComment(draft);
     setDraft('');
   };
+
+  // Voice/keyboard "post comment": the same Post, with the same check.
+  const postRef = useRef(handlePost);
+  postRef.current = handlePost;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'COMMENT_POST') postRef.current();
+  }), []);
 
   // Newest first — the most relevant thing when opening a case is the
   // latest update, not the oldest. Each entry still shows its own

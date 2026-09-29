@@ -17,6 +17,20 @@ Registry of physical scan/work stations — where a tech actually scans a specim
 - **Real, new consumer (PS-287, Sep 2026):** `getAll()`, filtered by `workflowStage` and `facilityId`, is now how `utils/addOnOrderOperations.ts`'s own `resolveRoutingStations()` shows a pathologist's add-on order which real stations it would actually reach — per that ticket's own direct Jira comment, scoped to the case's own performing lab (via `services/cases/casePoolAssignmentService.ts`'s `resolveCasePerformingLab()`), never an enterprise-wide list. Display-only — this doesn't dispatch cutting itself, that stays PS-284's own bench. Read-only; nothing in this folder's own files changed.
 - **Real, new consumer (PS-288, Sep 2026):** `ScanStation.facilityId` is now also the real fallback signal `services/facilityOpsDashboard/resolveBatchFacilityId.ts` uses to scope a `Batch` to a facility when none of its own items resolve one via `Case.originHospitalId` (e.g. a batch just opened, nothing scanned into it yet). Read-only; nothing in this folder's own files changed.
 
+## Batch 356
+
+- **New seed station:** "Molecular — Amplification Bay" (`station-molecular-1`, `MOLECULAR-01`, Fenwick General). The seeded Panther instruments sit there (`services/instruments/`).
+- **Existing browsers:** stations have no seed version, so a browser that already stored stations won't show it until Demo Reset. *Fixed in Batch 357: see below.*
+- **Export:** `@/services` now exports `scanStationService`.
+
+## Batch 357
+
+`load()` appends any seed station whose id isn't stored (`services/mockSeedMerge.ts`) and writes the list back. A browser that stored stations before a seed station was added now gets it without Demo Reset; stored stations and their edits are untouched. Safe because stations can't be deleted, only deactivated. Test: `mockScanStationSeedMerge.test.ts`.
+
+## Batch 358
+
+The seeded Panthers now live in the equipment register (`services/equipment/`), still at `station-molecular-1`.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

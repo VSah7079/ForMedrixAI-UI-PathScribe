@@ -435,10 +435,10 @@ const BillingLogsSection: React.FC = () => {
                 <form onSubmit={e => { e.preventDefault(); void handleSearch(currentFilters()); }} className="ps-search-form">
 
                   <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.caseNumber')} /></div>
-                  <input className="ps-searchpage-filter-input" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder={t('billingLogs.placeholders.caseNumber')} />
+                  <input className="ps-searchpage-filter-input" data-phi="accession" value={caseNumber} onChange={e => setCaseNumber(e.target.value)} placeholder={t('billingLogs.placeholders.caseNumber')} />
 
                   <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.patientName')} /></div>
-                  <input className="ps-searchpage-filter-input" value={patientName} onChange={e => setPatientName(e.target.value)} placeholder={t('billingLogs.placeholders.patientName')} />
+                  <input className="ps-searchpage-filter-input" data-phi="name" value={patientName} onChange={e => setPatientName(e.target.value)} placeholder={t('billingLogs.placeholders.patientName')} />
 
                   <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.patientNameRange')} /></div>
                   <div className="ps-searchpage-date-grid">
@@ -453,7 +453,7 @@ const BillingLogsSection: React.FC = () => {
                   </div>
 
                   <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.patientId')} /></div>
-                  <input className="ps-searchpage-filter-input" value={patientId} onChange={e => setPatientId(e.target.value)} placeholder={t('billingLogs.placeholders.patientId')} />
+                  <input className="ps-searchpage-filter-input" data-phi="mrn" value={patientId} onChange={e => setPatientId(e.target.value)} placeholder={t('billingLogs.placeholders.patientId')} />
 
                   <div className="ps-searchpage-section-mb4"><SectionLabel title={t('billingLogs.sectionLabels.billingEventDate')} /></div>
                   <div className="ps-searchpage-date-grid">
@@ -600,9 +600,9 @@ const BillingLogsSection: React.FC = () => {
                         <tbody>
                           {results.map(e => (
                             <tr key={e.id} className="ps-conf-tr">
-                              <td className="ps-conf-td">{e.caseNumber}</td>
+                              <td className="ps-conf-td" data-phi="accession">{e.caseNumber}</td>
                               <td className="ps-conf-td" data-phi="name">{e.patientName}</td>
-                              <td className="ps-conf-td">{e.patientId}</td>
+                              <td className="ps-conf-td" data-phi="mrn">{e.patientId}</td>
                               <td className="ps-conf-td">{formatDateTime(e.timestamp)}</td>
                               <td className="ps-conf-td">{BILLING_AUDIT_LOG_KIND_LABEL[e.kind]}</td>
                               <td className="ps-conf-td">{e.billingType ?? '—'}</td>

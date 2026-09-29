@@ -11,7 +11,7 @@ import { getTemplate } from '@/services/templates/templateService';
 import { matchSourceText } from '@/utils/sourceTextMatching';
 import MarkersPanel from './MarkersPanel';
 import { buildWatermarkBackgroundImage } from './PendingReleaseWatermark';
-import { mockReportReleaseService } from '@/services/reportRelease/mockReportReleaseService';
+import { reportReleaseService } from '@/services';
 
 interface LeftReportPanelProps {
   caseData: Case | null;
@@ -89,7 +89,7 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
   const [watermarkText, setWatermarkText] = React.useState('');
   useEffect(() => {
     if (!isPendingRelease) return;
-    mockReportReleaseService.getOrgDefault().then(res => {
+    reportReleaseService.getOrgDefault().then(res => {
       if (res.ok) setWatermarkText(res.data.watermarkText);
     });
   }, [isPendingRelease]);
@@ -240,20 +240,13 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
   return (
     <div
       ref={scrollRef}
-      className="ps-leftreport-panel"
-      style={{
-        // Real fix: background-image + backgroundAttachment: 'local'
-        // scrolls WITH this element's own content, tiling the real,
-        // configured watermark text across the full scrollable height
-        // — not just the initially-visible viewport. See
-        // PendingReleaseWatermark.tsx's own header comment for the
-        // real bug this specifically avoids. Genuinely dynamic — built
-        // from the org's own configured watermark text — so this stays
-        // inline rather than a fixed CSS rule.
-        backgroundImage: isPendingRelease && watermarkText ? buildWatermarkBackgroundImage(watermarkText) : undefined,
-        backgroundRepeat: isPendingRelease && watermarkText ? 'repeat' : undefined,
-        backgroundAttachment: isPendingRelease && watermarkText ? 'local' : undefined,
-      }}
+      // The watermark tiles with the panel's content (background-attachment:
+      // local in .ps-leftreport-panel--watermark), across the full scrollable
+      // height, not just the visible part; see PendingReleaseWatermark.tsx.
+      // The image is built from the org's configured text, so it comes in as
+      // a custom property (Batch 363: it was three inline style properties).
+      className={`ps-leftreport-panel${isPendingRelease && watermarkText ? ' ps-leftreport-panel--watermark' : ''}`}
+      style={isPendingRelease && watermarkText ? { '--ps-watermark-image': buildWatermarkBackgroundImage(watermarkText) } as React.CSSProperties : undefined}
     >
       {/* Header row */}
       <div className="ps-leftreport-header-row">
@@ -315,15 +308,15 @@ const LeftReportPanel: React.FC<LeftReportPanelProps> = ({ caseData, highlightTe
               panel to a specific specimen while scrolling a long report. */}
           <div className="ps-patient-info-row">
             {[
-              { label: t('leftReportPanel.patientInfo.case'),    value: caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? '—', mono: true },
-              { label: t('leftReportPanel.patientInfo.mrn'),     value: caseData.patient?.mrn ?? '—' },
-              { label: t('leftReportPanel.patientInfo.patient'), value: caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : '—' },
-              { label: t('leftReportPanel.patientInfo.dob'),     value: caseData.patient?.dateOfBirth ? new Date(caseData.patient.dateOfBirth).toLocaleDateString() : '—' },
-            ].map(({ label, value, mono }, i) => (
+              { label: t('leftReportPanel.patientInfo.case'),    phi: 'accession', value: caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? '—', mono: true },
+              { label: t('leftReportPanel.patientInfo.mrn'),     phi: 'mrn',       value: caseData.patient?.mrn ?? '—' },
+              { label: t('leftReportPanel.patientInfo.patient'), phi: 'name',      value: caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : '—' },
+              { label: t('leftReportPanel.patientInfo.dob'),     phi: 'dob',       value: caseData.patient?.dateOfBirth ? new Date(caseData.patient.dateOfBirth).toLocaleDateString() : '—' },
+            ].map(({ label, value, mono, phi }, i) => (
               <React.Fragment key={label}>
                 {i > 0 && <span className="ps-patient-info-sep">·</span>}
                 <span className="ps-patient-info-label">{label}</span>
-                <span className={`ps-patient-info-value${mono ? ' ps-patient-info-value--mono' : ''}`}>{value}</span>
+                <span className={`ps-patient-info-value${mono ? ' ps-patient-info-value--mono' : ''}`} data-phi={phi}>{value}</span>
               </React.Fragment>
             ))}
           </div>

@@ -172,3 +172,13 @@ describe('isInFacilityMonth — real fix: replaces the identical, duplicated mil
     expect(isInFacilityMonth('not-a-real-date', juneRange, 'America/Phoenix')).toBe(false);
   });
 });
+
+import { getFacilityIsoDate } from './facilityTime';
+
+describe('getFacilityIsoDate (Batch 360)', () => {
+  it("gives the facility's calendar date", () => {
+    // 03:00 UTC on 28 Sep is still 27 Sep in Phoenix (UTC-7).
+    expect(getFacilityIsoDate('2026-09-28T03:00:00Z', 'America/Phoenix')).toBe('2026-09-27');
+    expect(getFacilityIsoDate('2026-09-28T03:00:00Z', 'Europe/London')).toBe('2026-09-28');
+  });
+});

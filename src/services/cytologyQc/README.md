@@ -191,5 +191,9 @@ duplication this work did not attempt to unify (out of scope), but
 data resolves correctly regardless of which one a given real call site
 happens to use.
 
+## Duplicate names are localized (Batch 317, PS-73)
+
+`duplicate(id, name)` now takes the copy's name from the caller, in the user's language (`t('common.copyOfName', { name })`). It used to store the English `"Copy of …"` as data. The copy still starts inactive.
+
 ---
 *When this folder's contents change meaningfully, update THIS file.*

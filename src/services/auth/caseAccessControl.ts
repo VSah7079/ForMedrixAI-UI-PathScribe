@@ -72,6 +72,7 @@ import { resolveTenantFacility } from './resolveTenantFacility';
 import type { Facility } from '../facilities/IFacilityService';
 import type { ParticipationTypeRecord } from '../participationTypes/IParticipationTypeService';
 import { resolveParticipationTypeAuthority } from '../participationTypes/IParticipationTypeService';
+import type { Jurisdiction } from '../../types/systemConfig';
 // Plain service module, not a hook/component — can't call useTranslation().
 // Imports the already-initialized i18next instance directly and calls its
 // t() method, same pattern as utils/labels/printLabels.ts. Used ONLY for
@@ -80,7 +81,7 @@ import { resolveParticipationTypeAuthority } from '../participationTypes/IPartic
 // design; see the note above resolveCaseAccess() for why.
 import i18n from '@/i18n/config';
 
-const SESSION_STORAGE_KEY = 'pathscribe-user';
+import { readSessionProfile } from './sessionProfile';
 
 export interface SessionUser {
   id: string;
@@ -94,25 +95,16 @@ export interface SessionUser {
 }
 
 /**
- * Reads the current session user directly from localStorage — the mock
- * services here are plain TS modules outside the React tree and can't use
- * useAuth()/AuthContext, so they read the same persisted session object
- * AuthContext itself writes to. Synchronous by design (no network round
- * trip needed for a mock), matching how the rest of this mock layer reads/
- * writes localStorage directly (see mockStorage.ts's storageGet/Set).
+ * The current session user, from the stored session profile
+ * (sessionProfile.ts). The mock services here are plain modules outside
+ * the React tree and can't use useAuth(), so they read the same profile
+ * AuthContext stores. A missing or unreadable profile is "no session",
+ * which denies access: fail safe, not fail open.
  */
 export function getSessionUser(): SessionUser | null {
-  try {
-    const raw = localStorage.getItem(SESSION_STORAGE_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    if (!parsed?.id) return null;
-    return { id: parsed.id, role: parsed.role, organisationId: parsed.organisationId, canAccessCrossTenantQa: parsed.canAccessCrossTenantQa, canViewPediatric: parsed.canViewPediatric, canViewOrchestration: parsed.canViewOrchestration, firstName: parsed.firstName, lastName: parsed.lastName };
-  } catch {
-    // Fail safe, not fail open — a corrupted/unreadable session resolves
-    // to "no session," which denies access, not "assume trusted."
-    return null;
-  }
+  const p = readSessionProfile();
+  if (!p) return null;
+  return { id: p.id, role: p.role, organisationId: p.organisationId, canAccessCrossTenantQa: p.canAccessCrossTenantQa, canViewPediatric: p.canViewPediatric, canViewOrchestration: p.canViewOrchestration, firstName: p.firstName, lastName: p.lastName };
 }
 
 /**
@@ -216,8 +208,12 @@ export function resolveCaseAccess(
   if (!caseRecord) return { granted: false, dimension: 'no-case', reason: 'No case record to evaluate.' };
   if (!session) return { granted: false, dimension: 'no-session', reason: 'No active session.' };
 
+  // PathScribe (ForMedrixAI) support. Batch 371: opening another
+  // organisation's case this way is checked as the capability
+  // platform:cross-tenant-cases:view and audited, in CaseRouter.getCase
+  // (see isCrossTenantSupportAccess below). Lists aren't audited per case.
   if (session.role === 'superadmin') {
-    return { granted: true, dimension: 'superadmin', reason: 'Platform-admin bypass.' };
+    return { granted: true, dimension: 'superadmin', reason: 'PathScribe support access (opening another organisation\'s case is audited).' };
   }
 
   if (!session.organisationId) {
@@ -300,20 +296,27 @@ const FINALIZE_ELIGIBLE_PARTICIPATION_TYPES_FALLBACK = ['primary', 'attending'];
  *
  * `participationTypes` null/undefined/empty means a caller hasn't been
  * updated to fetch and pass it yet — falls back to the constant above
- * rather than granting nobody or everybody. `performingLabFacilityId`
- * omitted resolves every type to its platform-default flags (no lab has
- * overridden anything for this case), same as
- * resolveParticipationTypeAuthority()'s own contract.
+ * rather than granting nobody or everybody. `performingLabFacilityId`/
+ * `jurisdiction` omitted resolves every type to its platform-default
+ * flags (no lab or country override applies to this case), same as
+ * resolveParticipationTypeAuthority()'s own contract. **Real, per
+ * direct correction**: `jurisdiction` is the performing lab's own
+ * `Facility.jurisdiction` — genuinely distinct from
+ * `performingLabFacilityId`, since regulatory authority (NATA/RCPath/
+ * RCPI/CPSO/RCPSC/MHW/EU directives) is jurisdiction-bound, not
+ * facility-bound; see `ParticipationTypeRecord.jurisdictionProfiles`'s
+ * own doc comment (`IParticipationTypeService.ts`).
  */
 export function resolveFinalizeEligibleTypeIds(
   participationTypes: ParticipationTypeRecord[] | null | undefined,
   performingLabFacilityId?: string | null,
+  jurisdiction?: Jurisdiction | null,
 ): string[] {
   if (!participationTypes || participationTypes.length === 0) {
     return FINALIZE_ELIGIBLE_PARTICIPATION_TYPES_FALLBACK;
   }
   return participationTypes
-    .filter(t => resolveParticipationTypeAuthority(t, performingLabFacilityId ?? undefined).canFinalize === true)
+    .filter(t => resolveParticipationTypeAuthority(t, performingLabFacilityId ?? undefined, jurisdiction ?? undefined).canFinalize === true)
     .map(t => t.id);
 }
 
@@ -329,13 +332,14 @@ export function canFinalizeCase(
   participants: CaseFinalizeParticipant[] | null | undefined,
   participationTypes?: ParticipationTypeRecord[] | null,
   performingLabFacilityId?: string | null,
+  jurisdiction?: Jurisdiction | null,
 ): CaseAccessDecision {
   if (!session) return { granted: false, dimension: 'no-session', reason: i18n.t('caseAccessControl.finalize.noActiveSession') };
   if (session.role === 'superadmin' || session.role === 'admin' || session.role === 'pathologist-admin') {
     return { granted: true, dimension: 'admin-override', reason: i18n.t('caseAccessControl.finalize.adminOverride') };
   }
 
-  const eligibleTypeIds = resolveFinalizeEligibleTypeIds(participationTypes, performingLabFacilityId);
+  const eligibleTypeIds = resolveFinalizeEligibleTypeIds(participationTypes, performingLabFacilityId, jurisdiction);
   const activeParticipants = participants ?? [];
   const isEligibleParticipant = activeParticipants.some(p =>
     p.status === 'active' &&
@@ -363,14 +367,14 @@ export function canFinalizeCase(
  * same eligibility resolution canFinalizeCase() above uses, reused rather
  * than re-implemented, so the two can never independently drift apart.
  *
- * IMPORTANT, flagged directly rather than silently assumed: this project
- * has no real backend yet — there is no `firestore.rules` file anywhere
- * in this codebase (confirmed directly), only PRODUCTION_MIGRATION.md's
- * own forward-looking "Set Firestore security rules..." step. This
- * denormalization is real and data-driven (see below), ready for
- * whoever writes that real rules file, but nothing server-side consults
- * it today — the actual, live enforcement for this app is the client-side
- * canFinalizeCase() check above.
+ * IMPORTANT, corrected (Sep 2026): an earlier version of this comment
+ * said no `firestore.rules` file existed anywhere — wrong; one exists at
+ * the repo root (version compare-and-swap and finalized-case read-only
+ * rules). What IS true: that file never references eligibleFinalizerIds,
+ * participants, or countersign, so nothing server-side consults this
+ * denormalization today. It's real and data-driven (see below), ready
+ * for whoever adds a finalize rule to firestore.rules; the actual, live
+ * enforcement for this app is the client-side canFinalizeCase() check above.
  *
  * Also deliberately NOT lab-scoped, unlike canFinalizeCase() above:
  * CaseRouter.ts calls this from a chokepoint (updateCase/createCase) that
@@ -398,6 +402,54 @@ export function deriveEligibleFinalizerIds(
   return (participants ?? [])
     .filter(p => p.status === 'active' && p.participationTypeIds.some(t => eligibleTypeIds.includes(t)))
     .map(p => p.staffId);
+}
+
+// ─────────────────────────────────────────────────────────────────────────
+// resolveCountersignRequiredTypeIds() — PS-327 AC#3 ("requiresCountersign
+// gating also resolves per-lab through the same mechanism"). The
+// requiresCountersign counterpart to resolveFinalizeEligibleTypeIds()
+// above: which participation-type ids actually carry a real countersign
+// REQUIREMENT today, per each real ParticipationTypeRecord.requiresCountersign
+// flag, resolved per-performing-lab via resolveParticipationTypeAuthority()
+// so a lab's own authorityOverrides genuinely take effect here too.
+//
+// Found via direct investigation (same discipline as canFinalizeCase's own
+// gap): the real resident/attending countersign gate
+// (resolveResidentCountersignRequired.ts, wired into useSignOutWorkflow.ts/
+// CytologyScreeningPage.tsx/signAutopsyReport.ts) has always been a
+// hardcoded check on the LITERAL participation-type ids 'resident' /
+// 'cytotechnologist' (plus FPPE/competency assignment lookups) — it has
+// never once consulted ParticipationTypeRecord.requiresCountersign at all.
+// That flag's only real consumer before this fix was a cosmetic badge in
+// CaseTeamModal.tsx's own drag-and-drop team editor. An admin who created a
+// new participation type (a jurisdiction-specific junior role — see this
+// file's own header note on UK/Ireland RCPath delegation vs. France/
+// Germany/South Korea's personal-liability rules) and checked
+// "Requires Countersign" on it would see that badge, reasonably expect it
+// to actually gate sign-out the way it visually promises to — and it never
+// did. This closes exactly that gap, additively: 'resident' itself already
+// has requiresCountersign:true in real seed data, so this deliberately
+// never removes or narrows the existing hardcoded checks in
+// resolveResidentCountersignRequired.ts — see that function's own updated
+// doc comment for how the two combine.
+//
+// No fallback constant, unlike resolveFinalizeEligibleTypeIds() above:
+// there is no pre-existing hardcoded literal this ever replaced (the
+// hardcoded 'resident'/'cytotechnologist' checks stay exactly where they
+// are, untouched, in resolveResidentCountersignRequired.ts itself) — a
+// caller not yet passing real participationTypes should see NOTHING
+// additional fire from this path, not a guessed default, so
+// null/undefined/empty resolves to [] rather than any fallback list.
+// ─────────────────────────────────────────────────────────────────────────
+export function resolveCountersignRequiredTypeIds(
+  participationTypes: ParticipationTypeRecord[] | null | undefined,
+  performingLabFacilityId?: string | null,
+  jurisdiction?: Jurisdiction | null,
+): string[] {
+  if (!participationTypes || participationTypes.length === 0) return [];
+  return participationTypes
+    .filter(t => resolveParticipationTypeAuthority(t, performingLabFacilityId ?? undefined, jurisdiction ?? undefined).requiresCountersign === true)
+    .map(t => t.id);
 }
 
 /**
@@ -516,6 +568,24 @@ export function resolveOrchestrationAccess(
  * dependency — the caller (CaseRouter.ts) already has async access to
  * fetch it once and reuse it across a whole batch of cases.
  */
+/**
+ * Batch 371: whether letting this session open this case relies on
+ * PathScribe support access, i.e. a superadmin session and a case from an
+ * organisation other than the session's own. CaseRouter.getCase checks
+ * platform:cross-tenant-cases:view (audited) when this is true. Pure.
+ */
+export function isCrossTenantSupportAccess(
+  session: SessionUser | null,
+  caseRecord: { originHospitalId?: string | null } | null | undefined,
+  enterpriseFacilities: Facility[] = [],
+): boolean {
+  if (session?.role !== 'superadmin' || !caseRecord) return false;
+  if (!session.organisationId) return true;
+  const sessionTenant = resolveTenantFacility(session.organisationId, enterpriseFacilities);
+  const caseTenant = resolveTenantFacility(caseRecord.originHospitalId, enterpriseFacilities);
+  return !sessionTenant || !caseTenant || caseTenant.id !== sessionTenant.id;
+}
+
 export function canAccessCaseWithPools(
   session: SessionUser | null,
   caseRecord: { originHospitalId?: string | null; subspecialtyId?: string | null } | null | undefined,

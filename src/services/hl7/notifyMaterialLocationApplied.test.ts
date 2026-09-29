@@ -5,6 +5,7 @@ vi.mock('react-toastify', () => ({ toast: { info: toastInfo, warn: vi.fn(), erro
 vi.mock('@/services/cases/CaseRouter', () => ({ caseRouter: { getCase } }));
 
 import { notifyMaterialLocationApplied } from './notifyMaterialLocationApplied';
+import { phiToastText } from '../phi/phiToast';
 
 describe('notifyMaterialLocationApplied', () => {
   beforeEach(() => {
@@ -16,7 +17,8 @@ describe('notifyMaterialLocationApplied', () => {
     getCase.mockResolvedValue({ accession: { fullAccession: 'S26-4403' } });
     await notifyMaterialLocationApplied({ messageId: 'msg-1', caseId: 'CASE-1', targetDescription: 'A1-L2', location: 'Staining', action: 'Coverslipped' });
     expect(toastInfo).toHaveBeenCalledTimes(1);
-    const message = toastInfo.mock.calls[0][0];
+    const message = phiToastText(toastInfo.mock.calls[0][0]);
+    expect(toastInfo.mock.calls[0][0].props['data-phi']).toBe('true');
     expect(message).toContain('S26-4403');
     expect(message).toContain('A1-L2');
     expect(message).toContain('Staining');

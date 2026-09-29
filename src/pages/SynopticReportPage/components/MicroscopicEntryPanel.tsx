@@ -48,6 +48,7 @@ import { useTranslation } from 'react-i18next';
 import { useVoice } from '@/contexts/VoiceProvider';
 import type { MicroscopicReportInstance } from '@/types/case/Case';
 import PathScribeEditor from '@/components/Editor/PathScribeEditor';
+import { SpellingLanguageControl } from '@/components/SpellCheck/SpellingLanguageControl';
 import type { PathScribeEditorHandle } from '@/components/Editor/PathScribeEditorRef';
 import '../../../pathscribe.css';
 
@@ -202,6 +203,7 @@ const MicroscopicEntryPanel: React.FC<MicroscopicEntryPanelProps> = ({
           it doesn't expose one) rely on React's focus/blur bubbling
           from the editor's real contentEditable region inside it,
           same as any other focus-tracked container in this app. */}
+      <SpellingLanguageControl className="ps-micro-entry-spelllang" />
       <div
         onFocus={() => setIsFocused(true)}
         onBlur={() => setIsFocused(false)}

@@ -150,7 +150,7 @@ export const LookupItem: React.FC<LookupItemProps> = ({
     {badge && (
       <span
         className="ps-lookup-item-badge"
-        style={{ color: badgeColor, background: `${badgeColor}18`, border: `1px solid ${badgeColor}30` }}
+        style={{ '--ps-hue': badgeColor } as React.CSSProperties}
       >{badge}</span>
     )}
 

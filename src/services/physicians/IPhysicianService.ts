@@ -1,5 +1,21 @@
 import { ServiceResult, ID } from '../types';
 
+/** Real, per direct follow-up on PS-136's post-GA interface-engine
+ *  cutover research (services/clinical/postGaAlertChannels/README.md):
+ *  a curated set of major US mobile carriers with a known, currently
+ *  real email-to-SMS gateway domain — see
+ *  resolveEmailToSmsGatewayAddress.ts for the actual domain mapping and
+ *  the real function that uses it. `'other'` is the honest escape
+ *  hatch for a real carrier this list doesn't cover, paired with
+ *  `Physician.smsCarrierOtherDomain` below rather than silently failing
+ *  to resolve at all.
+ *
+ *  Deliberately US-specific: email-to-SMS gateways are a real US
+ *  carrier convention with no established equivalent in this app's
+ *  other real markets (UK/EU) — leave this genuinely unset for a
+ *  non-US physician rather than guessing at a domain. */
+export type SmsCarrierId = 'verizon' | 'att' | 'tmobile' | 'uscellular' | 'other';
+
 export interface Physician {
   id: ID;
 
@@ -48,6 +64,24 @@ export interface Physician {
    *  later — the automated dispatch rule engine treats it exactly
    *  that way (see resolveCriticalAlertChannels.ts). */
   smsCapablePhone?: string;
+  /** Real, per direct follow-up ("The carrier gap is a data-model
+   *  problem inside this app... address it"): closes the real gap
+   *  services/clinical/postGaAlertChannels/README.md's own research
+   *  documented — a post-GA backend routing an alert via an
+   *  email-to-SMS carrier gateway (e.g. `{number}@vtext.com`) needs to
+   *  know WHICH carrier `smsCapablePhone` belongs to, and this app had
+   *  nowhere to record that. Blank/undefined means genuinely unknown,
+   *  same posture as `smsCapablePhone` itself — never guessed at, and
+   *  the interface-engine-offloading delivery path (the other real
+   *  option that research documented) needs no carrier at all, so
+   *  this staying unset never blocks that path. */
+  smsCarrier?: SmsCarrierId;
+  /** Required companion to `smsCarrier: 'other'` — the real gateway
+   *  domain for a carrier this app's own curated list doesn't cover
+   *  (e.g. a regional MVNO). Ignored/unused for any other
+   *  `smsCarrier` value; resolveEmailToSmsGatewayAddress.ts's own
+   *  tests document the exact precedence. */
+  smsCarrierOtherDomain?: string;
   preferredContact: 'Email' | 'Fax' | 'Phone';
   clientIds: string[];
   status: 'Active' | 'Inactive' | 'Unverified';

@@ -21,6 +21,17 @@ Verified after rebuilding: `npx tsc --noEmit -p .` clean, full `vitest run` — 
 
 Same honest caveat as before: this data is a real, researched starting point, not a substitute for real coder review before any production/billing use. The "35 of 60 seed entries" line in the entry above describes the prior, lost file specifically — this rebuild has a different real count (73 entries) and isn't a byte-for-byte match to it; left as-is above as an honest historical record of that prior file rather than silently rewritten.
 
+## `buildSpecimenEntry.ts`: editor saves no longer drop fields (Batch 317, PS-73)
+
+The Specimen Dictionary editor turned its draft into the saved entry with a hand-picked field list inside the component, and `updateEntries()` **replaces** the stored record. So every save through that screen silently dropped every field the list left out:
+
+- **Never saved at all:** `protocolId` and `specimenCategory`, although the form has selects for both. Changing them in the form did nothing.
+- **Wiped from any entry edited there:** `defaultComplexity`, `microUpgradeBaseCptCode`, `organSite`, `isSelfCollected`, `defaultSynopticTemplateId`, and the `autoCreated*` markers.
+
+The earlier `defaultBaseCptCode` fix (above) was one instance of the same bug.
+
+`buildSpecimenEntry(draft, existing, { now, newId, updatedBy })` now starts from the stored record and the full draft, then normalizes only the fields the form edits. A field is only ever dropped when the admin clears it. It is tested in `buildSpecimenEntry.test.ts`. The same function builds a Duplicate's new entry, so a copy keeps its source's protocol, category and cytology defaults.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

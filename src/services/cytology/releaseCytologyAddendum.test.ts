@@ -7,9 +7,13 @@ vi.mock('./mockCytologySignOutRecordService', () => ({
 vi.mock('../reports/publishReportReleasedEvent', () => ({
   publishReportReleasedEvent: vi.fn().mockResolvedValue({}),
 }));
+vi.mock('../facilities/mockFacilityService', () => ({
+  mockFacilityService: { getById: vi.fn() },
+}));
 
 import { mockCytologySignOutRecordService } from './mockCytologySignOutRecordService';
 import { publishReportReleasedEvent } from '../reports/publishReportReleasedEvent';
+import { mockFacilityService } from '../facilities/mockFacilityService';
 import { releaseCytologyAddendum } from './releaseCytologyAddendum';
 
 const addingUser = { id: 'PATH-001', name: 'Dr. Reed', isPathologist: true };
@@ -30,6 +34,8 @@ beforeEach(() => {
   vi.mocked(mockCytologySignOutRecordService.create).mockReset();
   vi.mocked(mockCytologySignOutRecordService.create).mockResolvedValue({ ok: true, data: { id: 'cyto-signout-2' } } as any);
   vi.mocked(publishReportReleasedEvent).mockClear();
+  vi.mocked(mockFacilityService.getById).mockReset();
+  vi.mocked(mockFacilityService.getById).mockResolvedValue({ ok: false, error: 'not found' } as any);
 });
 
 describe('releaseCytologyAddendum', () => {
@@ -92,5 +98,42 @@ describe('releaseCytologyAddendum', () => {
     const generatePdf = vi.fn();
     await releaseCytologyAddendum('CASE-1', 'SP-1', 'Some addendum.', addingUser, undefined, generatePdf);
     expect(publishReportReleasedEvent).toHaveBeenCalledWith(expect.objectContaining({ generatePdf }));
+  });
+
+  describe('real, per PS-277 §1.2.3 — resolves the performing lab\'s own real forceAddendumOnDedicatedPage print policy', () => {
+    it('threads the real, resolved policy through onto the new addendum record\'s own reportContent', async () => {
+      vi.mocked(mockFacilityService.getById).mockImplementation(async (id) => {
+        if (id === 'FAC-A') return { ok: true, data: { id: 'FAC-A', roles: ['performing_lab'], forceAddendumOnDedicatedPagePrintPolicy: true } } as any;
+        return { ok: false, error: 'not found' } as any;
+      });
+      await releaseCytologyAddendum('CASE-1', 'SP-1', 'A real addendum.', addingUser, 'FAC-A');
+      const created = vi.mocked(mockCytologySignOutRecordService.create).mock.calls[0][0] as any;
+      expect(created.reportContent.forceAddendumOnDedicatedPage).toBe(true);
+    });
+
+    it('resolves through an ordering facility\'s own real performingLabFacilityId override to the actual performing lab\'s policy', async () => {
+      vi.mocked(mockFacilityService.getById).mockImplementation(async (id) => {
+        if (id === 'FAC-ORDERING') return { ok: true, data: { id: 'FAC-ORDERING', roles: ['external_ordering_client'], performingLabFacilityId: 'FAC-LAB' } } as any;
+        if (id === 'FAC-LAB') return { ok: true, data: { id: 'FAC-LAB', roles: ['performing_lab'], forceAddendumOnDedicatedPagePrintPolicy: true } } as any;
+        return { ok: false, error: 'not found' } as any;
+      });
+      await releaseCytologyAddendum('CASE-1', 'SP-1', 'A real addendum.', addingUser, 'FAC-ORDERING');
+      const created = vi.mocked(mockCytologySignOutRecordService.create).mock.calls[0][0] as any;
+      expect(created.reportContent.forceAddendumOnDedicatedPage).toBe(true);
+    });
+
+    it('a real, honest undefined — no facilityId given at all — never throws, and the flag is simply left unset', async () => {
+      await releaseCytologyAddendum('CASE-1', 'SP-1', 'A real addendum.', addingUser);
+      const created = vi.mocked(mockCytologySignOutRecordService.create).mock.calls[0][0] as any;
+      expect(created.reportContent.forceAddendumOnDedicatedPage).toBeUndefined();
+      expect(mockFacilityService.getById).not.toHaveBeenCalled();
+    });
+
+    it('a facilityId that resolves to no real facility at all is a real, honest no-op — never throws', async () => {
+      const result = await releaseCytologyAddendum('CASE-1', 'SP-1', 'A real addendum.', addingUser, 'FAC-MISSING');
+      expect(result.ok).toBe(true);
+      const created = vi.mocked(mockCytologySignOutRecordService.create).mock.calls[0][0] as any;
+      expect(created.reportContent.forceAddendumOnDedicatedPage).toBeUndefined();
+    });
   });
 });

@@ -1,0 +1,82 @@
+{
+  "accessionPage": {
+    "demographics": {
+      "familyNames": "Familienaam/familienamen"
+    }
+  },
+  "billingLogs": {
+    "placeholders": {
+      "patientName": "Familienaam, Voornaam"
+    }
+  },
+  "clientEditorModal": {
+    "general": {
+      "addressPlaceholder": "Straat en huisnummer, postcode, gemeente"
+    }
+  },
+  "configSearchIndex": {
+    "entries": {
+      "staff-deactivate": {
+        "description": "Blokkeer of herstel de aanmeldtoegang van een gebruiker zonder diens record te verwijderen."
+      }
+    }
+  },
+  "facilityEditorModal": {
+    "general": {
+      "addressPlaceholder": "Kerkstraat 12, 9000 Gent"
+    }
+  },
+  "fieldRequirements": {
+    "fields": {
+      "accession": {
+        "familyNames": "Familienaam/familienamen"
+      }
+    }
+  },
+  "footPedalSection": {
+    "description": "Koppel de knoppen van een echt, aangesloten voetpedaal aan de 3 echte acties hieronder. Werkt zowel met echte HID-klasse pedalen als met het meer gangbare toetsenbord-emulerende type — druk op het pedaal dat u wilt koppelen en PathScribe leert wat het daadwerkelijk verzendt, geen handmatige toetscode-invoer nodig. Gekoppeld aan deze browser/dit werkstation, niet aan uw account — het fysieke pedaal verandert niet wanneer een andere patholoog of technicus zich op dezelfde machine aanmeldt. De werkelijke actie van elk pedaal hangt af van welke pagina open is wanneer u erop drukt — zie elk label hieronder."
+  },
+  "intraopQueue": {
+    "demographicsStep": {
+      "patientNameLabel": "Patiëntnaam (Familienaam, Voornaam)"
+    }
+  },
+  "logoutWarningModal": {
+    "body": "U heeft een actieve sessie met niet-opgeslagen wijzigingen. Als u zich nu afmeldt, gaat uw huidige voortgang verloren.",
+    "logOutAndDiscardButton": "Afmelden en wijzigingen verwerpen"
+  },
+  "physiciansSection": {
+    "modal": {
+      "familyNamesLabel": "Familienaam/-namen",
+      "familyNamesPlaceholder": "Familienaam/-namen",
+      "smsCarrierLabel": "Gsm-operator (VS)",
+      "smsCarrierOtherDomainLabel": "E-mail-naar-sms-domein van de operator",
+      "smsLabel": "Gsm-nummer voor sms",
+      "smsPlaceholder": "555-0102 — optioneel, alleen voor geautomatiseerde sms-berichten bij kritieke waarschuwingen"
+    }
+  },
+  "printSettingsSection": {
+    "requisitionLabelSize": {
+      "description": "Fysieke velgrootte voor het aanvraagstickervel (trackingkop plus registratie-, specimen- en cassette-/objectglaasjes-afpelstickers). Standaard een standaard thermisch multi-afpelvel van 4″×6″ — hier kan nog een volledige paginagrootte worden gekozen als uw lab er daadwerkelijk een gebruikt."
+    },
+    "requisitionPrinterProfile": {
+      "description": "Dezelfde echte hardwarebridge-keuze als hierboven, voor het multizone aanvraagstickervel (trackingkop plus registratie-, specimen- en cassette-/objectglaasjes-afpelstickers). De positie van elke echte sticker wordt berekend uit echte millimetergeometrie, niet uit geraden coördinaten."
+    }
+  },
+  "sessionExpiryWarningModal": {
+    "logOutButton": "Afmelden"
+  },
+  "sessionSecurity": {
+    "description": "Automatische afmelding na een periode van inactiviteit — een technische beveiligingsmaatregel van de HIPAA Security Rule. Individuele uitvoerende laboratoria kunnen een strengere of soepelere waarde vereisen via hun eigen invoer in het faciliteitenwoordenboek; dit is de organisatiebrede standaardwaarde die overal elders wordt gebruikt."
+  },
+  "sessionSupersededNotice": {
+    "body": "U bent hier afgemeld omdat dit account zich vanuit een ander tabblad of venster in deze browser heeft aangemeld. Niet-opgeslagen werk in dit tabblad is bewaard — meld u opnieuw aan en het wordt aangeboden ter beoordeling voor de zaak waaraan u werkte.",
+    "title": "Afgemeld — elders aangemeld"
+  },
+  "staffTab": {
+    "modal": {
+      "lastNameLabel": "Familienaam",
+      "lastNamePlaceholder": "Familienaam"
+    }
+  }
+}

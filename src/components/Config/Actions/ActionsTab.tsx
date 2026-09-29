@@ -5,6 +5,8 @@ import { mockActionRegistryService } from '../../../services/actionRegistry/mock
 import { SystemAction } from '../../../services/actionRegistry/IActionRegistryService';
 import { toTitleCase } from '../../../utils/formatLabel';
 import { WORKSTATION_DISCIPLINES, FUNCTIONAL_AREAS_BY_DISCIPLINE } from '../../../services/workstationGroups/IWorkstationGroupService';
+import { resolveShortcutConflict, suggestAlternateShortcut } from '../../../services/actionRegistry/resolveShortcutConflict';
+import { parseActionRegistryImportCsv, type ActionImportRowOutcome } from '../../../services/actionRegistry/parseActionRegistryImportCsv';
 
 // Real, per PS-289's own comment thread — every real, populated
 // functional area across every real discipline, flattened for this
@@ -12,14 +14,39 @@ import { WORKSTATION_DISCIPLINES, FUNCTIONAL_AREAS_BY_DISCIPLINE } from '../../.
 // area names (confirmed directly), so a flat list stays unambiguous.
 const ALL_FUNCTIONAL_AREAS = WORKSTATION_DISCIPLINES.flatMap(d => FUNCTIONAL_AREAS_BY_DISCIPLINE[d]);
 
+// Translates one real, structured per-row outcome (from
+// parseActionRegistryImportCsv.ts's own pure parse/decide logic) into
+// the exact user-facing log line this pipeline showed before that
+// extraction — this mapping, and the summary layout below, are the
+// one part of the import flow that's genuinely UI text, so they stay
+// here rather than in the extracted pure module.
+function describeOutcome(outcome: ActionImportRowOutcome, t: TFunction): string {
+  switch (outcome.kind) {
+    case 'unknown-id':                    return t('actionsTab.import.errors.unknownId', { line: outcome.line, id: outcome.id });
+    case 'duplicate-id-in-file':          return t('actionsTab.import.errors.duplicateId', { line: outcome.line, id: outcome.id });
+    case 'blocked-label-category-change': return t('actionsTab.import.errors.blockedLabelCategoryChange', { line: outcome.line, label: outcome.label });
+    case 'blocked-disabled':              return t('actionsTab.import.errors.blockedDisabled', { line: outcome.line, label: outcome.label });
+    case 'shortcut-duplicate-in-file':    return t('actionsTab.import.errors.shortcutDupInFile', { line: outcome.line, shortcut: outcome.shortcut, label: outcome.label });
+    case 'shortcut-reserved':             return t('actionsTab.import.errors.shortcutReserved', { line: outcome.line, shortcut: outcome.shortcut, label: outcome.label });
+    case 'updated':                       return t('actionsTab.import.success.line', { line: outcome.line, label: outcome.label });
+    case 'no-change':                     return '';
+  }
+}
+
+const ERROR_OUTCOME_KINDS = new Set<ActionImportRowOutcome['kind']>([
+  'unknown-id', 'duplicate-id-in-file', 'blocked-label-category-change', 'blocked-disabled', 'shortcut-duplicate-in-file', 'shortcut-reserved',
+]);
+
 // Builds the post-import alert() report. A plain function (not a
 // hook), so it takes t explicitly — this is UI-facing text the admin
 // reads right after a bulk import, distinct from the CSV file's own
 // column headers/instructions above (exported/persisted data, which
 // stay English per this app's established convention).
-function buildImportSummary(
-  successLog: string[], errorLog: string[], noChangeCount: number, t: TFunction
-): string {
+function buildImportSummary(outcomes: ActionImportRowOutcome[], t: TFunction): string {
+  const successLog = outcomes.filter(o => o.kind === 'updated').map(o => describeOutcome(o, t));
+  const errorLog = outcomes.filter(o => ERROR_OUTCOME_KINDS.has(o.kind)).map(o => describeOutcome(o, t));
+  const noChangeCount = outcomes.filter(o => o.kind === 'no-change').length;
+
   let summary = `${t('actionsTab.import.summary.header')}\n----------------\n`;
   if (successLog.length > 0) {
     summary += `${t('actionsTab.import.summary.updated', { count: successLog.length })}\n`;
@@ -98,15 +125,14 @@ export const ActionsTab: React.FC = () => {
     setShortcutError('');
     setShortcutSuggestion('');
     if (!combo) return;
-    const conflict = actions.find(a => a.id !== currentId && a.shortcut.toLowerCase() === combo.toLowerCase());
+    // Real fix, found by this app's own inline-CSS/business-logic
+    // sweep: delegates to resolveShortcutConflict.ts's shared, tested
+    // collision-detection and alternate-suggestion rules.
+    const conflict = resolveShortcutConflict(combo, currentId, actions);
     if (conflict) {
       setShortcutError(t('actionsTab.edit.shortcutConflict', { combo, label: conflict.label }));
-      // Suggest Alt+Shift variant or Ctrl variant
-      const base = combo.replace(/^(Ctrl[+]|Alt[+]|Shift[+])*/i, '').replace(/[+]$/, '');
-      const suggestions = [
-        'Alt+Shift+' + base, 'Ctrl+' + base, 'Ctrl+Shift+' + base
-      ].filter(s => !actions.find(a => a.shortcut.toLowerCase() === s.toLowerCase()));
-      if (suggestions[0]) setShortcutSuggestion(suggestions[0]);
+      const suggestion = suggestAlternateShortcut(combo, actions);
+      if (suggestion) setShortcutSuggestion(suggestion);
     }
   };
 
@@ -177,6 +203,12 @@ export const ActionsTab: React.FC = () => {
   };
 
   // ─── Import Logic (With Shortcut Collision Detection) ───────────────────
+  // Real fix, found by this app's own inline-CSS/business-logic sweep:
+  // per-row validation, shortcut collision detection, and change
+  // detection now all live in parseActionRegistryImportCsv.ts's shared,
+  // tested pure function — see that module's own header for the full
+  // rationale. This handler's own job is now just reading the file and
+  // applying the real updates that function decided on.
   const handleFileUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
     const file = event.target.files?.[0];
     if (!file) return;
@@ -184,89 +216,15 @@ export const ActionsTab: React.FC = () => {
     const reader = new FileReader();
     reader.onload = async (e) => {
       const content = e.target?.result as string;
-      const lines = content.split(/\r?\n/).map(l => l.trim()).filter(l => l.length > 0);
+      const { outcomes, updates } = parseActionRegistryImportCsv(content, actions);
 
-      const successLog: string[] = [];
-      const errorLog: string[] = [];
-      const seenIds = new Set<string>();
-      const usedShortcutsInFile = new Map<string, string>(); // shortcut -> label
-      let noChangeCount = 0;
-
-      lines.forEach((line, index) => {
-        const excelRow = index + 1;
-        if (line.startsWith('#') || line.toLowerCase().includes('(do not alter)')) return;
-
-        const parts = line.split(/,(?=(?:(?:[^"]*"){2})*[^"]*$)/);
-        if (parts.length >= 5) {
-          const id = parts[0].replace(/["\s]/g, '');
-          const label = parts[1].replace(/"/g, '').trim();
-          const category = parts[2].replace(/"/g, '').trim();
-          const shortcut = parts[3].replace(/"/g, '').trim().toLowerCase();
-          const triggersRaw = parts[4] || "";
-
-          const voiceTriggers = triggersRaw.replace(/"/g, '').split(';').map(trig => trig.trim()).filter(trig => trig !== "");
-
-          const original = actions.find(a => a.id === id);
-
-          // 1. Basic Validations
-          if (!original) {
-            errorLog.push(t('actionsTab.import.errors.unknownId', { line: excelRow, id }));
-            return;
-          }
-          if (seenIds.has(id)) {
-            errorLog.push(t('actionsTab.import.errors.duplicateId', { line: excelRow, id }));
-            return;
-          }
-          if (original.label !== label || original.category !== category) {
-            errorLog.push(t('actionsTab.import.errors.blockedLabelCategoryChange', { line: excelRow, label: original.label }));
-            return;
-          }
-          // Real, per direct follow-up ("someone can edit the action if
-          // they really want to type some voice triggers"): the table's
-          // own Edit button is disabled for isActive: false actions, but
-          // this bulk-import path is a second, separate way to call
-          // updateAction() that didn't share that same protection —
-          // confirmed directly, nothing here checked isActive at all.
-          // Same "Blocked change" pattern as the check just above.
-          if (!original.isActive) {
-            errorLog.push(t('actionsTab.import.errors.blockedDisabled', { line: excelRow, label: original.label }));
-            return;
-          }
-
-          // 2. Shortcut Collision Detection
-          // Check if this shortcut is used by another action in this file
-          if (shortcut && usedShortcutsInFile.has(shortcut)) {
-            errorLog.push(t('actionsTab.import.errors.shortcutDupInFile', { line: excelRow, shortcut, label: usedShortcutsInFile.get(shortcut) }));
-            return;
-          }
-
-          // Check if this shortcut is used by an action NOT in this file (global system check)
-          const globalCollision = actions.find(a => a.id !== id && a.shortcut.toLowerCase() === shortcut);
-          if (shortcut && globalCollision) {
-            errorLog.push(t('actionsTab.import.errors.shortcutReserved', { line: excelRow, shortcut, label: globalCollision.label }));
-            return;
-          }
-
-          seenIds.add(id);
-          usedShortcutsInFile.set(shortcut, label);
-
-          // 3. Change Detection
-          const hasShortcutChanged = original.shortcut.toLowerCase() !== shortcut;
-          const hasTriggersChanged = JSON.stringify([...original.voiceTriggers].sort()) !== JSON.stringify([...voiceTriggers].sort());
-
-          if (!hasShortcutChanged && !hasTriggersChanged) {
-            noChangeCount++;
-            return;
-          }
-
-          mockActionRegistryService.updateAction(id, { shortcut, voiceTriggers });
-          successLog.push(t('actionsTab.import.success.line', { line: excelRow, label: original.label }));
-        }
+      updates.forEach(({ id, shortcut, voiceTriggers }) => {
+        mockActionRegistryService.updateAction(id, { shortcut, voiceTriggers });
       });
 
       setActions([...mockActionRegistryService.getActions()]);
 
-      alert(buildImportSummary(successLog, errorLog, noChangeCount, t));
+      alert(buildImportSummary(outcomes, t));
     };
     reader.readAsText(file);
     if (fileInputRef.current) fileInputRef.current.value = '';

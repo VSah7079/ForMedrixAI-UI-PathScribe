@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router";
 import { useTranslation } from "react-i18next";
 import { useAuditLog } from "../components/Audit/useAuditLog";
 import {

@@ -54,9 +54,9 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import '../../pathscribe.css';
-import { mockMolecularBatchService } from '../../services/molecular/mockMolecularBatchService';
+import { molecularBatchService } from '@/services';
 import type { MolecularBatch, MolecularBatchStatus } from '../../services/molecular/IMolecularBatchService';
 import MolecularBatchManagementPage from '../MolecularBatchManagement/MolecularBatchManagementPage';
 
@@ -111,7 +111,7 @@ const MolecularWorkcenterPage: React.FC = () => {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    mockMolecularBatchService.getAll().then(res => {
+    molecularBatchService.getAll().then(res => {
       if (res.ok) setBatches([...res.data].sort((a, b) => b.createdAt.localeCompare(a.createdAt)));
       setLoading(false);
     });
@@ -140,7 +140,7 @@ const MolecularWorkcenterPage: React.FC = () => {
               {!loading && filtered.length === 0 && (<tr><td className="ps-conf-empty-row" colSpan={6}>{emptyMessage}</td></tr>)}
               {!loading && filtered.map(b => {
                 const status = STATUS_LABEL_KEY[b.status];
-                const statusVars = { '--status-bg': `${status.color}18`, '--status-color': status.color, '--status-border': `${status.color}33` } as React.CSSProperties;
+                const statusVars = { '--ps-hue': status.color } as React.CSSProperties;
                 return (
                   <tr key={b.id} className="ps-conf-tr ps-conf-tr--clickable" onClick={() => navigate(`/molecular-batch/${b.id}`)}>
                     <td className="ps-conf-td">{b.batchBarcode}</td>
@@ -149,7 +149,7 @@ const MolecularWorkcenterPage: React.FC = () => {
                     <td className="ps-conf-td">{b.plateBarcode}</td>
                     <td className="ps-conf-td">{new Date(b.createdAt).toLocaleString()}</td>
                     <td className="ps-conf-td">
-                      <span className="ps-status-badge" style={statusVars}>{t(status.key)}</span>
+                      <span className="ps-status-badge ps-status-badge--hued" style={statusVars}>{t(status.key)}</span>
                     </td>
                   </tr>
                 );

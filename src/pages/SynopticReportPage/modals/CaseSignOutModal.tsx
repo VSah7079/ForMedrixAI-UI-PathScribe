@@ -5,17 +5,19 @@ import { stainTypeService } from '@/services';
 import type { StainType } from '@/services/stains/IStainService';
 import { computeCaseCodingSummary } from '@/services/billing/codeMapTable';
 import type { AppliedBlockCode } from '@/types/case/Specimen';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
+import { SignerConfirmationFields } from '@/components/Signing/SignerConfirmationFields';
+import { useSignerConfirmation } from '@/hooks/useSignerConfirmation';
+import type { SignatureConfirmation } from '@/services/auth/signerConfirmation';
 
 interface CaseSignOutModalProps {
   show: boolean;
   accession: string;
-  signOutUser: string;
-  signOutPassword: string;
-  signOutError: string;
   onClose: () => void;
-  onUserChange: (value: string) => void;
-  onPasswordChange: (value: string) => void;
-  onConfirm: () => void;
+  /** Batch 344: runs only after the signer has been confirmed
+   *  (services/auth/signerConfirmation.ts). Before, the username and
+   *  password typed here were never checked. */
+  onConfirm: (confirmation: SignatureConfirmation) => void;
   /** True when this case was released by a resident and is now
    *  genuinely being countersigned, not just a routine sign-out. */
   isCountersign?: boolean;
@@ -49,8 +51,8 @@ interface CaseSignOutModalProps {
 }
 
 const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
-  show, accession, signOutUser, signOutPassword, signOutError,
-  onClose, onUserChange, onPasswordChange, onConfirm, onReject,
+  show, accession,
+  onClose, onConfirm, onReject,
   isCountersign, residentName, countersignFeedback, onCountersignFeedbackChange,
   specimens, matrixBlocks = [], onAssignBaseCode,
 }) => {
@@ -64,6 +66,13 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
     if (!show) return;
     stainTypeService.getAll().then(res => { if (res.ok) setStainTypes(res.data.filter(s => s.active)); });
   }, [show]);
+
+  // Batch 344: who is signing is confirmed here before onConfirm runs.
+  const signer = useSignerConfirmation(isCountersign ? 'countersign' : 'case-sign-out', accession || null);
+  const { reset: resetSigner } = signer;
+  useEffect(() => { if (!show) resetSigner(); }, [show, resetSigner]);
+  // Straight from the click: for SSO this opens the provider's popup.
+  const confirmAndSign = () => { void signer.confirm().then(c => { if (c) onConfirm(c); }); };
 
   const codingSummary = specimens ? computeCaseCodingSummary(specimens, stainTypes, matrixBlocks) : [];
   const specimenIndexById = new Map((specimens ?? []).map((sp, i) => [sp.id, i]));
@@ -100,14 +109,11 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
             />
           )}
         </p>
-        <p className="ps-modal-dark-hint ps-modal-dark-hint--center">
-          {t('caseSignOutModal.hint')}
-        </p>
 
         {isCountersign && (
           <div className="ps-conf-form-field ps-signout-feedback-field">
             <label className="ps-modal-dark-label">{t('caseSignOutModal.feedbackLabel', { name: resolvedResidentName })}</label>
-            <textarea
+            <SpellCheckedTextarea
               className="ps-conf-input ps-conf-textarea"
               value={countersignFeedback ?? ''}
               onChange={e => onCountersignFeedbackChange?.(e.target.value)}
@@ -181,31 +187,7 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
           </div>
         )}
 
-        <div className="ps-modal-dark-fields">
-          <div>
-            <label className="ps-modal-dark-label">{t('caseSignOutModal.usernameLabel')}</label>
-            <input
-              type="text"
-              autoFocus
-              value={signOutUser}
-              onChange={e => onUserChange(e.target.value)}
-              placeholder={t('caseSignOutModal.usernamePlaceholder')}
-              className={`ps-modal-dark-input${signOutError ? ' ps-modal-dark-input--error' : ''}`}
-            />
-          </div>
-          <div>
-            <label className="ps-modal-dark-label">{t('caseSignOutModal.passwordLabel')}</label>
-            <input
-              type="password"
-              value={signOutPassword}
-              onChange={e => onPasswordChange(e.target.value)}
-              onKeyDown={e => e.key === 'Enter' && onConfirm()}
-              placeholder={t('caseSignOutModal.passwordPlaceholder')}
-              className={`ps-modal-dark-input${signOutError ? ' ps-modal-dark-input--error' : ''}`}
-            />
-          </div>
-          {signOutError && <p className="ps-modal-dark-field-error">{signOutError}</p>}
-        </div>
+        <SignerConfirmationFields signer={signer} onSubmit={confirmAndSign} />
 
         <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch">
           <button className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn" onClick={onClose}>{t('caseSignOutModal.cancelButton')}</button>
@@ -219,7 +201,13 @@ const CaseSignOutModal: React.FC<CaseSignOutModalProps> = ({
               ↩️ {t('caseSignOutModal.returnToTraineeButton')}
             </button>
           )}
-          <button onClick={onConfirm} className="ps-btn-green ps-modal-dark-footer__flex-btn">✍️ {t('caseSignOutModal.signOutCaseLabel')}</button>
+          <button
+            onClick={confirmAndSign}
+            disabled={signer.busy || signer.method === 'unavailable'}
+            className="ps-btn-green ps-modal-dark-footer__flex-btn"
+          >
+            ✍️ {signer.busy ? t('signerConfirmation.confirming') : t('caseSignOutModal.signOutCaseLabel')}
+          </button>
         </div>
 
       </div>

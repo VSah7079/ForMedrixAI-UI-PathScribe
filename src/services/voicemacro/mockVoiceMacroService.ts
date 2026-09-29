@@ -1,6 +1,7 @@
 import { IVoiceMacroService } from './IVoiceMacroService';
 import { VoiceMacro, applyVoiceMacroSubstitutions } from '../../types/voiceMacros';
 import { PATHOLOGY_DEFAULTS } from '../../constants/defaultMacros';
+import type { ServiceResult } from '../types';
 
 export class MockVoiceMacroService implements IVoiceMacroService {
   private STORAGE_KEY = 'pathscribe_voice_macros';
@@ -79,15 +80,19 @@ export class MockVoiceMacroService implements IVoiceMacroService {
   async refineTranscript(
     transcript: string, 
     _options?: { context?: string }
-  ): Promise<{ success: boolean; data: string }> {
+  ): Promise<ServiceResult<string>> {
+    // PS-67 (Batch 348): the app's one result shape (was { success, data }).
     return new Promise((resolve) => {
       setTimeout(() => {
         const macros = this.getStoredMacros();
         resolve({
-          success: true,
+          ok: true,
           data: applyVoiceMacroSubstitutions(transcript, macros),
         });
       }, 200);
     });
   }
 }
+
+/** Shared instance for the services barrel (UI code imports `voiceMacroService` from '@/services'). */
+export const mockVoiceMacroService = new MockVoiceMacroService();

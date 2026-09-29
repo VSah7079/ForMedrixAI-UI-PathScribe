@@ -18,6 +18,18 @@ Cassette/slide chain-of-custody through histology processing nodes, plus the thr
 - The three queue pages are deliberately read-only/navigate — the real action (loading into a batch, disposing, releasing a hold) already lives elsewhere (`BatchDetailView`, the disposal scan action, `CaseHoldModal`/`RetentionHoldModal`), so these pages answer "what needs attention" without duplicating the action itself. `EngraverMonitorPage.tsx` is read-only for a different real reason — see its own entry above.
 - None of the three queues are stored/cached — each is derived fresh from real case/batch data every time the page loads, so nothing here can silently drift from reality. `EngraverMonitorPage.tsx` is different again: it reads real, persisted Firestore state (`engraver_devices`) on a poll interval, not a fresh per-load computation — there's nothing to "derive," the Engine's own last-reported status *is* the real, current answer.
 
+## Batch 367 (PS-74): no inline CSS
+
+`BatchDetailView.tsx`, `BatchManagementPage.tsx`, `EngraverMonitorPage.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`BatchDetailView` and `EngraverMonitorPage` take `referralTrackingService` and `cassetteColorService` from `@/services`, and are off the deployment baseline.
+
+## Batch 369
+
+`DisposalReportPage.tsx` used the Quality Assurance export helper. It now calls `utils/csv.ts` directly, because the waste-tracking report isn't one of the QA report capabilities. Its export isn't gated yet; it's on the PS-357 sweep list.
+
 ---
 *See [pages/README.md](../README.md) for how this folder fits the whole pages/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

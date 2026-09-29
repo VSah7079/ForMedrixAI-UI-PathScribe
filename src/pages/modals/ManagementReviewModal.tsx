@@ -56,7 +56,7 @@ export const ManagementReviewModal: React.FC<Props> = ({ unreviewedClosed, defic
               <label key={d.id} className="ps-mrev-item">
                 <input type="checkbox" checked={selected.has(d.id)} onChange={() => toggle(d.id)} />
                 <div className="ps-mrev-item-text">
-                  <strong>{d.caseId}</strong> — {d.specimenLabel ? t('dispatchHistoryTimeline.specimenLabel', { label: d.specimenLabel }) : t('qualityAssurance.operations.caseLevel')} — {typeName(d.deficiencyTypeId)}
+                  <strong data-phi="accession">{d.caseId}</strong> — {d.specimenLabel ? t('dispatchHistoryTimeline.specimenLabel', { label: d.specimenLabel }) : t('qualityAssurance.operations.caseLevel')} — {typeName(d.deficiencyTypeId)}
                   {!!d.reopenCount && <span className="ps-defic-reopen-badge">↺ {d.reopenCount}</span>}
                 </div>
               </label>

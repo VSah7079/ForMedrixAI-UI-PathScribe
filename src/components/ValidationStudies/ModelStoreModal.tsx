@@ -1,7 +1,9 @@
 // src/components/ValidationStudies/ModelStoreModal.tsx
 // ─────────────────────────────────────────────────────────────
 // The customer-facing half of the store workflow: browse what
-// ForMedrixAI has published, download one into the local catalog.
+// ForMedrixAI has published that this organisation hasn't adopted yet,
+// and adopt one (PS-58: an adoption record under the organisation in
+// session, never a copy of the model).
 // Opened from StudyFormModal's "AI Model Being Validated" field —
 // per the direct workflow description, this is the point where an
 // admin who got the "new model available" email actually goes to get
@@ -12,12 +14,10 @@ import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { mockModelStoreService, type StoreListing } from '../../services/models/mockModelStoreService';
-import type { AIModel, ModelVendor } from '../../services/models/IModelService';
+import type { AIModel } from '../../services/models/IModelService';
+import { MODEL_VENDOR_LABEL_KEY, modelStoreErrorLabelKey } from '../../services/models/modelLabels';
 import { isServiceOk } from '../../services/types';
-
-const VENDOR_LABEL: Record<ModelVendor, string> = {
-  anthropic: 'Anthropic', openai: 'OpenAI', google: 'Google', other: 'Other',
-};
+import { formatDate } from '../../utils/formatDate';
 
 interface ModelStoreModalProps {
   /** Fired once a download genuinely succeeds, with the new local
@@ -29,7 +29,7 @@ interface ModelStoreModalProps {
 }
 
 export const ModelStoreModal: React.FC<ModelStoreModalProps> = ({ onDownloaded, onClose }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [listings, setListings] = useState<StoreListing[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -63,9 +63,9 @@ export const ModelStoreModal: React.FC<ModelStoreModalProps> = ({ onDownloaded, 
   }, []);
 
   const handleDownload = async (listing: StoreListing) => {
-    setDownloadingId(listing.storeId);
+    setDownloadingId(listing.id);
     setError(null);
-    const res = await mockModelStoreService.download(listing.storeId);
+    const res = await mockModelStoreService.download(listing.id);
     setDownloadingId(null);
     // `res.ok === false` (strict equality) already narrows correctly even
     // under strictNullChecks: false — kept as isServiceOk()'s negation for
@@ -76,7 +76,7 @@ export const ModelStoreModal: React.FC<ModelStoreModalProps> = ({ onDownloaded, 
   };
 
   return (
-    <div className="ps-overlay" onClick={onClose} style={{ zIndex: 9600 }}>
+    <div className="ps-overlay ps-overlay--model-store" onClick={onClose}>
       <div className="ps-modal-dark msm-modal" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-dark-header">
           <span className="ps-modal-dark-title">{t('modelStoreModal.title')}</span>
@@ -87,7 +87,7 @@ export const ModelStoreModal: React.FC<ModelStoreModalProps> = ({ onDownloaded, 
             <div className="msm-auth-error">
               <div className="msm-auth-error-icon">🔒</div>
               <div className="msm-auth-error-title">{t('modelStoreModal.accessUnavailable')}</div>
-              <div className="msm-auth-error-text">{authError}</div>
+              <div className="msm-auth-error-text">{t(modelStoreErrorLabelKey(authError))}</div>
             </div>
           ) : (
             <>
@@ -109,32 +109,32 @@ export const ModelStoreModal: React.FC<ModelStoreModalProps> = ({ onDownloaded, 
 
               {error && (
                 <div className="msm-error-banner">
-                  {error}
+                  {t(modelStoreErrorLabelKey(error))}
                 </div>
               )}
 
               <div className="msm-listings">
             {listings.map(listing => (
-              <div key={listing.storeId} className="msm-listing-card">
+              <div key={listing.id} className="msm-listing-card">
                 <div className="msm-listing-row">
                   <div className="msm-listing-info">
                     <div className="msm-listing-name-row">
                       <span className="msm-listing-name">{listing.name} {listing.version}</span>
                       <span className="msm-listing-vendor">
-                        {VENDOR_LABEL[listing.vendor]}
+                        {t(MODEL_VENDOR_LABEL_KEY[listing.vendor])}
                       </span>
                     </div>
                     <div className="msm-listing-meta">
-                      {t('modelStoreModal.published', { date: listing.releaseDate, accuracy: listing.benchmarkAccuracy })}
+                      {t('modelStoreModal.published', { date: formatDate(listing.releaseDate, i18n.language), accuracy: listing.benchmarkAccuracy })}
                     </div>
                     <div className="msm-listing-notes">{listing.releaseNotes}</div>
                   </div>
                   <button
                     className="ps-conf-btn-primary msm-download-btn"
-                    disabled={downloadingId === listing.storeId}
+                    disabled={downloadingId === listing.id}
                     onClick={() => handleDownload(listing)}
                   >
-                    {downloadingId === listing.storeId ? t('modelStoreModal.downloading') : t('modelStoreModal.download')}
+                    {downloadingId === listing.id ? t('modelStoreModal.downloading') : t('modelStoreModal.download')}
                   </button>
                 </div>
               </div>

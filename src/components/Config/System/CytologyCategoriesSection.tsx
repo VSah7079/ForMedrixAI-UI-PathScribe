@@ -14,7 +14,7 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '../../../utils/csv';
 import '../../../pathscribe.css';
-import { mockCytologyCategoryService } from '../../../services/cytology/mockCytologyCategoryService';
+import { cytologyCategoryService } from '@/services';
 import type {
   CytologyCategoryEntry,
   CytologyCategorySection,
@@ -25,11 +25,7 @@ import type {
 // ─── Small chip helpers ─────────────────────────────────────────────────────
 
 const Chip: React.FC<{ label: string; color: string; filled?: boolean }> = ({ label, color, filled = true }) => (
-  <span className="ps-cytcat-chip" style={{
-    background: filled ? color + '18' : 'rgba(255,255,255,0.04)',
-    color: filled ? color : '#4b5563',
-    border: `1px solid ${filled ? color + '33' : 'rgba(255,255,255,0.06)'}`,
-  }}>
+  <span className={`ps-cytcat-chip${filled ? ' ps-cytcat-chip--filled' : ''}`} style={filled ? { '--ps-hue': color } as React.CSSProperties : undefined}>
     {label}
   </span>
 );
@@ -57,19 +53,35 @@ const SECTION_TABS: { id: CytologyCategorySection; labelKey: string }[] = [
 
 // Real, per direct guidance: closing the real, self-documented gap
 // emptyDraft's own prior comment named directly — "hasn't been
-// extended with a real nomenclature-system selector yet." All five
-// real systems ICytologyCategoryService.ts's own CytologyNomenclatureSystem
-// type already names, shown regardless of real, current seed-data
-// coverage (bscc_rcpath/munchen_iiib are fully seeded; sfcc/palga_cisoea
-// are real, separate, still-open gaps with zero entries today) — an
+// extended with a real nomenclature-system selector yet." Shown
+// regardless of real, current seed-data coverage (bscc_rcpath/
+// munchen_iiib are fully seeded; sfcc has zero entries of its own but
+// is a real, derived view over Bethesda's — see the sfcc banner and
+// cytologyCategoryService.ts's own getByNomenclatureSystem) — an
 // admin managing an as-yet-unseeded system is exactly who this
 // selector exists for.
+//
+// Real, direct fix (PS-328): 'palga_cisoea' deliberately excluded
+// here, not merely unseeded. Confirmed directly against
+// CytologyScreeningPage.tsx (PS-183): the real Dutch CISOE-A workflow
+// is a genuinely separate, hardcoded 6-axis scoring form — it never
+// reads this dictionary at all, by design (services/cytology/
+// README.md's own Phase 30 note: 'palga_cisoea' "exists purely as the
+// real, effective-settings signal... not a tag on any real
+// CytologyCategoryEntry row"). Unlike sfcc/bscc_rcpath/munchen_iiib
+// above, there is no future state where an admin adding entries here
+// would do anything — showing it here previously let an admin
+// populate categories under "PALGA CISOE-A" that no real workflow
+// would ever read. The facility-level choice of CISOE-A as a site's
+// reporting system is still made in
+// CytologyNomenclatureSettingsSection.tsx, unaffected by this — that
+// selector's 'palga_cisoea' option is a real, effective-settings
+// signal, not a promise that this dictionary has entries for it.
 const NOMENCLATURE_SYSTEMS: { id: CytologyNomenclatureSystem; labelKey: string }[] = [
   { id: 'bethesda', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.bethesda' },
   { id: 'bscc_rcpath', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.bsccRcpath' },
   { id: 'munchen_iiib', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.munchenIiib' },
   { id: 'sfcc', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.sfcc' },
-  { id: 'palga_cisoea', labelKey: 'cytologyCategoriesSection.nomenclatureSystems.palgaCisoea' },
 ];
 
 // ─── Draft / modal ───────────────────────────────────────────────────────────
@@ -110,7 +122,7 @@ const CategoryModal: React.FC<{
 
         {/* Real, per direct guidance on SFCC (France): SFCC has no
             entries of its own — it's these same Bethesda entries with
-            French text substituted (mockCytologyCategoryService.ts's
+            French text substituted (cytologyCategoryService.ts's
             own getByNomenclatureSystem). Editable only here, on the
             real Bethesda record, never through a derived SFCC view —
             editing a derived row would silently overwrite the
@@ -201,9 +213,9 @@ const CytologyCategoriesSection: React.FC = () => {
     // Real, per this file's own direct fix — fetches the real,
     // correctly-scoped set for whichever system is selected. For
     // 'sfcc' this returns Bethesda's own entries with French text
-    // substituted (mockCytologyCategoryService's own real, derived
+    // substituted (cytologyCategoryService's own real, derived
     // view) — never a second, independently-stored set.
-    mockCytologyCategoryService.getByNomenclatureSystem(nomenclatureSystem).then(res => {
+    cytologyCategoryService.getByNomenclatureSystem(nomenclatureSystem).then(res => {
       if (res.ok) setEntries(res.data);
       setLoading(false);
     });
@@ -213,17 +225,17 @@ const CytologyCategoriesSection: React.FC = () => {
 
   const handleSave = async (draft: Draft) => {
     if (modal?.mode === 'add') {
-      await mockCytologyCategoryService.add(draft);
+      await cytologyCategoryService.add(draft);
     } else if (modal?.entry) {
-      await mockCytologyCategoryService.update(modal.entry.id, draft);
+      await cytologyCategoryService.update(modal.entry.id, draft);
     }
     refresh();
     setModal(null);
   };
 
   const toggleActive = async (entry: CytologyCategoryEntry) => {
-    if (entry.active) await mockCytologyCategoryService.deactivate(entry.id);
-    else await mockCytologyCategoryService.reactivate(entry.id);
+    if (entry.active) await cytologyCategoryService.deactivate(entry.id);
+    else await cytologyCategoryService.reactivate(entry.id);
     refresh();
   };
 
@@ -240,7 +252,7 @@ const CytologyCategoriesSection: React.FC = () => {
   const importFileInputRef = useRef<HTMLInputElement>(null);
 
   const handleExportFrenchTranslations = async () => {
-    const res = await mockCytologyCategoryService.getByNomenclatureSystem('bethesda');
+    const res = await cytologyCategoryService.getByNomenclatureSystem('bethesda');
     if (!res.ok) return;
     const rows = res.data.map(e => ({
       Id: e.id, Section: e.section, EnglishLabel: e.label, EnglishDescription: e.description ?? '',
@@ -263,7 +275,7 @@ const CytologyCategoriesSection: React.FC = () => {
       if (!id) continue;
       const labelFr = String(row['FrenchLabel'] ?? '').trim();
       const descriptionFr = String(row['FrenchDescription'] ?? '').trim();
-      await mockCytologyCategoryService.update(id, {
+      await cytologyCategoryService.update(id, {
         labelFr: labelFr || undefined,
         descriptionFr: descriptionFr || undefined,
       });

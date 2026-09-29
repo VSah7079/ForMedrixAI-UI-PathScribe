@@ -59,6 +59,24 @@ must never depend on a type defined in `components/`).
   — is real, separate backend work this app doesn't have, per the
   RFP's own "Backend need" note for this gap.
 
+## qaExport.ts (Batch 369, PS-355)
+
+`exportQaReport(capability, rows, filename, { authorization, deliver? })` is the one path for Quality Assurance CSV exports:
+- it checks the report's own capability through `authorization.enforce` (audited, allowed or refused);
+- it produces the file only when allowed.
+
+Each of the 14 QA reports has its own `qa:<report>:export` capability. The tabs reach this through `components/QualityAssurance/qaReportUtils.exportQaReportRows(capability, rows, filename)`.
+
+## Batch 370 (PS-356): facility scope
+
+`exportQaReport` now requires a context. `qaScopeContext(scope)` maps the tab's scope to it:
+- a client scope is that one facility;
+- an organisation or enterprise scope, or no scope switcher, is all facilities.
+
+Someone whose staff assignment is limited to some facilities can therefore export only a client scope within their facilities. Organisation scopes are refused rather than resolved to their facilities; that is the safe reading.
+
+**Found, not fixed:** `caseMatchesScope`'s client branch matches `order.clientId`, which no seeded case has. Cases carry `order.facilityId`, so a client scope currently matches no cases.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

@@ -39,6 +39,30 @@ export interface ResidentCountersignCheckInput {
    *  cases never carry, so those existing callers (useSignOutWorkflow.ts,
    *  signAutopsyReport.ts) are unaffected and never need to pass it. */
   hasActiveCytotechCompetencyAssignment?: boolean;
+  /** Real, per PS-327 ("requiresCountersign gating also resolves per-lab
+   *  through the same mechanism" as canFinalizeCase's own authorityOverrides
+   *  resolution): participation-type ids whose real
+   *  ParticipationTypeRecord.requiresCountersign flag resolves true for
+   *  this case's performing lab — already resolved by the caller via
+   *  resolveCountersignRequiredTypeIds() (services/auth/caseAccessControl.ts),
+   *  same real per-lab resolution canFinalizeCase() uses, reused rather than
+   *  re-derived here. This function stays synchronous/pure by design (see
+   *  the file header) — it never resolves participation types or a
+   *  performing lab itself.
+   *
+   *  Optional, defaulting to undefined/empty: a caller not yet updated to
+   *  pass this sees ZERO change in behavior — the existing hardcoded
+   *  'resident'/cytotechnologist checks below are completely untouched by
+   *  this field either way. Additive only: this generalizes those two
+   *  hardcoded, built-in checks to ANY admin-defined participation type
+   *  whose own requiresCountersign flag is configured true (a
+   *  jurisdiction-specific junior role, for instance) — 'resident' itself
+   *  already has requiresCountersign:true in real seed data, so a real
+   *  caller passing this correctly never double-fires anything new for
+   *  today's built-in resident workflow; the isResidentParticipant check
+   *  below still matches first and returns before this one is even
+   *  evaluated. */
+  countersignRequiredTypeIds?: string[];
 }
 
 export interface ResidentCountersignCheckResult {
@@ -49,11 +73,11 @@ export interface ResidentCountersignCheckResult {
    *  false. A caller resolving who the reviewer is (attending
    *  participant vs. FPPE proctor) branches on this same distinction,
    *  so it's returned rather than re-derived. */
-  reason?: 'resident' | 'fppe' | 'cytotech_competency';
+  reason?: 'resident' | 'fppe' | 'cytotech_competency' | 'configured_type';
 }
 
 export function resolveResidentCountersignRequired(input: ResidentCountersignCheckInput): ResidentCountersignCheckResult {
-  const { participants, signingUserId, hasActiveFppeAssignment, hasActiveCytotechCompetencyAssignment } = input;
+  const { participants, signingUserId, hasActiveFppeAssignment, hasActiveCytotechCompetencyAssignment, countersignRequiredTypeIds } = input;
 
   const isAttendingToo = participants?.some(
     p => p.status === 'active' && p.staffId === signingUserId && p.participationTypeIds?.includes('attending')
@@ -72,6 +96,20 @@ export function resolveResidentCountersignRequired(input: ResidentCountersignChe
   ) ?? false;
 
   if (isResidentParticipant) return { required: true, reason: 'resident' };
+
+  // Real, per PS-327: generalizes the hardcoded isResidentParticipant
+  // check above to any admin-defined participation type whose own
+  // (per-performing-lab) requiresCountersign flag resolves true — see
+  // this input field's own doc comment above for the full gap this
+  // closes. Checked in the same "static type-based, not time-window-
+  // based" tier as the resident check, before the FPPE/cytotech
+  // assignment-based checks below.
+  const isConfiguredCountersignParticipant = participants?.some(
+    p => p.status === 'active' && p.staffId === signingUserId &&
+      p.participationTypeIds?.some(id => countersignRequiredTypeIds?.includes(id))
+  ) ?? false;
+  if (isConfiguredCountersignParticipant) return { required: true, reason: 'configured_type' };
+
   if (hasActiveFppeAssignment) return { required: true, reason: 'fppe' };
 
   // Real, per direct follow-up: the same real gap this whole fix

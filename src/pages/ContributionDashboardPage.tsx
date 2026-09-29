@@ -32,20 +32,16 @@ import type {
   KpiTile,
 } from "../types/ContributionDashboard";
 import { getOrgOrchestratorDefault } from "@components/Config/AI/orchestratorModeConfig";
-import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { VOICE_CONTEXT } from '../constants/systemActions';
-import { useNavigate } from 'react-router-dom';
-import { specimenDeficiencyService, deficiencyTypeService, qaActivityRecordService, intraoperativeService, subspecialtyService, countersignService, qaSupervisionAssignmentService, qaSupervisionAssignmentTypeService } from '../services';
+import { useNavigate } from 'react-router';
+import { actionRegistryService, rvuCodeMapService, tatTargetService, specimenDeficiencyService, deficiencyTypeService, qaActivityRecordService, intraoperativeService, subspecialtyService, countersignService, qaSupervisionAssignmentService, qaSupervisionAssignmentTypeService } from '../services';
 import type { Subspecialty } from '../services';
 import { caseRouter } from '../services/cases/CaseRouter';
-import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '../services/quality/mockQaActivityTypeService';
-import { computeOverviewKpis, computeCaseMixData, computeOrgWideTatPerformance, computeRvu30, computeWeeklyDaily, type RealOverviewKpis, type RealCaseMixData, type RealTatPerformance, type RealRvu30, type RealDailyRvu } from './contributionDashboardCalculations';
-import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '../services/quality/reconciliationRecordMapping';
+import { computeOverviewKpis, computeCaseMixData, computeOrgWideTatPerformance, computeRvu30, computeWeeklyDaily, computeTopQualityFlags, type RealOverviewKpis, type RealCaseMixData, type RealTatPerformance, type RealRvu30, type RealDailyRvu } from './contributionDashboardCalculations';
 import { specimenDictionaryService } from '@/services';
-import { TAT_STORAGE_KEY, SYSTEM_DEFAULTS as TAT_SYSTEM_DEFAULTS } from '@components/Config/System/TATConfigSection';
-import type { TatEntryForResolution } from '@components/Contribution/qualityCalculations';
 import { toCsv, downloadCsv } from '../utils/csv';
-import type { SpecimenDeficiency, DeficiencyType } from '../services/deficiencies/IDeficiencyService';
+import type { DeficiencyType } from '../services/deficiencies/IDeficiencyService';
 import type { QaSupervisionAssignment } from '@/types/quality/QaSupervisionAssignment';
 import type { QaSupervisionAssignmentType } from '@/types/quality/QaSupervisionAssignmentType';
 import { buildSubspecialtyBreakdown, applyExpectedCaseMix, describeSupervisionProgress, buildCaseMixExportRows } from '@components/Contribution/caseMixCalculations';
@@ -380,22 +376,15 @@ const ContributionDashboardPage: React.FC = () => {
   const finalCaseLabel = getOrgOrchestratorDefault() ? t('contributionDashboard.finalCaseLabelSignedOut') : t('contributionDashboard.finalCaseLabelFinalised');
 
   // ── Quality Flags — real data, not the 3 permanently-fixed fake ───────────
-  // entries this used to show. Severity isn't a real field anywhere on
-  // SpecimenDeficiency (checked — it genuinely doesn't exist), so it's
-  // derived here from real, existing signals rather than invented:
-  // overdue pending-verification or anything reopened at least once
-  // reads as high, a fresh open item as medium, anything else shown
-  // (non-overdue pending-verification) as low.
-  //
-  // Filtered to the current pathologist — previously this called
-  // specimenDeficiencyService.getAll()/discordanceService.getAll() with
-  // zero scoping, meaning "My Contribution" was silently showing
-  // department-wide data mislabeled as personal. Deficiencies are
-  // cross-referenced by caseId to the case's own order.assignedTo (not
-  // SpecimenDeficiency.raisedBy, which is often a tech/accessioner
-  // flagging the issue, not the case's owning pathologist — the wrong
-  // signal for "is this MY quality issue"). Discordances use
-  // recordedBy.userId directly, since that's genuinely who reconciled it.
+  // entries this used to show. Real fix, found by this app's own
+  // inline-CSS/business-logic sweep: the scoring/scoping/top-3 selection
+  // itself now delegates to contributionDashboardCalculations.ts's shared,
+  // tested computeTopQualityFlags() — see that function's own header for
+  // the full rationale (severity derivation, per-pathologist scoping,
+  // low-severity discordance exclusion). This effect's own job is now
+  // just fetching the real data and wiring each real candidate to its
+  // real navigation target (deficiencies queue vs. case synoptic view) —
+  // the one genuinely React-specific piece that stays here.
   const [qualityFlags, setQualityFlags] = useState<ContributionFlag[]>([]);
   useEffect(() => {
     if (!user?.id) return;
@@ -405,52 +394,24 @@ const ContributionDashboardPage: React.FC = () => {
     ]).then(([defRes, typeRes, discRes, casesRes]) => {
       if (!defRes.ok) return;
       const types: DeficiencyType[] = typeRes.ok ? typeRes.data : [];
-      const typeName = (id: string) => types.find(t => t.id === id)?.name ?? id;
-      const isOverdue = (d: SpecimenDeficiency) => !!d.verificationDueDate && new Date(d.verificationDueDate).getTime() < Date.now();
+      const typeNameById = Object.fromEntries(types.map(t => [t.id, t.name]));
 
-      const myCaseIds = new Set(
-        (casesRes.ok ? casesRes.data : [])
-          .filter((c) => c?.order?.assignedTo === user.id)
-          .map((c) => c.id)
+      const candidates = computeTopQualityFlags(
+        defRes.data,
+        typeNameById,
+        discRes.ok ? discRes.data : [],
+        FROZEN_FINAL_ACTIVITY_TYPE_ID,
+        casesRes.ok ? casesRes.data : [],
+        user.id,
       );
 
-      const deficiencyFlags: (ContributionFlag & { sortKey: string; score: number })[] = defRes.data
-        .filter(d => d.status !== 'closed' && myCaseIds.has(d.caseId))
-        .map(d => ({
-          id: d.id,
-          label: d.caseId,
-          value: `${typeName(d.deficiencyTypeId)}${d.specimenLabel ? ` — Specimen ${d.specimenLabel}` : ' — case-level'}`,
-          severity: (isOverdue(d) || (d.reopenCount ?? 0) > 0) ? 'high' : d.status === 'open' ? 'medium' : 'low',
-          onClick: () => navigate(`/deficiencies?open=${d.id}`),
-          sortKey: d.raisedAt,
-          score: (isOverdue(d) || (d.reopenCount ?? 0) > 0) ? 2 : d.status === 'open' ? 1 : 0,
-        }));
-
-      // Real Frozen-to-Permanent discordance records now feed this same
-      // list — this widget's own subtitle ("documentation or concordance
-      // issues") already promised this; it just had nothing behind the
-      // concordance half until discordanceService existed. Only high/
-      // medium severity surface here — low (Tier 1, no clinical impact)
-      // isn't the kind of thing that belongs in a short, urgent flag list.
-      const discordanceFlags: (ContributionFlag & { sortKey: string; score: number })[] = discRes.ok
-        ? discRes.data
-            .filter(d => d.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID && d.outcome === 'discordant' && d.severity !== 'low' && d.recordedBy?.userId === user.id)
-            .map(d => ({
-              id: d.id,
-              label: d.caseId,
-              value: `Frozen/Final discordance — ${d.caseType}`,
-              severity: d.severity,
-              onClick: () => navigate(`/case/${d.caseId}/synoptic`),
-              sortKey: d.recordedAt,
-              score: d.severity === 'high' ? 2 : 1,
-            }))
-        : [];
-
-      const relevant = [...deficiencyFlags, ...discordanceFlags]
-        .sort((a, b) => b.score - a.score || b.sortKey.localeCompare(a.sortKey))
-        .slice(0, 3);
-
-      setQualityFlags(relevant.map(({ sortKey: _sortKey, score: _score, ...flag }) => flag));
+      setQualityFlags(candidates.map(flag => ({
+        id: flag.id,
+        label: flag.caseId,
+        value: flag.value,
+        severity: flag.severity,
+        onClick: () => navigate(flag.kind === 'deficiency' ? `/deficiencies?open=${flag.id}` : `/case/${flag.caseId}/synoptic`),
+      })));
     });
   }, [user?.id]);
 
@@ -465,9 +426,10 @@ const ContributionDashboardPage: React.FC = () => {
     if (!user?.id) return;
     Promise.all([
       caseRouter.getAll(undefined, { includeOrchestration: true, bypassAccessControl: true }),
-      mockRvuCodeMapService.getAllVersions(),
+      rvuCodeMapService.getAllVersions(),
       specimenDictionaryService.getAll(),
-    ]).then(([res, versionsRes, dictionaryRes]) => {
+      tatTargetService.getAll(),
+    ]).then(([res, versionsRes, dictionaryRes, tatRes]) => {
       if (!res.ok) return;
       const versions = versionsRes.ok ? versionsRes.data : [];
       const dictionaryEntries = dictionaryRes.ok ? dictionaryRes.data : [];
@@ -475,12 +437,7 @@ const ContributionDashboardPage: React.FC = () => {
       setCaseMixData(computeCaseMixData(res.data, user.id));
       setRvu30(computeRvu30(res.data, user.id, versions, new Date(), dictionaryEntries));
       setWeeklyDaily(computeWeeklyDaily(res.data, user.id, config.facilityTimezone, versions, new Date(), dictionaryEntries));
-      const tatEntries = (() => {
-        try {
-          const raw = localStorage.getItem(TAT_STORAGE_KEY);
-          return raw ? JSON.parse(raw) : TAT_SYSTEM_DEFAULTS;
-        } catch { return TAT_SYSTEM_DEFAULTS; }
-      })() as TatEntryForResolution[];
+      const tatEntries = tatRes.ok ? tatRes.data : [];
       // Real fix: org-wide aggregate, deliberately not filtered to this
       // user's own cases the way overviewKpis/caseMixData are - matches
       // TatPerformanceTile's own "weighted across N clients" framing.
@@ -640,8 +597,8 @@ const ContributionDashboardPage: React.FC = () => {
   // set. Fixed to match, same one-line pattern every other page uses
   // for its own real context.
   useEffect(() => {
-    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.CONTRIBUTION);
-    return () => mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
+    actionRegistryService.setCurrentContext(VOICE_CONTEXT.CONTRIBUTION);
+    return () => actionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
   }, []);
 
   return (

@@ -48,7 +48,7 @@ const CommentDrawer: React.FC<CommentDrawerProps> = ({ title, comments, showPrin
             />
           </div>
           {showPrintToggle && (
-            <label className="ps-microtomy-checkbox-label" style={{ marginTop: 8 }}>
+            <label className="ps-microtomy-checkbox-label ps-mt-8">
               <input type="checkbox" checked={printsOnLabel} onChange={e => setPrintsOnLabel(e.target.checked)} />
               {t('microtomyWorkstation.comments.printOnLabel')}
             </label>

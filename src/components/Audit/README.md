@@ -81,5 +81,12 @@
   `InterfaceExceptionReviewModal.tsx`. See
   `services/patients/README.md` for the full backend story.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+- `BreakGlassRebindModal.tsx`: the downtime-record picker is tagged; its option text ("name — MRN …") is now translated (`breakGlassRebindModal.downtimeOption`).
+- `InterfaceExceptionReviewModal.tsx`: the case number in each candidate row is tagged.
+- `BreakGlassRebindModal.tsx` and `InterfaceExceptionReviewModal.tsx` still import `mockPatientIndexService` directly: `@/services` doesn't export it yet.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

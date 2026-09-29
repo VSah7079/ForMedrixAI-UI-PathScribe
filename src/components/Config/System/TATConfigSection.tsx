@@ -50,66 +50,23 @@
 import React, { useState, useMemo, useEffect } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import type { TFunction } from 'i18next';
-import { subspecialtyService, qaActivityTypeService } from '../../../services';
+import { subspecialtyService, qaActivityTypeService, facilityService, tatTargetService } from '../../../services';
 import type { QaActivityType } from '@/types/quality/QaActivityType';
 import { useSpecimenDictionary } from './useSpecimenDictionary';
-import { mockFacilityService } from '../../../services/facilities/mockFacilityService';
 import { getActivePerformingLabs } from '@/utils/performingLabs';
-import { specificityScore, resolveTatEntry } from '@/components/Contribution/qualityCalculations';
+import { specificityScore, resolveTatEntry } from '@/services/tatConfig/tatTargetResolution';
 import '../../../pathscribe.css';
 import { useAuditLog } from '../../Audit/useAuditLog';
 
 
 // ── Types ─────────────────────────────────────────────────────────────────────
-
-export type TATType =
-  | 'FIRST_TOUCH'
-  | 'TOTAL_CASE'
-  | 'FROZEN_SECTION'
-  | 'COLD_ISCHEMIA'
-  | 'GROSSING'
-  | 'SIGN_OUT'
-  | 'CONSULTATION_RESPONSE'   // How fast I respond to colleagues' requests
-  | 'CONSULTATION_AWAITING';  // How long I wait for colleagues' responses
-
-export type TATUrgency = 'ROUTINE' | 'STAT';
-
-export interface TATEntry {
-  id:             string;
-  /** Real, deliberate widening (PS-116): was strictly `TATType` — a
-   *  fixed, closed union of clinical-workflow measurements. A real QA
-   *  Activity Type (PS-113/114/115) is dynamic and open-ended by
-   *  design (an admin can Duplicate a new one at any time with no
-   *  code change), so it can never be a member of a closed union.
-   *  Still holds a real `TATType` value for every existing clinical-
-   *  workflow entry — resolveTatTargetHours (qualityCalculations.ts)
-   *  already treated this as a plain `string`, confirmed directly, so
-   *  this widening changes zero resolution behavior for those entries.
-   *  See getTatTypeLabel/getTatTypeDescription below for how a value
-   *  that isn't a real TATType resolves to a real QA Activity Type's
-   *  own name instead. */
-  type:           string;
-  targetHours:    number;
-  urgency:        TATUrgency | null;   // null = all urgency levels
-  facilityId:       string | null;       // null = all ordering/referring facilities
-  /**
-   * Real, per direct guidance: a genuinely separate dimension from
-   * facilityId above, not a replacement for it — facilityId is the
-   * ORDERING/REFERRING facility (who sent the case); this is the real
-   * performing lab actually doing the work. A performing lab's own
-   * general TAT policy and a specific ordering facility's own
-   * contractual TAT agreement can both apply, independently — see
-   * qualityCalculations.ts's own TatEntryForResolution for the full
-   * account of how both are resolved together.
-   */
-  performingLabFacilityId: string | null;
-  specimenId:     string | null;       // null = all specimens
-  subspecialtyId: string | null;       // null = all subspecialties
-  roleId:         string | null;       // null = all roles; e.g. 'Resident', 'Pathologist'
-  active:         boolean;
-  notes:          string;
-  createdAt:      string;
-}
+// Defined in types/quality/TatConfigEntry.ts (Batch 317); re-exported so
+// existing imports from this file keep working.
+export type { TATType, TATUrgency, TATEntry } from '@/types/quality/TatConfigEntry';
+import type { TATType, TATUrgency, TATEntry } from '@/types/quality/TatConfigEntry';
+import { buildTatEntry } from '@/services/tatConfig/tatConfigRules';
+import { isSystemDefaultTatEntryId } from '@/services/tatConfig/systemDefaultTatEntries';
+import { duplicateTatEntry } from '@/services/duplication/duplicateEntities';
 
 const TAT_TYPES: TATType[] = [
   'FIRST_TOUCH', 'TOTAL_CASE', 'FROZEN_SECTION',
@@ -202,64 +159,13 @@ function getTatTypeDescription(type: string, qaActivityTypesById: Map<string, { 
   return qaType?.description ? t('tatConfigSection.qaActivityDescPrefix', { description: qaType.description }) : undefined;
 }
 
-// ── System defaults ───────────────────────────────────────────────────────────
-
-export const SYSTEM_DEFAULTS: TATEntry[] = [
-  { id: 'sys-ft-r',  type: 'FIRST_TOUCH',    targetHours: 4,    urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-ft-s',  type: 'FIRST_TOUCH',    targetHours: 1,    urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-tc-r',  type: 'TOTAL_CASE',     targetHours: 24,   urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-tc-s',  type: 'TOTAL_CASE',     targetHours: 4,    urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-fs-r',  type: 'FROZEN_SECTION', targetHours: 0.5,  urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-fs-s',  type: 'FROZEN_SECTION', targetHours: 0.33, urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-ci',    type: 'COLD_ISCHEMIA',  targetHours: 1,    urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-gr-r',  type: 'GROSSING',       targetHours: 4,    urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-gr-s',  type: 'GROSSING',       targetHours: 2,    urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null, active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-so-r',  type: 'SIGN_OUT',              targetHours: 4,    urgency: 'ROUTINE', facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null,           active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-so-s',  type: 'SIGN_OUT',              targetHours: 2,    urgency: 'STAT',    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null,           active: true, notes: 'System default', createdAt: '2024-01-01T00:00:00Z' },
-  // Consultation — Response (how fast I reply to requests sent to me)
-  { id: 'sys-cr-res',type: 'CONSULTATION_RESPONSE', targetHours: 24,   urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'Resident',     active: true, notes: 'Resident / Fellow — training programme standard', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-cr-pat',type: 'CONSULTATION_RESPONSE', targetHours: 48,   urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'Pathologist',  active: true, notes: 'Pathologist — informal peer review', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-cr-ext',type: 'CONSULTATION_RESPONSE', targetHours: 120,  urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'External',     active: true, notes: 'External / formal consult — 5 working days', createdAt: '2024-01-01T00:00:00Z' },
-  // Consultation — Awaiting (how long before I chase up outstanding requests)
-  { id: 'sys-ca-res',type: 'CONSULTATION_AWAITING', targetHours: 24,   urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'Resident',     active: true, notes: 'Resident / Fellow — escalate if no response', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-ca-pat',type: 'CONSULTATION_AWAITING', targetHours: 48,   urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'Pathologist',  active: true, notes: 'Pathologist — chase after 48h', createdAt: '2024-01-01T00:00:00Z' },
-  { id: 'sys-ca-ext',type: 'CONSULTATION_AWAITING', targetHours: 120,  urgency: null,      facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: 'External',     active: true, notes: 'External / formal consult — 5 working days', createdAt: '2024-01-01T00:00:00Z' },
-];
-
 // ── Storage ───────────────────────────────────────────────────────────────────
-
-export const TAT_STORAGE_KEY = 'pathscribe_tat_entries_v2'; // v2: added roleId + consultation types
-
-function loadEntries(): TATEntry[] {
-  try {
-    const raw = localStorage.getItem(TAT_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : SYSTEM_DEFAULTS;
-  } catch { return SYSTEM_DEFAULTS; }
-}
-
-function saveEntries(entries: TATEntry[]) {
-  try { localStorage.setItem(TAT_STORAGE_KEY, JSON.stringify(entries)); } catch {}
-}
+// Batch 353: the targets (and the built-in defaults) are owned by
+// tatTargetService (services/tatConfig/); this screen no longer keeps them
+// in browser storage.
 
 // ── Uniqueness guard ──────────────────────────────────────────────────────────
-
-function findConflict(
-  entries: TATEntry[],
-  draft: Partial<TATEntry>,
-  excludeId?: string
-): TATEntry | null {
-  return entries.find(e =>
-    e.active &&
-    e.id !== excludeId &&
-    e.type           === draft.type &&
-    e.urgency        === (draft.urgency ?? null) &&
-    e.facilityId       === (draft.facilityId ?? null) &&
-    e.performingLabFacilityId === (draft.performingLabFacilityId ?? null) &&
-    e.specimenId     === (draft.specimenId ?? null) &&
-    e.subspecialtyId === (draft.subspecialtyId ?? null) &&
-    e.roleId         === (draft.roleId ?? null)
-  ) ?? null;
-}
+// findTatConflict / buildTatEntry live in services/tatConfig/tatConfigRules.ts.
 
 // ── Hours formatter ───────────────────────────────────────────────────────────
 
@@ -296,6 +202,8 @@ function blankDraft(): Partial<TATEntry> {
 // ── Add/Edit Modal ────────────────────────────────────────────────────────────
 
 interface ModalProps {
+  /** 'add' also covers Duplicate, which passes a pre-filled entry. */
+  mode:         'add' | 'edit';
   entry?:       TATEntry;
   entries:      TATEntry[];
   facilities:      { id: string; name: string }[];
@@ -309,10 +217,10 @@ interface ModalProps {
 }
 
 const TATModal: React.FC<ModalProps> = ({
-  entry, entries, facilities, labs, specimens, subspecialties, qaActivityTypes, qaActivityTypesById, onSave, onClose
+  mode, entry, entries, facilities, labs, specimens, subspecialties, qaActivityTypes, qaActivityTypesById, onSave, onClose
 }) => {
   const { t } = useTranslation();
-  const isEdit = !!entry;
+  const isEdit = mode === 'edit';
   const [draft, setDraft] = useState<Partial<TATEntry>>(
     entry ? { ...entry } : blankDraft()
   );
@@ -321,45 +229,30 @@ const TATModal: React.FC<ModalProps> = ({
   const set = <K extends keyof TATEntry>(k: K, v: TATEntry[K]) =>
     setDraft(d => ({ ...d, [k]: v }));
 
+  // Validation, the scope-conflict check and add-vs-edit (by mode, never by
+  // whether an entry was passed in) live in services/tatConfig/tatConfigRules.ts.
   const handleSave = () => {
-    if (!draft.type) { setError(t('tatConfigSection.modal.errorTypeRequired')); return; }
-    if (!draft.targetHours || draft.targetHours <= 0) {
-      setError(t('tatConfigSection.modal.errorHoursRequired'));
+    const result = buildTatEntry(draft, mode, entry, entries, {
+      now: new Date().toISOString(),
+      newId: () => 'tat-' + Date.now(),
+    });
+    if (result.ok === false) {
+      if (result.error === 'typeRequired') setError(t('tatConfigSection.modal.errorTypeRequired'));
+      else if (result.error === 'hoursRequired') setError(t('tatConfigSection.modal.errorHoursRequired'));
+      else if (result.conflict) {
+        setError(
+          t('tatConfigSection.modal.conflictError', {
+            type: getTatTypeLabel(result.conflict.type, qaActivityTypesById, t),
+            urgency: urgencyLabel(result.conflict.urgency, t),
+          })
+        );
+      }
       return;
     }
-    const conflict = findConflict(entries, draft, entry?.id);
-    if (conflict) {
-      setError(
-        t('tatConfigSection.modal.conflictError', {
-          type: getTatTypeLabel(conflict.type, qaActivityTypesById, t),
-          urgency: urgencyLabel(conflict.urgency, t),
-        })
-      );
-      return;
-    }
-    const now = new Date().toISOString();
-    const saved: TATEntry = {
-      id:             entry?.id ?? ('tat-' + Date.now()),
-      type:           draft.type!,
-      targetHours:    draft.targetHours!,
-      urgency:        draft.urgency ?? null,
-      facilityId:       draft.facilityId ?? null,
-      performingLabFacilityId: draft.performingLabFacilityId ?? null,
-      specimenId:     draft.specimenId ?? null,
-      subspecialtyId: draft.subspecialtyId ?? null,
-      // No form UI sets this yet — same null-default pattern as the
-      // other scoping fields above; TATEntry itself already supports
-      // per-role targets (see seed data), just not exposed in this
-      // form's UI.
-      roleId:         null,
-      active:         draft.active ?? true,
-      notes:          draft.notes ?? '',
-      createdAt:      entry?.createdAt ?? now,
-    };
-    onSave(saved);
+    onSave(result.entry);
   };
 
-  const isSystem = entry?.id?.startsWith('sys-');
+  const isSystem = isEdit && !!entry?.id && isSystemDefaultTatEntryId(entry.id);
 
   return (
     <div className="ps-conf-backdrop">
@@ -688,7 +581,7 @@ const ResolutionSimulator: React.FC<SimulatorProps> = ({
               <>
                 <span className="ps-tat-sim-target">{formatHours(match.targetHours, t)}</span>
                 <span className="ps-tat-sim-source">
-                  {match.id.startsWith('sys-') ? t('tatConfigSection.simulator.sourceSystemDefault') : t('tatConfigSection.simulator.sourceCustomRule')}
+                  {isSystemDefaultTatEntryId(match.id) ? t('tatConfigSection.simulator.sourceSystemDefault') : t('tatConfigSection.simulator.sourceCustomRule')}
                   {match.notes && ' · ' + match.notes}
                 </span>
               </>
@@ -706,7 +599,9 @@ const ResolutionSimulator: React.FC<SimulatorProps> = ({
 
 const TATConfigSection: React.FC = () => {
   const { t } = useTranslation();
-  const [entries,   setEntries]   = useState<TATEntry[]>(loadEntries);
+  const [entries,   setEntries]   = useState<TATEntry[]>([]);
+  const reloadEntries = () => tatTargetService.getAll().then(res => { if (res.ok) setEntries(res.data); });
+  useEffect(() => { reloadEntries(); }, []);
   const { log } = useAuditLog();
   const [modal,     setModal]     = useState<{ mode: 'add' | 'edit'; entry?: TATEntry } | null>(null);
   const [filter,    setFilter]    = useState<string>('ALL');
@@ -758,7 +653,7 @@ const TATConfigSection: React.FC = () => {
 
   const [allFacilities, setAllFacilities] = useState<{ id: string; name: string }[]>([]);
   useEffect(() => {
-    mockFacilityService.getAll().then(res => {
+    facilityService.getAll().then(res => {
       if (res.ok) {
         setAllFacilities(
           res.data
@@ -788,40 +683,33 @@ const TATConfigSection: React.FC = () => {
     [subspecialties]
   );
 
-  const persist = (next: TATEntry[]) => { setEntries(next); saveEntries(next); };
-
-  const handleSave = (saved: TATEntry) => {
-    const idx   = entries.findIndex(e => e.id === saved.id);
-    if (idx >= 0) {
-      const next = [...entries];
-      next[idx] = saved;
-      persist(next);
-      log('tat_entry_updated', { id: saved.id, type: saved.type, changes: [`targetHours: ${saved.targetHours}h`] });
-    } else {
-      persist([...entries, saved]);
-      log('tat_entry_created', { type: saved.type, targetHours: saved.targetHours, facilityId: saved.facilityId ?? null, roleId: (saved as any).roleId ?? null });
+  // Batch 353: saves go through tatTargetService. Add vs update comes from
+  // the editor's mode (a duplicate is an add), not from whether the id is
+  // already in the list; the service refuses to delete a system default.
+  const handleSave = async (saved: TATEntry) => {
+    const mode = modal?.mode ?? 'add';
+    const res = mode === 'edit' ? await tatTargetService.update(saved) : await tatTargetService.add(saved);
+    if (res.ok) {
+      if (mode === 'edit') log('tat_entry_updated', { id: saved.id, type: saved.type, changes: [`targetHours: ${saved.targetHours}h`] });
+      else log('tat_entry_created', { type: saved.type, targetHours: saved.targetHours, facilityId: saved.facilityId ?? null, roleId: saved.roleId ?? null });
     }
+    await reloadEntries();
     setModal(null);
   };
 
-  // Real fix, found via a direct audit: these are the actual, wired
-  // functions the Delete/Toggle buttons below call — but a separate,
-  // never-wired duplicate pair (_handleEntryDelete/_handleEntryToggle,
-  // now removed) had audit log() calls these never did. Neither version
-  // was strictly complete on its own: this pair had the real
-  // system-default protection below, the duplicates had the logging.
-  // Merged here rather than picking one side and losing the other.
-  const toggleActive = (id: string) => {
+  const toggleActive = async (id: string) => {
     const target = entries.find(e => e.id === id);
-    persist(entries.map(e => e.id === id ? { ...e, active: !e.active } : e));
-    if (target) log('tat_entry_toggled', { id, type: target.type, active: !target.active });
+    if (!target) return;
+    const res = await tatTargetService.update({ ...target, active: !target.active });
+    if (res.ok) log('tat_entry_toggled', { id, type: target.type, active: !target.active });
+    await reloadEntries();
   };
 
-  const deleteEntry = (id: string) => {
-    if (id.startsWith('sys-')) return; // system defaults cannot be deleted
+  const deleteEntry = async (id: string) => {
     const target = entries.find(e => e.id === id);
-    persist(entries.filter(e => e.id !== id));
-    if (target) log('tat_entry_deleted', { id, type: target.type });
+    const res = await tatTargetService.remove(id);
+    if (res.ok && target) log('tat_entry_deleted', { id, type: target.type });
+    await reloadEntries();
   };
 
   const displayed = entries
@@ -886,7 +774,7 @@ const TATConfigSection: React.FC = () => {
   // specific Performing Facility's own section — one real
   // implementation, not one copy per section that could drift.
   const renderRow = (e: TATEntry) => {
-    const isSystem = e.id.startsWith('sys-');
+    const isSystem = isSystemDefaultTatEntryId(e.id);
     const scopeParts = [
       labName(e.performingLabFacilityId),
       facilityName(e.facilityId),
@@ -943,6 +831,12 @@ const TATConfigSection: React.FC = () => {
               onClick={() => setModal({ mode: 'edit', entry: e })}
             >
               {t('common.edit')}
+            </button>
+            <button
+              className="ps-sub-edit-btn"
+              onClick={() => setModal({ mode: 'add', entry: duplicateTatEntry(e, isSystem) })}
+            >
+              {t('common.duplicate')}
             </button>
             {!isSystem && (
               <button
@@ -1114,6 +1008,7 @@ const TATConfigSection: React.FC = () => {
       {/* Modal */}
       {modal && (
         <TATModal
+          mode={modal.mode}
           entry={modal.entry}
           entries={entries}
           facilities={facilities}

@@ -1401,9 +1401,23 @@ const SEED_ACTIONS: SystemAction[] = [
     },
     learnedTriggers: [], requiredRole: 'Pathologist', isActive: true,
   },
+  // PS-66 fix (Sep 2026): ENTER_ADDENDUM below, and NEXT_UNANSWERED/NEXT_REQUIRED/
+  // CONFIRM_FIELD/EDIT_FIELD further down, previously hardcoded internalKey literals
+  // that collided with unrelated systemActions.ts entries (diagnosis.enterAddendum /
+  // synoptic.jumpNextUnanswered / synoptic.jumpNextRequired / synoptic.confirmField /
+  // synoptic.overrideField respectively). Per-entry comparison of label + shortcut +
+  // voice triggers confirmed each pair is the SAME logical action described twice, not
+  // a real collision — so these now alias systemActions.ts's own key via ACTION_MAP,
+  // matching the ENTER_GROSS/ENTER_MICRO/ENTER_DIAGNOSIS pattern above. SKIP_FIELD/
+  // FULL_VIEW/TABBED_VIEW immediately below, by contrast, have no systemActions.ts
+  // counterpart at all (confirmed by full-file grep) — those keep local literals but
+  // move to fresh, never-used keys instead, since their old keys are being reclaimed
+  // by the aliased actions above. See systemActions.ts's own PS-66 comments and
+  // services/actionRegistry/README.md for the full account, including the separate,
+  // disclosed-but-unfixed internal duplication within systemActions.ts itself.
   {
     id: 'ENTER_ADDENDUM', label: 'Enter Addendum', category: 'SYNOPTIC',
-    shortcut: 'Alt+Shift+D', internalKey: 'F17+PS004',
+    shortcut: 'Alt+Shift+D', internalKey: ACTION_MAP['diagnosis.enterAddendum']?.internalKey ?? 'F17+PS004',
     voiceTriggers: ['enter addendum', 'start addendum', 'dictate addendum'],
     voiceTriggersByLanguage: {
       fr: ["saisir l'addendum", "commencer l'addendum", "dicter l'addendum"],
@@ -1417,7 +1431,7 @@ const SEED_ACTIONS: SystemAction[] = [
   // ── Synoptic field navigation ──────────────────────────────────────────────
   {
     id: 'NEXT_UNANSWERED', label: 'Next Unanswered Field', category: 'SYNOPTIC',
-    shortcut: 'Ctrl+Alt+U', internalKey: 'F17+PS005',
+    shortcut: 'Ctrl+Alt+U', internalKey: ACTION_MAP['synoptic.jumpNextUnanswered']?.internalKey ?? 'F17+PS009',
     voiceTriggers: ['next unanswered', 'go to next unanswered', 'next empty field', 'next blank'],
     voiceTriggersByLanguage: {
       fr: ["prochain sans réponse", "prochain champ vide"],
@@ -1429,7 +1443,7 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'NEXT_REQUIRED', label: 'Next Required Field', category: 'SYNOPTIC',
-    shortcut: 'Ctrl+Alt+Shift+R', internalKey: 'F17+PS006',
+    shortcut: 'Ctrl+Alt+Shift+R', internalKey: ACTION_MAP['synoptic.jumpNextRequired']?.internalKey ?? 'F17+PS010',
     voiceTriggers: ['next required', 'go to next required', 'next required field', 'show required'],
     voiceTriggersByLanguage: {
       fr: ["prochain obligatoire", "prochain champ obligatoire"],
@@ -1441,7 +1455,7 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'CONFIRM_FIELD', label: 'Confirm Field', category: 'SYNOPTIC',
-    shortcut: 'Ctrl+Alt+Shift+A', internalKey: 'F17+PS007',
+    shortcut: 'Ctrl+Alt+Shift+A', internalKey: ACTION_MAP['synoptic.confirmField']?.internalKey ?? 'F17+PS052',
     // Kept distinct from AI_REVIEW_CONFIRM — this fires in REPORTING context (normal work),
     // AI_REVIEW_CONFIRM fires in SYNOPTIC context (triage modal only)
     voiceTriggers: ['confirm field', 'accept field', 'approve field', 'confirm answer', 'accept answer'],
@@ -1455,7 +1469,7 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'EDIT_FIELD', label: 'Edit Field', category: 'SYNOPTIC',
-    shortcut: 'Alt+E', internalKey: 'F17+PS008',
+    shortcut: 'Alt+E', internalKey: ACTION_MAP['synoptic.overrideField']?.internalKey ?? 'F17+PS053',
     voiceTriggers: ['edit field', 'change field', 'correct field', 'modify field', 'override field'],
     voiceTriggersByLanguage: {
       fr: ["modifier le champ", "changer le champ", "corriger le champ"],
@@ -1467,7 +1481,11 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'SKIP_FIELD', label: 'Skip Field', category: 'SYNOPTIC',
-    shortcut: 'Ctrl+Alt+Q', internalKey: 'F17+PS009',
+    // PS-66: renumbered from F17+PS009, which is now NEXT_UNANSWERED's aliased key
+    // above (synoptic.jumpNextUnanswered's own, unchanged key) — no systemActions.ts
+    // counterpart exists for this action at all, so it keeps a local literal, just a
+    // fresh, never-used one.
+    shortcut: 'Ctrl+Alt+Q', internalKey: 'F17+PS054',
     voiceTriggers: ['skip field', 'skip this field', 'move on', 'leave blank'],
     voiceTriggersByLanguage: {
       fr: ["passer le champ", "passer ce champ", "laisser vide"],
@@ -1479,7 +1497,10 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'FULL_VIEW', label: 'Full View', category: 'SYNOPTIC',
-    shortcut: 'Alt+V', internalKey: 'F17+PS010',
+    // PS-66: renumbered from F17+PS010, which is now NEXT_REQUIRED's aliased key above
+    // (synoptic.jumpNextRequired's own, unchanged key) — no systemActions.ts
+    // counterpart exists for this action, so it keeps a local literal, just fresh.
+    shortcut: 'Alt+V', internalKey: 'F17+PS055',
     voiceTriggers: ['full view', 'show full view', 'expand view', 'all sections'],
     voiceTriggersByLanguage: {
       fr: ["vue complète", "développer la vue"],
@@ -1491,7 +1512,10 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'TABBED_VIEW', label: 'Tabbed View', category: 'SYNOPTIC',
-    shortcut: 'Ctrl+Alt+T', internalKey: 'F17+PS011',
+    // PS-66: renumbered from F17+PS011 (synoptic.markDeferred's own key in
+    // systemActions.ts, unrelated to this action — a coincidental collision, not a
+    // shared action; markDeferred keeps F17+PS011, this moves to a fresh key instead).
+    shortcut: 'Ctrl+Alt+T', internalKey: 'F17+PS056',
     voiceTriggers: ['tabbed view', 'show tabbed view', 'tab view', 'collapse view'],
     voiceTriggersByLanguage: {
       fr: ["vue par onglets", "réduire la vue"],
@@ -1690,6 +1714,134 @@ const SEED_ACTIONS: SystemAction[] = [
       de: ["änderung hinzufügen", "änderungsanfrage"],
       nl: ["wijziging toevoegen", "wijzigingsverzoek"],
       ko: ["정정 추가", "정정 요청"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  // Batch 380 (PS-359): the save buttons of the report page's modals. Each
+  // modal listens while it's open and saves exactly as its button does,
+  // including the organisation's Field Requirements check.
+  {
+    id: 'REVISION_SAVE', label: 'Save Amendment or Addendum', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+F3', internalKey: ACTION_MAP['diagnosis.saveRevision']?.internalKey ?? 'F17+PS057',
+    voiceTriggers: ['save amendment', 'save correction', 'release addendum'],
+    voiceTriggersByLanguage: {
+      fr: ["enregistrer la modification", "publier l'additif"],
+      de: ["änderung speichern", "nachtrag freigeben"],
+      nl: ["wijziging opslaan", "addendum vrijgeven"],
+      ko: ["수정 저장", "추가 사항 발행"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'CRITICAL_NOTIFICATION_RECORD', label: 'Record Critical Notification', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+F7', internalKey: ACTION_MAP['diagnosis.recordCriticalNotification']?.internalKey ?? 'F17+PS058',
+    voiceTriggers: ['record notification', 'record critical notification'],
+    voiceTriggersByLanguage: {
+      fr: ["enregistrer la notification", "enregistrer la notification critique"],
+      de: ["benachrichtigung erfassen", "kritische benachrichtigung erfassen"],
+      nl: ["melding vastleggen", "kritieke melding vastleggen"],
+      ko: ["통보 기록", "위급 통보 기록"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'SPECIMEN_EDIT_SAVE', label: 'Save Specimen', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+F2', internalKey: ACTION_MAP['specimen.saveEdit']?.internalKey ?? 'F20+PS009',
+    voiceTriggers: ['save specimen', 'save specimen details'],
+    voiceTriggersByLanguage: {
+      fr: ["enregistrer le prélèvement"],
+      de: ["probe speichern"],
+      nl: ["specimen opslaan"],
+      ko: ["검체 저장"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  // Batch 381 (PS-359): the group 2 modals' save buttons. Confirm
+  // Delegation already had DELEGATE_CONFIRM; the Delegate modal now listens.
+  {
+    id: 'HOLD_PLACE', label: 'Place Case On Hold', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+F5', internalKey: ACTION_MAP['case.hold']?.internalKey ?? 'F19+PS008',
+    voiceTriggers: ['place hold', 'place case on hold', 'place retention hold'],
+    voiceTriggersByLanguage: {
+      fr: ["bloquer le dossier", "placer un blocage de conservation"],
+      de: ["fall sperren", "aufbewahrungssperre setzen"],
+      nl: ["dossier blokkeren", "bewaarblokkade plaatsen"],
+      ko: ["케이스 보류 설정", "보존 보류 설정"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'HOLD_RELEASE', label: 'Release Case From Hold', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+F6', internalKey: ACTION_MAP['case.releaseHold']?.internalKey ?? 'F19+PS009',
+    voiceTriggers: ['release hold', 'release retention hold'],
+    voiceTriggersByLanguage: {
+      fr: ["lever le blocage", "lever le blocage de conservation"],
+      de: ["sperre aufheben", "aufbewahrungssperre aufheben"],
+      nl: ["blokkade opheffen", "bewaarblokkade opheffen"],
+      ko: ["보류 해제", "보존 보류 해제"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'COMMENT_POST', label: 'Post Comment', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+F8', internalKey: ACTION_MAP['case.postComment']?.internalKey ?? 'F19+PS013',
+    voiceTriggers: ['post comment', 'post the comment'],
+    voiceTriggersByLanguage: {
+      fr: ["publier le commentaire"],
+      de: ["kommentar veröffentlichen"],
+      nl: ["opmerking plaatsen"],
+      ko: ["댓글 게시"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'BIOPSY_ARRAY_SAVE', label: 'Save Biopsy Array', category: 'SYNOPTIC',
+    shortcut: 'Alt+Shift+F12', internalKey: ACTION_MAP['specimen.saveBiopsyArray']?.internalKey ?? 'F20+PS010',
+    voiceTriggers: ['save biopsy array', 'save array'],
+    voiceTriggersByLanguage: {
+      fr: ["enregistrer le bloc de biopsies"],
+      de: ["biopsie-array speichern"],
+      nl: ["biopsie-array opslaan"],
+      ko: ["생검 어레이 저장"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  // Batch 382 (PS-359): the frozen-versus-final reconciliation modal's Record,
+  // the post-sign-out billing reason modal's Confirm, and the applied-code
+  // correction modal's Correct.
+  {
+    id: 'DISCORDANCE_RECORD', label: 'Record Frozen-Final Reconciliation', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+Z', internalKey: ACTION_MAP['diagnosis.recordDiscordance']?.internalKey ?? 'F17+PS059',
+    voiceTriggers: ['record discordance', 'record reconciliation', 'confirm concordant'],
+    voiceTriggersByLanguage: {
+      fr: ["enregistrer la discordance", "enregistrer la réconciliation"],
+      de: ["diskordanz erfassen", "abgleich erfassen"],
+      nl: ["discordantie vastleggen", "afstemming vastleggen"],
+      ko: ["불일치 기록", "대조 기록"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'POST_SIGNOUT_BILLING_CONFIRM', label: 'Confirm Post-Sign-Out Billing Change', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+1', internalKey: ACTION_MAP['billing.confirmPostSignoutChange']?.internalKey ?? 'F24+PS053',
+    voiceTriggers: ['confirm billing change', 'confirm post signout billing change'],
+    voiceTriggersByLanguage: {
+      fr: ["confirmer la modification de facturation"],
+      de: ["abrechnungsänderung bestätigen"],
+      nl: ["factureringswijziging bevestigen"],
+      ko: ["청구 변경 확인"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'CORRECT_CODE_CONFIRM', label: 'Correct Applied Billing Code', category: 'SYNOPTIC',
+    shortcut: 'Ctrl+Alt+Shift+2', internalKey: ACTION_MAP['billing.correctAppliedCode']?.internalKey ?? 'F24+PS054',
+    voiceTriggers: ['correct billing code', 'correct applied code'],
+    voiceTriggersByLanguage: {
+      fr: ["corriger le code de facturation"],
+      de: ["abrechnungscode korrigieren"],
+      nl: ["factureringscode corrigeren"],
+      ko: ["청구 코드 수정"],
     },
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -2669,9 +2821,16 @@ const SEED_ACTIONS: SystemAction[] = [
   // confirmation) — built alongside these triggers since neither
   // existed anywhere before this pass (no UI advanced a block's
   // status, no state tracked triage confirmation).
+  //
+  // PS-66: these four internalKeys were hardcoded literals that happened to already
+  // match systemActions.ts's grossing.* group values exactly (same key, same label) —
+  // not a broken collision today, but two independent sources of truth for the same
+  // four keys that would silently drift the moment either file changed. Converted to
+  // alias systemActions.ts via ACTION_MAP, matching the ENTER_GROSS/ENTER_MICRO
+  // pattern; the `?? 'F24+PS03X'` fallback keeps today's exact values unchanged.
   {
     id: 'GROSSING_NEXT_BLOCK', label: 'Next Block', category: 'SYNOPTIC',
-    shortcut: 'Alt+.', internalKey: 'F24+PS036',
+    shortcut: 'Alt+.', internalKey: ACTION_MAP['grossing.nextBlock']?.internalKey ?? 'F24+PS036',
     voiceTriggers: ['next block', 'go to next block'],
     voiceTriggersByLanguage: {
       fr: ["bloc suivant", "aller au bloc suivant"],
@@ -2683,7 +2842,7 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'GROSSING_PREVIOUS_BLOCK', label: 'Previous Block', category: 'SYNOPTIC',
-    shortcut: 'Alt+,', internalKey: 'F24+PS037',
+    shortcut: 'Alt+,', internalKey: ACTION_MAP['grossing.previousBlock']?.internalKey ?? 'F24+PS037',
     voiceTriggers: ['previous block', 'go to previous block', 'prior block'],
     voiceTriggersByLanguage: {
       fr: ["bloc précédent", "aller au bloc précédent"],
@@ -2695,7 +2854,7 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'GROSSING_MARK_GROSSED', label: 'Mark Block Grossed', category: 'SYNOPTIC',
-    shortcut: 'Alt+G', internalKey: 'F24+PS038',
+    shortcut: 'Alt+G', internalKey: ACTION_MAP['grossing.markGrossed']?.internalKey ?? 'F24+PS038',
     voiceTriggers: ['mark grossed', 'block grossed', 'block complete', 'grossing complete'],
     voiceTriggersByLanguage: {
       fr: ["marquer macroscopie faite", "bloc terminé"],
@@ -2707,13 +2866,56 @@ const SEED_ACTIONS: SystemAction[] = [
   },
   {
     id: 'GROSSING_CONFIRM_TRIAGE', label: 'Confirm Triage', category: 'SYNOPTIC',
-    shortcut: 'Alt+Shift+T', internalKey: 'F24+PS039',
+    shortcut: 'Alt+Shift+T', internalKey: ACTION_MAP['grossing.confirmTriage']?.internalKey ?? 'F24+PS039',
     voiceTriggers: ['confirm triage', 'triage complete', 'triage confirmed'],
     voiceTriggersByLanguage: {
       fr: ["confirmer le triage", "triage terminé"],
       de: ["triage bestätigen", "triage abgeschlossen"],
       nl: ["triage bevestigen", "triage voltooid"],
       ko: ["분류 확인", "분류 완료"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+
+  // Batch 378 (PS-359): Complete grossing on the Grossing screen, which is
+  // its own page with its own voice context (GROSSING). The service checks
+  // the required fields and the capability; the command only asks.
+  {
+    id: 'GROSSING_COMPLETE', label: 'Complete Grossing', category: 'GROSSING',
+    shortcut: 'Alt+Shift+F9', internalKey: ACTION_MAP['grossing.complete']?.internalKey ?? 'F24+PS050',
+    voiceTriggers: ['complete grossing', 'finish grossing', 'grossing done'],
+    voiceTriggersByLanguage: {
+      fr: ["terminer la macroscopie", "fin de la macroscopie"],
+      de: ["makroskopie abschließen", "zuschnitt abschließen"],
+      nl: ["macroscopie afronden", "uitsnijden afronden"],
+      ko: ["육안검사 완료", "육안검사 마치기"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  // Batch 379 (PS-359): with the organisation's protocol rule switched off,
+  // completing a specimen that has no protocol asks for confirmation first;
+  // these answer it hands-free.
+  {
+    id: 'GROSSING_COMPLETE_CONFIRM', label: 'Confirm Complete Grossing', category: 'GROSSING',
+    shortcut: 'Alt+Shift+F10', internalKey: ACTION_MAP['grossing.completeConfirm']?.internalKey ?? 'F24+PS051',
+    voiceTriggers: ['confirm complete grossing', 'yes complete grossing', 'confirm finish grossing'],
+    voiceTriggersByLanguage: {
+      fr: ["confirmer la fin de la macroscopie", "oui terminer la macroscopie"],
+      de: ["makroskopie abschluss bestätigen", "ja makroskopie abschließen"],
+      nl: ["afronden macroscopie bevestigen", "ja macroscopie afronden"],
+      ko: ["육안검사 완료 확인", "네 육안검사 완료"],
+    },
+    learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
+  },
+  {
+    id: 'GROSSING_COMPLETE_CANCEL', label: 'Cancel Complete Grossing', category: 'GROSSING',
+    shortcut: 'Alt+Shift+F11', internalKey: ACTION_MAP['grossing.completeCancel']?.internalKey ?? 'F24+PS052',
+    voiceTriggers: ['cancel complete grossing', 'do not complete grossing'],
+    voiceTriggersByLanguage: {
+      fr: ["annuler la fin de la macroscopie", "ne pas terminer la macroscopie"],
+      de: ["makroskopie abschluss abbrechen", "makroskopie nicht abschließen"],
+      nl: ["afronden macroscopie annuleren", "macroscopie niet afronden"],
+      ko: ["육안검사 완료 취소", "육안검사 완료 안 함"],
     },
     learnedTriggers: [], requiredRole: 'All Staff', isActive: true,
   },
@@ -3358,7 +3560,10 @@ onAction: (callback: (actionId: string) => void) => {
 
   executeAction: (action: SystemAction, transcript?: string) => {
     console.log('[VoiceRegistry] Executing:', action.id, '->', action.internalKey);
-    window.dispatchEvent(new CustomEvent('VOICE_ACTION_TRIGGERED', { detail: action }));
+    // Batch 379: every branch below notifies once. An extra dispatch here
+    // used to announce each action twice, so every onAction listener ran
+    // twice (a second Complete grossing hit a version conflict; a toggle
+    // would undo itself) and the success toast showed twice.
     const notify = () =>
       window.dispatchEvent(new CustomEvent('VOICE_ACTION_TRIGGERED', { detail: action }));
 

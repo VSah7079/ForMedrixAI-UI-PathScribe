@@ -48,6 +48,11 @@ Built with `useTranslation()`/`t()` from the start. New `addOnOrder.*` namespace
 - No per-performing-lab preferred reference lab default — the ordering pathologist always picks explicitly.
 - "Digital signature" in the spec's own Right Panel is the real, authenticated actor identity already stamped on submission (`orderedByPathologistId`/`Name`) — this app has no separate e-signature capture mechanism to reuse or fabricate one for.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`AddOnOrderPage.tsx`: the accession in the context bar is tagged.
+
 ---
 *See [pages/README.md](../README.md) for how this folder fits the whole pages/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

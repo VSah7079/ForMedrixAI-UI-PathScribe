@@ -14,6 +14,18 @@
 //     that produced it, so the banner can pull narrative (reason,
 //     notification) for the version transition. Undefined for the
 //     initial_signout trigger, since there's no amendment yet.
+//
+// Batch 366 (PS-68): this is the one release record. An earlier design,
+// types/case/ReportSnapshot.ts, was never used and has been removed. Its
+// release types live on here and on AmendmentRecord: `trigger` says
+// original sign-out or amendment, and AmendmentRecord.type says whether an
+// amendment corrects the report or adds to it (with its reason). Two of
+// its points are not built yet and are for the API server:
+//   - store the PDF by reference (object storage) rather than inline
+//     like pdfBase64 does in the mock;
+//   - record a SHA-256 of the PDF's bytes when the version is created,
+//     and check it on retrieval, so a swapped file is detected (encryption
+//     keeps it private; the hash shows it is unchanged).
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { PatientEncounterSnapshot } from './PatientEncounterSnapshot';

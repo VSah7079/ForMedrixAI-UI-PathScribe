@@ -3,17 +3,20 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useMessaging } from '@/contexts/MessagingContext';
 import type { Case } from '@/types/case/Case';
 import type { BlockStatus } from '@/types/case/Specimen';
 import { getOrgOrchestratorDefault, resolveOrchestratorMode } from '@/components/Config/AI/orchestratorModeConfig';
 import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
 import { lisSyncService, flagService } from '@/services';
-import type { LisSyncState, LisSyncPendingFlag } from '@/services/lisSync/mockLisSyncService';
+import type { LisSyncState, LisSyncPendingFlag } from '@/services';
+import { useCapabilities } from '@/hooks/useCapabilities';
+import { getSessionFlag, clearSessionFlag } from '@/utils/uiPreferences';
 import { getCaseStatusLabel, hasDisplayableRevision } from '@/utils/caseRevisionDisplay';
 import { useReleaseBufferCountdown } from '../hooks/useReleaseBufferCountdown';
 import '@/pathscribe.css';
+import SupportReferenceChip from '@/components/Support/SupportReferenceChip';
 
 // i18n note (batch 120): `caseData.order.priority` / `block.priority`
 // (CasePriority: 'Routine' | 'Rush' | 'STAT') and `block.status`
@@ -100,6 +103,9 @@ interface HeaderBarProps {
    *  (a case with at least one real signed version). */
   versionCount?: number;
   onOpenVersionHistory?: () => void;
+  /** Batch 368 (PS-353): saves recorded in the report's change log. */
+  changeCount?: number;
+  onOpenChangeHistory?: () => void;
   /** Highlights the matching block chip and shows its status — the
    *  block a Grossing voice command (next/previous/mark grossed) would
    *  currently act on. Undefined outside grossing-relevant contexts. */
@@ -149,7 +155,7 @@ function stepClass(status: StepStatus): string {
   return `ps-hb-step-circle ps-hb-step-circle--${status}`;
 }
 
-const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, onNavigate, aiSynthesisStatus, onAiStatusClick, compact = false, onChangePriority, priorityLevels, deficiencyCount, onOpenDeficiencyHistory, versionCount, onOpenVersionHistory, focusedBlockId, onOpenBlockEditor, onCaseUpdate, onToggleManualCompact }) => {
+const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, onNavigate, aiSynthesisStatus, onAiStatusClick, compact = false, onChangePriority, priorityLevels, deficiencyCount, onOpenDeficiencyHistory, versionCount, onOpenVersionHistory, changeCount, onOpenChangeHistory, focusedBlockId, onOpenBlockEditor, onCaseUpdate, onToggleManualCompact }) => {
   const { t } = useTranslation();
   // Real fix, found via a direct audit: this used to call the old,
   // superseded getOrchestratorMode() (org-level only, from the now-
@@ -176,10 +182,12 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
   // history), so this needs its own copy of the same reactive
   // sessionStorage check rather than anything AppShell tracks.
   const navigate = useNavigate();
+  // Batch 375 (Pete): Add-On Orders is an action on the case, for whoever may open that screen.
+  const capabilities = useCapabilities();
   const { setPortalOpen } = useMessaging();
   const [showBackToMessages, setShowBackToMessages] = useState(false);
   useEffect(() => {
-    setShowBackToMessages(sessionStorage.getItem('ps_reopen_messages') === '1');
+    setShowBackToMessages(getSessionFlag('ps_reopen_messages') === '1');
   }, [caseData?.id]);
 
   useEffect(() => {
@@ -309,7 +317,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
   const clientName  = caseData?.order?.facilityName ?? null;
   const isRevisedFinal = hasDisplayableRevision(status, caseData?.lastRevisionType);
   const statusClass  = isRevisedFinal ? 'ps-case-status--amended' : (CASE_STATE_CLASS[status] ?? CASE_STATE_CLASS['draft']);
-  const statusDisplayLabel = getCaseStatusLabel(status, caseData?.lastRevisionType);
+  const statusDisplayLabel = getCaseStatusLabel(status, caseData?.lastRevisionType, t);
   // Real feature, per direct specification: Post-Sign-Out Release
   // Buffer, Phase 3 (spec §13b — "Status Header... Pending Release
   // (MM:SS remaining)"). Shares the exact same live countdown as
@@ -416,6 +424,8 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
               </span>
             )
           )}
+          {/* Batch 364 (PS-350): the case's support reference, to quote to support instead of the case number. */}
+          {caseData?.id && <SupportReferenceChip kind="case" recordId={caseData.id} />}
         </div>
 
         {/* Centre: workflow stage dots */}
@@ -485,7 +495,7 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
           <>
             <span
               className="ps-hb-crumb ps-hb-crumb--messages"
-              onClick={() => { sessionStorage.removeItem('ps_reopen_messages'); setShowBackToMessages(false); setPortalOpen(true); navigate(-1); }}
+              onClick={() => { clearSessionFlag('ps_reopen_messages'); setShowBackToMessages(false); setPortalOpen(true); navigate(-1); }}
             >
               ← {t('headerBar.breadcrumb.backToMessages')}
             </span>
@@ -540,6 +550,12 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
           {onOpenBlockEditor && (
             <button className="ps-hb-block-edit-btn" onClick={onOpenBlockEditor}>{t('common.edit')}</button>
           )}
+          {caseData && capabilities.has('screen:add-on-orders:open') && (
+            <button className="ps-hb-block-edit-btn" title={t('headerBar.blocks.addOnOrderTitle')}
+              onClick={() => navigate(`/add-on-orders?case=${encodeURIComponent(caseData.id)}`)}>
+              {t('headerBar.blocks.addOnOrder')}
+            </button>
+          )}
         </div>
       )}
 
@@ -556,11 +572,19 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
 
       {/* Version history indicator — real fix, Phase 5: same real gap
           as the deficiency indicator above, closed the same way. */}
-      {!!versionCount && onOpenVersionHistory && (
+      {((!!versionCount && onOpenVersionHistory) || (!!changeCount && onOpenChangeHistory)) && (
         <div className="ps-hb-blocks-row">
-          <button className="ps-hb-version-chip" onClick={onOpenVersionHistory}>
-            🕐 {t('headerBar.blocks.versionChip', { count: versionCount })}
-          </button>
+          {!!versionCount && onOpenVersionHistory && (
+            <button className="ps-hb-version-chip" onClick={onOpenVersionHistory}>
+              🕐 {t('headerBar.blocks.versionChip', { count: versionCount })}
+            </button>
+          )}
+          {/* Batch 368 (PS-353): the report's change history. */}
+          {!!changeCount && onOpenChangeHistory && (
+            <button className="ps-hb-version-chip" onClick={onOpenChangeHistory}>
+              📝 {t('headerBar.blocks.changeChip', { count: changeCount })}
+            </button>
+          )}
         </div>
       )}
 
@@ -592,6 +616,12 @@ const HeaderBar: React.FC<HeaderBarProps> = ({ caseData, onSignOut: _onSignOut, 
 
           {/* Patient fields */}
           <div className="ps-hb-patient-fields">
+            {caseData?.id && (
+              <div className="ps-hb-field">
+                <div className="ps-hb-field-label">{t('supportReference.chip.fieldLabel')}</div>
+                <SupportReferenceChip kind="case" recordId={caseData.id} />
+              </div>
+            )}
             <div className="ps-hb-field">
               <div className="ps-hb-field-label">{t('headerBar.field.patient')}</div>
               <div className="ps-hb-field-value ps-hb-field-value--lg" data-phi="name">{patient}</div>

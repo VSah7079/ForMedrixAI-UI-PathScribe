@@ -43,6 +43,11 @@ export default defineConfig(({ mode }) => {
     // whatever's actually wrong in those docs files.
     optimizeDeps: {
       entries: ['index.html'],
+      // Batch 371: pre-bundle these at start-up. They're reached only through
+      // lazily loaded modules (single sign-on, live updates), so Vite found
+      // them mid-session, re-bundled, and the open page failed with
+      // "504 (Outdated Optimize Dep)" for oidc-client-ts.
+      include: ['oidc-client-ts', '@microsoft/signalr'],
     },
     server: {
       port: 5173,
@@ -115,7 +120,7 @@ export default defineConfig(({ mode }) => {
         output: {
           manualChunks(id) {
             if (id.includes('node_modules')) {
-              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router-dom')) {
+              if (id.includes('react') || id.includes('react-dom') || id.includes('react-router')) {
                 return 'vendor-react';
               }
               if (id.includes('@tiptap')) {

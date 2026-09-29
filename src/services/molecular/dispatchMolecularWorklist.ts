@@ -40,6 +40,8 @@
 
 import { resolveMolecularWorklistPayload } from './resolveMolecularWorklistPayload';
 import { resolveMolecularScanVerification } from './resolveMolecularScanVerification';
+import { mockEquipmentService } from '../equipment/mockEquipmentService';
+import { checkEquipmentStation } from '../equipment/equipmentRules';
 import { mockMolecularBatchService } from './mockMolecularBatchService';
 import { mockFacilityService } from '../facilities/mockFacilityService';
 import { resolveTenantFacility } from '../auth/resolveTenantFacility';
@@ -55,6 +57,9 @@ export interface DispatchMolecularWorklistResult {
 export interface DispatchMolecularWorklistError {
   dispatched: false;
   reason: string;
+  /** Batch 356: which scan checks failed, so the screen can say so in the
+   *  user's language (reason stays English, for logs). */
+  verificationFailures?: Array<'plate' | 'deck' | 'station'>;
 }
 
 // Real, per this file's own header — matches the given specification's
@@ -77,13 +82,20 @@ export async function dispatchMolecularWorklist(
   scannedPlateBarcode: string | undefined,
   scannedDeckLocationLabel: string | undefined,
   session: SessionUser | null,
+  /** Batch 356 (PS-326): this device's scan station, checked against the
+   *  target instrument's station when both are known. */
+  currentStationId?: string | null,
 ): Promise<DispatchMolecularWorklistResult | DispatchMolecularWorklistError> {
-  const verification = resolveMolecularScanVerification(batch, scannedPlateBarcode, scannedDeckLocationLabel);
+  const instrumentRes = await mockEquipmentService.getByCode(batch.targetInstrumentId);
+  const stationVerified = checkEquipmentStation(instrumentRes.ok ? instrumentRes.data : undefined, currentStationId);
+  const verification = resolveMolecularScanVerification(batch, scannedPlateBarcode, scannedDeckLocationLabel, stationVerified);
   if (!verification.fullyVerified) {
     const failures: string[] = [];
-    if (!verification.plateVerified) failures.push('plate barcode did not match');
-    if (!verification.deckLocationVerified) failures.push('deck location did not match');
-    return { dispatched: false, reason: `Scan verification failed — ${failures.join('; ')}.` };
+    const codes: Array<'plate' | 'deck' | 'station'> = [];
+    if (!verification.plateVerified) { failures.push('plate barcode did not match'); codes.push('plate'); }
+    if (!verification.deckLocationVerified) { failures.push('deck location did not match'); codes.push('deck'); }
+    if (verification.stationVerified === false) { failures.push("this workstation is not the instrument's scan station"); codes.push('station'); }
+    return { dispatched: false, reason: `Scan verification failed — ${failures.join('; ')}.`, verificationFailures: codes };
   }
 
   const payload = resolveMolecularWorklistPayload(batch);

@@ -44,10 +44,10 @@ import { subspecialtyService } from '../../../services';
 import { specimenDictionaryService } from '../../../services';
 import { Subspecialty } from '../../../services/subspecialties/ISubspecialtyService';
 import type { SpecimenEntry } from '../../../services/specimenDictionary/specimenTypes';
-import { mockCaseService } from '../../../services/cases/mockCaseService';
+import { caseService } from '@/services';
 import type { Facility } from '../../../services/facilities/IFacilityService';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
-import { prepareDuplicate } from '../../../utils/duplicateEntry';
+import { duplicateRoutingRule } from '@/services/duplication/duplicateEntities';
 
 // ─── Routing logic explainer ──────────────────────────────────────────────────
 // Labels stored as translation keys, not raw text — this array lives
@@ -309,12 +309,12 @@ const CasePoolAssignmentSection: React.FC = () => {
     persistRules(rules.map(r => r.id === rule.id ? { ...r, active: !r.active } : r));
   };
 
-  // Real, per the same "duplicate, edit, save as new" pattern as
-  // Container Types/Physicians — a fresh id and builtIn:false even
-  // when cloning a built-in, since a duplicated rule is always a real,
-  // separately-editable custom rule, never a second built-in.
+  // "Duplicate, edit, save as new" (PS-73). services/duplication decides what
+  // the copy is: always custom (never a second built-in), note marked in the
+  // user's language, next free priority. This screen's save upserts by id, so
+  // the copy gets its real custom id here, the same way handleAddRule does.
   const handleDuplicateRule = (source: RoutingRule) => {
-    const cloned: RoutingRule = { ...prepareDuplicate(source, 'note'), id: `rule-custom-${crypto.randomUUID()}`, builtIn: false };
+    const cloned: RoutingRule = { ...duplicateRoutingRule(source, rules, name => t('common.copyOfName', { name })), id: `rule-custom-${crypto.randomUUID()}` };
     setModal({ mode: 'add', rule: cloned });
   };
 
@@ -344,7 +344,7 @@ const CasePoolAssignmentSection: React.FC = () => {
     setRunning(true);
     setRunResults(null);
     try {
-      const cases = await mockCaseService.listCasesForUser('all');
+      const cases = await caseService.listCasesForUser('all');
       const results = await routeUnassignedCases(cases);
       setRunResults(results);
     } finally {
@@ -604,7 +604,7 @@ const CasePoolAssignmentSection: React.FC = () => {
           <div className="ps-conf-table-scroll">
             {runResults.results.map(({ caseId, result }) => (
               <div key={caseId} className="ps-conf-section-subtitle">
-                {result.outcome.startsWith('routed') ? '✓' : '—'} {caseId} — {result.reason}
+                {result.outcome.startsWith('routed') ? '✓' : '—'} <span data-phi="accession">{caseId}</span> — {result.reason}
               </div>
             ))}
           </div>

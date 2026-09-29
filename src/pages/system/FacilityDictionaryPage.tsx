@@ -33,6 +33,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import type { Facility, FacilityInput } from "../../services/facilities/IFacilityService";
 import { FacilityEditorModal } from "../../components/FacilityDictionary/FacilityEditorModal";
 import { FacilityTable } from "../../components/FacilityDictionary/FacilityTable";
+import { duplicateFacility } from "@/services/duplication/duplicateEntities";
 
 export const FacilityDictionaryPage = () => {
   const { t } = useTranslation();
@@ -41,6 +42,13 @@ export const FacilityDictionaryPage = () => {
   const [loading, setLoading] = useState(true);
   const [isEditorOpen, setIsEditorOpen] = useState(false);
   const [editingFacility, setEditingFacility] = useState<Facility | undefined>(undefined);
+  // Real fix (PS-73, Sep 2026): explicit save-mode state, added alongside
+  // editingFacility rather than inferred from its presence — Duplicate
+  // below needs to open the editor in 'add' mode with editingFacility
+  // *populated* (a prefilled template), which `!!editingFacility` could
+  // never tell apart from a real edit. See FacilityEditorModal.tsx's own
+  // file-header comment for the matching fix on the modal's side.
+  const [editorMode, setEditorMode] = useState<'add' | 'edit'>('add');
 
   useEffect(() => {
     facilityService.getAll().then(res => {
@@ -51,17 +59,43 @@ export const FacilityDictionaryPage = () => {
 
   const handleAdd = () => {
     setEditingFacility(undefined);
+    setEditorMode('add');
     setIsEditorOpen(true);
   };
 
   const handleEdit = (facilityId: string) => {
     const c = facilities.find(x => x.id === facilityId);
     setEditingFacility(c);
+    setEditorMode('edit');
+    setIsEditorOpen(true);
+  };
+
+  // Real fix (PS-73, Sep 2026): Facility was the one matrix entry from this
+  // ticket's own original scope (as "Client Dictionary") never wired up —
+  // the standalone components/ClientDictionary/ fork it named was since
+  // confirmed genuinely dead and deleted (see components/FacilityDictionary/
+  // README.md's "Facility rename" section); this, the real living
+  // successor, is where the gap actually lives now.
+  //
+  // What a copy keeps (org-level configuration: roles, jurisdiction,
+  // reporting, TAT/escalation, AI, LIS routing, identifier formats, print and
+  // release settings) and what it clears (assigning authority, CLIA/ISO
+  // number, address and contact details, director, legacy tenant ids,
+  // pediatric authorizations, interface endpoint and credentials) is decided
+  // in services/duplication/duplicateEntities.ts → duplicateFacility, with
+  // the reason for each field. The copy's name is marked in the user's own
+  // language.
+  const handleDuplicateFacility = (source: Facility) => {
+    setEditingFacility(duplicateFacility(source, name => t('common.copyOfName', { name })));
+    setEditorMode('add');
     setIsEditorOpen(true);
   };
 
   const handleSave = async (input: FacilityInput) => {
-    if (editingFacility) {
+    // Real fix (PS-73): was `if (editingFacility)` — broke the moment
+    // Duplicate started populating editingFacility for an 'add'. editorMode
+    // is the single source of truth for add-vs-update now.
+    if (editorMode === 'edit' && editingFacility) {
       // Real, per direct guidance's own follow-up on the broader
       // provenance & auditability sweep: found via direct check to
       // have zero audit trail anywhere in this save path - scoped
@@ -149,6 +183,7 @@ export const FacilityDictionaryPage = () => {
         <FacilityTable
           facilities={facilities}
           onEdit={handleEdit}
+          onDuplicate={handleDuplicateFacility}
           onToggleActive={handleToggleActive}
           onVerify={handleVerify}
         />
@@ -158,6 +193,7 @@ export const FacilityDictionaryPage = () => {
         <FacilityEditorModal
           isOpen={isEditorOpen}
           onClose={() => setIsEditorOpen(false)}
+          mode={editorMode}
           facility={editingFacility}
           onSave={handleSave}
           allFacilities={facilities}

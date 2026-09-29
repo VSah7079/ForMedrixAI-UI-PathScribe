@@ -33,7 +33,13 @@ export interface NetworkPrintTargetPrinter {
   vendor: PrinterVendor;
 }
 
+/** Batch 347 (PS-54): which label this is. Absent means a cassette (the
+ *  only kind before Batch 347), so an engine built to the first version of
+ *  this contract keeps working. */
+export type NetworkPrintLabelType = 'CASSETTE' | 'SLIDE';
+
 export interface NetworkPrintLabelData {
+  labelType?: NetworkPrintLabelType;
   accessionNumber: string;
   specimenDesignator: string;
   blockId: string;
@@ -43,6 +49,8 @@ export interface NetworkPrintLabelData {
    *  inline. Contains a real, non-printing GS (0x1D) separator — see
    *  that module's own header. */
   gs1DataMatrix: string;
+  /** Slide labels only (Batch 347): the level and stain printed on the slide. */
+  slide?: { level: string; stainName: string };
 }
 
 /** Real, complete shape — Section 5.1's own JSON, field for field. */
@@ -63,6 +71,11 @@ export interface NetworkPrintPayload {
   targetPrinter: NetworkPrintTargetPrinter;
   labelData: NetworkPrintLabelData;
   copies: number;
+  /** Batch 347 (PS-54): 1 for the first send; 2, 3… when a user retries a
+   *  failed job. A retry keeps the idempotencyKey and gets a new eventId,
+   *  so the engine prints a given label at most once (see
+   *  docs/architecture/LIVE_UPDATES_SIGNALR.md, network print results). */
+  attempt?: number;
 }
 
 /** Real, complete error state enum — Section 7.2's own list, verbatim. */

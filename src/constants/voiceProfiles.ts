@@ -80,6 +80,11 @@ export const VOICE_PROFILES: readonly VoiceProfile[] = [
   // Real, genuine language profiles — see this file's own header.
   { id: 'FR-FR',     label: 'Français (France)',             recognitionLang: 'fr-FR', language: 'fr' },
   { id: 'DE-DE',     label: 'Deutsch (Deutschland)',          recognitionLang: 'de-DE', language: 'de' },
+  // Belgian Dutch users dictate with NL-NL for now. Batch 365 (PS-347) could
+  // not confirm that Chrome's speech recognition accepts nl-BE: Chrome
+  // publishes no language list, and its availability check answers
+  // "available" even for a made-up tag. Add { id: 'NL-BE', recognitionLang:
+  // 'nl-BE', language: 'nl' } once a Belgian speaker has tried it in Chrome.
   { id: 'NL-NL',     label: 'Nederlands (Nederland)',         recognitionLang: 'nl-NL', language: 'nl' },
   { id: 'KO-KR',     label: '한국어 (대한민국)',                recognitionLang: 'ko-KR', language: 'ko' },
 ] as const;

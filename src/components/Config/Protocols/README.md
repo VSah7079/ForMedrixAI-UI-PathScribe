@@ -9,6 +9,82 @@ section below for a real, now fully-diagnosed bug that spans both folders.
 is the shared metadata registry; `SynopticEditor.tsx` is the real content
 builder.
 
+## Admin guide: building and publishing a synoptic template
+
+*Written for lab administrators and template authors. Intended for the PathScribe Admin Guide (PS-63). Walked through end to end in the app, Sep 2026.*
+
+Synoptic templates live in **Configuration → Synoptic Library**, which has three lists:
+- **Active Protocols:** published and in use.
+- **Review Queue:** waiting for review, sent back for changes, or approved and waiting to go live.
+- **All Protocols:** everything, in every state.
+
+### 1. Start a template
+Click **Build / Customise** (available from any of the three lists), then choose one of:
+- **Start from Scratch:** a blank template where you add every section, field, answer and code yourself.
+- **Base it on an existing template:** search for one and click **Customise This Template →**. You get an independent copy named "*original name* (Copy)"; the original is never changed.
+
+To change a template that is already in use, open it from **Active Protocols** and choose **New Version** instead. The new version goes through review on its own, and publishing it retires the old one automatically.
+
+### 2. Build it in the editor
+- **Template metadata:** give the template a unique name, and choose the source (CAP, RCPath, ICCR, RCPA or Custom), the anatomical category and the version.
+- **Sections and fields:** add sections, then fields within each. For each field, set the field type (dropdown, checkboxes, text and so on), whether it's required, optional helper text, and the answer options.
+- **Coding:** add SNOMED CT and ICD-10/11 codes at field level, or on each answer (the ⌥ button beside an answer).
+- **Side panel:** the **Coding coverage** panel shows how much is coded. The **Readiness** checklist shows what's still missing: name, category, at least one section and field, and SNOMED coverage of 80% or more.
+- **Preview** shows the template as a pathologist will see it.
+- **Save Draft** keeps your work without sending it anywhere. Pathologists never see a draft. A draft you no longer want can be archived from All Protocols.
+
+### 3. Submit it for review
+Click **Submit for Review** and confirm. The template moves to the **Review Queue** as **In Review**.
+
+### 4. Review it
+In the Review Queue, click the template to open the **reviewer**. The reviewer shows the form as pathologists will use it. You can try out answers and add a comment on any field while you check it. The **Lifecycle transition** bar at the top has the actions:
+
+| Action | What it does |
+|---|---|
+| **Needs Changes** | Sends it back to the author. A reason is required. The template shows in the queue as *Needs Changes*; clicking it opens the editor. The author makes the changes and clicks **Submit for Review** again. |
+| **Approve** | Clinical sign-off. Once it has the site's required number of approvals (one by default), the template shows in the queue as *Approved*, ready to go live. Until then it stays *In Review* and the reviewer sees "Approval recorded (1 of 2)". |
+| **Publish** | Makes it available in synoptic reporting for all pathologists immediately, and moves it to Active Protocols. If it is a New Version, the previous version is archived. |
+| **Reset** | Returns it to Draft and clears the reviewer's trial answers. A new review round starts. |
+
+The action names follow the template's source, so reviewers see the terms their governing body uses:
+- CAP templates: **Accept** and **Release**.
+- RCPath templates: **Ratify** and **Publish**.
+- Custom and ICCR templates: **Approve** and **Publish**.
+
+Only the actions that make sense for the current state are enabled. For example, a template must be approved before it can be published.
+
+### Who may approve and publish (PS-63)
+PathScribe enforces two rules when someone clicks Approve or Publish. If a rule isn't met, the confirm box explains why and nothing changes.
+
+- **Drafting.** Creating, editing, submitting and deleting draft templates needs the **Template Author** role. The **Admin** role and administrator accounts inherit it. Anyone else can open the editor read-only: a banner explains the role that's needed, and Save Draft / Submit for Review are disabled.
+- **Independent review.** Approving and publishing need the **Template Approver**, **Lab Director** or **Admin** role (Staff → Roles), or an administrator account. The person must not be one of the template's authors. Anyone who has saved the template counts as an author. The rule, from Pete's spec:
+
+  **Can Publish = (user has an approver role) AND (self-approval allowed OR user is not an author)**
+
+  An author who tries to approve their own template sees: *"This template requires independent review before publication. Please assign a reviewer or request sign-off from a Lab Director."*
+- **SNOMED coverage.** A diagnostic template can't be published until at least **80%** of its fields have a SNOMED code. Procedural templates, such as grossing checklists, are exempt. To fix it, add the codes in the editor and submit the template again.
+
+The site sets these in **Configuration → System → Administration & Compliance → Template Review**:
+
+| Setting | Default | Behaviour |
+|---|---|---|
+| Allow Template Self-Approval | Disabled (Block) | Authors can't approve or publish templates they authored or edited. Turn it on only for solo practices, small sites or testing. |
+| Required Reviewers | 1 independent reviewer | Up to 3. Each approval must come from a different approver who isn't an author, unless self-approval is on. |
+
+**Template Author**, **Template Approver** and **Lab Director** are built-in roles in Staff → Roles, alongside Admin. Assign them to staff there. They can be renamed to suit the site and keep working, because PathScribe identifies them by a fixed internal id. A renamed role is updated on every staff record that has it.
+
+Changes to these settings are recorded in the audit log. Editing a template, sending it back for changes, resubmitting it or resetting it clears its approvals, so the new version is reviewed again.
+
+### 5. After publishing
+- The template is offered in synoptic reporting (**+ Add Synoptic Report** on a case).
+- If it was built in answer to a pathologist's template request, that pathologist gets an in-app message saying it's ready.
+- From Active Protocols you can:
+  - **View** it;
+  - make a **New Version**;
+  - **Duplicate** it as the start of a different template;
+  - **Export JSON**;
+  - **Archive** it. It is then no longer offered for new reports; reports already written keep their content. An archived template can be restored as a draft and must be reviewed again before use.
+
 ## Files
 
 - **`index.tsx`** — Sidebar orchestrator for 3 sections (Active/Review
@@ -157,6 +233,54 @@ the diagnosis above as-written since it's still the accurate before-state
 and the reasoning for why option 1 was viable (real content already
 existed in `editorStore` for 19 templates).
 
+## Real row actions + no inline CSS (Batch 317, PS-73)
+
+Before this batch, the row actions were broken:
+
+- **All Protocols:** Duplicate, Export JSON, New Version and Archive were buttons with empty handlers.
+- **Active Protocols:** "Duplicate" opened the **published** protocol in the editor for direct editing. Export and Archive did nothing.
+
+They are now real, in the new shared **`ProtocolCardParts.tsx`** (`ProtocolRowActions`, `LifecycleTracker`, and the mini-components that used to live in ActiveProtocolsSection.tsx). Which actions show per state, and what each does, is decided in `services/templates/protocolLifecycle.ts`:
+
+- **Duplicate:** `/template-editor/:id?mode=duplicate` opens a new protocol copied from this one, with a localized copy name.
+- **New Version** (published only): `?mode=newVersion`. The copy keeps the same name, takes a minor version bump, and gets `supersedesId`. Publishing it archives the old version.
+- **Export JSON:** downloads the full editor template plus metadata (`utils/downloadJson.ts`).
+- **Archive** (with confirmation; stronger wording for a published protocol): adds a new `'archived'` lifecycle state. **Restore** brings it back as a draft, which must be reviewed again. All Protocols gains an **Archived** filter, and "All" hides archived protocols.
+
+**SynopticEditor.tsx:**
+
+- Supports `mode=newVersion`.
+- Takes copy names from `t('common.copyOfName')`.
+- Name uniqueness now lets a New Version keep its predecessor's name (`findProtocolNameConflict`).
+- A copy no longer shows its source's "changes requested" banner.
+- The review date uses the user's locale (it was hard-coded `en-GB`).
+
+**No inline CSS left** in protocolShared, AllProtocols, ActiveProtocols, ReviewQueue or SynopticEditor:
+
+- Lifecycle, source, field-type, coverage and condition-toggle colours are CSS classes (`.ps-lc-hue--*`, `.ps-protocol-source--*`, `.ps-syned-*`).
+- A category's colour and a bar's fill width are the only per-instance values; they cross into markup as `--ps-hue` / `--ps-pct`.
+- `LIFECYCLE_STYLES` and `SOURCE_STYLES` were removed.
+- The editor's imperative `onFocus`/`onBlur` border writes are now `:focus` rules.
+
 ---
 *See [components/Config/README.md](../README.md) for how this folder fits Config/.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master components/README.md or Config/README.md if this folder's overall PURPOSE changes.*
+
+## PS-63 walkthrough findings (Batch 326)
+
+The whole workflow was walked in the browser, end to end: build from an existing template → Save Draft → Submit for Review → Review Queue → Approve → Publish → Active Protocols. It works. The Admin Guide section above is written from that walkthrough. Findings:
+
+- **Fixed: refreshing the editor made a second copy.** After the first save of a new template or a Duplicate / New Version, the address bar still showed `/template-editor/new` or the source's id with `?mode=duplicate`. A refresh opened a fresh copy, and the next save created a second protocol.
+  - The editor now moves to the saved protocol's own address after the first save (`protocolLifecycle.ts → editorUrlAfterSave`).
+  - Checked in the browser: save, refresh, save again leaves one copy.
+- **Enforced since Batch 328: the 80% SNOMED rule.** The Review Queue banner says "Templates require ≥80% SNOMED coverage and clinical sign-off before publishing", and the editor's Readiness list shows it. Before Batch 328 nothing checked it, and the walkthrough published a template with 0% coverage. Per Pete, publishing a diagnostic template is now blocked below 80%.
+- **Enforced since Batch 328: independent review.** Before Batch 328 the same user who wrote a template approved and published it. Pete's spec is now in force: approver roles, the self-approval setting (off by default) and the required-reviewers setting. See "Who may approve and publish" above.
+- **Fixed in Batch 328: Reset only reset the reviewer page.** The service had no handler for going back to draft, so the queue kept the old status. It now has one (`templateService.resetToDraft`). The reviewer page also waits for the service before changing state, so a refused Approve or Publish no longer shows as done.
+- **Open: e-mail notifications don't reach anyone yet.** Lifecycle e-mail notifications (`services/communications/recipientResolver.ts`) look up recipients from a backend API that doesn't exist yet. In the demo the lookup fails with a console error and no e-mail is sent. The in-app message for a *requested* template, sent when it's published, does work.
+- **Open, reviewer screen:**
+  - it has no on-screen guidance on what a reviewer should check;
+  - its per-field comment boxes are bright white on the dark page;
+  - **Reset** (back to Draft, clears answers) sits right beside **Approve**.
+- **Enforced since Batch 329: drafting by role.** Per Pete, drafting is limited to Template Author, and Admin inherits it. The editor opens read-only for anyone else (`SynopticEditor.tsx` asks `templateService.canCurrentUserDraftTemplates()`), and the service refuses the save, submit or delete. Checked in the browser: a plain Pathologist sees the banner with both buttons disabled; after adding Template Author, the editor is editable.
+
+  Candidates for a small follow-up.

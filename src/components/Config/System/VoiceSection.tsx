@@ -37,7 +37,6 @@ export const VoiceSection: React.FC = () => {
               type="checkbox"
               checked={enabled}
               onChange={e => updateConfig({ voiceEnabled: e.target.checked })}
-              style={{ display: 'none' }}
             />
             <div className={`config-toggle-track config-toggle-track--${enabled ? 'on' : 'off'}`}>
               <div className={`config-toggle-thumb${enabled ? ' config-toggle-thumb--on' : ''}`} />

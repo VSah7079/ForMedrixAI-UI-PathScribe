@@ -172,7 +172,7 @@ describe('useLisIntegration — unit tests (external services mocked)', () => {
       expect(sentBody.payload.kind).toBe('corrected');
 
       fetchMock.mockRestore();
-    }, 10000);
+    });
 
     it('real, per direct guidance: a genuine dispatch failure marks the queue entry FAILED with the real error, not silently left QUEUED', async () => {
       const { mockPatientIndexService } = await import('@/services/patients/mockPatientIndexService');
@@ -218,7 +218,7 @@ describe('useLisIntegration — unit tests (external services mocked)', () => {
       }
 
       fetchMock.mockRestore();
-    }, 10000);
+    });
   });
 
   describe('handleSendStainOrder', () => {

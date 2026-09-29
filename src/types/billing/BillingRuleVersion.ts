@@ -108,8 +108,13 @@ export interface BillingRuleVersion {
    *  date of service. */
   effectiveFrom: string;
   /** ISO date, or null while still the current/open-ended version.
-   *  Real fix set when a newer version supersedes this one - see
-   *  retireBillingRuleVersion (mockBillingRuleService.ts). */
+   *  Natural sunset (PS-89, Batch 333): when a newer version is approved
+   *  in the same scope, this is set to the moment before the new
+   *  version's effectiveFrom and the status STAYS ACTIVE, so dates of
+   *  service before the change still resolve to this version. Only an
+   *  open-ended (null) effectiveTo is closed this way; a deliberately
+   *  set expiry is never overwritten. retireVersion
+   *  (mockBillingRuleService.ts) sets it explicitly. */
   effectiveTo: string | null;
   /** ACTIVE = a real, usable rule (whether current or historically
    *  still resolvable for an old date of service). RETIRED = real,
@@ -248,4 +253,20 @@ export interface BillingRuleVersion {
   /** Required when status is REJECTED - a real decline always needs a
    *  real reason on record, same posture as changeReason above. */
   rejectionReason?: string;
+  // ── Generic Code Engine (PS-89, Batch 333) ─────────────────────────
+  /** The coding standard this rule's code belongs to (CPT, HCPCS,
+   *  NHS_OPCS4, LOCAL_LAB). Orthogonal to `country`, which is the
+   *  jurisdiction. Rows stored before PS-89 have none and are read as
+   *  'CPT' (the service backfills it on load). */
+  vocabulary?: CodeVocabulary;
+  /** The bulk import job that created this version, if any
+   *  (types/billing/CodeImportJob.ts). */
+  importJobId?: string;
+  /** Rollback commentary, appended, never replacing changeReason, so
+   *  the original provenance survives a rollback. */
+  rollbackNotes?: string[];
 }
+
+/** Coding standards the Code Engine knows (PS-89). */
+export type CodeVocabulary = 'CPT' | 'HCPCS' | 'NHS_OPCS4' | 'LOCAL_LAB';
+export const CODE_VOCABULARIES: readonly CodeVocabulary[] = ['CPT', 'HCPCS', 'NHS_OPCS4', 'LOCAL_LAB'];

@@ -85,13 +85,13 @@ const sevColor = (sev?: number): string => {
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
 const IcoCase = () => (
-  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="fm-icon--shrink">
     <rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" strokeWidth="1.4"/>
     <path d="M4.5 5.5h7M4.5 8h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
   </svg>
 );
 const IcoSpec = () => (
-  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="fm-icon--shrink">
     <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4"/>
     <circle cx="8" cy="8" r="2.5" fill="currentColor"/>
   </svg>
@@ -103,7 +103,7 @@ const IcoSearch = () => (
   </svg>
 );
 const IcoFlag = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, color: "#ef4444" }}>
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="fm-icon-flag">
     <path d="M3 2v12M3 2h9l-2.5 4L12 10H3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
@@ -138,7 +138,7 @@ const ScopeDialog: React.FC<{
 }> = ({ flagName, otherCount, onSingle, onAll, onCancel }) => {
   const { t } = useTranslation();
   return (
-    <div data-capture-hide="true" className="fm-overlay" style={{ zIndex: 9500 }}>
+    <div data-capture-hide="true" className="fm-overlay fm-overlay--scope-dialog">
       <div className="fm-dialog fm-dialog--wide">
         <div className="fm-dialog-icon info"><IcoSpec /></div>
         <h3 className="fm-dialog-title">{t('flagManagerModal.scopeDialog.title')}</h3>
@@ -700,7 +700,7 @@ const FlagManagerModal: React.FC<Props> = ({
                       <div className="fm-flag-info">
                         <div className="fm-flag-name-row">
                           {sev && (
-                            <span className="fm-sev-dot" style={{ background: sevColor(sev) }} title={t('flagManagerModal.severityTitle', { sev })} />
+                            <span className="fm-sev-dot" style={{ '--ps-hue': sevColor(sev) } as React.CSSProperties} title={t('flagManagerModal.severityTitle', { sev })} />
                           )}
                           <span className="fm-flag-name">{def.name}</span>
                         </div>
@@ -764,7 +764,7 @@ const FlagManagerModal: React.FC<Props> = ({
       {/* ── Discard-changes warning — now genuinely accurate: the draft
           is discarded and nothing was ever written to the backend ── */}
       {showDirtyWarn && ReactDOM.createPortal(
-        <div className="ps-overlay" style={{ zIndex: 9500 }}>
+        <div className="ps-overlay ps-overlay--flag-discard-warn">
           <div className="ps-modal-dark ps-modal-dark--sm">
             <div className="ps-modal-dark-header">
               <span className="ps-modal-dark-emoji">⚠️</span>

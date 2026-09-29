@@ -30,12 +30,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useState, useCallback, useMemo, useRef } from 'react';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { toast } from 'react-toastify';
 import '../../pathscribe.css';
 import { useAuth } from '@contexts/AuthContext';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
-import { useTranslation } from 'react-i18next';
+import { Trans, useTranslation } from 'react-i18next';
 import RequestReviewModal from '@/components/RequestReview/RequestReviewModal';
 import EMRSidecarDrawer from '@/pages/SynopticReportPage/components/EMRSidecarDrawer';
 import { WsiViewerLaunchButton } from '@/pages/SynopticReportPage/components/WsiViewerLaunchButton';
@@ -54,7 +54,9 @@ import CytologySynopticFormView, { type SynopticTranslationAcknowledgment } from
 import CytologyRoseView from './components/CytologyRoseView';
 import { resolveHasAdvancedSignOutCertification } from '@/services/staff/resolveHasAdvancedSignOutCertification';
 import { generateCytologyReportPdf } from '@/services/cytology/generateCytologyReportPdf';
-import { auditService } from '@/services';
+import { auditService, signatureGate } from '@/services';
+import { PhiToastMessage } from '@/components/Common/PhiToastMessage';
+import type { SignatureConfirmation } from '@/services/auth/signerConfirmation';
 import { resolvePatientCytoHistoHistory, type PatientCytoHistoHistory } from '@/services/cytology/resolvePatientCytoHistoHistory';
 import { mockStainTypeService } from '@/services/stains/mockStainTypeService';
 import { mockMolecularTargetService } from '@/services/stains/mockMolecularTargetService';
@@ -79,6 +81,10 @@ import { mockUserService } from '@/services/users/mockUserService';
 import { countersignService, qaSupervisionAssignmentService } from '@/services';
 import { resolveResidentCountersignRequired } from '@/services/cases/resolveResidentCountersignRequired';
 import { resolveCytologyIsPathologistTrack } from '@/services/cases/resolveCytologyIsPathologistTrack';
+import { resolveCytologySignOutAuthority } from '@/services/cytology/resolveCytologySignOutAuthority';
+import { resolveFinalizeAuthorityContext } from '@/services/auth/resolveFinalizeAuthorityContext';
+import { getSessionUser } from '@/services/auth/caseAccessControl';
+import { formatDateTime } from '@/utils/formatDate';
 import { FPPE_ACTIVITY_TYPE_ID, CYTOTECH_COMPETENCY_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
 import { sendEmail } from '@/services/communications/notificationService';
 import type { CaseParticipant } from '@/types/case/Case';
@@ -153,8 +159,16 @@ import { resolveCisoeAValidation } from '@/services/cytology/resolveCisoeAValida
 import { resolveCisoeAAdequacyToBethesda } from '@/services/cytology/resolveCisoeAAdequacyToBethesda';
 import { resolveCisoeAReflexRecommendation } from '@/services/cytology/resolveCisoeAReflexRecommendation';
 import { mockCytologyInstrumentationService } from '@/services/cytology/mockCytologyInstrumentationService';
+import { mockFacilityCytologyInstrumentationOverrideService } from '@/services/cytology/mockFacilityCytologyInstrumentationOverrideService';
+import { resolveEffectiveCytologyInstrumentationModality } from '@/services/cytology/resolveEffectiveCytologyInstrumentationModality';
 import { useCompanionWindow } from '@/hooks/useCompanionWindow';
 import type { Case } from '@/types/case/Case';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
+import { SpellCheckProvider } from '@/components/SpellCheck/SpellCheckContext';
+import { SpellingLanguageControl } from '@/components/SpellCheck/SpellingLanguageControl';
+import { useCaseSpellCheck } from '@/hooks/useCaseSpellCheck';
+import type { SpellingLocale } from '@/services/spellcheck/spellingLocales';
+import { SignatureConfirmModal } from '@/components/Signing/SignatureConfirmModal';
 
 const ROLE_LABELS: Record<CytologyReviewRole, string> = {
   primary_screen: 'Primary Screener',
@@ -184,26 +198,25 @@ function SingleSearchSelect({ options, value, comment, onChange, onCommentChange
 
   if (selected) {
     return (
-      <div style={{ marginBottom: 12 }}>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#111827', border: '1px solid #1f2937', borderRadius: 7 }}>
-          <span style={{ flex: 1, fontSize: 12.5, color: '#e5e7eb' }}>{selected.description ?? (selected.abbreviation ? `${selected.abbreviation} — ${selected.label}` : selected.label)}</span>
-          <button onClick={() => onChange('')} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
+      <div className="ps-cytosearch-selected-wrap">
+        <div className="ps-cytosearch-selected-row">
+          <span className="ps-cytosearch-selected-text">{selected.description ?? (selected.abbreviation ? `${selected.abbreviation} — ${selected.label}` : selected.label)}</span>
+          <button onClick={() => onChange('')} className="ps-cytosearch-remove-btn">×</button>
         </div>
         <input value={comment} onChange={e => onCommentChange(e.target.value)} placeholder="Comment (optional)"
-          style={{ width: '100%', marginTop: 4, padding: '5px 9px', fontSize: 12, color: '#9ca3af', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 6 }} />
+          className="ps-cytosearch-comment-input" />
       </div>
     );
   }
   return (
-    <div style={{ position: 'relative', marginBottom: 12 }}>
+    <div className="ps-cytosearch-query-wrap">
       <input value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder}
-        style={{ width: '100%', padding: '7px 10px', fontSize: 12.5, color: '#e5e7eb', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 7 }} />
+        className="ps-cytosearch-query-input" />
       {matches.length > 0 && (
-        <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: '#161616', border: '1px solid #2a2a2a', borderRadius: 8, marginTop: 3, maxHeight: 220, overflowY: 'auto' }}>
+        <div className="ps-cytosearch-dropdown">
           {matches.map(o => (
             <div key={o.id} onClick={() => { onChange(o.id); setQuery(''); }}
-              style={{ padding: '7px 10px', fontSize: 12, color: '#d1d5db', cursor: 'pointer' }}
-              onMouseEnter={e => (e.currentTarget.style.background = '#1f2937')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+              className="ps-cytosearch-dropdown-item">
               {o.abbreviation ? `${o.abbreviation} — ${o.label}` : o.label}
             </div>
           ))}
@@ -231,26 +244,25 @@ function MultiSearchSelect({ options, selections, onChange, placeholder, categor
   const setComment = (categoryId: string, comment: string) => onChange(selections.map(s => s.categoryId === categoryId ? { ...s, comment } : s));
 
   return (
-    <div style={{ marginBottom: 12 }}>
+    <div className="ps-cytosearch-selected-wrap">
       {selections.map(s => (
-        <div key={s.categoryId} style={{ marginBottom: 6 }}>
-          <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '7px 10px', background: '#111827', border: '1px solid #1f2937', borderRadius: 7 }}>
-            <span style={{ flex: 1, fontSize: 12.5, color: '#e5e7eb' }}>{categoryLabel(s.categoryId)}</span>
-            <button onClick={() => remove(s.categoryId)} style={{ background: 'none', border: 'none', color: '#6b7280', cursor: 'pointer', fontSize: 14, lineHeight: 1 }}>×</button>
+        <div key={s.categoryId} className="ps-cytosearch-multi-item-wrap">
+          <div className="ps-cytosearch-selected-row">
+            <span className="ps-cytosearch-selected-text">{categoryLabel(s.categoryId)}</span>
+            <button onClick={() => remove(s.categoryId)} className="ps-cytosearch-remove-btn">×</button>
           </div>
           <input value={s.comment ?? ''} onChange={e => setComment(s.categoryId, e.target.value)} placeholder="Comment (optional)"
-            style={{ width: '100%', marginTop: 4, padding: '5px 9px', fontSize: 12, color: '#9ca3af', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 6 }} />
+            className="ps-cytosearch-comment-input" />
         </div>
       ))}
-      <div style={{ position: 'relative' }}>
+      <div className="ps-cytosearch-query-wrap--nested">
         <input value={query} onChange={e => setQuery(e.target.value)} placeholder={placeholder}
-          style={{ width: '100%', padding: '7px 10px', fontSize: 12.5, color: '#e5e7eb', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 7 }} />
+          className="ps-cytosearch-query-input" />
         {matches.length > 0 && (
-          <div style={{ position: 'absolute', zIndex: 10, top: '100%', left: 0, right: 0, background: '#161616', border: '1px solid #2a2a2a', borderRadius: 8, marginTop: 3, maxHeight: 220, overflowY: 'auto' }}>
+          <div className="ps-cytosearch-dropdown">
             {matches.map(o => (
               <div key={o.id} onClick={() => add(o.id)}
-                style={{ padding: '7px 10px', fontSize: 12, color: '#d1d5db', cursor: 'pointer' }}
-                onMouseEnter={e => (e.currentTarget.style.background = '#1f2937')} onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                className="ps-cytosearch-dropdown-item">
                 {o.abbreviation ? `${o.abbreviation} — ${o.label}` : o.label}
               </div>
             ))}
@@ -262,8 +274,8 @@ function MultiSearchSelect({ options, selections, onChange, placeholder, categor
 }
 
 const fieldLabel = (text: string, hint?: string) => (
-  <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#9ca3af', marginBottom: 5, textTransform: 'uppercase', letterSpacing: 0.3 }}>
-    {text}{hint && <span style={{ fontWeight: 400, textTransform: 'none', color: '#4b5563', marginLeft: 6, letterSpacing: 0 }}>{hint}</span>}
+  <label className="ps-cytoscreen-field-label">
+    {text}{hint && <span className="ps-cytoscreen-field-label-hint">{hint}</span>}
   </label>
 );
 
@@ -566,11 +578,24 @@ export default function CytologyScreeningPage() {
   const hasAdvancedCert = resolveHasAdvancedSignOutCertification(signingProviderCredentials, labJurisdiction, 'CYTO_ADVANCED_SPECIALIST', new Date().toISOString());
   // Real, per direct guidance on Cytology Assisted Instrumentation —
   // "Standardize on WSI... Treat Traditional Guided as a Pure LIS
-  // Workflow." The real, current, global instrumentation setting
-  // determines whether the WSI viewer action is offered at all — a
-  // real traditional_guided lab never sees it, matching direct
-  // guidance's own "stays completely out of the image-rendering
+  // Workflow." Determines whether the WSI viewer action is offered at
+  // all — a real traditional_guided case never sees it, matching
+  // direct guidance's own "stays completely out of the image-rendering
   // business for those slides."
+  //
+  // Real, per direct follow-up ("each performing facility could
+  // identify their own mode... is it possible that an individual
+  // system could have both types?", high priority given multi-facility
+  // support): this is no longer a flat, app-wide read. Resolved below
+  // per THIS case's own performing facility
+  // (resolveEffectiveCytologyInstrumentationModality — Enterprise
+  // default, overridden by that facility's own real, independent
+  // override if one exists), the same real 2-tier cascade pattern this
+  // page already uses for nomenclature/workload-cap/QC. A real
+  // consequence, not just a config toggle: one real system can now
+  // genuinely run both modalities at once — a legacy facility
+  // overridden to traditional_guided while another facility in the
+  // same system stays on (or is separately overridden to) wsi.
   const [instrumentationModality, setInstrumentationModality] = useState<'wsi' | 'traditional_guided'>('wsi');
   // Real, per direct guidance's own confirmed consolidation — the
   // real, sticky-positioned WSI launch now lives inside
@@ -650,6 +675,8 @@ export default function CytologyScreeningPage() {
   const [showConcordancePrompt, setShowConcordancePrompt] = useState(false);
   const [recordingConcordance, setRecordingConcordance] = useState(false);
   const [signingOut, setSigningOut] = useState(false);
+  // Batch 344: sign-out waits for the signer to be confirmed.
+  const [confirmingSignOut, setConfirmingSignOut] = useState(false);
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState<Draft>(EMPTY_DRAFT);
@@ -715,8 +742,18 @@ export default function CytologyScreeningPage() {
   // ignored by every modern browser, but must be set for the prompt
   // to appear at all.
   useEffect(() => {
-    mockCytologyInstrumentationService.get().then(res => { if (res.ok) setInstrumentationModality(res.data.modality); });
-  }, []);
+    const facilityId = caseData?.order?.facilityId;
+    Promise.all([
+      mockCytologyInstrumentationService.get(),
+      facilityId ? mockFacilityCytologyInstrumentationOverrideService.getForFacility(facilityId) : Promise.resolve({ ok: true as const, data: null }),
+    ]).then(([enterpriseRes, facilityOverrideRes]) => {
+      const effective = resolveEffectiveCytologyInstrumentationModality(
+        enterpriseRes.ok ? enterpriseRes.data : { modality: 'wsi' },
+        facilityOverrideRes.ok ? facilityOverrideRes.data : null,
+      );
+      setInstrumentationModality(effective.modality);
+    });
+  }, [caseData?.order?.facilityId]);
 
   useEffect(() => {
     const handler = (e: BeforeUnloadEvent) => {
@@ -1637,7 +1674,7 @@ export default function CytologyScreeningPage() {
       resolveSynopticTranslationCheckForReview(review),
     );
     if (!resolveCanSignOutCytology(isPathologist, candidateGate)) {
-      toast.error('Only a Pathologist may select this review as the Final Diagnosis — it requires pathologist review before sign-out.');
+      toast.error(t('cytologySignOut.finalDiagnosisPathologistOnly'));
       return;
     }
     const snapshot = resolveCytologyFinalDiagnosisSnapshot(review);
@@ -1851,7 +1888,7 @@ export default function CytologyScreeningPage() {
     }
   };
 
-  const handleSignOut = async () => {
+  const handleSignOut = async (confirmation: SignatureConfirmation) => {
     if (!caseData || !specimenId || !user?.id || !currentFinalDiagnosis) return;
     const finalReview = reviews.find(r => r.id === currentFinalDiagnosis.reviewRecordId);
     if (!finalReview) return;
@@ -1862,6 +1899,23 @@ export default function CytologyScreeningPage() {
       resolveSynopticTranslationCheckForReview(finalReview),
     );
     if (!resolveCanSignOutCytology(isPathologist, gate)) return;
+
+    // Batch 345: check the signature before anything is signed
+    // (services/auth/signatureEvidence.ts).
+    const accepted = await signatureGate.accept(confirmation, {
+      caseId: caseData.id, caseRef: caseData.accession?.fullAccession ?? caseData.id, actions: ['cytology-sign-out'],
+    });
+    if (accepted.ok === false) { toast.error(t(`signatureEvidence.refused.${accepted.reason}`)); return; }
+
+    // PS-327 (Batch 332): per-lab / country signing authority on the
+    // pathologist track only; the cytotechnologist track keeps its CLIA
+    // rules unchanged (services/cytology/resolveCytologySignOutAuthority.ts).
+    const authority = resolveCytologySignOutAuthority({
+      isPathologistTrack: isPathologist,
+      session: getSessionUser(),
+      participants: caseData?.participants,
+      context: await resolveFinalizeAuthorityContext(caseData),
+    });
 
     // Real resident-countersign gate for Cytology — same real mechanism
     // as useSignOutWorkflow.ts's own gate for Surg Path (per direct
@@ -1906,6 +1960,7 @@ export default function CytologyScreeningPage() {
         signingUserId: user.id,
         hasActiveFppeAssignment: !!activeFppeAssignment,
         hasActiveCytotechCompetencyAssignment: !!activeCytotechCompetencyAssignment,
+        countersignRequiredTypeIds: authority.countersignRequiredTypeIds,
       });
 
       if (countersignCheck.required) {
@@ -1957,8 +2012,19 @@ export default function CytologyScreeningPage() {
           }
         }
 
+        await signatureGate.commit(caseData.id, 'released_for_countersign', { kind: 'cytology-sign-out' });
+        toast.info(<PhiToastMessage>{t('cytologySignOut.releasedForCountersign', { caseId: caseData.id })}</PhiToastMessage>);
         return;
       }
+    }
+
+    // PS-327 (Batch 332): a direct sign-out on the pathologist track needs
+    // signing authority (checked after the countersign gate, as in
+    // Surgical Pathology). The reason is already translated.
+    if (authority.finalizeDecision && !authority.finalizeDecision.granted) {
+      signatureGate.release(caseData.id);
+      toast.error(authority.finalizeDecision.reason);
+      return;
     }
 
     // Real, per direct guidance's own confirmed audit requirement —
@@ -2052,6 +2118,7 @@ export default function CytologyScreeningPage() {
       });
       if (created.ok) {
         await caseRouter.updateCase(caseData.id, { status: 'finalized' } as any);
+        await signatureGate.commit(caseData.id, 'signed', { kind: 'cytology-sign-out', id: created.data.id });
 
         // Real, per direct follow-up ("wire in Cytology") — routes
         // through the same, real, centralized Report_Released_Event
@@ -2164,7 +2231,7 @@ export default function CytologyScreeningPage() {
           }
         }
 
-        toast.success('Report signed out.');
+        toast.success(t('cytologySignOut.signedOut'));
         await load();
       }
     } finally {
@@ -2188,20 +2255,36 @@ export default function CytologyScreeningPage() {
     await load();
   };
 
+  // ── Spell check (PS-342, Batch 338) ─────────────────────────────────────
+  // Screening notes, the synoptic form's text fields and ROSE impressions
+  // are checked in the case's spelling language (see useCaseSpellCheck).
+  const saveSpellingLocaleOverride = useCallback(async (locale: SpellingLocale | null) => {
+    if (!caseData) return;
+    await caseRouter.updateCase(caseData.id, { spellingLocaleOverride: locale });
+    setCaseData(prev => (prev ? { ...prev, spellingLocaleOverride: locale } : prev));
+  }, [caseData]);
+  const spellCheck = useCaseSpellCheck({
+    caseId: caseData?.id,
+    orderingFacilityId: caseData?.order?.facilityId,
+    assignedPathologistId: caseData?.order?.assignedTo,
+    caseOverride: caseData?.spellingLocaleOverride,
+    saveCaseOverride: saveSpellingLocaleOverride,
+  });
+
   const handleLmpSave = async () => {
     if (!caseData) return;
     await caseRouter.updateCase(caseData.id, { patient: { ...caseData.patient, lastMenstrualPeriod: lmpDraft || undefined } } as any);
     await load();
   };
 
-  if (loading) return <div style={{ padding: 32, textAlign: 'center', color: '#4b5563' }}>Loading…</div>;
+  if (loading) return <div className="ps-cytoscreen-loading">{t('common.loading')}</div>;
 
   if (!caseData || !specimenId) {
     return (
-      <div style={{ padding: 32, textAlign: 'center', color: '#4b5563' }}>
-        No qualifying cytology specimen found on this case.
-        <div style={{ marginTop: 16 }}>
-          <button onClick={() => navigate('/cytology-worklist')} style={{ padding: '8px 16px', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 8, color: '#e5e7eb', cursor: 'pointer' }}>Back to Worklist</button>
+      <div className="ps-cytoscreen-loading">
+        {t('cytologyScreening.noSpecimen')}
+        <div className="ps-cytoscreen-empty-state-actions">
+          <button onClick={() => navigate('/cytology-worklist')} className="ps-cytoscreen-back-to-worklist-btn">{t('cytologyScreening.backToWorklist')}</button>
         </div>
       </div>
     );
@@ -2209,81 +2292,83 @@ export default function CytologyScreeningPage() {
 
   if (!resolveCytologyStructuredWorkflowAccess(caseData.reportingMode)) {
     return (
-      <div style={{ padding: 32, textAlign: 'center', color: '#4b5563', maxWidth: 480, margin: '0 auto' }}>
-        This case is managed by an external LIS (assist mode). PathScribe's structured cytology
-        review and sign-out workflow is only available for cases in Orchestration mode.
-        <div style={{ marginTop: 16 }}>
-          <button onClick={() => navigate('/cytology-worklist')} style={{ padding: '8px 16px', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 8, color: '#e5e7eb', cursor: 'pointer' }}>Back to Worklist</button>
+      <div className="ps-cytoscreen-loading ps-cytoscreen-loading--constrained">
+        {t('cytologyScreening.assistModeOnly')}
+        <div className="ps-cytoscreen-empty-state-actions">
+          <button onClick={() => navigate('/cytology-worklist')} className="ps-cytoscreen-back-to-worklist-btn">{t('cytologyScreening.backToWorklist')}</button>
         </div>
       </div>
     );
   }
 
   return (
-    <>
-      <main style={{ maxWidth: 1400, margin: '0 auto', padding: '24px 24px 40px' }}>
-          <button onClick={handleBackToWorklist} style={{ background: 'none', border: 'none', color: '#6b7280', fontSize: 13, cursor: 'pointer', marginBottom: 10 }}>← Back to Worklist</button>
+    <SpellCheckProvider value={spellCheck}>
+      <main className="ps-cytoscreen-main">
+          <button onClick={handleBackToWorklist} className="ps-cytoscreen-back-link">← {t('cytologyScreening.backToWorklist')}</button>
 
-          <div style={{ display: 'flex', alignItems: 'baseline', justifyContent: 'space-between', marginBottom: 18, flexWrap: 'wrap', gap: 12 }}>
+          <div className="ps-cytoscreen-header-row">
             <div>
-              <h1 style={{ fontSize: 21, fontWeight: 700, color: '#fff', margin: 0 }}>Case <span data-phi="accession">{caseData.id}</span></h1>
-              <p style={{ fontSize: 12.5, color: '#6b7280', margin: '2px 0 0' }} data-phi="true">
+              <h1 className="ps-cytoscreen-case-title">
+                <Trans i18nKey="cytologyScreening.caseTitle" values={{ id: caseData.id }} components={{ accession: <span data-phi="accession" /> }} />
+              </h1>
+              <p className="ps-cytoscreen-patient-line" data-phi="true">
                 {caseData.patient ? `${caseData.patient.firstName ?? ''} ${caseData.patient.lastName ?? ''}`.trim() : 'Unknown Patient'} · MRN {caseData.patient?.mrn ?? '—'}
               </p>
             </div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, fontSize: 12, color: '#6b7280' }}>
+            <div className="ps-cytoscreen-toolbar">
+              <SpellingLanguageControl className="ps-cytoscreen-spelllang" />
               <button
                 onClick={handleLaunchEMR}
-                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#0ea5e9', background: '#0ea5e918', border: '1px solid #0ea5e933', borderRadius: 6, cursor: 'pointer' }}>
+                className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--sky">
                 🌐 {t('cytologyScreening.openEmrBtn')}
               </button>
               <button
                 onClick={handlePrint}
-                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#0891B2', background: '#0891B218', border: '1px solid #0891B233', borderRadius: 6, cursor: 'pointer' }}>
+                className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--teal">
                 🖨️ {t('cytologyScreening.printBtn')}
               </button>
               {showSynopticTrigger && (
                 <button
                   onClick={() => setShowSynopticDrawer(true)}
-                  style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#38bdf8', background: '#38bdf818', border: '1px solid #38bdf833', borderRadius: 6, cursor: 'pointer' }}>
+                  className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--cyan">
                   📑 {t('cytologyScreening.synopticBtn')}
                 </button>
               )}
               <button
                 onClick={() => setShowMaterialDrawer(true)}
-                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#94a3b8', background: '#94a3b818', border: '1px solid #94a3b833', borderRadius: 6, cursor: 'pointer' }}>
+                className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--slate">
                 🧱 {t('cytologyScreening.materialBtn')}
               </button>
               {!isGynCytology && (
                 <button
                   onClick={() => setShowRoseDrawer(true)}
-                  style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#EC4899', background: '#EC489918', border: '1px solid #EC489933', borderRadius: 6, cursor: 'pointer' }}>
+                  className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--pink">
                   🔬 {t('cytologyScreening.roseBtn')}
                 </button>
               )}
               <button
                 onClick={() => setShowCodesModal(true)}
-                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#0891B2', background: '#0891B218', border: '1px solid #0891B233', borderRadius: 6, cursor: 'pointer' }}>
+                className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--teal">
                 # {t('cytologyScreening.codesBtn')}
               </button>
               <button
                 onClick={() => openFlagManager(caseData)}
-                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#f59e0b', background: '#f59e0b18', border: '1px solid #f59e0b33', borderRadius: 6, cursor: 'pointer' }}>
+                className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--amber">
                 🚩 {t('cytologyScreening.flagsBtn')}
               </button>
               <button
                 onClick={() => setShowTeamModal(true)}
-                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#0891B2', background: '#0891B218', border: '1px solid #0891B233', borderRadius: 6, cursor: 'pointer' }}>
+                className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--teal">
                 👤 {t('cytologyScreening.teamBtn')}
               </button>
               <button
                 onClick={() => setShowDelegateModal(true)}
-                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#a78bfa', background: '#a78bfa18', border: '1px solid #a78bfa33', borderRadius: 6, cursor: 'pointer' }}>
+                className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--violet">
                 👥 {t('cytologyScreening.delegateBtn')}
               </button>
               <button
                 onClick={() => setReviewOpen(true)}
-                style={{ padding: '6px 12px', fontSize: 12, fontWeight: 600, color: '#a78bfa', background: '#a78bfa18', border: '1px solid #a78bfa33', borderRadius: 6, cursor: 'pointer' }}>
+                className="ps-cytoscreen-tag-btn ps-cytoscreen-tag-btn--violet">
                 🔍 {t('cytologyScreening.requestReviewBtn')}
               </button>
               {instrumentationModality === 'wsi' && (
@@ -2308,7 +2393,7 @@ export default function CytologyScreeningPage() {
               )}
               <span>LMP</span>
               <input type="date" value={lmpDraft} onChange={e => setLmpDraft(e.target.value)} onBlur={handleLmpSave}
-                style={{ padding: '5px 8px', fontSize: 12, color: '#e5e7eb', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 6 }} />
+                className="ps-cytoscreen-lmp-input" />
             </div>
           </div>
 
@@ -2320,12 +2405,12 @@ export default function CytologyScreeningPage() {
               exact membership test, so this banner and the worklist
               tile always agree on whether a case still needs this. */}
           {currentRetrospectiveReviewFlag && !currentRetrospectiveReviewFlag.outcome && (
-            <div style={{ background: '#2e1065', border: '1px solid #7c3aed', borderRadius: 10, padding: 16, marginBottom: 18 }}>
-              <div style={{ fontSize: 13.5, fontWeight: 700, color: '#e9d5ff', marginBottom: 4 }}>5-Year Retrospective Review Required</div>
-              <div style={{ fontSize: 12, color: '#c4b5fd', marginBottom: 12 }}>
+            <div className="ps-cytoscreen-banner--retro">
+              <div className="ps-cytoscreen-banner-title--retro">5-Year Retrospective Review Required</div>
+              <div className="ps-cytoscreen-banner-body--retro">
                 This prior, negative cytology result was flagged for mandatory retrospective review after this patient's own case {currentRetrospectiveReviewFlag.triggeredByCaseId} received a new HSIL+/AIS/malignant diagnosis, per CAP's own 5-year lookback requirement.
               </div>
-              <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
+              <div className="ps-cytoscreen-banner-form-row">
                 <div>
                   <label className="ps-label" htmlFor="retro-outcome">Outcome</label>
                   <select id="retro-outcome" className="ps-input-dark" value={retrospectiveOutcomeDraft} onChange={e => setRetrospectiveOutcomeDraft(e.target.value as typeof retrospectiveOutcomeDraft)}>
@@ -2336,12 +2421,12 @@ export default function CytologyScreeningPage() {
                     <option value="sampling_error">Sampling Error</option>
                   </select>
                 </div>
-                <div style={{ flex: 1, minWidth: 220 }}>
+                <div className="ps-cytoscreen-banner-field--grow">
                   <label className="ps-label" htmlFor="retro-corrective">Corrective Action (CT retraining, amended report, etc.)</label>
-                  <input id="retro-corrective" className="ps-input-dark" style={{ width: '100%' }} value={retrospectiveCorrectiveActionDraft} onChange={e => setRetrospectiveCorrectiveActionDraft(e.target.value)} placeholder="Optional — required for a real, non-negative outcome in most CAP-accredited labs" />
+                  <input id="retro-corrective" className="ps-input-dark ps-w-full" value={retrospectiveCorrectiveActionDraft} onChange={e => setRetrospectiveCorrectiveActionDraft(e.target.value)} placeholder="Optional — required for a real, non-negative outcome in most CAP-accredited labs" />
                 </div>
                 <button onClick={handleCompleteRetrospectiveReview} disabled={!retrospectiveOutcomeDraft || savingRetrospectiveOutcome}
-                  style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: retrospectiveOutcomeDraft ? '#7c3aed' : '#3f2d63', border: 'none', borderRadius: 6, color: '#fff', cursor: retrospectiveOutcomeDraft ? 'pointer' : 'not-allowed' }}>
+                  className={`ps-cytoscreen-banner-btn ${retrospectiveOutcomeDraft ? 'ps-cytoscreen-banner-btn--active' : 'ps-cytoscreen-banner-btn--inactive'}`}>
                   {savingRetrospectiveOutcome ? 'Saving…' : 'Complete Review'}
                 </button>
               </div>
@@ -2361,22 +2446,22 @@ export default function CytologyScreeningPage() {
               const isRecording = recordingHistologyCorrelation === candidate.candidateCaseId;
               const autoResolvable = resolution && resolution.outcome !== 'unresolvable';
               return (
-                <div key={candidate.candidateCaseId} style={{ background: '#4a044e', border: '1px solid #a21caf', borderRadius: 10, padding: 16, marginBottom: 18 }}>
-                  <div style={{ fontSize: 13.5, fontWeight: 700, color: '#f5d0fe', marginBottom: 4 }}>Cyto-Histologic Correlation Candidate</div>
-                  <div style={{ fontSize: 12, color: '#e9b8f0', marginBottom: 12 }}>
+                <div key={candidate.candidateCaseId} className="ps-cytoscreen-banner--histo">
+                  <div className="ps-cytoscreen-banner-title--histo">Cyto-Histologic Correlation Candidate</div>
+                  <div className="ps-cytoscreen-banner-body--histo">
                     This patient had a subsequent case ({candidate.candidateCaseId}) within the follow-up window after this abnormal cytology finding.
                     Confirm whether it's the relevant biopsy before recording a correlation.
                   </div>
 
-                  {!resolution && <div style={{ fontSize: 12, color: '#e9b8f0' }}>Resolving…</div>}
+                  {!resolution && <div className="ps-cytoscreen-banner-resolving--histo">Resolving…</div>}
 
                   {resolution && autoResolvable && (
                     <div>
-                      <div style={{ fontSize: 12, color: '#f5d0fe', marginBottom: 10 }}>
+                      <div className="ps-cytoscreen-banner-result--histo">
                         Cytology: <b>{resolution.cytologyDxLabel}</b> — Histology (from SNOMED coding): <b>{resolution.histologyDxDescription}</b> —{' '}
                         Outcome: <b>{resolution.outcome.replace('_', ' ')}</b>
                       </div>
-                      <div style={{ display: 'flex', gap: 10 }}>
+                      <div className="ps-cytoscreen-banner-actions">
                         <button
                           onClick={() => handleRecordHistologyCorrelation(
                             candidate.candidateCaseId,
@@ -2387,11 +2472,11 @@ export default function CytologyScreeningPage() {
                             resolution.histologyRank,
                           )}
                           disabled={isRecording}
-                          style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#a21caf', border: 'none', borderRadius: 6, color: '#fff', cursor: isRecording ? 'not-allowed' : 'pointer' }}>
+                          className="ps-cytoscreen-banner-btn ps-cytoscreen-banner-btn--solid">
                           {isRecording ? 'Saving…' : 'Confirm & Record'}
                         </button>
                         <button onClick={() => handleDismissHistologyCorrelationCandidate(candidate.candidateCaseId)}
-                          style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', border: '1px solid #a21caf', borderRadius: 6, color: '#f5d0fe', cursor: 'pointer' }}>
+                          className="ps-cytoscreen-banner-btn--outline">
                           Not Relevant
                         </button>
                       </div>
@@ -2400,13 +2485,13 @@ export default function CytologyScreeningPage() {
 
                   {resolution && !autoResolvable && (
                     <div>
-                      <div style={{ fontSize: 12, color: '#f5d0fe', marginBottom: 10 }}>
+                      <div className="ps-cytoscreen-banner-result--histo">
                         No real SNOMED coding on this case resolves to a known severity yet — enter the histology diagnosis manually after reading the actual report.
                       </div>
-                      <div style={{ display: 'flex', gap: 12, flexWrap: 'wrap', alignItems: 'flex-end' }}>
-                        <div style={{ flex: 1, minWidth: 220 }}>
+                      <div className="ps-cytoscreen-banner-form-row">
+                        <div className="ps-cytoscreen-banner-field--grow">
                           <label className="ps-label" htmlFor={`histo-dx-${candidate.candidateCaseId}`}>Histology Diagnosis</label>
-                          <input id={`histo-dx-${candidate.candidateCaseId}`} className="ps-input-dark" style={{ width: '100%' }}
+                          <input id={`histo-dx-${candidate.candidateCaseId}`} className="ps-input-dark ps-w-full"
                             value={histologyCorrelationManualDx[candidate.candidateCaseId] ?? ''}
                             onChange={e => setHistologyCorrelationManualDx(prev => ({ ...prev, [candidate.candidateCaseId]: e.target.value }))}
                             placeholder="e.g. CIN III on biopsy" />
@@ -2429,11 +2514,11 @@ export default function CytologyScreeningPage() {
                             handleRecordHistologyCorrelation(candidate.candidateCaseId, dx.trim(), outcome, undefined, resolution?.cytologyRank);
                           }}
                           disabled={isRecording || !histologyCorrelationManualDx[candidate.candidateCaseId]?.trim() || !histologyCorrelationManualOutcome[candidate.candidateCaseId]}
-                          style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: '#a21caf', border: 'none', borderRadius: 6, color: '#fff', cursor: 'pointer' }}>
+                          className="ps-cytoscreen-banner-btn ps-cytoscreen-banner-btn--solid">
                           {isRecording ? 'Saving…' : 'Record'}
                         </button>
                         <button onClick={() => handleDismissHistologyCorrelationCandidate(candidate.candidateCaseId)}
-                          style={{ padding: '8px 16px', fontSize: 13, fontWeight: 600, background: 'transparent', border: '1px solid #a21caf', borderRadius: 6, color: '#f5d0fe', cursor: 'pointer' }}>
+                          className="ps-cytoscreen-banner-btn--outline">
                           Not Relevant
                         </button>
                       </div>
@@ -2445,12 +2530,12 @@ export default function CytologyScreeningPage() {
 
           {/* Real Sign Out action */}
           {signOutRecords.length > 0 ? (
-            <div style={{ padding: '10px 16px', background: '#22c55e12', border: '1px solid #22c55e33', borderRadius: 10, marginBottom: 18, fontSize: 12.5, color: '#22c55e' }}>
-              Signed out by {signOutRecords[0].signedBy.userName} on {new Date(signOutRecords[0].signedAt).toLocaleString()}.
+            <div className="ps-cytoscreen-signedout-banner">
+              {t('cytologySignOut.signedOutBanner', { name: signOutRecords[0].signedBy.userName, date: formatDateTime(signOutRecords[0].signedAt, i18n.language) })}
             </div>
           ) : (() => {
             if (!currentFinalDiagnosis) {
-              return <div style={{ padding: '10px 16px', background: 'rgba(255,255,255,0.03)', border: '1px solid #1f2937', borderRadius: 10, marginBottom: 18, fontSize: 12.5, color: '#6b7280' }}>Select a Final Diagnosis below before this case can be signed out.</div>;
+              return <div className="ps-cytoscreen-signout-banner--warn">{t('cytologySignOut.selectFinalDiagnosis')}</div>;
             }
             const finalReview = reviews.find(r => r.id === currentFinalDiagnosis.reviewRecordId);
             const gate = finalReview
@@ -2458,29 +2543,39 @@ export default function CytologyScreeningPage() {
               : { allowed: false, blockedReasons: [] };
             const canSign = resolveCanSignOutCytology(isPathologist, gate);
             return (
-              <div style={{ display: 'flex', alignItems: 'center', gap: 12, padding: '10px 16px', background: 'rgba(255,255,255,0.03)', border: '1px solid #1f2937', borderRadius: 10, marginBottom: 18 }}>
-                <span style={{ fontSize: 12.5, color: canSign ? '#e5e7eb' : '#f59e0b', flex: 1 }}>
-                  {canSign ? 'Ready to sign out.' : `Pathologist sign-out required: ${gate.blockedReasons.join(', ')}`}
+              <div className="ps-cytoscreen-signout-row">
+                <span className={`ps-cytoscreen-signout-status ${canSign ? 'ps-cytoscreen-signout-status--ready' : 'ps-cytoscreen-signout-status--blocked'}`}>
+                  {canSign ? t('cytologySignOut.ready') : t('cytologySignOut.pathologistRequired', { reasons: gate.blockedReasons.join(', ') })}
                 </span>
-                <button onClick={handleSignOut} disabled={!canSign || signingOut}
-                  style={{ padding: '8px 18px', fontSize: 12.5, fontWeight: 700, color: '#0a0a0a', background: canSign ? '#009E73' : '#374151', border: 'none', borderRadius: 8, cursor: canSign ? 'pointer' : 'not-allowed' }}>
-                  {signingOut ? 'Signing…' : 'Sign Out'}
+                <button onClick={() => setConfirmingSignOut(true)} disabled={!canSign || signingOut}
+                  className={`ps-cytoscreen-signout-btn ${canSign ? 'ps-cytoscreen-signout-btn--ready' : 'ps-cytoscreen-signout-btn--blocked'}`}>
+                  {signingOut ? t('cytologySignOut.signing') : t('cytologySignOut.signOut')}
                 </button>
               </div>
             );
           })()}
 
+          <SignatureConfirmModal
+            show={confirmingSignOut}
+            action="cytology-sign-out"
+            caseRef={caseData?.accession?.fullAccession ?? caseData?.id ?? null}
+            title={t('cytologySignOut.confirmTitle')}
+            confirmLabel={t('cytologySignOut.signOut')}
+            onConfirmed={(confirmation) => { setConfirmingSignOut(false); void handleSignOut(confirmation); }}
+            onCancel={() => setConfirmingSignOut(false)}
+          />
+
           {/* Real, two-column layout — uses the available horizontal space */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'minmax(0, 1fr) minmax(0, 1.3fr)', gap: 20 }}>
+          <div className="ps-cytoscreen-two-col">
 
             {/* LEFT: context — role, QC, HPV, review history */}
             <div>
-              <div style={{ padding: '12px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10, marginBottom: 14 }}>
+              <div className="ps-cytoscreen-card">
                 {fieldLabel('Your Role for This Review')}
-                <div style={{ fontSize: 14, fontWeight: 700, color: '#009E73' }}>
+                <div className="ps-cytoscreen-role-value">
                   {ROLE_LABELS[editingReviewId ? (reviews.find(r => r.id === editingReviewId)?.role ?? resolvedRole) : resolvedRole]}
                 </div>
-                <div style={{ fontSize: 11, color: '#6b7280', marginTop: 2 }}>
+                <div className="ps-cytoscreen-role-hint">
                   {editingReviewId
                     ? 'You already reviewed this case — editing your own review below.'
                     : 'Determined automatically from review history and your account role.'}
@@ -2493,10 +2588,10 @@ export default function CytologyScreeningPage() {
                   which always counts as pathologist_review (0 SCU)
                   automatically. */}
               {!isPathologist && (
-                <div style={{ padding: '12px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10, marginBottom: 14 }}>
+                <div className="ps-cytoscreen-card">
                   {fieldLabel('Review Mode', '(real CLIA workload weight)')}
                   <select value={reviewMode} onChange={e => setReviewMode(e.target.value as CytologyReviewMode)}
-                    className="ps-conf-select" style={{ width: '100%' }}>
+                    className="ps-conf-select ps-w-full">
                     <option value="primary_manual">Full Manual Screen (1.0 SCU)</option>
                     <option value="liquid_nongyn">Liquid-Based Non-Gyn (0.5 SCU)</option>
                     <option value="fov_assisted">FOV-Assisted, No Rescreen (0.5 SCU)</option>
@@ -2506,57 +2601,53 @@ export default function CytologyScreeningPage() {
               )}
 
               {workloadStatus && workloadStatus.status !== 'ok' && (
-                <div style={{
-                  padding: '10px 14px', borderRadius: 10, marginBottom: 14,
-                  background: workloadStatus.status === 'exceeded' ? '#ef444418' : '#f59e0b18',
-                  border: `1px solid ${workloadStatus.status === 'exceeded' ? '#ef444433' : '#f59e0b33'}`,
-                }}>
-                  <div style={{ fontSize: 12.5, fontWeight: 600, color: workloadStatus.status === 'exceeded' ? '#ef4444' : '#f59e0b' }}>
+                <div className={`ps-cytoscreen-workload-banner ${workloadStatus.status === 'exceeded' ? 'ps-cytoscreen-workload-banner--exceeded' : 'ps-cytoscreen-workload-banner--approaching'}`}>
+                  <div className={`ps-cytoscreen-workload-status-text ${workloadStatus.status === 'exceeded' ? 'ps-cytoscreen-workload-status-text--exceeded' : 'ps-cytoscreen-workload-status-text--approaching'}`}>
                     {workloadStatus.status === 'exceeded'
                       ? `Blocked — prorated CLIA limit reached (${workloadStatus.candidateScu.toFixed(1)}/${workloadStatus.maxAllowedScu.toFixed(1)} SCU).`
                       : `Approaching your prorated CLIA screening limit for this session (${workloadStatus.candidateScu.toFixed(1)}/${workloadStatus.maxAllowedScu.toFixed(1)} SCU).`}
                   </div>
-                  {workloadBlockedReason && <div style={{ fontSize: 11.5, color: '#9ca3af', marginTop: 4 }}>{workloadBlockedReason}</div>}
+                  {workloadBlockedReason && <div className="ps-cytoscreen-workload-reason">{workloadBlockedReason}</div>}
                 </div>
               )}
 
-              <div style={{ padding: '12px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10, marginBottom: 14 }}>
+              <div className="ps-cytoscreen-card">
                 {fieldLabel('Mandatory QC')}
                 {currentQcFlag ? (
                   <>
-                    <div style={{ fontSize: 12.5, color: '#ef4444', marginBottom: 8 }}>
+                    <div className="ps-cytoscreen-qc-flagged-text">
                       Flagged for {currentQcFlag.reason === 'targeted_high_risk' ? 'high-risk targeted' : 'random selection'} QC by {currentQcFlag.flaggedByName} on {new Date(currentQcFlag.flaggedAt).toLocaleDateString()}.
                     </div>
-                    <button onClick={handleUnflagQc} style={{ padding: '5px 12px', fontSize: 11.5, fontWeight: 600, color: '#9ca3af', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 6, cursor: 'pointer' }}>
+                    <button onClick={handleUnflagQc} className="ps-cytoscreen-qc-btn--remove">
                       Remove Flag
                     </button>
                   </>
                 ) : (
                   <div>
-                    <div style={{ fontSize: 11, color: '#4b5563', marginBottom: 6 }}>Random QC selection runs automatically when the Initial Review is saved.</div>
-                    <button onClick={() => handleFlagForQc()} style={{ padding: '5px 12px', fontSize: 11.5, fontWeight: 600, color: '#ef4444', background: '#1c1c1c', border: '1px solid #ef444433', borderRadius: 6, cursor: 'pointer' }}>Flag High-Risk QC</button>
+                    <div className="ps-cytoscreen-qc-hint">Random QC selection runs automatically when the Initial Review is saved.</div>
+                    <button onClick={() => handleFlagForQc()} className="ps-cytoscreen-qc-btn--flag">Flag High-Risk QC</button>
                   </div>
                 )}
               </div>
 
-              <div style={{ padding: '12px 14px', background: '#111827', border: `1px solid ${currentHpv.hpvResult === 'Positive' ? '#ef444433' : '#1f2937'}`, borderRadius: 10, marginBottom: 14 }}>
+              <div className={`ps-cytoscreen-card ${currentHpv.hpvResult === 'Positive' ? 'ps-cytoscreen-card--hpv-positive' : ''}`}>
                 {fieldLabel('HPV Co-Testing', '(real, upstream molecular result — read-only)')}
                 {!currentHpv.hpvCoTestOrdered && !currentHpv.hpvResult ? (
-                  <div style={{ fontSize: 12, color: '#6b7280' }}>No co-test on record.</div>
+                  <div className="ps-cytoscreen-hpv-empty">No co-test on record.</div>
                 ) : (
-                  <div style={{ fontSize: 12, color: '#d1d5db', lineHeight: 1.9 }}>
-                    <div>Co-test ordered: <strong style={{ color: '#e5e7eb' }}>{currentHpv.hpvCoTestOrdered ? 'Yes' : 'No'}</strong></div>
+                  <div className="ps-cytoscreen-hpv-detail">
+                    <div>Co-test ordered: <strong className="ps-cytoscreen-text-light">{currentHpv.hpvCoTestOrdered ? 'Yes' : 'No'}</strong></div>
                     {currentHpv.hpvOrderReason && currentHpv.hpvOrderReason !== 'co_test' && (
-                      <div>Reason: <strong style={{ color: '#e5e7eb' }}>
+                      <div>Reason: <strong className="ps-cytoscreen-text-light">
                         {currentHpv.hpvOrderReason === 'ascus_reflex' ? 'ASC-US Reflex Triage' : 'Post-Treatment Surveillance'}
                       </strong></div>
                     )}
-                    <div>Result: <strong style={{ color: currentHpv.hpvResult === 'Positive' ? '#ef4444' : '#e5e7eb' }}>{currentHpv.hpvResult ?? 'Not set'}</strong>
-                      {currentHpv.hpvAbnormalFlag && <span style={{ color: '#6b7280' }}> (Flag: {currentHpv.hpvAbnormalFlag})</span>}
+                    <div>Result: <strong className={currentHpv.hpvResult === 'Positive' ? 'ps-cytoscreen-hpv-result--positive' : 'ps-cytoscreen-hpv-result--normal'}>{currentHpv.hpvResult ?? 'Not set'}</strong>
+                      {currentHpv.hpvAbnormalFlag && <span className="ps-cytoscreen-text-muted"> (Flag: {currentHpv.hpvAbnormalFlag})</span>}
                     </div>
-                    {currentHpv.hpvReferenceRange && <div>Reference range: <strong style={{ color: '#e5e7eb' }}>{currentHpv.hpvReferenceRange}</strong></div>}
+                    {currentHpv.hpvReferenceRange && <div>Reference range: <strong className="ps-cytoscreen-text-light">{currentHpv.hpvReferenceRange}</strong></div>}
                     {currentHpv.hpvResult === 'Positive' && currentHpv.hpvGenotypeDetail && (
-                      <div>Genotype: <strong style={{ color: '#e5e7eb' }}>
+                      <div>Genotype: <strong className="ps-cytoscreen-text-light">
                         {[
                           currentHpv.hpvGenotypeDetail.hpv16 && 'HPV 16',
                           currentHpv.hpvGenotypeDetail.hpv18Or45 && 'HPV 18/45',
@@ -2569,34 +2660,34 @@ export default function CytologyScreeningPage() {
               </div>
 
               {patientHistory && (patientHistory.priorCytologyResults.length > 0 || patientHistory.priorSurgicalBiopsies.length > 0) && (
-                <div style={{ padding: '12px 14px', background: '#111827', border: '1px solid #1f2937', borderRadius: 10, marginBottom: 14 }}>
+                <div className="ps-cytoscreen-card">
                   {fieldLabel(t('cytologyScreening.patientHistory.title'), t('cytologyScreening.patientHistory.subtitle'))}
                   {patientHistory.priorCytologyResults.length > 0 && (
-                    <div style={{ marginBottom: patientHistory.priorSurgicalBiopsies.length > 0 ? 10 : 0 }}>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>
+                    <div className={patientHistory.priorSurgicalBiopsies.length > 0 ? 'ps-cytoscreen-history-mb-10' : 'ps-cytoscreen-history-mb-0'}>
+                      <div className="ps-cytoscreen-history-section-label">
                         {t('cytologyScreening.patientHistory.priorPapSection')}
                       </div>
                       {patientHistory.priorCytologyResults.map(r => (
-                        <div key={r.caseId} style={{ fontSize: 12, color: '#d1d5db', padding: '4px 0', borderBottom: '1px solid #1f2937' }}>
-                          <span style={{ color: '#9ca3af' }}>{new Date(r.date).toLocaleDateString()}</span>
+                        <div key={r.caseId} className="ps-cytoscreen-history-row">
+                          <span className="ps-cytoscreen-history-date">{new Date(r.date).toLocaleDateString()}</span>
                           {' — '}<span data-phi="accession">{r.accessionNumber}</span>
-                          {r.resultLabel ? <strong style={{ color: '#e5e7eb' }}> · {r.resultLabel}</strong> : <span style={{ color: '#6b7280' }}> · {t('cytologyScreening.patientHistory.noFinalDx')}</span>}
+                          {r.resultLabel ? <strong className="ps-cytoscreen-text-light"> · {r.resultLabel}</strong> : <span className="ps-cytoscreen-text-muted"> · {t('cytologyScreening.patientHistory.noFinalDx')}</span>}
                         </div>
                       ))}
                     </div>
                   )}
                   {patientHistory.priorSurgicalBiopsies.length > 0 && (
                     <div>
-                      <div style={{ fontSize: 10.5, fontWeight: 700, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 4 }}>
+                      <div className="ps-cytoscreen-history-section-label">
                         {t('cytologyScreening.patientHistory.priorBiopsySection')}
                       </div>
                       {patientHistory.priorSurgicalBiopsies.map(b => (
-                        <div key={b.caseId} style={{ fontSize: 12, color: '#d1d5db', padding: '4px 0', borderBottom: '1px solid #1f2937', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                        <div key={b.caseId} className="ps-cytoscreen-history-row ps-cytoscreen-history-row--between">
                           <span>
-                            <span style={{ color: '#9ca3af' }}>{new Date(b.date).toLocaleDateString()}</span>
+                            <span className="ps-cytoscreen-history-date">{new Date(b.date).toLocaleDateString()}</span>
                             {' — '}<span data-phi="accession">{b.accessionNumber}</span>{b.specimenDescription ? ` · ${b.specimenDescription}` : ''}
                           </span>
-                          <a href={`/case/${b.caseId}/synoptic`} style={{ color: '#38bdf8', fontSize: 11, whiteSpace: 'nowrap' }}>{t('cytologyScreening.patientHistory.viewCase')}</a>
+                          <a href={`/case/${b.caseId}/synoptic`} className="ps-cytoscreen-history-link">{t('cytologyScreening.patientHistory.viewCase')}</a>
                         </div>
                       ))}
                     </div>
@@ -2605,18 +2696,18 @@ export default function CytologyScreeningPage() {
               )}
 
               {fiveYearLookbackFlagged.length > 0 && (
-                <div style={{ padding: '12px 14px', background: '#a855f718', border: '1px solid #a855f733', borderRadius: 10, marginBottom: 14 }}>
+                <div className="ps-cytoscreen-lookback-card">
                   {fieldLabel(t('cytologyScreening.fiveYearLookback.title'), t('cytologyScreening.fiveYearLookback.subtitle'))}
                   {fiveYearLookbackFlagged.map(item => {
                     const sourceResult = patientHistory?.priorCytologyResults.find(r => r.reviewRecordId === item.reviewId);
                     return (
-                      <div key={item.reviewId} style={{ fontSize: 12, color: '#d1d5db', padding: '4px 0', borderBottom: '1px solid #a855f733', display: 'flex', justifyContent: 'space-between', gap: 8 }}>
+                      <div key={item.reviewId} className="ps-cytoscreen-lookback-row">
                         <span>
-                          <span style={{ color: '#9ca3af' }}>{new Date(item.recordedAt).toLocaleDateString()}</span>
+                          <span className="ps-cytoscreen-history-date">{new Date(item.recordedAt).toLocaleDateString()}</span>
                           {' — '}<span data-phi="accession">{sourceResult?.accessionNumber ?? item.caseId}</span>
-                          {sourceResult?.resultLabel ? <strong style={{ color: '#e5e7eb' }}> · {sourceResult.resultLabel}</strong> : null}
+                          {sourceResult?.resultLabel ? <strong className="ps-cytoscreen-text-light"> · {sourceResult.resultLabel}</strong> : null}
                         </span>
-                        <a href={`/case/${item.caseId}/synoptic`} style={{ color: '#a855f7', fontSize: 11, whiteSpace: 'nowrap' }}>
+                        <a href={`/case/${item.caseId}/synoptic`} className="ps-cytoscreen-lookback-link">
                           {t('cytologyScreening.fiveYearLookback.viewSlide')}
                         </a>
                       </div>
@@ -2625,8 +2716,8 @@ export default function CytologyScreeningPage() {
                 </div>
               )}
 
-              <h2 style={{ fontSize: 13, fontWeight: 700, color: '#e5e7eb', margin: '0 0 10px', textTransform: 'uppercase', letterSpacing: 0.4 }}>Review History</h2>
-              {reviews.length === 0 && <p style={{ fontSize: 12.5, color: '#4b5563' }}>No reviews recorded yet.</p>}
+              <h2 className="ps-cytoscreen-history-title">Review History</h2>
+              {reviews.length === 0 && <p className="ps-cytoscreen-history-empty">No reviews recorded yet.</p>}
               {reviews.map(r => {
                 const isInitial = r.role === 'primary_screen';
                 const isFinal = currentFinalDiagnosis?.reviewRecordId === r.id;
@@ -2636,43 +2727,43 @@ export default function CytologyScreeningPage() {
                   resolveSynopticTranslationCheckForReview(r),
                 );
                 return (
-                  <div key={r.id} style={{ padding: '10px 12px', background: '#0f0f0f', border: `1px solid ${isInitial ? '#009E7333' : '#1f2937'}`, borderRadius: 9, marginBottom: 8 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 6, marginBottom: 6, flexWrap: 'wrap' }}>
-                      <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 7px', borderRadius: 5, background: isInitial ? '#009E7318' : '#37415118', color: isInitial ? '#009E73' : '#9ca3af' }}>
+                  <div key={r.id} className={`ps-cytoscreen-review-card ${isInitial ? 'ps-cytoscreen-review-card--initial' : 'ps-cytoscreen-review-card--other'}`}>
+                    <div className="ps-cytoscreen-review-row">
+                      <span className={`ps-cytoscreen-review-badge ${isInitial ? 'ps-cytoscreen-review-badge--initial' : 'ps-cytoscreen-review-badge--other'}`}>
                         {isInitial ? 'INITIAL REVIEW' : ROLE_LABELS[r.role].toUpperCase()}
                       </span>
-                      {isFinal && <span style={{ fontSize: 10, fontWeight: 700, color: '#22c55e' }}>FINAL DIAGNOSIS</span>}
-                      <span title={gate.blockedReasons.join(', ')} style={{ fontSize: 10, fontWeight: 700, color: gate.allowed ? '#22c55e' : '#f59e0b' }}>
+                      {isFinal && <span className="ps-cytoscreen-review-final-tag">FINAL DIAGNOSIS</span>}
+                      <span title={gate.blockedReasons.join(', ')} className={`ps-cytoscreen-review-eligibility ${gate.allowed ? 'ps-cytoscreen-review-eligibility--allowed' : 'ps-cytoscreen-review-eligibility--blocked'}`}>
                         {gate.allowed ? 'CT-ELIGIBLE' : 'PATH REQUIRED'}
                       </span>
-                      <span style={{ fontSize: 10.5, color: '#6b7280', marginLeft: 'auto' }}>{r.recordedBy.userName} · {new Date(r.recordedAt).toLocaleDateString()}</span>
+                      <span className="ps-cytoscreen-review-meta">{r.recordedBy.userName} · {new Date(r.recordedAt).toLocaleDateString()}</span>
                     </div>
 
                     {r.adequacySelections && r.adequacySelections.length > 0 && (
-                      <div style={{ fontSize: 11.5, color: '#d1d5db', marginBottom: 3 }}>
+                      <div className="ps-cytoscreen-review-detail-line">
                         <b>Adequacy:</b> {r.adequacySelections.map(s => categoryLabel(s.categoryId) + (s.comment ? ` (${s.comment})` : '')).join('; ')}
                       </div>
                     )}
                     {r.generalCategorizationId && (
-                      <div style={{ fontSize: 11.5, color: '#d1d5db', marginBottom: 3 }}><b>General Categorization:</b> {categoryLabel(r.generalCategorizationId)}</div>
+                      <div className="ps-cytoscreen-review-detail-line"><b>General Categorization:</b> {categoryLabel(r.generalCategorizationId)}</div>
                     )}
-                    <div style={{ fontSize: 11.5, color: '#d1d5db', marginBottom: 3 }}>
+                    <div className="ps-cytoscreen-review-detail-line">
                       <b>Primary:</b> {categoryLabel(r.primaryInterpretationId)}{r.primaryInterpretationComment ? ` (${r.primaryInterpretationComment})` : ''}
                     </div>
                     {r.additionalInterpretations && r.additionalInterpretations.length > 0 && (
-                      <div style={{ fontSize: 11.5, color: '#d1d5db', marginBottom: 3 }}>
+                      <div className="ps-cytoscreen-review-detail-line">
                         <b>Additional:</b> {r.additionalInterpretations.map(s => categoryLabel(s.categoryId) + (s.comment ? ` (${s.comment})` : '')).join('; ')}
                       </div>
                     )}
                     {r.recommendations && r.recommendations.length > 0 && (
-                      <div style={{ fontSize: 11.5, color: '#d1d5db', marginBottom: 3 }}>
+                      <div className="ps-cytoscreen-review-detail-line">
                         <b>Recommendations:</b> {r.recommendations.map(s => categoryLabel(s.categoryId) + (s.comment ? ` (${s.comment})` : '')).join('; ')}
                       </div>
                     )}
-                    {r.notes && <div style={{ fontSize: 11.5, color: '#9ca3af', marginBottom: 6, fontStyle: 'italic' }}>"{r.notes}"</div>}
+                    {r.notes && <div className="ps-cytoscreen-detail-line-notes">"{r.notes}"</div>}
 
-                    <div style={{ display: 'flex', gap: 6, marginTop: 6 }}>
-                      <button onClick={() => handleClone(r.id)} style={{ fontSize: 10.5, padding: '3px 9px', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 6, color: '#9ca3af', cursor: 'pointer' }}>Clone</button>
+                    <div className="ps-cytoscreen-review-actions">
+                      <button onClick={() => handleClone(r.id)} className="ps-cytoscreen-review-action-btn">Clone</button>
                       {(() => {
                         // Real, per direct guidance's own follow-up: the
                         // same real gate/authorization the click handler
@@ -2692,7 +2783,7 @@ export default function CytologyScreeningPage() {
                             onClick={() => handleSelectFinalDiagnosis(r.id)}
                             disabled={!rowAuthorized}
                             title={rowAuthorized ? undefined : 'Only a Pathologist may select this review as the Final Diagnosis — it requires pathologist review before sign-out.'}
-                            style={{ fontSize: 10.5, padding: '3px 9px', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 6, color: rowAuthorized ? '#9ca3af' : '#4b5563', cursor: rowAuthorized ? 'pointer' : 'not-allowed', opacity: rowAuthorized ? 1 : 0.6 }}
+                            className={`ps-cytoscreen-review-action-btn ${rowAuthorized ? '' : 'ps-cytoscreen-review-action-btn--disabled'}`}
                           >
                             Set as Final
                           </button>
@@ -2706,11 +2797,11 @@ export default function CytologyScreeningPage() {
 
             {/* RIGHT: new review form */}
             {nomenclatureSystem === 'palga_cisoea' ? (
-              <div style={{ padding: '16px 18px', background: '#111827', border: '1px solid #1f2937', borderRadius: 12 }}>
-                <h2 style={{ fontSize: 13, fontWeight: 700, color: '#e5e7eb', margin: '0 0 4px', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+              <div className="ps-cytoscreen-form-panel">
+                <h2 className="ps-cytoscreen-form-title ps-cytoscreen-form-title--tight">
                   {editingReviewId ? 'Edit Your CISOE-A Review' : 'Record a New CISOE-A Review'}
                 </h2>
-                <div style={{ fontSize: 11, color: '#6b7280', marginBottom: 14 }}>
+                <div className="ps-cytoscreen-form-subtitle">
                   Real, independent 6-component matrix (Composition, Inflammation, Squamous, Other/Endometrium, Endocervical, Adequacy) — every axis is scored separately, not a single pick.
                 </div>
 
@@ -2721,22 +2812,22 @@ export default function CytologyScreeningPage() {
                   ['otherEndometrium', 'otherEndometriumComment', 'O — Other / Endometrium'],
                   ['endocervical', 'endocervicalComment', 'E — Endocervical Epithelium'],
                 ] as const).map(([valueKey, commentKey, label]) => (
-                  <div key={valueKey} style={{ marginBottom: 12 }}>
+                  <div key={valueKey} className="ps-cytoscreen-cisoe-row">
                     {fieldLabel(label, '(0-9)')}
-                    <div style={{ display: 'flex', gap: 8 }}>
+                    <div className="ps-cytoscreen-cisoe-inputs">
                       <input type="number" min={0} max={9} value={cisoeADraft[valueKey]}
                         onChange={e => setCisoeADraft({ ...cisoeADraft, [valueKey]: e.target.value })}
-                        style={{ width: 70, padding: '7px 10px', fontSize: 13, color: '#e5e7eb', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8 }} />
+                        className="ps-cytoscreen-cisoe-number-input" />
                       <input type="text" placeholder="Comment (optional)" value={cisoeADraft[commentKey]}
                         onChange={e => setCisoeADraft({ ...cisoeADraft, [commentKey]: e.target.value })}
-                        style={{ flex: 1, padding: '7px 10px', fontSize: 12.5, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8 }} />
+                        className="ps-cytoscreen-cisoe-comment-input" />
                     </div>
                   </div>
                 ))}
 
                 {fieldLabel('A — Adequacy')}
                 <select value={cisoeADraft.adequacy} onChange={e => setCisoeADraft({ ...cisoeADraft, adequacy: e.target.value as CisoeAAdequacy | '' })}
-                  className="ps-conf-select" style={{ width: '100%', marginBottom: 14 }}>
+                  className="ps-conf-select ps-w-full ps-mb-14">
                   <option value="">— Select —</option>
                   <option value="satisfactory">Satisfactory</option>
                   <option value="suboptimal">Suboptimal</option>
@@ -2744,22 +2835,22 @@ export default function CytologyScreeningPage() {
                 </select>
 
                 {fieldLabel('Notes')}
-                <textarea value={cisoeADraft.notes} onChange={e => setCisoeADraft({ ...cisoeADraft, notes: e.target.value })} rows={2}
-                  style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, marginBottom: 12, resize: 'vertical', fontFamily: 'inherit' }} />
+                <SpellCheckedTextarea value={cisoeADraft.notes} onChange={e => setCisoeADraft({ ...cisoeADraft, notes: e.target.value })} rows={2}
+                  className="ps-cytoscreen-textarea ps-mb-12" />
 
                 {cisoeAErrors.length > 0 && (
-                  <div style={{ padding: '8px 12px', background: '#ef444418', border: '1px solid #ef444433', borderRadius: 8, marginBottom: 12 }}>
-                    {cisoeAErrors.map((e, i) => <div key={i} style={{ fontSize: 12, color: '#ef4444' }}>{e}</div>)}
+                  <div className="ps-cytoscreen-inline-banner ps-cytoscreen-inline-banner--error">
+                    {cisoeAErrors.map((e, i) => <div key={i} className="ps-cytoscreen-inline-banner-text--error">{e}</div>)}
                   </div>
                 )}
                 {cisoeAWarnings.length > 0 && (
-                  <div style={{ padding: '8px 12px', background: '#f59e0b18', border: '1px solid #f59e0b33', borderRadius: 8, marginBottom: 12 }}>
-                    {cisoeAWarnings.map((w, i) => <div key={i} style={{ fontSize: 12, color: '#f59e0b' }}>{w}</div>)}
+                  <div className="ps-cytoscreen-inline-banner ps-cytoscreen-inline-banner--warning">
+                    {cisoeAWarnings.map((w, i) => <div key={i} className="ps-cytoscreen-inline-banner-text--warning">{w}</div>)}
                   </div>
                 )}
                 {cisoeAReflexSuggestion && (
-                  <div style={{ padding: '8px 12px', background: '#0ea5e918', border: '1px solid #0ea5e933', borderRadius: 8, marginBottom: 12 }}>
-                    <div style={{ fontSize: 12, color: '#38bdf8' }}>
+                  <div className="ps-cytoscreen-inline-banner ps-cytoscreen-inline-banner--info">
+                    <div className="ps-cytoscreen-inline-banner-text--info">
                       {cisoeAReflexSuggestion === 'cyto-rec-colposcopy'
                         ? 'Suggested: refer for colposcopy (moderate dyskaryosis or worse).'
                         : 'Suggested: recommend HPV genotyping (16/18 vs. other high-risk) to guide colposcopy vs. repeat cytology.'}
@@ -2767,26 +2858,26 @@ export default function CytologyScreeningPage() {
                   </div>
                 )}
 
-                <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+                <div className="ps-cytoscreen-form-actions">
                   <button onClick={handleSaveCisoeA} disabled={saving}
-                    style={{ padding: '9px 20px', fontSize: 12.5, fontWeight: 700, color: '#0a0a0a', background: '#009E73', border: 'none', borderRadius: 8, cursor: 'pointer' }}>
+                    className="ps-cytoscreen-save-btn ps-cytoscreen-save-btn--ready">
                     {saving ? 'Saving…' : editingReviewId ? 'Update Review' : `Save as ${ROLE_LABELS[resolvedRole]}`}
                   </button>
                   <button onClick={() => setReviewOpen(true)}
-                    style={{ padding: '9px 16px', fontSize: 12.5, fontWeight: 600, color: '#a78bfa', background: '#a78bfa18', border: '1px solid #a78bfa33', borderRadius: 8, cursor: 'pointer' }}>
+                    className="ps-cytoscreen-peer-review-btn">
                     👥 {t('cytologyScreening.requestPeerReviewBtn')}
                   </button>
                 </div>
               </div>
             ) : (
-            <div style={{ padding: '16px 18px', background: '#111827', border: '1px solid #1f2937', borderRadius: 12 }}>
-              <h2 style={{ fontSize: 13, fontWeight: 700, color: '#e5e7eb', margin: '0 0 14px', textTransform: 'uppercase', letterSpacing: 0.4 }}>
+            <div className="ps-cytoscreen-form-panel">
+              <h2 className="ps-cytoscreen-form-title ps-cytoscreen-form-title--roomy">
                 {editingReviewId ? 'Edit Your Review' : 'Record a New Review'}
               </h2>
 
               {fieldLabel('General Categorization', '(dictionary-driven — Bethesda\'s own general category, optional)')}
               <select value={draft.generalCategorizationId} onChange={e => setDraft({ ...draft, generalCategorizationId: e.target.value })}
-                className="ps-conf-select" style={{ width: '100%', marginBottom: 14 }}>
+                className="ps-conf-select ps-w-full ps-mb-14">
                 <option value="">— None —</option>
                 {generalCatOptions.map(c => <option key={c.id} value={c.id}>{c.label}</option>)}
               </select>
@@ -2809,16 +2900,16 @@ export default function CytologyScreeningPage() {
                 onChange={sel => setDraft({ ...draft, recommendations: sel })} placeholder="Search recommendations…" categoryLabel={categoryLabel} />
 
               {fieldLabel('Notes')}
-              <textarea value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} rows={2}
-                style={{ width: '100%', padding: '8px 10px', fontSize: 12.5, color: '#d1d5db', background: '#0f0f0f', border: '1px solid #1f2937', borderRadius: 8, marginBottom: 16, resize: 'vertical', fontFamily: 'inherit' }} />
+              <SpellCheckedTextarea value={draft.notes} onChange={e => setDraft({ ...draft, notes: e.target.value })} rows={2}
+                className="ps-cytoscreen-textarea ps-mb-16" />
 
-              <div style={{ display: 'flex', gap: 10, alignItems: 'center' }}>
+              <div className="ps-cytoscreen-form-actions">
                 <button onClick={handleSave} disabled={saving || !draft.primaryInterpretationId}
-                  style={{ padding: '9px 20px', fontSize: 12.5, fontWeight: 700, color: '#0a0a0a', background: !draft.primaryInterpretationId ? '#374151' : '#009E73', border: 'none', borderRadius: 8, cursor: !draft.primaryInterpretationId ? 'not-allowed' : 'pointer' }}>
+                  className={`ps-cytoscreen-save-btn ${!draft.primaryInterpretationId ? 'ps-cytoscreen-save-btn--disabled' : 'ps-cytoscreen-save-btn--ready'}`}>
                   {saving ? 'Saving…' : editingReviewId ? 'Update Review' : `Save as ${ROLE_LABELS[resolvedRole]}`}
                 </button>
                 <button onClick={() => setReviewOpen(true)}
-                  style={{ padding: '9px 16px', fontSize: 12.5, fontWeight: 600, color: '#a78bfa', background: '#a78bfa18', border: '1px solid #a78bfa33', borderRadius: 8, cursor: 'pointer' }}>
+                  className="ps-cytoscreen-peer-review-btn">
                   👥 {t('cytologyScreening.requestPeerReviewBtn')}
                 </button>
               </div>
@@ -2967,10 +3058,10 @@ export default function CytologyScreeningPage() {
             that independent finding), and never re-asked once a real
             judgment has been recorded against this AI result. */}
         {showConcordancePrompt && aiScreeningResult && (
-          <div style={{ position: 'fixed', inset: 0, zIndex: 1000, background: 'rgba(0,0,0,0.75)', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-            <div style={{ background: '#111827', border: '1px solid #1f2937', borderRadius: 10, padding: 20, maxWidth: 440 }}>
-              <h3 style={{ color: '#e5e7eb', marginTop: 0, fontSize: 15 }}>AI Screening Concordance</h3>
-              <p style={{ color: '#9ca3af', fontSize: 13 }}>
+          <div className="ps-cytoscreen-concordance-overlay">
+            <div className="ps-cytoscreen-concordance-modal">
+              <h3 className="ps-cytoscreen-concordance-title">AI Screening Concordance</h3>
+              <p className="ps-cytoscreen-concordance-body">
                 This slide had a real, completed AI screening result:{' '}
                 {aiScreeningResult.slideTriage
                   ? (aiScreeningResult.slideTriage.reviewRecommended ? 'Review Recommended' : 'No Further Review')
@@ -2979,19 +3070,19 @@ export default function CytologyScreeningPage() {
                   : `${aiScreeningResult.findings.length} AI-flagged field${aiScreeningResult.findings.length === 1 ? '' : 's'} of view`}
                 . Does your own, independent finding above agree with this AI result?
               </p>
-              <div style={{ display: 'flex', gap: 8, justifyContent: 'flex-end', marginTop: 12 }}>
+              <div className="ps-cytoscreen-concordance-actions">
                 <button onClick={() => handleConcordanceResponse(false)} disabled={recordingConcordance}
-                  style={{ padding: '7px 14px', fontSize: 12.5, fontWeight: 600, color: '#f87171', background: '#1c1c1c', border: '1px solid #374151', borderRadius: 7, cursor: 'pointer' }}>
+                  className="ps-cytoscreen-concordance-btn--disagree">
                   Disagree
                 </button>
                 <button onClick={() => handleConcordanceResponse(true)} disabled={recordingConcordance}
-                  style={{ padding: '7px 16px', fontSize: 12.5, fontWeight: 700, color: '#0a0a0a', background: '#009E73', border: 'none', borderRadius: 7, cursor: 'pointer' }}>
+                  className="ps-cytoscreen-concordance-btn--agree">
                   Agree
                 </button>
               </div>
             </div>
           </div>
         )}
-    </>
+    </SpellCheckProvider>
   );
 }

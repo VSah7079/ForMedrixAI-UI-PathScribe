@@ -29,7 +29,7 @@ import { fileURLToPath } from 'url';
 import {
   VERSIONED_KEYS, SETTINGS_KEYS, CASE_KEYS, FLAG_KEYS, STATE_KEYS,
   MOCK_PREFIX, ACTIVE_SESSION_KEY_PREFIX, SESSION_KEY, DELIBERATELY_NOT_RESET,
-} from './DemoResetTab';
+} from '@/services/demoReset/demoReset';
 
 const SRC_ROOT = (() => {
   // Walk up from this test file until a directory literally named

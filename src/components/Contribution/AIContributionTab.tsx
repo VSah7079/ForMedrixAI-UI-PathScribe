@@ -1,7 +1,7 @@
 // src/components/Contribution/AIContributionTab.tsx
 import React, { useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer,
 } from "recharts";
@@ -12,30 +12,20 @@ import '../../pathscribe.css';
 // the real Specimen Dictionary service.
 import { specimenDictionaryService } from '@/services';
 import type { SpecimenEntry } from '@/services/specimenDictionary/specimenTypes';
-import { getAiFeedbackLog, AiFeedbackEntry } from '@/services/cases/mockCaseService';
+import { getAiFeedbackLog, type AiFeedbackEntry } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { useAuth } from '@/contexts/AuthContext';
+import {
+  computeAiAcceptanceSummary, buildAcceptanceTrend, averageRate, computePeriodFraction,
+  scaleForPeriod, scaleBreakdownForPeriod, scaleComparisonForPeriod, deriveOverriddenCases,
+  deriveBreakdownFromSpecimens,
+  type AiContributionDateRange, type BreakdownRow, type OverriddenCase, type CaseComparison,
+} from './aiContributionCalculations';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-type DateRange  = "30d" | "90d" | "ytd";
+type DateRange  = AiContributionDateRange;
 type Section    = "acceptance" | "overrides" | "comparison";
-
-interface BreakdownRow {
-  label: string; code?: string; rate: number; cases: number;
-}
-
-interface OverriddenCase {
-  id: string; caseType: string; assigningAuthority?: string;
-  aiSuggestion: string; finalDiagnosis: string; reason: string; date: string; daysAgo: number;
-}
-
-interface CaseComparison {
-  caseType: string; aiAssisted: number; manual: number;
-  aiTat: number; manualTat: number;
-}
-
-interface MonthlyPoint { month: string; rate: number; }
 
 // Real fix (batch 34, i18n sweep): WorkflowDataset used to also carry a
 // full set of UI label/title/subtitle strings (tileAssistedLabel,
@@ -109,49 +99,14 @@ const synopticDataset: WorkflowDataset = {
 // fields, and their WorkflowDataset entries, were removed rather than
 // carried forward unused.
 
-// Display labels for known subspecialty values from the specimen dictionary.
-// Falls back to a humanized version of the raw name for anything not listed here,
-// so a newly-added subspecialty never silently disappears from the breakdown.
-const SUBSPECIALTY_LABELS: Record<string, string> = {
-  gi:     "GI",
-  breast: "Breast",
-  derm:   "Dermatopathology",
-  neuro:  "Neuropathology",
-  heme:   "Hematopathology",
-  gyn:    "Gynecologic",
-  uro:    "Genitourinary",
-  "":     "Unassigned",
-};
-
-// Illustrative acceptance rates per subspecialty — the CATEGORY LIST itself is
-// derived live from the specimen dictionary (see deriveBreakdownFromSpecimens),
-// but there's no real AI-usage audit trail behind these specific rate numbers yet.
-// Falls back to a generic 80% for any subspecialty not seeded here.
-const MOCK_RATE_BY_SUBSPECIALTY: Record<string, number> = {
-  gi: 88, breast: 91, derm: 82, neuro: 86, heme: 84, gyn: 80, uro: 85, "": 75,
-};
-const CASES_PER_SPECIMEN_TYPE = 12; // mock volume multiplier — illustrative only
-
-function humanizeSubspecialtyId(id: string): string {
-  if (!id) return "Unassigned";
-  return id.charAt(0).toUpperCase() + id.slice(1);
-}
-
-function deriveBreakdownFromSpecimens(specimens: SpecimenEntry[]): BreakdownRow[] {
-  const groups = new Map<string, number>(); // subspecialty name -> active specimen-type count
-  for (const s of specimens) {
-    if (!s.active) continue;
-    const key = (s.subspecialty ?? "").toLowerCase();
-    groups.set(key, (groups.get(key) ?? 0) + 1);
-  }
-  return Array.from(groups.entries())
-    .map(([id, typeCount]) => ({
-      label: SUBSPECIALTY_LABELS[id] ?? humanizeSubspecialtyId(id),
-      rate: MOCK_RATE_BY_SUBSPECIALTY[id] ?? 80,
-      cases: typeCount * CASES_PER_SPECIMEN_TYPE,
-    }))
-    .sort((a, b) => b.cases - a.cases);
-}
+// Real fix, found by this app's own inline-CSS/business-logic sweep:
+// the subspecialty-breakdown derivation (SUBSPECIALTY_LABELS,
+// MOCK_RATE_BY_SUBSPECIALTY, CASES_PER_SPECIMEN_TYPE,
+// deriveBreakdownFromSpecimens) now lives in
+// aiContributionCalculations.ts, this directory's own established
+// `*Calculations.ts` convention (matching productivityCalculations.ts,
+// qualityCalculations.ts, etc.) — see that module's own header for the
+// full rationale.
 
 /** Real, honest disclosure: the CSS-class-based counterpart to
  *  ProductivityTab.tsx's own theme-object DemoDataBadge - same real
@@ -211,13 +166,12 @@ const AIContributionTab: React.FC = () => {
     });
   }, [user?.id]);
 
-  const myConfirmed  = myFeedback.filter(e => e.action === 'confirmed').length;
-  const myOverridden = myFeedback.filter(e => e.action === 'overridden').length;
-
-  const myTotal      = myConfirmed + myOverridden; // 'missed' entries aren't AI suggestions at all — no acceptance decision to measure
-  const myAvgConfidence = myTotal > 0
-    ? +(myFeedback.filter(e => e.action !== 'missed').reduce((s, e) => s + e.aiConfidence, 0) / myTotal).toFixed(1)
-    : null;
+  // Real fix, found by this app's own inline-CSS/business-logic sweep:
+  // the acceptance summary, time-bucketed trend, and overridden-case
+  // derivation now all delegate to aiContributionCalculations.ts's
+  // shared, tested functions — see that module's own header for the
+  // full rationale.
+  const { total: myTotal, avgConfidence: myAvgConfidence } = computeAiAcceptanceSummary(myFeedback);
 
   const liveSynopticBreakdown = specimens ? deriveBreakdownFromSpecimens(specimens) : null;
 
@@ -230,15 +184,7 @@ const AIContributionTab: React.FC = () => {
         // yet is exactly the "looks real but isn't" problem this whole
         // fix exists to close. An honest zero is the correct state.
         summary: { totalAssisted: myTotal, totalCases: myTotal, avgConfidence: myAvgConfidence ?? 0 },
-        overridden: myFeedback.filter(e => e.action === 'overridden').slice(0, 6).map((e): OverriddenCase => ({
-          id: e.caseId,
-          caseType: caseTypeById[e.caseId] ?? e.caseId,
-          aiSuggestion: Array.isArray(e.aiValue) ? e.aiValue.join(', ') : e.aiValue,
-          finalDiagnosis: Array.isArray(e.userValue) ? e.userValue.join(', ') : e.userValue,
-          reason: e.fieldLabel,
-          date: new Date(e.timestamp).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }),
-          daysAgo: Math.floor((Date.now() - new Date(e.timestamp).getTime()) / 86400000),
-        })),
+        overridden: deriveOverriddenCases(myFeedback, caseTypeById),
       }
     : synopticDataset;
 
@@ -248,32 +194,14 @@ const AIContributionTab: React.FC = () => {
   // synoptic (the only workflow with any real events); null when there's
   // not enough real data for a period to compute a rate from, rather
   // than interpolating a plausible-looking curve.
-  const buildRealTrend = (periodDays: number, buckets: number): MonthlyPoint[] => {
-    const now = Date.now();
-    const bucketMs = (periodDays * 86400000) / buckets;
-    const points: MonthlyPoint[] = [];
-    for (let i = buckets - 1; i >= 0; i--) {
-      const bucketEnd = now - i * bucketMs;
-      const bucketStart = bucketEnd - bucketMs;
-      const inBucket = myFeedback.filter(e => {
-        const t = new Date(e.timestamp).getTime();
-        return t >= bucketStart && t < bucketEnd && e.action !== 'missed';
-      });
-      const confirmed = inBucket.filter(e => e.action === 'confirmed').length;
-      const label = new Date(bucketEnd).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
-      points.push({ month: label, rate: inBucket.length > 0 ? +((confirmed / inBucket.length) * 100).toFixed(1) : 0 });
-    }
-    return points;
-  };
-
   const cutoff = dateRange === "30d" ? 30 : dateRange === "90d" ? 90 : 366;
 
-  const monthly = buildRealTrend(366, 12);
+  const monthly = buildAcceptanceTrend(myFeedback, 366, 12);
 
-  const trendRows = dateRange === "30d" ? buildRealTrend(28, 4) : dateRange === "90d" ? buildRealTrend(90, 3) : monthly;
+  const trendRows = dateRange === "30d" ? buildAcceptanceTrend(myFeedback, 28, 4) : dateRange === "90d" ? buildAcceptanceTrend(myFeedback, 90, 3) : monthly;
 
-  const ytdAvgRate = +(monthly.reduce((s, d) => s + d.rate, 0) / monthly.length).toFixed(1);
-  const periodAvgRate = +(trendRows.reduce((s, d) => s + d.rate, 0) / trendRows.length).toFixed(1);
+  const ytdAvgRate = averageRate(monthly);
+  const periodAvgRate = averageRate(trendRows);
   const rateDelta = +(periodAvgRate - ytdAvgRate).toFixed(1);
 
   // Static UI labels — a single dataset remains (see the WorkflowDataset
@@ -302,23 +230,14 @@ const AIContributionTab: React.FC = () => {
   // monthly now spans however many real months have elapsed this year so far —
   // use that as the YTD baseline window for proportional volume scaling
   // (same technique as QualityTab), instead of a hardcoded month count.
-  const monthsInPeriod = dateRange === "30d" ? 1 : dateRange === "90d" ? 3 : monthly.length;
-  const periodFraction = monthsInPeriod / monthly.length;
-  const scaledTotalCases    = dateRange === "ytd" ? ds.summary.totalCases    : Math.round(ds.summary.totalCases    * periodFraction);
-  const scaledTotalAssisted = dateRange === "ytd" ? ds.summary.totalAssisted : Math.round(ds.summary.totalAssisted * periodFraction);
+  const periodFraction = computePeriodFraction(dateRange, monthly.length);
+  const scaledTotalCases    = scaleForPeriod(ds.summary.totalCases, dateRange, periodFraction);
+  const scaledTotalAssisted = scaleForPeriod(ds.summary.totalAssisted, dateRange, periodFraction);
 
   const filteredOverridden = ds.overridden.filter(c => c.daysAgo <= cutoff);
 
-  const scaledBreakdown = ds.breakdown.map(r => ({
-    ...r,
-    cases: dateRange === "ytd" ? r.cases : Math.max(1, Math.round(r.cases * periodFraction)),
-  }));
-
-  const scaledComparison = ds.comparison.map(c => ({
-    ...c,
-    aiAssisted: dateRange === "ytd" ? c.aiAssisted : Math.max(1, Math.round(c.aiAssisted * periodFraction)),
-    manual:     dateRange === "ytd" ? c.manual     : Math.max(1, Math.round(c.manual     * periodFraction)),
-  }));
+  const scaledBreakdown = scaleBreakdownForPeriod(ds.breakdown, dateRange, periodFraction);
+  const scaledComparison = scaleComparisonForPeriod(ds.comparison, dateRange, periodFraction);
 
   const summaryTiles = [
     { label: t('aiContributionTab.tiles.acceptanceRate'), value: periodAvgRate,       unit: "%", color: "#34d399", icon: "✓",
@@ -411,7 +330,7 @@ const AIContributionTab: React.FC = () => {
                     <span className="ps-quality-bar-row__meta">{r.cases} {breakdownUnit} &middot; <span className="ps-quality-bar-row__rate">{r.rate}%</span></span>
                   </div>
                   <div className="ps-quality-progress-track">
-                    <div className="ps-quality-progress-fill" style={{ width: `${r.rate}%` }} />
+                    <div className="ps-quality-progress-fill ps-quality-progress-fill--pct" style={{ '--bar-pct': `${r.rate}%` } as React.CSSProperties} />
                   </div>
                 </div>
               ))}

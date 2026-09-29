@@ -19,9 +19,10 @@
 // and gets a new entry with the identical underlying archetype, ready
 // to relabel/customize," the same real pattern SynopticEditor.tsx
 // already uses for report templates (`{...t, id: uid(), name:
-// '${t.name} (Copy)'}`). A duplicate always lands in the Custom tab
-// with a fresh id, "(Copy)" appended to the name, and duplicatedFromId
-// set — regardless of which tab it was duplicated from.
+// <copy name>}`). A duplicate always lands in the Custom tab with a fresh
+// id, the name marked as a copy in the user's own language
+// (t('common.copyOfName')), and duplicatedFromId set — regardless of which
+// tab it was duplicated from (services/duplication → duplicateQaType).
 //
 // Real, deliberate scope boundary: a QaActivityType's own `fields[]`
 // schema (the dynamic review-capture form) is shown read-only here —
@@ -44,6 +45,7 @@ import type { Subspecialty } from '@/services';
 import type { QaDiscordanceSeverity } from '@/types/quality/QaActivityRecord';
 import type { DeficiencyType } from '@/services/deficiencies/IDeficiencyService';
 import { getCurrentJurisdiction } from '@/services/retentionPolicy/RetentionPolicy';
+import { duplicateQaType } from '@/services/duplication/duplicateEntities';
 
 type QaConfigTab = 'standard' | 'custom';
 type ArchetypeKind = 'review' | 'supervision';
@@ -73,7 +75,7 @@ const QAConfigurationCenterSection: React.FC = () => {
   const [deficiencyTypes, setDeficiencyTypes] = useState<DeficiencyType[]>([]);
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
   const [loading, setLoading] = useState(true);
-  const [modal, setModal] = useState<{ mode: 'edit' | 'duplicate' | 'add'; unified: UnifiedEntry } | null>(null);
+  const [modal, setModal] = useState<{ mode: 'edit' | 'duplicate' | 'add'; unified: UnifiedEntry; duplicateOf?: string } | null>(null);
   const [addPicker, setAddPicker] = useState(false);
 
   const currentJurisdiction = getCurrentJurisdiction();
@@ -111,15 +113,15 @@ const QAConfigurationCenterSection: React.FC = () => {
     // Real fix, caught before this ever shipped: without a fresh id
     // here, handleSave's own exists-check (id already present in
     // reviewTypes/supervisionTypes) would treat this as an EDIT to the
-    // original entry and silently overwrite it with the "(Copy)" name
+    // original entry and silently overwrite it with the copy's name
     // instead of creating a genuinely new one — a real, serious data-
     // corruption risk for exactly the kind of curated Standard entry
     // this whole feature exists to protect.
-    const freshId = u.kind === 'review' ? `qa-activity-${Date.now().toString(36)}` : `qa-supervision-type-${Date.now().toString(36)}`;
+    const copyName = (name: string) => t('common.copyOfName', { name });
     const cloned: UnifiedEntry = u.kind === 'review'
-      ? { kind: 'review', entry: { ...u.entry, id: freshId, name: `${u.entry.name} (Copy)`, tabScope: 'custom', duplicatedFromId: u.entry.id, active: true } }
-      : { kind: 'supervision', entry: { ...u.entry, id: freshId, name: `${u.entry.name} (Copy)`, tabScope: 'custom', duplicatedFromId: u.entry.id, active: true } };
-    setModal({ mode: 'duplicate', unified: cloned });
+      ? { kind: 'review', entry: duplicateQaType(u.entry, 'qa-activity', copyName) }
+      : { kind: 'supervision', entry: duplicateQaType(u.entry, 'qa-supervision-type', copyName) };
+    setModal({ mode: 'duplicate', unified: cloned, duplicateOf: u.entry.name });
   };
 
   const handleToggleActive = async (u: UnifiedEntry) => {
@@ -276,6 +278,7 @@ const QAConfigurationCenterSection: React.FC = () => {
         <ActivityConfigModal
           unified={modal.unified}
           mode={modal.mode}
+          duplicateOf={modal.duplicateOf}
           deficiencyTypes={deficiencyTypes}
           subspecialties={subspecialties}
           onSave={handleSave}
@@ -291,11 +294,13 @@ const QAConfigurationCenterSection: React.FC = () => {
 const ActivityConfigModal: React.FC<{
   unified: UnifiedEntry;
   mode: 'edit' | 'duplicate' | 'add';
+  /** Source name when duplicating (header only). */
+  duplicateOf?: string;
   deficiencyTypes: DeficiencyType[];
   subspecialties: Subspecialty[];
   onSave: (u: UnifiedEntry) => void;
   onClose: () => void;
-}> = ({ unified, mode, deficiencyTypes, subspecialties, onSave, onClose }) => {
+}> = ({ unified, mode, duplicateOf, deficiencyTypes, subspecialties, onSave, onClose }) => {
   const { t } = useTranslation();
   const [draft, setDraft] = useState<UnifiedEntry>(unified);
   const isStandard = unified.entry.tabScope === 'standard' && mode === 'edit';
@@ -329,7 +334,7 @@ const ActivityConfigModal: React.FC<{
       <div className="ps-ms-modal" onClick={e => e.stopPropagation()}>
         <div className="ps-ms-header">
           {mode === 'add' ? t('qaConfigurationCenterSection.addPicker.header')
-            : mode === 'duplicate' ? t('qaConfigurationCenterSection.modal.headerDuplicate', { name: unified.entry.name.replace(' (Copy)', '') })
+            : mode === 'duplicate' ? t('qaConfigurationCenterSection.modal.headerDuplicate', { name: duplicateOf ?? unified.entry.name })
             : (isStandard ? t('qaConfigurationCenterSection.modal.headerConfigure', { name: draft.entry.name }) : t('qaConfigurationCenterSection.modal.headerEdit', { name: draft.entry.name }))}
         </div>
         <div className="ps-ms-body">

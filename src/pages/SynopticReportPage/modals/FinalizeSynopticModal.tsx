@@ -1,37 +1,37 @@
-// i18n note: `activeSynoptic?.title` (a real report title) and
-// `finalizeError` (a runtime validation-error string; currently never
-// actually set anywhere in the app — `setFinalizeError` from
-// `useSynopticFinalize.ts` has no caller — so this branch is
-// presently unreachable, but left in place rather than removed since
-// ripping it out would mean also touching that hook and
-// `SynopticReportPage.tsx`'s own prop wiring, outside this file's own
-// scope) are both real/dynamic values, not literal chrome, so neither
-// is translated. The title's own "Synoptic Report" fallback reuses
-// `rightSynopticPanel.templatePicker.title`, and the password field's
-// placeholder reuses `caseSignOutModal.passwordPlaceholder` — both
-// exact-text matches.
+// src/pages/SynopticReportPage/modals/FinalizeSynopticModal.tsx
+// The per-synoptic finalize confirmation (deferred/amendment flow).
+// Batch 344 (PS-60 follow-up): the password typed here used to go nowhere;
+// now the signer is confirmed (services/auth/signerConfirmation.ts) before
+// onConfirm runs. `activeSynoptic?.title` is data and is not translated;
+// its fallback reuses `rightSynopticPanel.templatePicker.title`.
 
-import React from 'react';
-import { Trans, useTranslation } from 'react-i18next';
+import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { SignerConfirmationFields } from '@/components/Signing/SignerConfirmationFields';
+import { useSignerConfirmation } from '@/hooks/useSignerConfirmation';
+import type { SignatureConfirmation } from '@/services/auth/signerConfirmation';
 type SynopticReport = any;
 
 interface FinalizeSynopticModalProps {
   show: boolean;
   activeSynoptic: SynopticReport | null;
-  finalizePassword: string;
-  finalizeError: string;
   finalizeAndNext: boolean;
+  /** The case's accession, for the audit entry. */
+  caseRef?: string | null;
   onClose: () => void;
-  onPasswordChange: (value: string) => void;
-  onConfirm: () => void;
+  onConfirm: (confirmation: SignatureConfirmation) => void;
 }
 
 const FinalizeSynopticModal: React.FC<FinalizeSynopticModalProps> = ({
-  show, activeSynoptic, finalizePassword, finalizeError,
-  finalizeAndNext, onClose, onPasswordChange, onConfirm,
+  show, activeSynoptic, finalizeAndNext, caseRef, onClose, onConfirm,
 }) => {
   const { t } = useTranslation();
+  const signer = useSignerConfirmation('synoptic-finalize', caseRef);
+  const { reset } = signer;
+  useEffect(() => { if (!show) reset(); }, [show, reset]);
   if (!show) return null;
+  // Straight from the click: for SSO this opens the provider's popup.
+  const confirmAndFinalize = () => { void signer.confirm().then(c => { if (c) onConfirm(c); }); };
 
   return (
     <div data-capture-hide="true" className="ps-overlay">
@@ -46,34 +46,21 @@ const FinalizeSynopticModal: React.FC<FinalizeSynopticModalProps> = ({
         </div>
 
         <p className="ps-modal-dark-body ps-modal-dark-body--center">
-          <Trans i18nKey="finalizeSynopticModal.body" components={{ br: <br /> }} />
+          {t('finalizeSynopticModal.bodyLocks')}
         </p>
 
-        <input
-          type="password"
-          autoFocus
-          value={finalizePassword}
-          onChange={e => onPasswordChange(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && onConfirm()}
-          placeholder={t('caseSignOutModal.passwordPlaceholder')}
-          className={"ps-modal-dark-input" + (finalizeError ? " ps-modal-dark-input--error" : "")}
-        />
-
-        {finalizeError && (
-          <p className="ps-modal-dark-field-error">
-            {finalizeError}
-          </p>
-        )}
+        <SignerConfirmationFields signer={signer} onSubmit={confirmAndFinalize} />
 
         <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch">
           <button className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn" onClick={onClose}>
             {t('common.cancel')}
           </button>
           <button
-            onClick={onConfirm}
+            onClick={confirmAndFinalize}
+            disabled={signer.busy || signer.method === 'unavailable'}
             className="ps-btn-primary ps-modal-dark-footer__flex-btn"
           >
-            🔒 {t('finalizeSynopticModal.confirmButton')}{finalizeAndNext ? ' →' : ''}
+            🔒 {signer.busy ? t('signerConfirmation.confirming') : t('finalizeSynopticModal.confirmButton')}{finalizeAndNext && !signer.busy ? ' →' : ''}
           </button>
         </div>
 

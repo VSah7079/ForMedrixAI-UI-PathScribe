@@ -24,7 +24,6 @@ import '../../../pathscribe.css';
 import { mockDelegationTypeService } from '../../../services/delegationTypes/mockDelegationTypeService';
 import type { DelegationType } from '../../../services/delegationTypes/IDelegationTypeService';
 import type { Facility } from '../../../services/facilities/IFacilityService';
-import { prepareDuplicate } from '../../../utils/duplicateEntry';
 import { findDuplicate } from '../../../utils/validateUnique';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
 
@@ -124,9 +123,7 @@ const Form: React.FC<FormProps> = ({ mode, initial, existingEntries, labs, onSav
             <h2 className="fm-title ps-del-modal-title">
               {mode === 'edit'
                 ? t('delegationTypeSection.modal.editTitle', { label: initial?.label })
-                : initial
-                  ? t('delegationTypeSection.modal.duplicateTitle', { label: initial.label })
-                  : t('delegationTypeSection.modal.addTitle')}
+                : t('delegationTypeSection.modal.addTitle')}
             </h2>
           </div>
         </div>
@@ -297,17 +294,9 @@ const DelegationTypeSection: React.FC = () => {
     await load();
   };
 
-  // Opens the Add modal pre-filled with an existing entry's data,
-  // matching the same, proven pattern as every other dictionary this
-  // session (see PS-73) — NOT an immediate silent save. mode: 'add'
-  // is what makes handleSave treat this as a real create() even
-  // though entry is populated for prefill. Both label and id get the
-  // real, shared "(Copy)"/uniqueness treatment; a duplicated system
-  // type becomes a genuinely new custom type, per real isSystem:false.
-  const handleClone = (source: DelegationType) => {
-    const cloned = prepareDuplicate(source, 'label');
-    setModal({ mode: 'add', entry: { ...cloned, id: generateId(cloned.label), isSystem: false } });
-  };
+  // No Duplicate action (PS-73, confirmed by Pete): delegation types are
+  // a simple lookup (label, description, a few flags, a colour), so Add is
+  // as quick as Duplicate. Policy: services/duplication/duplicatePolicy.ts.
 
   const filtered = types.filter(dt => {
     const matchLab = labFilter === 'All'
@@ -320,7 +309,7 @@ const DelegationTypeSection: React.FC = () => {
   const renderRow = (dt: DelegationType) => (
     <tr key={dt.id} className="ps-conf-tr">
       <td className="ps-conf-td">
-        <span className="ps-del-id-badge" style={{ '--del-badge-bg': dt.color + '22', '--del-badge-color': dt.color, '--del-badge-border': dt.color + '44' } as React.CSSProperties}>{dt.id}</span>
+        <span className="ps-del-id-badge" style={{ '--ps-hue': dt.color } as React.CSSProperties}>{dt.id}</span>
       </td>
       <td className="ps-conf-td">
         <div className="ps-conf-identity-name">
@@ -347,7 +336,6 @@ const DelegationTypeSection: React.FC = () => {
           {!dt.isSystem && (
             <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: dt })}>{t('common.edit')}</button>
           )}
-          <button className="ps-conf-btn-row" onClick={() => handleClone(dt)}>{t('common.duplicate')}</button>
           {!dt.isSystem && (
             deleteConfirm === dt.id ? (
               <span className="ps-del-confirm-row">

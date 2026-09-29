@@ -17,9 +17,9 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
-import { mockCytologyQaReportService } from '@/services/cytology/mockCytologyQaReportService';
+import { cytologyQaReportService } from '@/services';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
-import { auditService } from '@/services';
+import { auditService, authorizationService } from '@/services';
 import type { RegistryId } from '@/services/facilities/IRegistrySettingsService';
 import type { CytologyQaAggregateReport } from '@/services/cytology/resolveCytologyQaAggregateReport';
 import type { CytologyCtStatisticalComparisonRow } from '@/services/cytology/resolveCytologyCtStatisticalComparisonReport';
@@ -37,7 +37,9 @@ import type { CytologyMolecularLotToLotTrendRow } from '@/services/cytology/reso
 import type { CytologyApacProficiencyTestReport } from '@/services/cytology/resolveCytologyApacProficiencyTestReport';
 import { CytologyHistologyCorrelationPrintView } from './CytologyHistologyCorrelationPrintView';
 import { QaScopeSwitcher } from './QaScopeSwitcher';
-import { scopeLabel, exportQaReportRows, QaScope } from './qaReportUtils';
+import { scopeLabel, exportQaReportRows, QaScope, qaScopeContext } from './qaReportUtils';
+import type { CapabilityContext } from '@/services/authorization/evaluateCapability';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
 
 const pct = (n: number) => `${n.toFixed(1)}%`;
 const num = (n: number, digits = 2) => n.toFixed(digits);
@@ -389,7 +391,9 @@ const HistologyCorrelationTable: React.FC<{
   report: CytologyHistologyCorrelationReport | null;
   onDownload: () => void;
   onPrint: () => void;
-}> = ({ report, onDownload, onPrint }) => {
+  /** PS-356: the export's facility context (the tab's scope). */
+  exportContext: CapabilityContext;
+}> = ({ report, onDownload, onPrint, exportContext }) => {
   const { t } = useTranslation();
   if (!report) return null;
   return (
@@ -402,8 +406,8 @@ const HistologyCorrelationTable: React.FC<{
           <div><b>{report.ppvHsilPercent === undefined ? '—' : pct(report.ppvHsilPercent)}</b> {t('cytologyQaTab.histologyTable.ppvHsil')}</div>
         </div>
         <div className="ps-qa-histo-summary-actions">
-          <button className="ps-conf-btn-secondary" onClick={onDownload}>⬇️ {t('cytologyQaTab.histologyTable.downloadButton')}</button>
-          <button className="ps-conf-btn-secondary" onClick={onPrint}>🖨️ {t('cytologyQaTab.histologyTable.printButton')}</button>
+          <CapabilityButton capability="qa:cytology-histology-correlation:export" context={exportContext} className="ps-conf-btn-secondary" onClick={onDownload}>⬇️ {t('cytologyQaTab.histologyTable.downloadButton')}</CapabilityButton>
+          <CapabilityButton capability="qa:cytology-histology-correlation:export" context={exportContext} className="ps-conf-btn-secondary" onClick={onPrint}>🖨️ {t('cytologyQaTab.histologyTable.printButton')}</CapabilityButton>
         </div>
       </div>
       <div className="ps-conf-table-wrap">
@@ -427,7 +431,7 @@ const HistologyCorrelationTable: React.FC<{
                 const cat = CATEGORY_LABEL[r.correlationCategory];
                 return (
                   <tr key={i} className="ps-conf-tr">
-                    <td className="ps-conf-td">{r.patientMrn ?? '—'}</td>
+                    <td className="ps-conf-td" data-phi="mrn">{r.patientMrn ?? '—'}</td>
                     <td className="ps-conf-td">{r.cytoAccessionId ?? '—'}</td>
                     <td className="ps-conf-td">{r.cytoDate ? new Date(r.cytoDate).toLocaleDateString() : '—'}</td>
                     <td className="ps-conf-td">{r.cytoDiagnosis}</td>
@@ -802,7 +806,7 @@ const TransmissionAuditTable: React.FC<{ rows: CytologyRegistryTransmissionAudit
               return (
                 <tr key={`${r.caseId}-${i}`} className="ps-conf-tr">
                   <td className="ps-conf-td" data-phi="accession">{r.accessionNumber}</td>
-                  <td className="ps-conf-td">{r.patientMrn ?? '—'}</td>
+                  <td className="ps-conf-td" data-phi="mrn">{r.patientMrn ?? '—'}</td>
                   <td className="ps-conf-td">{r.hpvResultCode ?? '—'}</td>
                   <td className="ps-conf-td">{r.cytologyResultCode}</td>
                   <td className="ps-conf-td">{r.transmissionTimestamp ?? '—'}</td>
@@ -880,55 +884,55 @@ export const CytologyQaTab: React.FC = () => {
 
     (async () => {
       if (activeReport === 'random') {
-        const res = await mockCytologyQaReportService.get10PercentRandomRescreeningReport(scope);
+        const res = await cytologyQaReportService.get10PercentRandomRescreeningReport(scope);
         if (!cancelled && res.ok) setAggregateReport(res.data);
       } else if (activeReport === 'high-risk') {
-        const res = await mockCytologyQaReportService.getDirectedHighRiskRescreeningReport(scope);
+        const res = await cytologyQaReportService.getDirectedHighRiskRescreeningReport(scope);
         if (!cancelled && res.ok) setAggregateReport(res.data);
       } else if (activeReport === 'ct-path') {
-        const res = await mockCytologyQaReportService.getCtVsPathologistCorrelationReport(scope);
+        const res = await cytologyQaReportService.getCtVsPathologistCorrelationReport(scope);
         if (!cancelled && res.ok) setAggregateReport(res.data);
       } else if (activeReport === 'peer-review') {
-        const res = await mockCytologyQaReportService.getPostSignOutPeerReviewCorrelationReport(scope);
+        const res = await cytologyQaReportService.getPostSignOutPeerReviewCorrelationReport(scope);
         if (!cancelled && res.ok) setAggregateReport(res.data);
       } else if (activeReport === 'ct-stats') {
-        const res = await mockCytologyQaReportService.getCtStatisticalComparisonReport(scope);
+        const res = await cytologyQaReportService.getCtStatisticalComparisonReport(scope);
         if (!cancelled && res.ok) setCtStatsReport(res.data);
       } else if (activeReport === 'ascus-hpv') {
-        const res = await mockCytologyQaReportService.getAscusHpvReflexReport(scope);
+        const res = await cytologyQaReportService.getAscusHpvReflexReport(scope);
         if (!cancelled && res.ok) setAscusHpvReport(res.data);
       } else if (activeReport === 'workload') {
-        const res = await mockCytologyQaReportService.getWorkloadTrackingReport(scope);
+        const res = await cytologyQaReportService.getWorkloadTrackingReport(scope);
         if (!cancelled && res.ok) setWorkloadReport(res.data);
       } else if (activeReport === 'transmission') {
-        const res = await mockCytologyQaReportService.getRegistryTransmissionAuditReport(scope, transmissionRegistryId);
+        const res = await cytologyQaReportService.getRegistryTransmissionAuditReport(scope, transmissionRegistryId);
         if (!cancelled && res.ok) setTransmissionReport(res.data);
       } else if (activeReport === 'secondary-screening-audit') {
-        const res = await mockCytologyQaReportService.getGynCytologySecondaryScreeningAuditReport(scope);
+        const res = await cytologyQaReportService.getGynCytologySecondaryScreeningAuditReport(scope);
         if (!cancelled && res.ok) setSecondaryScreeningAuditReport(res.data);
       } else if (activeReport === 'histology-correlation') {
-        const res = await mockCytologyQaReportService.getHistologyCorrelationReport(scope);
+        const res = await cytologyQaReportService.getHistologyCorrelationReport(scope);
         if (!cancelled && res.ok) setHistologyCorrelationReport(res.data);
       } else if (activeReport === 'unscreened-backlog') {
-        const res = await mockCytologyQaReportService.getUnscreenedBacklogReport(scope);
+        const res = await cytologyQaReportService.getUnscreenedBacklogReport(scope);
         if (!cancelled && res.ok) setUnscreenedBacklogReport(res.data);
       } else if (activeReport === 'uk-failsafe') {
-        const res = await mockCytologyQaReportService.getPrimaryHpvFailsafeAuditReport(scope);
+        const res = await cytologyQaReportService.getPrimaryHpvFailsafeAuditReport(scope);
         if (!cancelled && res.ok) setUkFailsafeReport(res.data);
       } else if (activeReport === 'eu-compliance') {
-        const res = await mockCytologyQaReportService.getEuComplianceMatrixReport(scope);
+        const res = await cytologyQaReportService.getEuComplianceMatrixReport(scope);
         if (!cancelled && res.ok) setEuComplianceReport(res.data);
       } else if (activeReport === 'hpv-positivity') {
-        const res = await mockCytologyQaReportService.getHpvPositivityMonitorReport(scope);
+        const res = await cytologyQaReportService.getHpvPositivityMonitorReport(scope);
         if (!cancelled && res.ok) setHpvPositivityReport(res.data);
       } else if (activeReport === 'mol-qc-failure') {
-        const res = await mockCytologyQaReportService.getMolecularQcFailureRateReport(scope);
+        const res = await cytologyQaReportService.getMolecularQcFailureRateReport(scope);
         if (!cancelled && res.ok) setMolQcFailureReport(res.data);
       } else if (activeReport === 'mol-lot-trend') {
-        const res = await mockCytologyQaReportService.getMolecularLotToLotTrendReport(scope);
+        const res = await cytologyQaReportService.getMolecularLotToLotTrendReport(scope);
         if (!cancelled && res.ok) setMolLotTrendReport(res.data);
       } else if (activeReport === 'apac-pt') {
-        const res = await mockCytologyQaReportService.getApacProficiencyTestReport(scope);
+        const res = await cytologyQaReportService.getApacProficiencyTestReport(scope);
         if (!cancelled && res.ok) setApacPtReport(res.data);
       }
       if (!cancelled) setLoading(false);
@@ -952,18 +956,14 @@ export const CytologyQaTab: React.FC = () => {
           return (
             <button
               key={tile.key}
-              className="ps-wl-filter-tile"
+              className={`ps-wl-filter-tile ps-wl-filter-tile--hued${isActive ? ' ps-wl-filter-tile--hued-active' : ''}`}
               title={t('cytologyQaTab.tileViewTooltip', { label: `${tile.icon} ${t(tile.labelKey)}` })}
               onClick={() => setActiveReport(tile.key)}
-              style={{
-                '--tile-bg': isActive ? `${tile.color}2e` : `${tile.color}0d`,
-                '--tile-border': isActive ? tile.color : `${tile.color}2e`,
-                '--tile-shadow': isActive ? `0 0 12px ${tile.color}66` : 'none',
-              } as React.CSSProperties}
+              style={{ '--ps-hue': tile.color } as React.CSSProperties}
             >
               <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? tile.color : '#8899aa' } as React.CSSProperties}>{tile.icon} {t(tile.labelKey)}</div>
               <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': tile.color } as React.CSSProperties}>{'\u00A0'}</div>
-              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': tile.color, '--tile-sublabel-opacity': 0 } as React.CSSProperties}>{'\u00A0'}</div>
+              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': tile.color } as React.CSSProperties}>{'\u00A0'}</div>
             </button>
           );
         })}
@@ -1004,6 +1004,7 @@ export const CytologyQaTab: React.FC = () => {
           {activeReport === 'histology-correlation' && (
             <HistologyCorrelationTable
               report={histologyCorrelationReport}
+              exportContext={qaScopeContext(scope)}
               onDownload={() => {
                 if (!histologyCorrelationReport) return;
                 const rows = histologyCorrelationReport.rows.map(r => ({
@@ -1014,9 +1015,9 @@ export const CytologyQaTab: React.FC = () => {
                   'Hist Diagnosis': r.histDiagnosis, 'Days to Biopsy': r.daysToBiopsy ?? '',
                   'Correlation Category': CATEGORY_LABEL_EXPORT_TEXT[r.correlationCategory],
                 }));
-                exportQaReportRows(rows, `cyto-histo-correlation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
+                void exportQaReportRows('qa:cytology-histology-correlation:export', rows, `cyto-histo-correlation-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext(scope));
               }}
-              onPrint={() => setShowHistologyCorrelationPrint(true)}
+              onPrint={() => { void authorizationService.enforce('qa:cytology-histology-correlation:export', qaScopeContext(scope)).then(d => { if (d.allowed) setShowHistologyCorrelationPrint(true); }); }}
             />
           )}
           {activeReport === 'unscreened-backlog' && <UnscreenedBacklogTable rows={unscreenedBacklogReport} />}

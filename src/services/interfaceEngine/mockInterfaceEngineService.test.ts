@@ -110,4 +110,50 @@ describe('mockInterfaceEngineService — real feature, per direct follow-up: the
     const listResult = await mockInterfaceEngineService.listDispatchedEvents('ORG-A');
     if (listResult.ok) expect(listResult.data.some(e => e.messageId === 'evt-dispatch-fail')).toBe(true);
   });
+
+  it('Batch 318 (PS-86): the dispatch trail carries each event\'s real outcome', async () => {
+    await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-ok' }));
+    vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify({ ok: false, error: 'Unknown transactionType' }), { status: 422 }));
+    await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-bad' }));
+    const trail = await mockInterfaceEngineService.listDispatchTrail();
+    expect(trail.ok).toBe(true);
+    if (!trail.ok) return;
+    const byId = Object.fromEntries(trail.data.map(r => [r.payload.messageId, r]));
+    expect(byId['evt-ok'].status).toBe('delivered');
+    expect(byId['evt-bad'].status).toBe('failed');
+    expect(byId['evt-bad'].error).toContain('Unknown transactionType');
+    expect(byId['evt-bad'].errorCode).toBe('DISPATCH_REJECTED');
+    expect(trail.data.map(r => r.payload.messageId)).toEqual(['evt-bad', 'evt-ok']);
+  });
+
+  it('Batch 318 fix: redelivering a previously FAILED event re-sends it instead of claiming it was delivered', async () => {
+    vi.mocked(global.fetch).mockResolvedValue(new Response(JSON.stringify({ ok: false, error: 'down' }), { status: 503 }));
+    const first = await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-retry' }));
+    expect(first.ok && first.data.delivered).toBe(false);
+
+    const fetchMock = vi.mocked(global.fetch);
+    fetchMock.mockClear();
+    fetchMock.mockResolvedValue(new Response('{}', { status: 200 }));
+    const second = await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-retry' }));
+    expect(second.ok && second.data.delivered).toBe(true);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    const trail = await mockInterfaceEngineService.listDispatchTrail();
+    const rec = trail.ok ? trail.data.find(r => r.payload.messageId === 'evt-retry') : undefined;
+    expect(rec?.status).toBe('delivered');
+    expect(rec?.attempts).toBe(2);
+    // Still recorded once (idempotency).
+    const list = await mockInterfaceEngineService.listDispatchedEvents('ORG-A');
+    expect(list.ok && list.data.filter(e => e.messageId === 'evt-retry')).toHaveLength(1);
+  });
+
+  it('a redelivered, already-delivered event is not re-sent', async () => {
+    await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-once' }));
+    const fetchMock = vi.mocked(global.fetch);
+    fetchMock.mockClear();
+    const again = await mockInterfaceEngineService.postOrderCreated(makePayload({ messageId: 'evt-once' }));
+    expect(again.ok && again.data.delivered).toBe(true);
+    expect(fetchMock).not.toHaveBeenCalled();
+  });
 });
+

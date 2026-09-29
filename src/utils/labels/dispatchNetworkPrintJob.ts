@@ -26,8 +26,9 @@
 //      Rhapsody) — real, third-party, external software a lab's own
 //      infrastructure runs and configures. PathScribe can only ever
 //      send it a payload (this file's own dispatchNetworkPrintJob)
-//      and receive a callback from it (handleNetworkPrintCallback,
-//      below) — it never runs or configures that engine itself.
+//      and receive its answer (since Batch 347: over the live-update
+//      connection, handled by services/networkPrint/networkPrintJobs.ts)
+//      — it never runs or configures that engine itself.
 //
 // Same real, honest-stub discipline as dispatchCassetteLabel.ts/
 // dispatchSlideLabel.ts/dispatchMaterialScanEvent.ts throughout this
@@ -45,11 +46,29 @@ import { buildGs1DataMatrix, validateGs1Fields } from './gs1DataMatrix';
 import type { Gs1LabelFields } from './gs1DataMatrix';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
 import type {
-  NetworkPrintPayload, NetworkPrintCallback, NetworkPrintLabelData,
+  NetworkPrintPayload, NetworkPrintLabelData,
 } from '@/types/printing/NetworkPrintPayload';
 import { mockAuditService } from '@/services/auditlog/mockAuditService';
+import i18n from '@/i18n/config';
 
 const TEMPLATE_VERSION = 'ZPL-CASSETTE-V3'; // Section 5.1's own example value — the real, current template's own identifier.
+/** Batch 347 (PS-54): the slide label's template identifier. */
+const SLIDE_TEMPLATE_VERSION = 'ZPL-SLIDE-V1';
+
+/** Where the interface engine reports back. The API server owns the real
+ *  address and replaces this with its own absolute URL when it forwards the
+ *  job (docs/architecture/LIVE_UPDATES_SIGNALR.md, network print results). */
+export const NETWORK_PRINT_CALLBACK_PATH = '/api/print/callbacks';
+
+let jobCounter = 0;
+/** A job id unique in this browser even when many labels are sent in the
+ *  same millisecond. Batch 347: the old `EVT-{case}-{ms}` could repeat for a
+ *  batch of cassettes, and the engine would then drop all but one as
+ *  duplicates (they shared the idempotency key). */
+export function newNetworkPrintJobId(caseId: string, now: Date = new Date(), random: () => number = Math.random): string {
+  jobCounter = (jobCounter + 1) % 1_679_616; // 36^4
+  return `EVT-${caseId}-${now.getTime().toString(36)}-${jobCounter.toString(36).padStart(4, '0')}${Math.floor(random() * 1296).toString(36).padStart(2, '0')}`;
+}
 
 export interface BuildNetworkPrintPayloadInput {
   caseId: string;
@@ -60,7 +79,10 @@ export interface BuildNetworkPrintPayloadInput {
   gtin: string;
   printer: PrinterProfile;
   copies?: number;
-  callbackUrl: string;
+  callbackUrl?: string;
+  /** Batch 347 (PS-54): a slide label's level and stain. Present → a SLIDE
+   *  payload; absent → a cassette, as before. */
+  slide?: { level: string; stainName: string };
 }
 
 export interface BuildNetworkPrintPayloadResult {
@@ -84,9 +106,10 @@ export interface BuildNetworkPrintPayloadError {
  *  downstream failure. */
 function checkPrinterCapability(printer: PrinterProfile): string[] {
   const errors: string[] = [];
-  if (!printer.active) errors.push(`Printer profile "${printer.printerId}" is marked inactive.`);
-  if (!printer.supportsGS1) errors.push(`Printer profile "${printer.printerId}" does not report GS1 support.`);
-  if (!printer.supportsDataMatrix) errors.push(`Printer profile "${printer.printerId}" does not report DataMatrix support.`);
+  // Batch 347: translated (these reach the user as the print error).
+  if (!printer.active) errors.push(i18n.t('networkPrint.payload.printerInactive', { printer: printer.printerId }));
+  if (!printer.supportsGS1) errors.push(i18n.t('networkPrint.payload.noGs1', { printer: printer.printerId }));
+  if (!printer.supportsDataMatrix) errors.push(i18n.t('networkPrint.payload.noDataMatrix', { printer: printer.printerId }));
   return errors;
 }
 
@@ -113,7 +136,7 @@ export function buildNetworkPrintPayload(input: BuildNetworkPrintPayloadInput): 
   // Real, defensive check — validateGs1Fields above already confirmed
   // this can't fail, but this function never asserts a non-null value
   // it hasn't itself just confirmed, even when redundant.
-  if (!gs1) return { ok: false, errors: ['GS1 DataMatrix encoding failed for an unexpected reason — see gs1DataMatrix.ts.'] };
+  if (!gs1) return { ok: false, errors: [i18n.t('networkPrint.payload.gs1Failed')] };
 
   const labelData: NetworkPrintLabelData = {
     accessionNumber: input.fullAccession,
@@ -121,17 +144,18 @@ export function buildNetworkPrintPayload(input: BuildNetworkPrintPayloadInput): 
     blockId: input.blockId,
     patientName: input.patientName,
     gs1DataMatrix: gs1.raw,
+    ...(input.slide ? { labelType: 'SLIDE' as const, slide: { level: input.slide.level, stainName: input.slide.stainName } } : { labelType: 'CASSETTE' as const }),
   };
 
-  const eventId = `EVT-${input.caseId}-${Date.now().toString(36)}`;
+  const eventId = newNetworkPrintJobId(input.caseId);
 
   const payload: NetworkPrintPayload = {
     eventId,
     idempotencyKey: eventId,
     action: 'PRINT_NETWORK_LABEL',
     timestamp: new Date().toISOString(),
-    templateVersion: TEMPLATE_VERSION,
-    callbackUrl: input.callbackUrl,
+    templateVersion: input.slide ? SLIDE_TEMPLATE_VERSION : TEMPLATE_VERSION,
+    callbackUrl: input.callbackUrl ?? NETWORK_PRINT_CALLBACK_PATH,
     targetPrinter: {
       printerId: input.printer.printerId,
       ipAddress: input.printer.ipAddress ?? '',
@@ -140,6 +164,7 @@ export function buildNetworkPrintPayload(input: BuildNetworkPrintPayloadInput): 
     },
     labelData,
     copies: input.copies ?? 1,
+    attempt: 1,
   };
 
   return { ok: true, payload };
@@ -179,7 +204,7 @@ export async function dispatchNetworkPrintJob(payload: NetworkPrintPayload): Pro
   mockAuditService.logEvent({
     type: 'system',
     event: 'Network Print Dispatched',
-    detail: `eventId=${payload.eventId} idempotencyKey=${payload.idempotencyKey} printerId=${payload.targetPrinter.printerId} templateVersion=${payload.templateVersion} payloadHash=${simpleHash(JSON.stringify(payload))} status=DISPATCHED(stub)`,
+    detail: `eventId=${payload.eventId} idempotencyKey=${payload.idempotencyKey} attempt=${payload.attempt ?? 1} printerId=${payload.targetPrinter.printerId} templateVersion=${payload.templateVersion} payloadHash=${simpleHash(JSON.stringify(payload))} status=DISPATCHED(stub)`,
     user: 'system',
     caseId: null,
     confidence: null,
@@ -212,45 +237,7 @@ function simpleHash(value: string): string {
   return (hash >>> 0).toString(16);
 }
 
-/** Real, complete handler for Section 7's own callback shape —
- *  genuinely ready to be called the moment a real Interface Engine
- *  exists to call it (see this file's own header on why nothing does
- *  yet). Implements Section 9.2's own PathScribe-side requirements:
- *  UI notification, a real audit trail entry, and — for a real error
- *  state — leaves the door open for a retry action, rather than the
- *  dispatch function above silently assuming success. */
-export async function handleNetworkPrintCallback(
-  callback: NetworkPrintCallback,
-  onNotify: (message: string, isError: boolean) => void,
-): Promise<void> {
-  const original = DISPATCHED_LOG.find(p => p.eventId === callback.eventId);
-  const isSuccess = callback.status === 'PRINT_SUCCESS';
-
-  mockAuditService.logEvent({
-    type: 'system',
-    event: isSuccess ? 'Network Print Succeeded' : 'Network Print Failed',
-    detail: `eventId=${callback.eventId} status=${callback.status} printerResponse="${callback.printerResponse}" durationMs=${callback.durationMs} printerId=${original?.targetPrinter.printerId ?? 'unknown'}`,
-    user: 'system',
-    caseId: null,
-    confidence: null,
-  }).catch(err => console.error('[PS-51] Failed to log network print callback audit entry:', err));
-
-  if (isSuccess) {
-    onNotify(`Label printed successfully (${callback.durationMs}ms).`, false);
-    return;
-  }
-
-  // Real, human-readable messages for each of Section 7.2's own real
-  // error states — an accessioner/histotech seeing "PAPER_OUT" as a
-  // raw enum value isn't the real, actionable message Section 9.2's
-  // own "UI notification" requirement calls for.
-  const ERROR_MESSAGES: Record<string, string> = {
-    PRINTER_UNREACHABLE: 'Printer could not be reached on the network.',
-    PAPER_OUT: 'Printer is out of label stock.',
-    RIBBON_OUT: 'Printer is out of ribbon.',
-    HEAD_OPEN: "Printer's print head is open.",
-    MALFORMED_ZPL: 'The generated label template was rejected by the printer — this is a real PathScribe-side bug, not an operator error.',
-    INVALID_GS1: 'The generated barcode failed GS1 validation — this is a real PathScribe-side bug, not an operator error.',
-  };
-  onNotify(`Print failed: ${ERROR_MESSAGES[callback.status] ?? callback.status}`, true);
-}
+// Batch 347 (PS-54): handleNetworkPrintCallback moved to
+// services/networkPrint/networkPrintJobs.ts, which receives the engine's
+// results over the live-update connection, audits them, tells the user
+// (translated), and offers Retry for a failed job.

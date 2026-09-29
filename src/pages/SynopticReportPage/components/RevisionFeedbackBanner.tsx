@@ -20,10 +20,9 @@
 // reasonably reviewed later via the QA dashboard.
 //
 // Matches this folder's own established banner pattern
-// (ReleaseBufferBanner.tsx/InformalReviewBanner.tsx). Inline styles
-// promoted to a new .ps-revision-feedback-banner class as part of the
-// i18n sweep's own CSS-cleanup pass, same as InformalReviewBanner.tsx
-// before it.
+// (ReleaseBufferBanner.tsx). Inline styles promoted to a new
+// .ps-revision-feedback-banner class as part of the i18n sweep's own
+// CSS-cleanup pass.
 //
 // i18n note: `record.attendingName` and `record.attendingFeedback`
 // (a pathologist's own free-text feedback) are real case data, not

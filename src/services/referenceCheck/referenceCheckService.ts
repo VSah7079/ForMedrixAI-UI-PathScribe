@@ -20,8 +20,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { physicianService, grossingRoutingOverrideService, specimenDictionaryService } from '../index';
 import { loadRoutingRules } from '../cases/casePoolAssignmentService';
-import { TAT_STORAGE_KEY } from '../../components/Config/System/TATConfigSection';
-import type { TATEntry } from '../../components/Config/System/TATConfigSection';
+import { mockTatTargetService } from '../tatConfig/mockTatTargetService';
 
 export interface ReferenceSource {
   label: string;
@@ -33,11 +32,11 @@ export interface ReferenceCheckResult {
   sources: ReferenceSource[];
 }
 
-function loadTatEntries(): TATEntry[] {
-  try {
-    const raw = localStorage.getItem(TAT_STORAGE_KEY);
-    return raw ? JSON.parse(raw) : [];
-  } catch { return []; }
+// Batch 353: TAT targets come from the TAT target service (they were read
+// from the TAT settings screen's browser storage).
+async function loadTatEntries() {
+  const res = await mockTatTargetService.getAll();
+  return res.ok ? res.data : [];
 }
 
 function toResult(sources: ReferenceSource[]): ReferenceCheckResult {
@@ -52,7 +51,7 @@ export async function checkFacilityReferences(facilityId: string): Promise<Refer
   ]);
   const physicianCount = physiciansRes.ok ? physiciansRes.data.filter((p) => p.clientIds?.includes(facilityId)).length : 0;
   const overrideCount = overridesRes.ok ? overridesRes.data.filter((o) => o.clientId === facilityId && o.active !== false).length : 0;
-  const tatCount = loadTatEntries().filter(e => e.active && e.facilityId === facilityId).length;
+  const tatCount = (await loadTatEntries()).filter(e => e.active && e.facilityId === facilityId).length;
   return toResult([
     { label: 'Physicians', count: physicianCount },
     { label: 'Grossing Route Overrides', count: overrideCount },
@@ -62,7 +61,7 @@ export async function checkFacilityReferences(facilityId: string): Promise<Refer
 
 export async function checkSubspecialtyReferences(subspecialtyId: string): Promise<ReferenceCheckResult> {
   const routingRuleCount = loadRoutingRules().filter(r => r.subspecialtyId === subspecialtyId && r.active).length;
-  const tatCount = loadTatEntries().filter(e => e.active && e.subspecialtyId === subspecialtyId).length;
+  const tatCount = (await loadTatEntries()).filter(e => e.active && e.subspecialtyId === subspecialtyId).length;
   return toResult([
     { label: 'Routing Rules', count: routingRuleCount },
     { label: 'TAT Configuration entries', count: tatCount },

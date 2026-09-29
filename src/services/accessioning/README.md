@@ -57,6 +57,10 @@ here is PathScribe's own half: validating, deciding status, and
 queuing the correctly-shaped JSON for a real interface engine to pick
 up.
 
+## Batch 377
+
+- **`patientIdGeneration.ts`** (+ test): `autoPatientId(caseId)` builds the generated Patient ID (`AUTO-<case id without its prefix>`). `resolveSubmittedPatientId(entered, caseId, required)` decides what to save. The entered value wins; otherwise the generated one is used; it fails only when none can be generated and the organisation requires a Patient ID. The Accession page then alerts and doesn't submit.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

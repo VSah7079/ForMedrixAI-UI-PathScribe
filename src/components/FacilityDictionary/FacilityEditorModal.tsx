@@ -6,10 +6,25 @@
  * Props:
  *   isOpen  -- boolean
  *   onClose -- () => void
- *   facility -- Facility | undefined (undefined = add mode, Facility = edit mode)
+ *   mode    -- 'add' | 'edit' — real fix (PS-73, Sep 2026): the save decision
+ *              (add() vs. update()) and every id-dependent effect below now
+ *              key off THIS, never off whether `facility` is present. Once
+ *              Duplicate (below) started passing a prefilled `facility`
+ *              object into 'add' mode, presence-of-`facility` alone stopped
+ *              meaning "this is a real, existing record" — exactly the
+ *              class of bug PS-73 itself found and fixed elsewhere
+ *              (PhysicianModal's own `mode` prop, same reasoning).
+ *   facility -- Facility | undefined. undefined = blank add. In 'edit' mode,
+ *              the real record being edited. In 'add' mode, either
+ *              undefined (blank form) or a Duplicate prefill template (see
+ *              FacilityDictionaryPage.tsx's handleDuplicateFacility) — never
+ *              a real, existing id, so every effect keyed on facility.id
+ *              below is additionally gated on isEdit.
  *   onSave  -- (input: FacilityInput) => void — parent owns the actual
  *              facilityService.add/update call, same convention as
  *              PhysiciansSection.tsx / DepartmentsSection.tsx
+ *   allFacilities -- also used for the real assigningAuthority uniqueness
+ *              check now (PS-73) — see validate() below.
  */
 
 import React, { useState, useEffect } from "react";
@@ -17,7 +32,8 @@ import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import type { Facility, FacilityInput, FacilityRole } from "../../services/facilities/IFacilityService";
 import { FACILITY_ROLE_LABELS, FACILITY_ROLE_TOOLTIPS } from "../../services/facilities/IFacilityService";
-import { mockPlaceOfServiceCodeService } from "../../services/billing/mockPlaceOfServiceCodeService";
+import { findDuplicate } from "../../utils/validateUnique";
+import { placeOfServiceCodeService } from "@/services";
 import IdentifierFormatsTab from "./IdentifierFormatsTab";
 import type { PlaceOfServiceCode } from "../../types/billing/PlaceOfServiceCode";
 import { JURISDICTION_LABELS, type Jurisdiction } from "../../types/systemConfig";
@@ -31,9 +47,14 @@ import { HL7_LOCATION_STATUS_OPTIONS, HL7_PERSON_LOCATION_TYPE_OPTIONS } from ".
 interface FacilityEditorModalProps {
   isOpen: boolean;
   onClose: () => void;
-  /** Existing facility to edit, or undefined to add a new one. Passed
-   *  directly rather than a facilityId + internal lookup — matches
-   *  PhysiciansSection/DepartmentsSection's convention. */
+  /** Real fix (PS-73, Sep 2026): the save decision and every id-dependent
+   *  effect key off this, not off whether `facility` is present — see the
+   *  file header comment above for why. */
+  mode: 'add' | 'edit';
+  /** Existing facility to edit ('edit' mode), a Duplicate prefill template
+   *  ('add' mode), or undefined for a blank add. Passed directly rather
+   *  than a facilityId + internal lookup — matches PhysiciansSection/
+   *  DepartmentsSection's convention. */
   facility?: Facility;
   onSave: (input: FacilityInput) => void;
   /** Full facility list, used to populate the Parent Enterprise
@@ -118,12 +139,16 @@ type Tab = "general" | "lis_integration" | "identifier_formats" | "reporting" | 
 export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
   isOpen,
   onClose,
+  mode,
   facility,
   onSave,
   allFacilities,
 }) => {
   const { t } = useTranslation();
-  const isEdit = !!facility;
+  // Real fix (PS-73): was `!!facility` — broke the moment Duplicate started
+  // passing a prefilled `facility` object into 'add' mode. `mode` is the
+  // single source of truth now; see file header comment.
+  const isEdit = mode === 'edit';
 
   const REPORTING_OPTIONS: ReportingOption[] = [
     ['autoRelease',     t('facilityEditorModal.reporting.autoRelease')],
@@ -237,7 +262,14 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
   // facility can't have a validation study yet).
   const [eligibleModels, setEligibleModels] = useState<AIModel[]>([]);
   useEffect(() => {
-    if (!isOpen || !facility?.id || !hasRole('performing_lab')) { setEligibleModels([]); return; }
+    // Real fix (PS-73): added `!isEdit` to the guard — `facility?.id` alone
+    // isn't "this is a real, existing facility" anymore now that Duplicate
+    // passes a prefilled `facility` object (with no real id of its own)
+    // into 'add' mode. Without this, a Duplicate template's own leftover
+    // eligibility state from a *previous* real facility view could survive
+    // into the new one, or this would fire a bogus lookup — same bug class
+    // as the isEdit/mode fix above.
+    if (!isOpen || !isEdit || !facility?.id || !hasRole('performing_lab')) { setEligibleModels([]); return; }
     let cancelled = false;
     (async () => {
       const [eligibleIds, allModelsRes] = await Promise.all([
@@ -250,10 +282,10 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
     })();
     return () => { cancelled = true; };
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, facility?.id, form.roles.includes('performing_lab')]);
+  }, [isOpen, isEdit, facility?.id, form.roles.includes('performing_lab')]);
 
   // Real, new: the real, versioned CMS Place of Service dictionary
-  // (services/billing/mockPlaceOfServiceCodeService.ts). Deliberately
+  // (services/billing/placeOfServiceCodeService.ts). Deliberately
   // NOT gated to hasRole('specimen_acquisition') the way eligibleModels
   // above is gated to performing_lab - this is a small (52-entry),
   // global reference list with no per-facility scoping, so there's no
@@ -264,7 +296,7 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
     if (!isOpen) { setPosCodes([]); return; }
     let cancelled = false;
     (async () => {
-      const res = await mockPlaceOfServiceCodeService.getActiveCodes();
+      const res = await placeOfServiceCodeService.getActiveCodes();
       if (cancelled) return;
       setPosCodes(res.ok ? res.data : []);
     })();
@@ -283,17 +315,21 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationsLoading, setLocationsLoading] = useState(false);
   const reloadLocations = async () => {
-    if (!facility?.id) { setLocations([]); return; }
+    // Real fix (PS-73): `!isEdit` added — see eligibleModels' own comment
+    // above for why `facility?.id` alone no longer means "a real facility."
+    // The Locations tab button is already gated to `isEdit` further down,
+    // so this is defense in depth, not the only guard.
+    if (!isEdit || !facility?.id) { setLocations([]); return; }
     setLocationsLoading(true);
     const res = await locationService.listForFacility(facility.id);
     if (res.ok) setLocations(res.data);
     setLocationsLoading(false);
   };
   useEffect(() => {
-    if (!isOpen || !facility?.id) { setLocations([]); return; }
+    if (!isOpen || !isEdit || !facility?.id) { setLocations([]); return; }
     reloadLocations();
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [isOpen, facility?.id]);
+  }, [isOpen, isEdit, facility?.id]);
 
   const [showAddLocation, setShowAddLocation] = useState(false);
   const [newLocation, setNewLocation] = useState({
@@ -303,7 +339,7 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
   const resetNewLocationForm = () => setNewLocation({ pointOfCare: '', room: '', bed: '', building: '', floor: '', locationStatus: '', personLocationType: '' });
 
   const handleAddLocation = async () => {
-    if (!facility?.id || !newLocation.pointOfCare.trim()) return;
+    if (!isEdit || !facility?.id || !newLocation.pointOfCare.trim()) return;
     await locationService.create({
       facilityId: facility.id,
       pointOfCare: newLocation.pointOfCare.trim(),
@@ -332,7 +368,30 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
   const validate = (): boolean => {
     const e: typeof errors = {};
     if (!form.name.trim()) e.name = t('facilityEditorModal.errors.nameRequired');
-    if (!form.assigningAuthority.trim()) e.assigningAuthority = t('facilityEditorModal.errors.assigningAuthorityRequired');
+    // Real fix (PS-73, Sep 2026): assigningAuthority was required-only —
+    // no uniqueness check — despite mockOrderIntakeService.ts's own real
+    // Facility-resolution lookup keying directly off it
+    // (`facilities.find(c => c.assigningAuthority.toLowerCase() === ...)`).
+    // Two facilities sharing one would let that real lookup silently
+    // resolve an inbound HL7 order to the wrong facility — same failure
+    // mode this pattern already protects Physicians' npi/physicianCode
+    // against. excludeId only applies in real 'edit' mode — in 'add' mode
+    // (including a Duplicate template, whose assigningAuthority is cleared
+    // before this modal ever opens — see FacilityDictionaryPage.tsx's
+    // handleDuplicateFacility) nothing is excluded, so saving a clone
+    // without giving it its own value is correctly caught.
+    if (!form.assigningAuthority.trim()) {
+      e.assigningAuthority = t('facilityEditorModal.errors.assigningAuthorityRequired');
+    } else {
+      const excludeId = isEdit ? facility?.id : undefined;
+      const collision = findDuplicate(allFacilities, { assigningAuthority: form.assigningAuthority.trim() }, ['assigningAuthority'], excludeId);
+      if (collision) {
+        e.assigningAuthority = t('facilityEditorModal.errors.assigningAuthorityCollision', {
+          code: collision.assigningAuthority,
+          name: collision.name,
+        });
+      }
+    }
     if (!form.email.trim() || !form.email.includes("@"))
       e.email = t('facilityEditorModal.errors.emailRequired');
     // Real, per direct guidance: replaces the old hl7.enabled-based
@@ -359,21 +418,12 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
 
   // ── Tab styling ─────────────────────────────────────────────────────────────
 
-  const tabStyle = (t: Tab): React.CSSProperties => ({
-    padding: "8px 16px",
-    fontSize: "13px",
-    fontWeight: 600,
-    cursor: "pointer",
-    border: "none",
-    background: "transparent",
-    borderBottom: tab === t ? "2px solid #0891b2" : "2px solid transparent",
-    color: tab === t ? "#0891b2" : "#64748b",
-  });
+  const tabClass = (t: Tab) => `ps-fem-tab${tab === t ? ' ps-fem-tab--active' : ''}`;
 
   // ── Render ──────────────────────────────────────────────────────────────────
 
   return (
-    <div className="ps-overlay" style={{ zIndex: 9000 }} onClick={onClose}>
+    <div className="ps-overlay ps-overlay--facility-editor" onClick={onClose}>
       <div className="ps-client-editor-shell" onClick={(e) => e.stopPropagation()}>
         {/* ── Header + tab bar ── */}
         <div className="ps-client-editor-header">
@@ -384,7 +434,7 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
             <button onClick={onClose} className="ps-modal-close">&#x2715;</button>
           </div>
           <div className="ps-client-editor-tabs">
-            <button style={tabStyle("general")}   onClick={() => setTab("general")}>{t('facilityEditorModal.tabs.general')}</button>
+            <button className={tabClass("general")}   onClick={() => setTab("general")}>{t('facilityEditorModal.tabs.general')}</button>
             {/* Real, per direct guidance: never role-gated — LIS
                 routing metadata is real, potentially-relevant data
                 for any facility that sends messages toward the
@@ -393,11 +443,11 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
                 fields within this tab are still gated to isEnterprise
                 internally, since that half is deliberately
                 Enterprise-only. */}
-            <button style={tabStyle("lis_integration")} onClick={() => setTab("lis_integration")}>{t('facilityEditorModal.tabs.lisIntegration')}</button>
+            <button className={tabClass("lis_integration")} onClick={() => setTab("lis_integration")}>{t('facilityEditorModal.tabs.lisIntegration')}</button>
             {/* Real, per direct guidance: same real move as LIS
                 Integration above - never role-gated, real for any
                 facility. */}
-            <button style={tabStyle("identifier_formats")} onClick={() => setTab("identifier_formats")}>{t('facilityEditorModal.tabs.identifierFormats')}</button>
+            <button className={tabClass("identifier_formats")} onClick={() => setTab("identifier_formats")}>{t('facilityEditorModal.tabs.identifierFormats')}</button>
             {/* Real fix, per direct confirmation: not role-gated —
                 TAT/reporting apply to any facility that handles
                 cases, not just ordering-client roles. Confirmed
@@ -405,10 +455,10 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
                 performing_lab-only but has real, configured TAT
                 targets (8h/48h) that were invisible under the old
                 isOrderingClient gate. */}
-            <button style={tabStyle("reporting")}  onClick={() => setTab("reporting")}>{t('facilityEditorModal.tabs.reporting')}</button>
-            <button style={tabStyle("tat")}        onClick={() => setTab("tat")}>{t('facilityEditorModal.tabs.tat')}</button>
+            <button className={tabClass("reporting")}  onClick={() => setTab("reporting")}>{t('facilityEditorModal.tabs.reporting')}</button>
+            <button className={tabClass("tat")}        onClick={() => setTab("tat")}>{t('facilityEditorModal.tabs.tat')}</button>
             {hasRole('performing_lab') && (
-              <button style={tabStyle("ai")}         onClick={() => setTab("ai")}>{t('facilityEditorModal.tabs.ai')}</button>
+              <button className={tabClass("ai")}         onClick={() => setTab("ai")}>{t('facilityEditorModal.tabs.ai')}</button>
             )}
             {/* Real fix, per direct confirmation: never gated to any
                 specific role — a facility can want its
@@ -418,7 +468,7 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
                 a brand-new, unsaved facility can't have locations
                 attached to it yet. */}
             {isEdit && (
-              <button style={tabStyle("locations")}  onClick={() => setTab("locations")}>{t('facilityEditorModal.tabs.locations')}</button>
+              <button className={tabClass("locations")}  onClick={() => setTab("locations")}>{t('facilityEditorModal.tabs.locations')}</button>
             )}
           </div>
         </div>
@@ -498,7 +548,22 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
                     </div>
                   </Field>
                 )}
-                {hasRole('performing_lab') && (
+                {/* Real, per PS-277 §1.2.2 gap-closing — these three
+                    fields feed resolveFacilityPrintBranding.ts's own
+                    Facility → Department → Enterprise resolution at
+                    TWO of its three real tiers, not just the
+                    performing-lab one: an Enterprise-tagged facility
+                    (isEnterprise) is the real fallback tier every one
+                    of its affiliates reads from when they haven't set
+                    their own value. Before this fix, an Enterprise
+                    facility that didn't ALSO happen to hold the
+                    performing_lab role (architecturally independent
+                    fields — isEnterprise is deliberately its own flag,
+                    never a FacilityRole value) had no way to configure
+                    these at all — a real, latent gap even though every
+                    real seed Enterprise record in this app happens to
+                    also carry performing_lab today. */}
+                {(hasRole('performing_lab') || form.isEnterprise) && (
                   <Field label={t('facilityEditorModal.general.cliaIsoNumber')}>
                     <input
                       className="cem-input"
@@ -508,6 +573,49 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
                     />
                     <div className="cem-hint">
                       {t('facilityEditorModal.general.cliaIsoNumberHint')}
+                    </div>
+                  </Field>
+                )}
+                {(hasRole('performing_lab') || form.isEnterprise) && (
+                  <Field label={t('facilityEditorModal.general.directorName')}>
+                    <input
+                      className="cem-input"
+                      value={form.directorName ?? ''}
+                      onChange={(e) => set("directorName", e.target.value || undefined)}
+                      placeholder={t('facilityEditorModal.general.directorNamePlaceholder')}
+                    />
+                    <div className="cem-hint">
+                      {t('facilityEditorModal.general.directorNameHint')}
+                    </div>
+                  </Field>
+                )}
+                {(hasRole('performing_lab') || form.isEnterprise) && (
+                  <Field label={t('facilityEditorModal.general.headerLogoUrl')}>
+                    <input
+                      className="cem-input"
+                      value={form.headerLogoUrl ?? ''}
+                      onChange={(e) => set("headerLogoUrl", e.target.value || undefined)}
+                      placeholder={t('facilityEditorModal.general.headerLogoUrlPlaceholder')}
+                    />
+                    <div className="cem-hint">
+                      {t('facilityEditorModal.general.headerLogoUrlHint')}
+                    </div>
+                  </Field>
+                )}
+                {hasRole('performing_lab') && (
+                  <Field label={t('facilityEditorModal.general.forceAddendumOnDedicatedPage')}>
+                    <label htmlFor="forceAddendumOnDedicatedPagePrintPolicy" className={`cem-chip-label cem-chip-label--fit${form.forceAddendumOnDedicatedPagePrintPolicy ? ' cem-chip-label--active' : ''}`}>
+                      <input
+                        type="checkbox"
+                        id="forceAddendumOnDedicatedPagePrintPolicy"
+                        checked={form.forceAddendumOnDedicatedPagePrintPolicy ?? false}
+                        onChange={(e) => set("forceAddendumOnDedicatedPagePrintPolicy", e.target.checked || undefined)}
+                        className="cem-checkbox"
+                      />
+                      <span className="cem-chip-text">{t('facilityEditorModal.general.forceAddendumOnDedicatedPageCheckbox')}</span>
+                    </label>
+                    <div className="cem-hint">
+                      {t('facilityEditorModal.general.forceAddendumOnDedicatedPageHint')}
                     </div>
                   </Field>
                 )}
@@ -580,9 +688,9 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
                 </Field>
                 <Field label={t('facilityEditorModal.general.contactSuffix')}>
                   {contactSuffixCustom ? (
-                    <div style={{ display: "flex", gap: 6, alignItems: "center" }}>
+                    <div className="cem-suffix-custom-row">
                       <input className="cem-input" value={form.contactNameSuffix ?? ''} onChange={(e) => set("contactNameSuffix", e.target.value)} placeholder={t('facilityEditorModal.general.contactSuffixPlaceholder')} />
-                      <button type="button" onClick={() => { setContactSuffixCustom(false); set("contactNameSuffix", ""); }} className="cem-btn-text" style={{ whiteSpace: "nowrap", textDecoration: "underline", color: "#38bdf8" }}>
+                      <button type="button" onClick={() => { setContactSuffixCustom(false); set("contactNameSuffix", ""); }} className="cem-btn-text cem-btn-text--link">
                         {t('facilityEditorModal.general.useList')}
                       </button>
                     </div>
@@ -667,7 +775,7 @@ export const FacilityEditorModal: React.FC<FacilityEditorModalProps> = ({
                       </select>
                     </Field>
                     <Field label={t('facilityEditorModal.lis.credentialConfigured')}>
-                      <div style={{ display: "flex", alignItems: "center", gap: "8px", paddingTop: "8px" }}>
+                      <div className="cem-credential-row">
                         <input
                           type="checkbox"
                           id="credential-configured"

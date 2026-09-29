@@ -250,7 +250,18 @@ const CassetteColorsSection: React.FC = () => {
                 <tr key={c.id} className="ps-conf-tr">
                   <td className="ps-conf-td">
                     <span className="ps-flex-row-gap-8">
-                      <span className="ps-cassette-color-swatch" style={{ background: c.hexCode }} />
+                      {/* PS-73 whole-file inline-CSS sweep (Sep 2026): was
+                          `style={{ background: c.hexCode }}` — a real, dynamic
+                          per-row value, not something a static class can
+                          express, so it stays inline, but now goes through
+                          the same CSS-custom-property indirection this file's
+                          sibling dictionaries already use for the identical
+                          need (DelegationTypeSection.tsx's own --swatch-color/
+                          --del-badge-* vars) — the real styling
+                          (size/shape/border) lives in .ps-cassette-color-swatch
+                          in pathscribe.css, this only ever sets the one value
+                          that's genuinely per-instance. */}
+                      <span className="ps-cassette-color-swatch" style={{ '--swatch-color': c.hexCode } as React.CSSProperties} />
                       <span className="ps-conf-identity-name">{c.displayName}</span>
                     </span>
                   </td>

@@ -286,14 +286,14 @@ export const mockCytologyQcRuleService: ICytologyQcRuleService = {
     return ok(undefined);
   },
 
-  async duplicate(id: ID) {
+  async duplicate(id: ID, name: string) {
     await delay();
     const source = _cache.find(r => r.id === id);
     if (!source) return err(`CytologyQcRule ${id} not found`);
     const { id: _sourceId, ...rest } = source;
     const created: CytologyQcRule = {
       ...rest,
-      name: `Copy of ${source.name}`,
+      name,
       // Real, per direct guidance — starts inactive regardless of the
       // source rule's own state, so a duplicate never silently starts
       // matching real cases before an admin has actually reviewed and

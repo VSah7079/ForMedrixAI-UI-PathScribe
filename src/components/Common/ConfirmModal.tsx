@@ -26,7 +26,6 @@ interface ConfirmModalProps {
   cancelLabel?: string;
   onConfirm: () => void;
   onCancel: () => void;
-  overlayStyle?: React.CSSProperties;
 }
 
 const ConfirmModal: React.FC<ConfirmModalProps> = ({
@@ -37,7 +36,6 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   cancelLabel,
   onConfirm,
   onCancel,
-  overlayStyle,
 }) => {
   const { t } = useTranslation();
   if (!show) return null;
@@ -45,7 +43,7 @@ const ConfirmModal: React.FC<ConfirmModalProps> = ({
   const resolvedCancelLabel = cancelLabel ?? t('common.cancel');
 
   return (
-    <div className="ps-overlay ps-overlay--confirm" style={overlayStyle}>
+    <div className="ps-overlay ps-overlay--confirm">
       <div className="ps-modal-dark ps-modal-sm">
         {title && <span className="ps-modal-dark-title ps-modal-dark-title--confirm">{title}</span>}
         <p className="ps-modal-dark-body ps-modal-dark-body--confirm">{message}</p>

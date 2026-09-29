@@ -211,17 +211,18 @@ export const requiresManualLicense = (j: Jurisdiction): boolean => j === 'IE';
 
 // ── Locale & display format ───────────────────────────────────────────────────
 
+/** How a jurisdiction writes a date. Each is a real national convention:
+ *  YYYY-MM-DD for Korea (KS X ISO 8601), DD.MM.YYYY for Germany (DIN 5008),
+ *  DD-MM-YYYY for the Netherlands (Batch 365, PS-347). */
+export type JurisdictionDateFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'DD-MM-YYYY' | 'DD.MM.YYYY' | 'YYYY-MM-DD';
+
 export interface JurisdictionLocale {
   /** BCP-47 locale tag passed to Intl / toLocaleDateString */
   locale:     string;
-  /** Display format string — for documentation / UI hint only. Real
-   *  additions: 'YYYY-MM-DD' for Korea's own KS X ISO 8601 national
-   *  standard, and 'DD.MM.YYYY' for Germany's own real, distinct
-   *  dot-separated convention (DIN 5008/DIN ISO 8601 — confirmed
-   *  directly, not the same as the slash-separated DD/MM/YYYY used
-   *  elsewhere in continental Europe) — each genuinely distinct from
-   *  the others, not a rounding to the nearer one. */
-  dateFormat: 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' | 'DD.MM.YYYY';
+  /** The date format shown as a hint (placeholders, Identifier Formats) and
+   *  used to write dates of birth in the order lookup (isoDateForSearch.ts).
+   *  Everyday display goes through formatDate.ts and `locale` instead. */
+  dateFormat: JurisdictionDateFormat;
   /** 12-hour or 24-hour clock */
   timeFormat: '12h' | '24h';
   /** Spell-check lang attribute for browser spell checking */
@@ -241,14 +242,12 @@ export const JURISDICTION_LOCALE: Record<Jurisdiction, JurisdictionLocale> = {
   // adopting ISO 8601): YYYY-MM-DD, 24-hour clock, mandated for
   // official/government/medical records and data interchange.
   KR:     { locale: 'ko-KR', dateFormat: 'YYYY-MM-DD', timeFormat: '24h', spellLang: 'ko-KR' },
-  // Real, cited conventions — DD/MM/YYYY across BE/NL/FR matches the
-  // standard convention throughout continental Western Europe. DE
-  // gets its own, genuinely distinct DD.MM.YYYY — confirmed directly
-  // (DIN 5008/DIN ISO 8601, Germany's own official date standard,
-  // uses dot separators for the traditional form), not rounded to
-  // the nearer slash-separated option.
+  // Day first across continental Western Europe, with different separators:
+  // slashes in Belgium and France (27/09/2026), dashes in the Netherlands
+  // (27-09-2026, what nl-NL formatting produces; Batch 365, PS-347 corrected
+  // an earlier DD/MM/YYYY here), dots in Germany (27.09.2026, DIN 5008).
   BE:     { locale: 'nl-BE', dateFormat: 'DD/MM/YYYY', timeFormat: '24h', spellLang: 'nl-BE' },
-  NL:     { locale: 'nl-NL', dateFormat: 'DD/MM/YYYY', timeFormat: '24h', spellLang: 'nl-NL' },
+  NL:     { locale: 'nl-NL', dateFormat: 'DD-MM-YYYY', timeFormat: '24h', spellLang: 'nl-NL' },
   DE:     { locale: 'de-DE', dateFormat: 'DD.MM.YYYY', timeFormat: '24h', spellLang: 'de-DE' },
   FR:     { locale: 'fr-FR', dateFormat: 'DD/MM/YYYY', timeFormat: '24h', spellLang: 'fr-FR' },
 };

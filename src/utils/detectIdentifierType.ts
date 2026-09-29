@@ -79,7 +79,16 @@ export function detectIdentifierType(val: string, enabledFormats: IdentifierForm
 
 export type IdentifierApplicationResult =
   | { action: 'navigate'; path: string }
-  | { action: 'setFilters'; patientName: string; hospitalId: string; patientId: string; accessionNo: string };
+  | { action: 'setFilters'; patientName: string; hospitalId: string; patientId: string; accessionNo: string;
+      /** Batch 350: a requisition, external order or referral number
+       *  (CaseSearchCriteria.orderNo). It used to fill accessionNo, which is
+       *  compared to accession numbers only, so it never matched. */
+      orderNo: string;
+      /** Batch 349 (PS-101): a value that could be a name, MRN or accession
+       *  matches any of them (CaseSearchCriteria.anyIdentifier). It used to be
+       *  put in all three fields, which the search requires to match together,
+       *  so an MRN typed on its own found nothing. */
+      anyIdentifier: string };
 
 /** Real, per direct guidance - resolves what a detected identifier
  *  type should actually do, as a real, structured, testable result -
@@ -109,7 +118,7 @@ export function resolveIdentifierApplication(
     // 1D slide — extract accession (e.g. S26-4200 from S26-4200-A1-1)
     const oneD = val.match(/^([A-Za-z]{1,3}\d{2}-\d{4,6})/i);
     if (oneD) return { action: 'navigate', path: `/case/${oneD[1]}/synoptic` };
-    return { action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: val.trim() };
+    return { action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: val.trim(), orderNo: '', anyIdentifier: '' };
   }
 
   if (type === 'accession') {
@@ -122,11 +131,11 @@ export function resolveIdentifierApplication(
       .map(f => normalizeAccession(val.trim(), f.pattern))
       .find(n => accessionFormats.some(f => new RegExp(f.pattern, 'i').test(n)))
       ?? normalizeAccession(val.trim(), fallbackAccessionPattern);
-    return { action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: normalized };
+    return { action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: normalized, orderNo: '', anyIdentifier: '' };
   }
-  if (type === 'mrn')         return { action: 'setFilters', patientName: '', hospitalId: val.trim(), patientId: '', accessionNo: '' };
-  if (type === 'mpi')         return { action: 'setFilters', patientName: '', hospitalId: '', patientId: val.trim(), accessionNo: '' };
-  if (type === 'name')        return { action: 'setFilters', patientName: val.trim(), hospitalId: '', patientId: '', accessionNo: '' };
-  if (type === 'requisition') return { action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: val.trim() };
-  return { action: 'setFilters', patientName: val.trim(), hospitalId: val.trim(), patientId: '', accessionNo: val.trim() };
+  if (type === 'mrn')         return { action: 'setFilters', patientName: '', hospitalId: val.trim(), patientId: '', accessionNo: '', orderNo: '', anyIdentifier: '' };
+  if (type === 'mpi')         return { action: 'setFilters', patientName: '', hospitalId: '', patientId: val.trim(), accessionNo: '', orderNo: '', anyIdentifier: '' };
+  if (type === 'name')        return { action: 'setFilters', patientName: val.trim(), hospitalId: '', patientId: '', accessionNo: '', orderNo: '', anyIdentifier: '' };
+  if (type === 'requisition') return { action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: '', orderNo: val.trim(), anyIdentifier: '' };
+  return { action: 'setFilters', patientName: '', hospitalId: '', patientId: '', accessionNo: '', orderNo: '', anyIdentifier: val.trim() };
 }

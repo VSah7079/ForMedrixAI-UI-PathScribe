@@ -122,5 +122,15 @@ specific to this page.
   `services/cases/README.md`'s own fuller account of the color
   decision and the "Return to Trainee" feature this tile surfaces.
 
+## Batch 353
+
+- **"Delegated to me"** comes from `delegationService` and `pendingDelegationsTo` (it imported the demo case service).
+- **Layout:** the page's inline styles are now the `.ps-wl-page`, `-content`, `-main` and `-main-inner` classes, plus `.ps-wl-header--page`.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`AmendedAddendaTriageTile.tsx`: each item's case number is tagged.
+
 ---
 *When this folder's contents change meaningfully, update THIS file.*

@@ -61,7 +61,6 @@ import type { ICaseService, CaseFilterParams } from './ICaseService';
 import type { ServiceResult }                                 from '../types';
 import { AuditLogger }                                        from './AuditLogger';
 import { ConcurrencyConflictError }                            from './ConcurrencyConflictError';
-import { mockFlagService } from '../flags/mockFlagService';
 
 // ── Configuration ─────────────────────────────────────────────────────────────
 // TODO: confirm these match your Firestore schema
@@ -122,12 +121,11 @@ export const firestoreCaseService: ICaseService = {
         const statuses = Array.isArray(params.status) ? params.status : [params.status];
         constraints.push(where('status', 'in', statuses));
       }
-      if (params?.statusList?.length) {
-        constraints.push(where('status', 'in', params.statusList));
-      }
-      if (params?.specialty) {
-        constraints.push(where('specialty', '==', params.specialty));
-      }
+      // Batch 350: the Search page's filters (status and priority lists,
+      // facility, pathologist, sex, date, DOB and age ranges, specimen flags)
+      // were removed here: Search now runs through the case search service
+      // (services/caseSearch/), and this stub is due to be replaced by the
+      // SQL Server API.
       if (params?.hospitalId) {
         // Real bug fix: this used to be where('hospitalId', '==', ...),
         // querying a field that doesn't exist anywhere on the real Case
@@ -147,104 +145,7 @@ export const firestoreCaseService: ICaseService = {
         // clean, exact-match, indexable constraint.
         constraints.push(where('patient.id', '==', (params as any).patientId));
       }
-      if (params?.priorityList?.length) {
-        if (params.priorityList.length === 1) {
-          constraints.push(where('order.priority', '==', params.priorityList[0]));
-        } else {
-          constraints.push(where('order.priority', 'in', params.priorityList));
-        }
-      }
-      if (params?.facilityIds?.length) {
-        // Firestore 'in' supports up to 30 values — a real, hard limit, not
-        // arbitrary. A selection larger than that (unlikely from the
-        // picker UI, but not impossible) needs the excess applied
-        // client-side rather than silently dropped or erroring the query.
-        const ids = params.facilityIds.slice(0, 30);
-        constraints.push(where('order.facilityId', 'in', ids));
-      }
-      if ((params as any)?.pathologistIds?.length) {
-        const ids = ((params as any).pathologistIds as string[]).slice(0, 30);
-        constraints.push(where('order.assignedTo', 'in', ids));
-      }
-      if (params?.genderList?.length) {
-        // Real stored data uses single-letter codes (patient.sex: 'M'/'F'/
-        // 'X'/'U'/'O') per caseFilterUtils.ts's own established mapping —
-        // SearchPage sends full words ('Male'/'Female'/...), so this
-        // normalizes before querying rather than silently matching nothing.
-        const toCode = (s: string): string => {
-          const l = s.toLowerCase();
-          if (l === 'm' || l === 'male')       return 'M';
-          if (l === 'f' || l === 'female')     return 'F';
-          if (l === 'x' || l === 'non-binary') return 'X';
-          if (l === 'u' || l === 'unknown')    return 'U';
-          if (l === 'o' || l === 'other')      return 'O';
-          return s;
-        };
-        constraints.push(where('patient.sex', 'in', params.genderList.map(toCode)));
-      }
-
-      // ── Range filter precedence ──────────────────────────────────────────
-      // Real, hard Firestore constraint: only ONE field can have an
-      // inequality/range filter per query. dateFrom/dateTo (accession
-      // date) and dobFrom/dobTo/ageMin/ageMax (both ultimately ranges on
-      // patient.dateOfBirth) compete for that single slot. Deliberate,
-      // documented policy rather than an unexplained silent choice:
-      // accession date wins the server-side slot when both are present
-      // (it's the more common search pattern and typically the bigger
-      // pre-filter), and the DOB/age range is applied client-side after
-      // the fetch instead — same "keep result sets small" reasoning the
-      // existing client-side filters below already use, just for a range
-      // instead of a text match. When accession date isn't given, the
-      // DOB/age range gets the server-side slot instead.
-      const hasAccessionRange = !!(params?.dateFrom || params?.dateTo);
-      // ageMin/ageMax converted to an equivalent DOB range (older age →
-      // earlier birth date, so ageMin bounds dobTo and ageMax bounds
-      // dobFrom) — explicit dobFrom/dobTo, if also given, take precedence
-      // as the more direct, unambiguous signal.
-      let dobFrom = (params as any)?.dobFrom as string | undefined;
-      let dobTo   = (params as any)?.dobTo   as string | undefined;
-      const ageMin = (params as any)?.ageMin as number | undefined;
-      const ageMax = (params as any)?.ageMax as number | undefined;
-      if (!dobFrom && !dobTo && (ageMin !== undefined || ageMax !== undefined)) {
-        const now = new Date();
-        if (ageMax !== undefined) {
-          // eslint-disable-next-line no-restricted-properties -- Real, honest justification: age-from-DOB, the rule's own explicitly stated carve-out - age is inherently computed relative to "now" (the viewing moment), not a facility-specific "today," same reasoning already established in caseFilterUtils.ts's own equivalent age-range logic.
-          const d = new Date(now); d.setFullYear(d.getFullYear() - ageMax - 1); d.setDate(d.getDate() + 1);
-          dobFrom = d.toISOString().slice(0, 10);
-        }
-        if (ageMin !== undefined) {
-          // eslint-disable-next-line no-restricted-properties -- Same real, honest age-from-DOB justification as above.
-          const d = new Date(now); d.setFullYear(d.getFullYear() - ageMin);
-          dobTo = d.toISOString().slice(0, 10);
-        }
-      }
-      const hasDobRange = !!(dobFrom || dobTo);
-
-      if (hasAccessionRange) {
-        // order.receivedDate — the same field WorklistTable.tsx's own
-        // getSortValue() already treats as "the" accession date for
-        // sorting. Deliberately NOT the mock's own caseFilterUtils.ts
-        // logic (specimens[0]?.receivedAt), which reads into the first
-        // element of an array field - Firestore can't query "the first
-        // element of an array" as a scalar range filter without a
-        // separate, duplicated top-level field, and order.receivedDate is
-        // already real, top-level, and populated. Worth knowing: this is
-        // an honest, real discrepancy between the two backends' exact
-        // date source, not a hidden one - flagged here rather than
-        // silently assumed equivalent.
-        if (params?.dateFrom) constraints.push(where('order.receivedDate', '>=', params.dateFrom));
-        if (params?.dateTo)   constraints.push(where('order.receivedDate', '<=', params.dateTo));
-        constraints.push(orderBy('order.receivedDate', 'desc'));
-      } else if (hasDobRange) {
-        if (dobFrom) constraints.push(where('patient.dateOfBirth', '>=', dobFrom));
-        if (dobTo)   constraints.push(where('patient.dateOfBirth', '<=', dobTo));
-        constraints.push(orderBy('patient.dateOfBirth', 'desc'));
-      } else {
-        // Sort most recent first — only when neither range filter above
-        // already supplied its own required orderBy (Firestore requires
-        // the first orderBy to match any inequality field actually used).
-        constraints.push(orderBy('updatedAt', 'desc'));
-      }
+      constraints.push(orderBy('updatedAt', 'desc'));
 
       // ── Pagination ────────────────────────────────────────────────────────
       // Cursor-based, not offset-based — see CaseFilterParams.pageSize's own
@@ -271,22 +172,7 @@ export const firestoreCaseService: ICaseService = {
       if (params?.pageSize && results.length > params.pageSize) {
         hasMore = true;
         results = results.slice(0, params.pageSize);
-        const lastDoc = results[results.length - 1] as any;
-        nextCursor = hasAccessionRange
-          ? lastDoc?.order?.receivedDate
-          : hasDobRange
-            ? lastDoc?.patient?.dateOfBirth
-            : lastDoc?.updatedAt;
-      }
-
-      // Client-side range check for whichever of the two competing ranges
-      // didn't win the server-side slot above (see the precedence comment).
-      if (hasAccessionRange && hasDobRange) {
-        results = results.filter(c => {
-          const dob = (c as any).patient?.dateOfBirth;
-          if (!dob) return true; // don't exclude cases with no DOB on record
-          return (!dobFrom || dob >= dobFrom) && (!dobTo || dob <= dobTo);
-        });
+        nextCursor = (results[results.length - 1] as any)?.updatedAt;
       }
 
       // Client-side filters (no index required but post-fetch — keep result sets small)
@@ -301,42 +187,6 @@ export const firestoreCaseService: ICaseService = {
       if (params?.accessionNo) {
         results = results.filter(c =>
           (c as any).accession?.fullAccession === params.accessionNo
-        );
-      }
-      if ((params as any)?.compFlagCodes?.length) {
-        // Real, confirmed fix (Jira PS-57 + its follow-up "should be
-        // able to assign Flags at either a Case or Specimen level"):
-        // same real resolution as caseFilterUtils.ts's own mock-path
-        // implementation — specimenFlags entries are real FlagInstance
-        // records now (flagDefinitionId, no .label/.lisCode of their
-        // own), resolved against the real flag catalog. mockFlagService
-        // used here deliberately (see its own import comment) —
-        // firestoreFlagService.ts is a documented stub, mockFlagService
-        // is the real, active flag catalog regardless of this file's
-        // own cutover status. Aggregated across every specimen on the
-        // case — there's deliberately no case-level specimenFlags
-        // field; each specimen's own specimenFlags is the only real
-        // place a flag applied to a specific specimen can live, since
-        // FlagInstance itself carries no specimenId. specimenFlags is
-        // an array of objects, and Firestore has no native way to
-        // query "does any array element's property X equal Y" without
-        // a separate, denormalized scalar index field this app's data
-        // model doesn't maintain. Applied here, same real "no index
-        // required but post-fetch" posture as the DOB/age range
-        // fallback above - inherits that same, already-documented
-        // pagination trade-off (hasMore/nextCursor reflect the
-        // pre-filter page), not a new limitation.
-        const codes = (params as any).compFlagCodes as string[];
-        const flagCatalog = await mockFlagService.getAll();
-        const flagDefById = new Map(flagCatalog.ok ? flagCatalog.data.map(f => [f.id, f]) : []);
-        results = results.filter(c =>
-          codes.some(code =>
-            ((c as any).specimens ?? []).flatMap((sp: any) => sp.specimenFlags ?? []).some((sf: any) => {
-              if (sf.deletedAt) return false;
-              const def = flagDefById.get(sf.flagDefinitionId);
-              return !!def && (def.lisCode === code || def.id === code || def.name === code);
-            })
-          )
         );
       }
 

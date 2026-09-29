@@ -34,6 +34,51 @@ Presentational and semi-presentational pieces specific to the case report page �
 - **`MarkersPanel.tsx`** — resolved biomarker values grouped by marker (e.g. all ER-related fields — Status, % Positivity, Intensity — under one card).
 - **`EMRSidecarDrawer.tsx`** — slide-in EMR sidecar drawer (replaces an earlier floating/draggable modal version, now matching the app's standard drawer convention).
 
+## Batch 338 (PS-342): spell checking
+
+- **`OrchestratorSectionEditor.tsx`:**
+  - the AI spelling check (`SpellCheckPopover`, the review state, `handleAcceptWithSpellCheck`) is removed, and Accept commits directly;
+  - the header shows `SpellingLanguageControl` instead of the jurisdiction badge;
+  - specimen section titles take the template's label formatting as `--label-*` custom properties (`utils/labelStyleVars.ts`) instead of an inline style;
+  - macros and voice macros now come from `@/services` (`macroService`, `voiceMacroService`), so the file is off the mock-import baseline.
+- **`MicroscopicEntryPanel.tsx`:** shows the spelling language control above its editor.
+- **`RightSynopticPanel.tsx`:** free-text synoptic fields use `SpellCheckedTextarea`; the progress bar's width is passed as `--syn-progress-pct`.
+
+**Batch 349 (PS-100):** `ReleaseBufferBanner.tsx`'s `showToast` prop takes the optional toast kind.
+
+**Batch 350:** `HeaderBar.tsx`'s status pill label is translated (`getCaseStatusLabel(status, revision, t)`, `caseStatusDisplay.*`); it was the English status code in Title Case.
+
+## Batch 353
+
+`InformalReviewBanner.tsx` reads and completes the informal review through `delegationService`. It used to call the demo case service, and it is now off the mock-import baseline. *Deleted in Batch 355; see below.*
+
+## Batch 355 (PS-346)
+
+- **Deleted:** `InformalReviewBanner.tsx`, along with its `.ps-informal-review-banner` CSS and its `informalReviewBanner.*` keys in all five languages. No page rendered it.
+- **Comments updated:** `ReleaseBufferBanner.tsx` and `RevisionFeedbackBanner.tsx` no longer point to it.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+- `LeftReportPanel.tsx`: the case/MRN/patient/date-of-birth row tags each value with its kind (it was untagged). The pending-release watermark comes in as `--ps-watermark-image` with a CSS class; it was three inline style properties. The panel reads report release through `@/services`, so it came off the mock-import baseline.
+- `MaterialTreePanel.tsx`: specimen, block and decant ids (they contain the accession) are tagged.
+
+
+## Batch 364 (PS-349, PS-350): support references
+
+`HeaderBar.tsx`: a "Support reference" chip (compact header) and field (full header). Clicking creates or reveals the case's reference and copies it.
+
+## Batch 367 (PS-74): no inline CSS
+
+`BottomActionBar.tsx`, `DispatchHistoryTimeline.tsx`, `SequencerPanel.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+`BottomActionBar.tsx`: the action buttons' look and hover live in `.ps-bab-action-btn`; only the colour is per button.
+
+## Batch 368
+
+- **`HeaderBar.tsx`:** optional `changeCount` / `onOpenChangeHistory` add the Change history chip beside the version chip.
+- **`BottomActionBar.tsx`:** reads the release settings through `reportReleaseService` from `@/services`, and is off the deployment baseline.
+
 ---
 *See [pages/README.md](../../README.md) for how this folder fits the whole pages/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

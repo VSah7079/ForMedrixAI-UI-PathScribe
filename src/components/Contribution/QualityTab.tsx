@@ -2,22 +2,21 @@
 import React, { useState, useEffect } from "react";
 import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
-import { qaActivityRecordService, facilityService, intraoperativeService } from '@/services';
-import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
-import { mockAmendmentService } from '@/services/reports/mockAmendmentService';
+import {
+  qaActivityRecordService, facilityService, intraoperativeService, amendmentService, informalReviewService,
+  delegationService, tatTargetService,
+} from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { getDelegations } from '@/services/cases/mockCaseService';
-import { informalReviewService } from '@/services';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
-import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
-import { TAT_STORAGE_KEY, SYSTEM_DEFAULTS as TAT_SYSTEM_DEFAULTS } from '@/components/Config/System/TATConfigSection';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/reconciliationRecordMapping';
+import { withPerformingLabs, facilityNamesById, consultationRecords } from '@/services/quality/qualityTatInputs';
 import {
   reconciliationRecordsToDiscordantCases, amendmentRecordsToAmendedCases,
   computeTotalCaseTatOutliers, computeFirstTouchOutliers, computeGrossingOutliers, computeSignOutOutliers,
   computeFrozenSectionOutliers, computeColdIschemiaOutliers,
   computeConsultResponseOutliers, computeConsultAwaitingOutliers, computeTatByClient,
   type RealDiscordantCase, type RealAmendedCase, type RealTotalTatOutlier, type RealFirstTouchOutlier,
-  type RealGenericTatOutlier, type TatEntryForResolution, type RealClientTatRow, type DelegationForTatCalc,
+  type RealGenericTatOutlier, type RealClientTatRow,
 } from './qualityCalculations';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -305,12 +304,7 @@ const RefLineLabel: React.FC<RefLabelProps> = ({
         fontFamily="system-ui, -apple-system, sans-serif"
         fill={color}
         textAnchor={isLeft ? 'start' : 'end'}
-        style={{
-          paintOrder:      'stroke fill',
-          stroke:          '#0a1628',
-          strokeWidth:     '3.5px',
-          strokeLinejoin:  'round',
-        } as React.CSSProperties}
+        className="ps-tat-refline-label"
       >
         {value}
       </text>
@@ -377,7 +371,7 @@ const QualityTab: React.FC = () => {
         setRealReconciliationTotal(frozenFinalRecords.length);
       }
     });
-    mockAmendmentService.getAll().then(async res => {
+    amendmentService.getAll().then(async res => {
       if (cancelled || !res.ok) return;
       const caseIds = Array.from(new Set(res.data.map(r => r.caseId)));
       const cases = await Promise.all(caseIds.map(id => caseRouter.getCase(id)));
@@ -389,57 +383,28 @@ const QualityTab: React.FC = () => {
       if (!cancelled) setRealAmended(amendmentRecordsToAmendedCases(res.data, caseTypeByCaseId));
     });
     const currentUser = getSessionUser();
+    // Batch 353: delegations and TAT targets come from their services (this
+    // read the demo case service and the TAT screen's browser storage); the
+    // joins below are services/quality/qualityTatInputs.ts. Informal review
+    // requests replaced CASUAL_REVIEW delegations, so both are counted for
+    // consultation response / awaiting TAT.
     Promise.all([
       caseRouter.getAll(),
       facilityService.getAll(),
       intraoperativeService.getAll(),
-      getDelegations(),
-      // Real fix, per direct follow-up: "I want informal reviews to be
-      // handled differently than delegations types, so remove the
-      // informal action from that workflow." CASUAL_REVIEW delegations
-      // are now dead going forward (no real UI creates or completes
-      // them anymore) - without this, CONSULTATION_RESPONSE/
-      // CONSULTATION_AWAITING below would silently stop reflecting
-      // anything real. Mapped into the same DelegationForTatCalc shape
-      // and merged with allDelegations below, so
-      // qualityCalculations.ts itself needs no changes.
+      delegationService.list(),
       currentUser ? informalReviewService.getAllForUser(currentUser.id) : Promise.resolve({ ok: true as const, data: [] }),
-    ]).then(([allCasesRes, clientRes, intraopRes, allDelegations, informalReviewsRes]) => {
+      tatTargetService.getAll(),
+    ]).then(([allCasesRes, clientRes, intraopRes, delegationsRes, informalReviewsRes, tatRes]) => {
       if (cancelled) return;
       const allCases = allCasesRes.ok ? allCasesRes.data : [];
-      const informalReviewsAsDelegations: DelegationForTatCalc[] = (informalReviewsRes.ok ? informalReviewsRes.data : []).map(r => ({
-        id: r.id,
-        caseId: r.caseId,
-        fromUserId: r.fromUserId,
-        toUserId: r.toUserId,
-        delegationType: 'CASUAL_REVIEW',
-        timestamp: r.requestedAt,
-        status: (r.status === 'published' || r.status === 'closed') ? 'completed' : 'pending',
-        completedAt: r.publishedAt,
-      }));
-      const combinedDelegations = [...allDelegations, ...informalReviewsAsDelegations];
-      const tatEntries = (() => {
-        try {
-          const raw = localStorage.getItem(TAT_STORAGE_KEY);
-          return raw ? JSON.parse(raw) : TAT_SYSTEM_DEFAULTS;
-        } catch { return TAT_SYSTEM_DEFAULTS; }
-      })() as TatEntryForResolution[];
-      const clientNameById: Record<string, string> = {};
-      if (clientRes.ok) clientRes.data.forEach(c => { clientNameById[c.id] = c.name; });
-      // Real, per direct guidance ("a TAT time could have two
-      // components... the Performing lab and the other is the Ordering
-      // Client"): resolves every real client's own performing lab ONCE
-      // here (reusing clientRes.data, already loaded — no second
-      // fetch), then annotates each case with it before any real
-      // calculation function runs. Genuinely distinct from
-      // clientNameById above — a client's own name and its resolved
-      // performing lab are two different real facts about it.
-      const performingLabByClientId: Record<string, string | undefined> = {};
-      if (clientRes.ok) clientRes.data.forEach(c => { performingLabByClientId[c.id] = resolvePerformingLabFacilityId(c) ?? undefined; });
-      const casesWithPerformingLab = allCases.map(c => ({
-        ...c,
-        performingLabFacilityId: c.order?.facilityId ? performingLabByClientId[c.order.facilityId] : undefined,
-      }));
+      const facilities = clientRes.ok ? clientRes.data : [];
+      const combinedDelegations = consultationRecords(
+        delegationsRes.ok ? delegationsRes.data : [], informalReviewsRes.ok ? informalReviewsRes.data : [],
+      );
+      const tatEntries = tatRes.ok ? tatRes.data : [];
+      const clientNameById = facilityNamesById(facilities);
+      const casesWithPerformingLab = withPerformingLabs(allCases, facilities);
       setRealTotalTAT(computeTotalCaseTatOutliers(casesWithPerformingLab, tatEntries, clientNameById));
       setRealFirstTouch(computeFirstTouchOutliers(casesWithPerformingLab, tatEntries, clientNameById));
       setRealGrossing(computeGrossingOutliers(casesWithPerformingLab, tatEntries, clientNameById));
@@ -628,7 +593,7 @@ const QualityTab: React.FC = () => {
                 <div className="ps-tat-trend__summary-row">
                   <span className="ps-tat-trend__summary-group">
                     <span className="ps-tat-trend__summary-label">{t('qualityTab.trend.periodAvg', { period: periodLabel })}</span>
-                    <span className="ps-tat-trend__summary-pill" style={{ background: `${tatCfg.color}1a`, color: tatCfg.color, border: `1px solid ${tatCfg.color}44` }}>
+                    <span className="ps-tat-trend__summary-pill ps-tat-trend__summary-pill--hue" style={{ '--ps-hue': tatCfg.color } as React.CSSProperties}>
                       {tatCfg.icon} {fmt(avg12)}
                     </span>
                   </span>
@@ -935,8 +900,8 @@ const QualityTab: React.FC = () => {
                   </div>
 
                   <div className="ps-tat-client__bar-track">
-                    <div className={`ps-tat-client__bar-fill ps-tat-client__bar-fill--${colorCls}`} style={{ width: `${pct}%` }} />
-                    <div className="ps-tat-client__peer-marker" style={{ left:  `${peerPct}%` }} />
+                    <div className={`ps-tat-client__bar-fill ps-tat-client__bar-fill--${colorCls}`} style={{ '--bar-pct': `${pct}%` } as React.CSSProperties} />
+                    <div className="ps-tat-client__peer-marker" style={{ '--peer-pct': `${peerPct}%` } as React.CSSProperties} />
                     <div className="ps-tat-client__target-marker" />
                   </div>
 

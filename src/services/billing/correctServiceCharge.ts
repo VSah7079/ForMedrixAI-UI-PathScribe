@@ -24,11 +24,26 @@ import type { PostSignoutChangeContext } from './resolveServiceCharge';
 import type { ServiceChargeRecord } from '@/types/billing/ServiceChargeRecord';
 import { resolveRequireBillingApprovalForCase } from './shouldRequireBillingApproval';
 import { caseRouter } from '@/services/cases/CaseRouter';
+import { authorizationService } from '../authorization/defaultAuthorizationService';
 
 export interface ServiceChargeCorrectionResult {
   original: ServiceChargeRecord;
   credit: ServiceChargeRecord;
   corrected: ServiceChargeRecord;
+}
+
+/**
+ * Batch 382 (Pete: keep today's users, but as a permission of its own so a
+ * hospital can later take it off its clinical roles). Correcting an applied
+ * billing code credits the original charge and bills a new one, so it needs
+ * billing:applied-code:correct for the case's facility. The report page asks
+ * this before it changes the visible code (assist mode makes no charge, but
+ * the correction is still a billing change); correctServiceCharge asks it
+ * again for every caller, the QA resolution included.
+ */
+export async function enforceAppliedCodeCorrection(caseId: string): Promise<boolean> {
+  const decision = await authorizationService.enforce('billing:applied-code:correct', { caseId });
+  return decision.allowed;
 }
 
 /** Real, per direct guidance's own established "credit the old, charge
@@ -43,7 +58,10 @@ export async function correctServiceCharge(
   correctedCptCode: string,
   correctedBy: string,
   postSignoutContext?: PostSignoutChangeContext
-): Promise<{ ok: true; data: ServiceChargeCorrectionResult } | { ok: false; error: string }> {
+): Promise<{ ok: true; data: ServiceChargeCorrectionResult } | { ok: false; error: string; notPermitted?: true }> {
+  if (!(await enforceAppliedCodeCorrection(caseId))) {
+    return { ok: false, error: 'Correcting an applied billing code needs the billing:applied-code:correct permission', notPermitted: true };
+  }
   const chargesRes = await mockServiceChargeService.getChargesForCase(caseId);
   if (chargesRes.ok === false) {
     const chargesError: string = chargesRes.error;

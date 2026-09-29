@@ -1,5 +1,5 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 import { useTranslation, Trans } from 'react-i18next';
 import { buildPoolGroupRows, splitPoolRowsByUrgency, computeRestrictedPoolKeys, type PoolDividerRow, type SubspecialtyForRestrictionCheck } from './poolGrouping';
 import { buildAmendmentGroupRows, type AmendmentDividerRow } from './amendmentGrouping';
@@ -30,6 +30,7 @@ import { prefetchTemplateData } from '@/services/templates/templateService';
 import { getParticipationTypeLookup } from '@/utils/participationTypeLookup';
 import type { ParticipationTypeRecord } from '@/services/participationTypes/IParticipationTypeService';
 import { openComposeTo } from '@/utils/openComposeTo';
+import { setCaseOpenedFrom } from '@/utils/search/searchSession';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -93,6 +94,13 @@ interface WorklistTableProps {
    * false leaves Worklist's existing behavior completely untouched.
    */
   forceCardView?: boolean;
+  /**
+   * Batch 350: keep the order the cases arrive in. Search passes this: the
+   * case search service has already sorted (and paged) the results, so
+   * regrouping (urgent first, pool last) or re-sorting one page here would
+   * misrepresent the server's order.
+   */
+  preserveOrder?: boolean;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -138,8 +146,7 @@ const HEADER_COLUMNS: { labelKey: string; key: string }[] = [
  *  'blue', 'purple'...) and so NEVER matched any real flag -
  *  FLAG_PALETTE[flag.color] silently fell through to the blue default
  *  every single time, regardless of a flag's real, intended color.
- *  This computes the real bg/border/dot directly from the flag's own
- *  real hex value instead, with a small named-color fallback kept only
+ *  This takes the flag's own real hex value instead, with a small named-color fallback kept only
  *  for defensiveness (a flag genuinely created with a named color
  *  string, however unlikely given the real data never does this,
  *  still renders correctly rather than falling through silently). */
@@ -148,22 +155,13 @@ const NAMED_FLAG_COLORS: Record<string, string> = {
   green: '#10B981', orange: '#F97316', purple: '#8B5CF6',
 };
 
-function hexToRgba(hex: string, alpha: number): string | null {
-  const m = /^#([0-9a-fA-F]{6})$/.exec(hex);
-  if (!m) return null;
-  const int = parseInt(m[1], 16);
-  const r = (int >> 16) & 255, g = (int >> 8) & 255, b = int & 255;
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function getFlagPalette(color: string | undefined): { bg: string; border: string; dot: string } {
+/** The flag's colour as a hue (--ps-hue); CSS derives any tint from it.
+ *  Batch 367 (PS-74): the rgba tints this used to build were never used. */
+function getFlagPalette(color: string | undefined): { dot: string } {
   const hex = color && color.startsWith('#') ? color : NAMED_FLAG_COLORS[(color ?? '').toLowerCase()];
-  const bg = hex ? hexToRgba(hex, 0.15) : null;
-  const border = hex ? hexToRgba(hex, 0.4) : null;
-  if (hex && bg && border) return { bg, border, dot: hex };
   // Real, honest fallback - a genuinely unrecognized/missing color, not
   // a silently-always-triggered default the way the old lookup was.
-  return { bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.4)', dot: '#3B82F6' };
+  return { dot: hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#3B82F6' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -347,11 +345,7 @@ const FlagChip: React.FC<{ flag: any; flagDefById: Map<string, Flag>; isSpecimen
     <span
       className="wl-flag-chip"
       title={title}
-      style={{
-        background: palette.bg,
-        border: `1px solid ${palette.border}`,
-        color: palette.dot,
-      }}
+      style={{ '--ps-hue': palette.dot } as React.CSSProperties}
     >
       <svg width="7" height="8" viewBox="0 0 7 8" fill="none" className="wl-flag-chip-icon">
         <path
@@ -424,7 +418,7 @@ const StatusDot: React.FC<{ status: string; isGrossed?: boolean; lastRevisionTyp
   const { t } = useTranslation();
   const isRevisedFinal = hasDisplayableRevision(status, lastRevisionType);
   const s = isRevisedFinal ? REVISION_ACCENT : getStatusStyle(status);
-  const label = getCaseStatusLabel(status, lastRevisionType);
+  const label = getCaseStatusLabel(status, lastRevisionType, t);
   const isPool = status === 'pool';
 
   return (
@@ -432,7 +426,7 @@ const StatusDot: React.FC<{ status: string; isGrossed?: boolean; lastRevisionTyp
       <span
         title={t('worklistTable.statusDot.title', { label })}
         className="wl-status-dot"
-        style={{ '--wl-status-color': s.color, '--wl-status-glow': `${s.color}66` } as React.CSSProperties}
+        style={{ '--wl-status-color': s.color } as React.CSSProperties}
       />
       {isPool && (
         <span
@@ -512,6 +506,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // down; this component just never resolved against it before.
   flagDefinitions = [],
   forceCardView = false,
+  preserveOrder = false,
 }) => {
   const { t } = useTranslation();
   const navigate = useNavigate();
@@ -1074,6 +1069,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
    * 3. Re-combines them so Urgent is always first.
    */
   const finalCases = useMemo(() => {
+    if (preserveOrder) return filteredCases;
     const poolCases = filteredCases.filter(c => c.status === 'pool');
     const nonPool   = filteredCases.filter(c => c.status !== 'pool');
     const urgent    = nonPool.filter(isUrgentCase);
@@ -1084,7 +1080,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       ...sortGroup(normal),
       ...sortGroup(poolCases),
     ];
-  }, [filteredCases, isUrgentCase, sortGroup]);
+  }, [filteredCases, isUrgentCase, sortGroup, preserveOrder]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // NAVIGATION & SELECTION
@@ -1109,7 +1105,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
    */
   const openCase = useCallback(
     (id: string) => {
-      sessionStorage.setItem('pathscribe:navFrom', navSource);
+      setCaseOpenedFrom(navSource);
       onBeforeNavigate?.(id);
       if (activeFilter === 'informalreview') {
         navigate(`/report/${id}`, {
@@ -1214,6 +1210,10 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
    * Maps the sorted cases into a format that includes UI dividers.
    */
   const displayRows = useMemo<DisplayRow[]>(() => {
+    // Batch 350: Search's results arrive sorted and paged by the server; show
+    // them as they are, without the Worklist's urgent/pool sections.
+    if (preserveOrder) return finalCases;
+
     // Real feature, per direct follow-up: "we could segment the filter
     // results into those subgroups... Amendment and Correction at the
     // top followed by Addenda." The default Urgent/All Cases grouping
@@ -1274,7 +1274,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
     // t included so these two divider labels re-resolve on a language
     // switch, same "t in deps" convention this sweep already applies to
     // other memoized/effect-computed display strings elsewhere.
-  }, [finalCases, isUrgentCase, restrictedPoolKeys, activeFilter, amendmentTypeByCaseId, branchFilter, t]);
+  }, [finalCases, isUrgentCase, restrictedPoolKeys, activeFilter, amendmentTypeByCaseId, branchFilter, t, preserveOrder]);
 
   /**
    * visibleRows:
@@ -1403,7 +1403,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   };
 
   return (
-    <div className="wl-container" style={{ height: tableHeight ? `${tableHeight}px` : '100%' }}>
+    <div className="wl-container" style={{ '--wl-container-height': tableHeight ? `${tableHeight}px` : '100%' } as React.CSSProperties}>
       
       {/* Multi-Sort Indicator Ribbon */}
       {sortStack.length > 1 && (
@@ -1477,9 +1477,8 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                   return (
                     <div
                       key={`div-${row.label}-${rowIndex}`}
-                      className="wl-card-divider"
+                      className={`wl-card-divider${isCollapsible ? ' wl-divider--clickable' : ''}`}
                       onClick={isCollapsible ? () => togglePoolCollapsed(row.poolKey) : undefined}
-                      style={isCollapsible ? { cursor: 'pointer' } : undefined}
                     >
                       {isCollapsible && (
                         <span className="wl-card-divider__chevron">{isCollapsed ? '▶' : '▼'}</span>
@@ -1518,7 +1517,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                 const isSelected = selectedCaseId ? c.id === selectedCaseId : false;
                 const isRevisedFinalCard = hasDisplayableRevision(c.status, c.lastRevisionType);
                 const statusStyle = isRevisedFinalCard ? REVISION_ACCENT : getStatusStyle(c.status);
-                const statusLabel = getCaseStatusLabel(c.status, c.lastRevisionType);
+                const statusLabel = getCaseStatusLabel(c.status, c.lastRevisionType, t);
 
                 let cardClass = 'wl-card';
                 if (isSelected) cardClass += ' wl-card--selected';
@@ -1562,6 +1561,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                               style object recomputed every render. */}
                           <span
                             className={`wl-case-id${isRush ? ' wl-case-id--rush' : isUrgent ? ' wl-case-id--urgent' : c.status === 'pool' ? ' wl-case-id--pool' : ''}`}
+                            data-phi="accession"
                           >
                             {c.id}
                           </span>
@@ -1725,12 +1725,12 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
             genuinely extreme widths, not the expected normal-laptop behavior.
           */}
           <colgroup>
-            <col style={{ width: '32px' }} />{/* urgent dot — fixed, icon */}
-            <col style={{ width: '11%' }} />{/* case id */}
-            <col style={{ width: '11%' }} />{/* patient */}
-            <col style={{ width: '5%'  }} />{/* mrn */}
-            <col style={{ width: '30px' }} />{/* sex — fixed, single letter */}
-            <col style={{ width: '8%'  }} />{/* dob */}
+            <col className="wl-col-dot" />{/* urgent dot — fixed, icon */}
+            <col className="wl-col-case-id" />{/* case id */}
+            <col className="wl-col-patient" />{/* patient */}
+            <col className="wl-col-mrn" />{/* mrn */}
+            <col className="wl-col-sex" />{/* sex — fixed, single letter */}
+            <col className="wl-col-dob" />{/* dob */}
             {/* Real, per direct follow-up: "I would prefer to keep
                 the mrn, sex, dob (Age) with the accession date AND
                 physician, then specimen and the rest of the
@@ -1741,20 +1741,20 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                 root cause of the 34" monitor's own column-width
                 trouble (table-layout:fixed with a colgroup that
                 defines fewer <col>s than the table actually has). */}
-            <col style={{ width: '6%'  }} />{/* accession */}
-            <col style={{ width: '9%'  }} />{/* physician */}
-            <col style={{ width: '12%' }} />{/* specimens */}
-            <col style={{ width: '9%'  }} />{/* digital readiness */}
-            <col style={{ width: '11%' }} />{/* dp ai triage & biomarkers */}
-            <col style={{ width: '9%'  }} />{/* flags */}
+            <col className="wl-col-accession" />{/* accession */}
+            <col className="wl-col-physician" />{/* physician */}
+            <col className="wl-col-specimens" />{/* specimens */}
+            <col className="wl-col-digital-readiness" />{/* digital readiness */}
+            <col className="wl-col-dp-triage" />{/* dp ai triage & biomarkers */}
+            <col className="wl-col-flags" />{/* flags */}
             {/* PS-304: new Staff column — percentages above trimmed by
                 ~1% each (100% total preserved) to make real room for
                 this one rather than pushing the table past 100% width,
                 which is exactly what the colgroup-vs-column-count
                 mismatch this comment block already warns about above
                 would do again for a 6th time. */}
-            <col style={{ width: '9%'  }} />{/* staff */}
-            <col style={{ width: '40px' }} />{/* status dot — fixed, icon */}
+            <col className="wl-col-staff" />{/* staff */}
+            <col className="wl-col-status" />{/* status dot — fixed, icon */}
           </colgroup>
 
           {/* ── Sticky Header ── */}
@@ -1834,11 +1834,10 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     <tr key={`div-${row.label}-${rowIndex}`}>
                       <td
                         colSpan={14}
-                        className={row.isUrgent ? 'wl-td-divider--urgent' : 'wl-td-divider--normal'}
+                        className={`${row.isUrgent ? 'wl-td-divider--urgent' : 'wl-td-divider--normal'}${isCollapsible ? ' wl-divider--clickable' : ''}`}
                         onClick={isCollapsible ? () => togglePoolCollapsed(row.poolKey) : undefined}
-                        style={isCollapsible ? { cursor: 'pointer' } : undefined}
                       >
-                        <div className="wl-card-divider" style={{ padding: 0 }}>
+                        <div className="wl-card-divider wl-card-divider--flush">
                           {isCollapsible && (
                             <span className="wl-card-divider__chevron">{isCollapsed ? '▶' : '▼'}</span>
                           )}
@@ -1904,7 +1903,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                           {getOrganisationShortName(c.originHospitalId)}
                         </div>
                       )}
-                      <div className={`wl-case-id-inline${isRush ? ' wl-case-id-inline--rush' : isUrgent ? ' wl-case-id-inline--urgent' : isPool ? ' wl-case-id-inline--pool' : ''}`}>
+                      <div className={`wl-case-id-inline${isRush ? ' wl-case-id-inline--rush' : isUrgent ? ' wl-case-id-inline--urgent' : isPool ? ' wl-case-id-inline--pool' : ''}`} data-phi="accession">
                         {c.id}
                       </div>
                     </td>
@@ -2081,7 +2080,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
           className="wl-mirror-bar"
           onScroll={handleMirrorScroll}
         >
-          <div ref={innerRef} style={{ height: '1px' }} />
+          <div ref={innerRef} className="wl-mirror-bar-spacer" />
         </div>
 
       </div>
@@ -2171,7 +2170,8 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       {/* Structurally mirrors the Pediatric Access Modal above — same
           messageService/auditService shape, same request-tracking pattern —
           with copy and the message payload adjusted for what's actually being
-          granted: a Role-level flag (canViewOrchestration), not a per-client
+          granted: the staff record's own flag (StaffUser.canViewOrchestration;
+          corrected in Batch 370, this used to say Role-level), not a per-client
           authorized-pathologist list, and no age/clientId involved. */}
       {orchBlockedCase && (
         <div className="ps-overlay" onClick={() => setOrchBlockedCase(null)}>

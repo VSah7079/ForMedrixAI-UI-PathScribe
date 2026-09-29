@@ -21,7 +21,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import ReactDOM from 'react-dom';
 import { useAuditLog } from '@/components/Audit/useAuditLog';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogout } from '../../hooks/useLogout';
 import { mockActionRegistryService } from '../../services/actionRegistry/mockActionRegistryService';
@@ -44,8 +44,11 @@ import { useBreadcrumb } from '../../contexts/BreadcrumbContext';
 import { useDirtyState } from '../../contexts/DirtyStateContext';
 import '../../pathscribe.css';
 import { getUserGuideBlobUrl, getAdminGuideBlobUrl } from '../../utils/guideAssets';
+import { formatDate } from '../../utils/formatDate';
 import { useCompanionWindow } from '../../hooks/useCompanionWindow';
 import ConfirmModal from '../Common/ConfirmModal';
+import { safeInternalPath } from '@/utils/safeInternalPath';
+import { markReturnToSearch } from '@/utils/search/searchSession';
 
 // ─── Internal user directory ─────────────────────────────────────────────────
 interface InternalUser { id: string; name: string; role: string; }
@@ -81,15 +84,29 @@ const avatarInitials = (name: string) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ── Helpers shared by sub-components ────────────────────────────────────────
-const relTime = (ts: Date | string): string => {
+// Real fix, found by this app's own inline-CSS/business-logic sweep:
+// this deliberately reimplements most of utils/formatDate.ts's
+// formatRelative() rather than delegating to it wholesale — for a
+// messaging inbox, today's messages genuinely need their actual
+// time-of-day (e.g. "2:45 PM"), not formatRelative()'s generic
+// "Today", so a straight swap would be a real regression here. The
+// one real gap this file's own copy had was narrower: it lacked
+// formatRelative()'s own >365-day fallback to a full, year-bearing
+// date, so a message over a year old rendered as e.g. "Sep 12" with
+// no year at all — genuinely ambiguous once a mailbox has messages
+// spanning more than one year. Fixed with the same real fallback
+// formatRelative() itself uses (formatDate.ts's own formatDate()),
+// not a hand-rolled second copy of "how to show a full date."
+export const relTime = (ts: Date | string): string => {
   const d = new Date(ts);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffDays = Math.floor(diffMs / 86_400_000);
   if (diffDays === 0) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7)  return d.toLocaleDateString([], { weekday: 'short' });
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  if (diffDays < 7)   return d.toLocaleDateString([], { weekday: 'short' });
+  if (diffDays < 365) return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return formatDate(d.toISOString());
 };
 
 // ── UserSearchOverlay ────────────────────────────────────────────────────────
@@ -786,7 +803,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     // buttons, and the logo (which all route through this one shared
     // guardedNavigate) bypassed it entirely, silently dropping the
     // search session every time.
-    if (path === '/search') sessionStorage.setItem('pathscribe:searchReturn', '1');
+    if (path === '/search') markReturnToSearch();
     requestNavigate(path, (p) => navigate(p));
   }, [navigate, requestNavigate]);
   const PAGE_LABELS: Record<string, string> = {
@@ -1442,7 +1459,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                           <span className="ps-msg-thread-subject">{currentMsg.subject}</span>
                         )}
                         {currentMsg.caseNumber && (
-                          <button className="ps-msg-case-link" onClick={() => {
+                          <button className="ps-msg-case-link" data-phi="accession" onClick={() => {
                             setPortalOpen(false);
                             sessionStorage.setItem('ps_reopen_messages', '1');
                             // Real fix, per direct follow-up: "I assume
@@ -1467,7 +1484,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                             caseNumber link above, just detected rather
                             than pre-set. */}
                         {detectedCaseRefs.map(ref => (
-                          <button key={ref} className="ps-msg-case-link" onClick={() => {
+                          <button key={ref} className="ps-msg-case-link" data-phi="accession" onClick={() => {
                             setPortalOpen(false);
                             sessionStorage.setItem('ps_reopen_messages', '1');
                             navigate(`/report/${ref}`, { state: { fromMessages: true, openInternalNotes: true } });
@@ -1481,7 +1498,10 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                             className="ps-msg-config-link"
                             title={t('appShell.thread.openConfigTitle')}
                             onClick={() => {
-                              const link = (currentMsg as any).configLink as string;
+                              // PS-344: the link comes from stored message data, so only a
+                              // same-site path is followed (utils/safeInternalPath.ts).
+                              const link = safeInternalPath((currentMsg as any).configLink);
+                              if (!link) return;
                               setPortalOpen(false);
                               navigate(link);
                               // If the link targets a system section, fire the nav event after a tick

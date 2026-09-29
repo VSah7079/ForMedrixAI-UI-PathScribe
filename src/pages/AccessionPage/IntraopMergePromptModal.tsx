@@ -33,7 +33,7 @@ export const IntraopMergePromptModal: React.FC<Props> = ({ caseId, match, onMerg
       <div className="ps-ms-modal">
         <div className="ps-ms-header">{t('accessionPage.intraopMergeModal.header')}</div>
         <div className="ps-ms-body">
-          <p className="ps-intraop-merge-intro">
+          <p className="ps-intraop-merge-intro" data-phi="accession">
             {t('accessionPage.intraopMergeModal.intro', { caseId })}
           </p>
 

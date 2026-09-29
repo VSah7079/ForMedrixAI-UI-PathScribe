@@ -200,7 +200,7 @@ const FontsSection: React.FC = () => {
                   {/* Font name rendered in its own typeface */}
                   <div>
                     <span
-                      style={{ fontFamily: font.name }}
+                      style={{ '--font-name': font.name } as React.CSSProperties}
                       className={`config-fonts-card__name config-fonts-card__name--${enabled ? 'enabled' : 'disabled'}`}
                     >
                       {font.label}

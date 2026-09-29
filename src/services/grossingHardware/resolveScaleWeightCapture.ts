@@ -10,7 +10,7 @@
 //
 // Real, honest contract this function assumes for a real
 // pathscribe_agent instance's own scale endpoint — GET
-// {agentBaseUrl}/scale/weight, returning real JSON
+// {agentBaseUrl}/scale/weight over HTTPS only (Batch 327), returning real JSON
 // { grams: number, stable: boolean }. `stable` matters: a real
 // digital scale's own reading genuinely fluctuates while a specimen
 // is still settling onto the pan — a real, honest capture only ever
@@ -29,10 +29,11 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { GrossingHardwareProfile } from './IGrossingHardwareProfileService';
+import { isHttpsUrl } from '@/utils/serviceEndpoint';
 
 export type ScaleWeightCaptureResult =
   | { ok: true; grams: number }
-  | { ok: false; reason: 'not_configured' | 'unreachable' | 'unstable_reading' | 'malformed_response' };
+  | { ok: false; reason: 'not_configured' | 'not_https' | 'unreachable' | 'unstable_reading' | 'malformed_response' };
 
 export async function resolveScaleWeightCapture(
   profile: GrossingHardwareProfile | null,
@@ -41,6 +42,9 @@ export async function resolveScaleWeightCapture(
   if (!profile || profile.bridgeType !== 'pathscribe_agent' || !profile.agentBaseUrl) {
     return { ok: false, reason: 'not_configured' };
   }
+  // Batch 327 (HTTPS): never read a weight over plain HTTP, even from a
+  // profile stored before the service started refusing http:// addresses.
+  if (!isHttpsUrl(profile.agentBaseUrl)) return { ok: false, reason: 'not_https' };
 
   let response: Response;
   try {

@@ -18,6 +18,16 @@ import type { ServiceResult, ID } from '../types';
 
 export type AbnormalSeverity = 'Abnormal' | 'Critical' | 'Malignant';
 
+/** Real, single source of truth for ranking this app's own three-tier
+ *  AbnormalSeverity scale, shared by every real caller that needs to
+ *  reduce several real severity matches down to the single highest one
+ *  (originally evaluateAbnormalTriggerRules.ts's own highestSeverityMatch,
+ *  for PS-129's discrete synoptic triggers; PS-132's
+ *  resolveCytologyAbnormalSeverity.ts reuses this exact ranking for
+ *  Bethesda-severity-tagged cytology categories, rather than each
+ *  caller keeping its own, potentially-drifting copy). */
+export const ABNORMAL_SEVERITY_RANK: Record<AbnormalSeverity, number> = { Abnormal: 1, Critical: 2, Malignant: 3 };
+
 /** Real, per direct guidance: shared between this file and
  *  resolveSyntheticCoding.ts (which imports it from here, avoiding a
  *  circular dependency the other direction would create) — the real,

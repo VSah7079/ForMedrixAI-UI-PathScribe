@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 import { useVoice } from '../../contexts/VoiceProvider';
@@ -8,6 +8,9 @@ import { caseRouter } from '@/services/cases/CaseRouter';
 import { mockOnDemandCaseFetchService } from '@/services/cases/mockOnDemandCaseFetchService';
 import { useEnabledIdentifierFormats } from '../../hooks/useEnabledIdentifierFormats';
 import { useAuditLog } from '../Audit/useAuditLog';
+import { useAuth } from '../../contexts/AuthContext';
+import { supportReferenceService } from '@/services';
+import { isSupportReference } from '@/services/supportReferences/supportReferenceRules';
 import type { IdentifierFormat } from '../../types/systemConfig';
 
 interface CaseSearchBarProps {
@@ -234,10 +237,20 @@ function highlight(text: string, query: string): React.ReactNode {
   );
 }
 
+// Batch 349 (PS-101): every case status now has a label. Before, a case in
+// Draft, Needs Review and other states showed its raw code ("draft",
+// "pending-review") in near-invisible text in the results list.
 const STATUS_LABEL_KEY: Record<string, string> = {
   'in-progress': 'caseSearchBar.status.inProgress', 'pending': 'caseSearchBar.status.pending',
   'finalized': 'caseSearchBar.status.finalized', 'signed-out': 'caseSearchBar.status.signedOut',
   'pool': 'caseSearchBar.status.pool',
+  'draft': 'caseSearchBar.status.draft', 'accessioned': 'caseSearchBar.status.accessioned',
+  'gross-complete': 'caseSearchBar.status.grossComplete', 'intraoperative-complete': 'caseSearchBar.status.intraopComplete',
+  'pending-review': 'caseSearchBar.status.pendingReview', 'pathologist-review': 'caseSearchBar.status.pathologistReview',
+  'closed': 'caseSearchBar.status.closed', 'returned': 'caseSearchBar.status.returned',
+  'accepted': 'caseSearchBar.status.accepted', 'ai-assisted': 'caseSearchBar.status.aiAssisted',
+  'claiming': 'caseSearchBar.status.claiming', 'finalizing': 'caseSearchBar.status.finalizing',
+  'pending-countersign': 'caseSearchBar.status.pendingCountersign', 'pending-release': 'caseSearchBar.status.pendingRelease',
 };
 
 const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
@@ -252,6 +265,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
   const navigate    = useNavigate();
 
   const { log } = useAuditLog();
+  const { user } = useAuth();
   // Real, per direct guidance: replaces config.identifierFormats -
   // useEnabledIdentifierFormats() already returns a stable reference
   // (either the module-level IDENTIFIER_FORMAT_LIBRARY, or real React
@@ -271,6 +285,16 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
     setSearching(true);
     setNotFound(false);
     setHits([]);
+
+    // Batch 364 (PS-350): a support reference (SR-7K2Q-9MXD) opens what it names.
+    if (isSupportReference(q)) {
+      const found = await supportReferenceService.resolve(q, { id: user?.id ?? 'unknown', name: user?.name ?? '' });
+      setSearching(false);
+      if (!found.ok) { setNotFound(true); setTimeout(() => setNotFound(false), 3000); return; }
+      setCaseNumber('');
+      navigate(found.data.kind === 'case' ? `/case/${found.data.recordId}/synoptic` : `/audit?supportRef=${found.data.ref}`);
+      return;
+    }
 
     const { hits: results, autoNav } = await lookupCases(q, activeFormats);
     setSearching(false);
@@ -312,7 +336,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
 
     // Multiple matches or non-direct format — show dropdown
     setHits(results);
-  }, [navigate, activeFormats, log]);
+  }, [navigate, activeFormats, log, user]);
 
   // ── Scanner events ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -398,6 +422,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
       <input
         ref={inputRef}
         type="text"
+        data-phi="accession"
         value={caseNumber}
         onChange={e => { setCaseNumber(e.target.value.toUpperCase()); setHits([]); setNotFound(false); }}
         onKeyDown={handleKeyDown}
@@ -410,7 +435,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
       <div className="ps-search-icon">
         {searching ? (
           <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-            style={{ animation: 'spin 0.8s linear infinite' }}>
+            className="ps-search-icon-spin">
             <circle cx="12" cy="12" r="9" strokeDasharray="28 56" />
           </svg>
         ) : scanFlash ? (
@@ -433,7 +458,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
 
       {/* Not found — inline under input */}
       {notFound && (
-        <div className="ps-search-not-found">
+        <div className="ps-search-not-found" data-phi="accession">
           {t('caseSearchBar.noCaseFound', { query: caseNumber })}
         </div>
       )}
@@ -444,7 +469,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
           knows a slower, real network call is in progress, not an
           unresponsive app. */}
       {fetchingFromLis && (
-        <div className="ps-search-fetching-lis">
+        <div className="ps-search-fetching-lis" data-phi="accession">
           {t('caseSearchBar.fetchingFromLis', { accession: fetchingFromLis })}
         </div>
       )}
@@ -456,7 +481,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
 
             {/* Modal header */}
             <div className="ps-casebar-modal__header">
-              <div className="ps-casebar-modal__title">
+              <div className="ps-casebar-modal__title" data-phi="accession">
                 {searching
                   ? t('caseSearchBar.searching')
                   : t('caseSearchBar.matchCount', { count: hits.length, query: caseNumber })}
@@ -503,13 +528,13 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
                   </span>
                   {hit.flags.map((f, i) => (
                     <span key={i} className="ps-casebar-dropdown__flag-chip"
-                      style={{ background: f.color + '22', color: f.color, border: `1px solid ${f.color}44` }}>
+                      style={{ '--ps-hue': f.color } as React.CSSProperties}>
                       {f.name}
                     </span>
                   ))}
                   {hit.matchedValue && hit.matchedValue !== hit.accession.toUpperCase().replace(/[\s-]/g, '') && (
                     <span className="ps-casebar-dropdown__match-hint">
-                      {t('caseSearchBar.matchedPrefix')} <span className="ps-casebar-dropdown__match-value">{highlight(hit.matchedValue, caseNumber)}</span>
+                      {t('caseSearchBar.matchedPrefix')} <span className="ps-casebar-dropdown__match-value" data-phi="accession">{highlight(hit.matchedValue, caseNumber)}</span>
                     </span>
                   )}
                 </div>

@@ -404,7 +404,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                       gotten the same treatment as Block/Slide/Decant."
                       Same real, visible treatment the block row
                       already got. */}
-                  <span className="ps-material-tree-specimen-id">
+                  <span className="ps-material-tree-specimen-id" data-phi="accession">
                     {resolvedSpecimenId}
                   </span>
                   {/* Real feature, per direct follow-up: "Lets add the
@@ -549,7 +549,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                       <BlockIcon label={`${sp.label}${block.label}`} />
                     </div>
                     <div className="ps-material-tree-block-badges">
-                      <span className="ps-material-tree-block-id">
+                      <span className="ps-material-tree-block-id" data-phi="accession">
                         {resolvedBlockId}
                       </span>
                       {/* Real feature, per direct follow-up: "did I see
@@ -740,6 +740,7 @@ const MaterialTreePanel: React.FC<MaterialTreePanelProps> = ({ caseData, activeS
                   <span
                     onClick={() => onOpenBlockEditor(decant.id)}
                     className="ps-material-tree-decant-id"
+                    data-phi="accession"
                   >
                     {resolvedDecantId}
                   </span>

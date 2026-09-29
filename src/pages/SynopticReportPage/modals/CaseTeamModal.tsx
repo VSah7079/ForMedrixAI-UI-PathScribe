@@ -54,21 +54,21 @@ import { syncPrimaryAssignee }           from '@/services/cases/caseAssignmentSy
 import { userService, roleService, subspecialtyService } from '@/services';
 import type { Subspecialty } from '@/services/subspecialties/ISubspecialtyService';
 import { getStaffSubspecialtyDisplay } from '@/utils/staffSubspecialties';
-import { mockParticipationTypeService } from '@/services/participationTypes/mockParticipationTypeService';
+import { participationTypeService } from '@/services';
 import type { ParticipationTypeRecord as ParticipationType } from '@/services/participationTypes/IParticipationTypeService';
+import { resolveCaseTeamParticipationTypes } from '@/services/participationTypes/IParticipationTypeService';
+import { resolveCasePerformingLabScope } from '@/services/facilities/resolveCasePerformingLabScope';
 import type { StaffUser }                from '@/services/users/IUserService';
 import type { Role }                     from '@/services/roles/IRoleService';
 import { useAuth }                       from '@/contexts/AuthContext';
+import { resolveEligibleParticipationTypeIds } from '@/services/cases/resolveClaimParticipationType';
 
 type DragEligibility = 'eligible' | 'role-ineligible' | 'occupied';
 
+/** A participation type's colour. The .ps-ctm-hued rule derives the badge
+ *  tints from it (Batch 367: colours are no longer built in JSX). */
 function colorVars(hex: string): React.CSSProperties {
-  return {
-    '--badge-bg': hex + '18',
-    '--badge-border': hex + '33',
-    '--badge-border-strong': hex + '66',
-    '--badge-color': hex,
-  } as React.CSSProperties;
+  return { '--ps-hue': hex } as React.CSSProperties;
 }
 
 // ─── Draggable staff card ─────────────────────────────────────────────────────
@@ -88,8 +88,7 @@ interface StaffCardProps {
 const StaffCard: React.FC<StaffCardProps & { id: string }> = ({ id, staff, roles, allTypes, allSubspecialties, disabled, isDragging }) => {
   const { t } = useTranslation();
   const { attributes, listeners, setNodeRef } = useDraggable({ id, disabled });
-  const staffRoles   = roles.filter(r => staff.roles.includes(r.name));
-  const allowedTypeIds = new Set(staffRoles.flatMap(r => (r as any).participationTypeIds ?? []));
+  const allowedTypeIds = resolveEligibleParticipationTypeIds(staff.roles, roles);
   const allowedTypes = allTypes.filter(pt => allowedTypeIds.has(pt.id));
   const subspecialtyDisplay = getStaffSubspecialtyDisplay(staff.id, allSubspecialties);
 
@@ -112,7 +111,7 @@ const StaffCard: React.FC<StaffCardProps & { id: string }> = ({ id, staff, roles
       {allowedTypes.length > 0 && !disabled && (
         <div className="ps-ctm-staff-badges">
           {allowedTypes.map(pt => (
-            <span key={pt.id} className="ps-ctm-staff-badge" style={colorVars(pt.color)}>{pt.abbreviation}</span>
+            <span key={pt.id} className="ps-ctm-staff-badge ps-ctm-hued" style={colorVars(pt.color)}>{pt.abbreviation}</span>
           ))}
         </div>
       )}
@@ -153,11 +152,11 @@ const DropZone: React.FC<DropZoneProps> = ({
   return (
     <div
       ref={setNodeRef}
-      className={`ps-ctm-dropzone${stateClass}${hoverClass}`}
+      className={`ps-ctm-dropzone${stateClass}${hoverClass}${dragEligibility === 'eligible' ? ' ps-ctm-hued' : ''}`}
       style={dragEligibility === 'eligible' ? colorVars(type.color) : undefined}
     >
       <div className="ps-ctm-dropzone-header">
-        <span className="ps-ctm-dropzone-type-badge" style={colorVars(type.color)}>{type.abbreviation}</span>
+        <span className="ps-ctm-dropzone-type-badge ps-ctm-hued" style={colorVars(type.color)}>{type.abbreviation}</span>
         <span className="ps-ctm-dropzone-label">{type.label}</span>
         {!type.allowsMultiple && <span className="ps-ctm-dropzone-single-badge">{t('caseTeamModal.dropZone.singleBadge')}</span>}
         {type.requiresCountersign && <span className="ps-ctm-dropzone-countersign-badge">{t('caseTeamModal.dropZone.countersignBadge')}</span>}
@@ -165,7 +164,7 @@ const DropZone: React.FC<DropZoneProps> = ({
       </div>
 
       {previewLabel && (
-        <div className={`ps-ctm-dropzone-preview ps-ctm-dropzone-preview--${dragEligibility}`} style={dragEligibility === 'eligible' ? colorVars(type.color) : undefined}>
+        <div className={`ps-ctm-dropzone-preview ps-ctm-dropzone-preview--${dragEligibility}${dragEligibility === 'eligible' ? ' ps-ctm-hued' : ''}`} style={dragEligibility === 'eligible' ? colorVars(type.color) : undefined}>
           {previewLabel}
         </div>
       )}
@@ -317,12 +316,16 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   useEffect(() => {
-    Promise.all([userService.getAll(), roleService.getAll(), mockParticipationTypeService.getActive(), subspecialtyService.getAll()]).then(([usersRes, rolesRes, typesRes, subsRes]) => {
+    Promise.all([userService.getAll(), roleService.getAll(), participationTypeService.getActive(), subspecialtyService.getAll(), resolveCasePerformingLabScope(caseData.order?.facilityId)]).then(([usersRes, rolesRes, typesRes, subsRes, scope]) => {
       const users     = usersRes.ok ? usersRes.data : [];
       const rolesData = rolesRes.ok ? rolesRes.data : [];
       setStaffList(users);
       setRoles(rolesData);
-      setAllTypes(typesRes.ok ? typesRes.data : []);
+      // Jurisdiction-aware lanes: local titles + effective authority
+      // badges, only types valid in this case's performing-lab
+      // jurisdiction — see resolveCaseTeamParticipationTypes().
+      const heldTypeIds = new Set((caseData.participants ?? []).filter(p => p.status === 'active').flatMap(p => p.participationTypeIds));
+      setAllTypes(resolveCaseTeamParticipationTypes(typesRes.ok ? typesRes.data : [], scope, heldTypeIds));
       setSubspecialties(subsRes.ok ? subsRes.data : []);
       const existing: CaseParticipant[] = caseData.participants ?? [];
       const assignedId = caseData.order?.assignedTo;
@@ -353,8 +356,7 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
     const ids = new Set<string>();
     participants.filter(p => p.status === 'active').forEach(p => p.participationTypeIds.forEach((id: string) => ids.add(id)));
     staffList.filter(s => s.status === 'Active').forEach(s => {
-      const staffRoles = roles.filter(r => s.roles.includes(r.name));
-      staffRoles.flatMap(r => (r as any).participationTypeIds ?? []).forEach((id: string) => ids.add(id));
+      resolveEligibleParticipationTypeIds(s.roles, roles).forEach(id => ids.add(id));
     });
     return ids;
   }, [staffList, roles, participants]);
@@ -382,8 +384,7 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
     const staffMember = staffList.find(s => s.id === staffId);
     const type = allTypes.find(pt => pt.id === typeId);
     if (!staffMember || !type) return 'role-ineligible';
-    const staffRoles = roles.filter(r => staffMember.roles.includes(r.name));
-    const allowedIds = new Set(staffRoles.flatMap(r => (r as any).participationTypeIds ?? []));
+    const allowedIds = resolveEligibleParticipationTypeIds(staffMember.roles, roles);
     if (!allowedIds.has(typeId)) return 'role-ineligible';
     const occupant = activeParticipants.find(p => p.participationTypeIds.includes(typeId) && p.staffId !== staffId);
     if (occupant && !type.allowsMultiple) return 'occupied';

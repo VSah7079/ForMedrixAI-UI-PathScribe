@@ -16,7 +16,7 @@
 //   formatDate(caseDate, locale)
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { Jurisdiction } from '../types/systemConfig';
+import type { Jurisdiction, JurisdictionDateFormat } from '../types/systemConfig';
 import { JURISDICTION_LOCALE } from '../types/systemConfig';
 
 // ── Jurisdiction helpers ──────────────────────────────────────────────────────
@@ -31,8 +31,8 @@ export function spellLangForJurisdiction(j: Jurisdiction): string {
   return JURISDICTION_LOCALE[j]?.spellLang ?? 'en-US';
 }
 
-/** Returns a display hint for the date format (e.g. 'DD/MM/YYYY'). */
-export function dateFormatHint(j: Jurisdiction): string {
+/** Returns the jurisdiction's date format (e.g. 'DD/MM/YYYY', 'DD-MM-YYYY'). */
+export function dateFormatHint(j: Jurisdiction): JurisdictionDateFormat {
   return JURISDICTION_LOCALE[j]?.dateFormat ?? 'MM/DD/YYYY';
 }
 

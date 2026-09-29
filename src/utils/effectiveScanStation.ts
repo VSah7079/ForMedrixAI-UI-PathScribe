@@ -17,8 +17,9 @@
 // awkward seam that would make the React hook version less reliable.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import { readSessionProfile } from '@/services/auth/sessionProfile';
+
 const DEVICE_STATION_KEY = 'pathscribe_current_scan_station_id';
-const USER_STORAGE_KEY = 'pathscribe-user';
 
 /**
  * The real, current station id for wherever this code is running —
@@ -33,13 +34,10 @@ export function getEffectiveScanStationId(): string | null {
   try { deviceStationId = localStorage.getItem(DEVICE_STATION_KEY); } catch { /* localStorage unavailable */ }
   if (deviceStationId) return deviceStationId;
 
-  try {
-    const raw = localStorage.getItem(USER_STORAGE_KEY);
-    if (raw) {
-      const user = JSON.parse(raw);
-      if (user?.defaultScanStationId) return user.defaultScanStationId as string;
-    }
-  } catch { /* localStorage unavailable, or a genuinely malformed stored user — fail safe to null either way */ }
+  // The signed-in user's home station (PS-60: read through the session
+  // profile store rather than parsing the stored user here).
+  const user = readSessionProfile();
+  if (user?.defaultScanStationId) return user.defaultScanStationId;
 
   return null;
 }

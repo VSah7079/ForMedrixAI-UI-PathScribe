@@ -263,7 +263,7 @@ export const PatientManagementSection: React.FC = () => {
           {activeAction === 'move' && (
             <div className="ps-conf-table-wrap ps-conf-table-wrap--padded ps-conf-table-wrap--spaced">
               <label className="ps-label">{t('patientManagementSection.whichCaseLabel')}</label>
-              <select className="ps-conf-select" value={moveCaseId} onChange={e => setMoveCaseId(e.target.value)}>
+              <select className="ps-conf-select" data-phi="accession" value={moveCaseId} onChange={e => setMoveCaseId(e.target.value)}>
                 <option value="">{t('patientManagementSection.selectPlaceholderOption')}</option>
                 {selectedCases.map(c => <option key={c.id} value={c.id}>{c.accession?.fullAccession ?? c.id}</option>)}
               </select>

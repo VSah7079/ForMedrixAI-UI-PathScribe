@@ -184,7 +184,7 @@ describe('useReportGeneration — buildOrchCallbacks state transitions', () => {
 
     act(() => { capturedCallbacks.onError('sec-1', 'model timed out'); });
     expect(result.current.isOrchestrating).toBe(false);
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('model timed out'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('model timed out'), 'warning');
   });
 });
 
@@ -218,7 +218,7 @@ describe('useReportGeneration — handleGenerateReport / handleAbortGenerate', (
 
     await act(async () => { await result.current.handleGenerateReport(); });
 
-    expect(showToast).toHaveBeenCalledWith('Generation failed: model timed out');
+    expect(showToast).toHaveBeenCalledWith('Generation failed: model timed out', 'warning');
     expect(result.current.isOrchestrating).toBe(false);
   });
 

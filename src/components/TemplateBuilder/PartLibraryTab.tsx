@@ -3,7 +3,7 @@
 
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import type { ReportPart, ReportPartType } from '../../types/reportPart';
 import { mockReportPartService, onReportPartsChanged } from '../../services/reportParts/mockReportPartService';
 import { getActivePerformingLabs } from '../../utils/performingLabs';
@@ -167,9 +167,11 @@ const PartLibraryTab: React.FC = () => {
 
   useEffect(() => { load(); return onReportPartsChanged(load); }, [load]);
 
-  const handleDuplicate = async (id: string) => {
+  // The copy's name is marked in the user's own language (PS-73).
+  const handleDuplicate = async (part: ReportPart) => {
+    const id = part.id;
     setDuplicating(id);
-    const r = await svc.clone(id);
+    const r = await svc.clone(id, t('common.copyOfName', { name: part.name }));
     if (r.ok) navigate(`/admin/parts/${r.data.id}/edit`);
     else if (r.ok === false) setError(r.error);
     setDuplicating(null);
@@ -280,7 +282,7 @@ const PartLibraryTab: React.FC = () => {
                     isProtected={PROTECTED.has(p.id)}
                     isDuplicating={duplicating === p.id}
                     onEdit={() => navigate(`/admin/parts/${p.id}/edit`)}
-                    onDuplicate={() => handleDuplicate(p.id)}
+                    onDuplicate={() => handleDuplicate(p)}
                     onArchive={() => handleArchive(p.id)}
                   />
                 ))

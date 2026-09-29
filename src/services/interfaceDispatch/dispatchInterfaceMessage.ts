@@ -29,7 +29,14 @@
 // payload builder in this app already has.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type InterfaceTransactionType = 'A08' | 'A40' | 'A47' | 'ORU_R01' | 'LIS_SYNC' | 'ORDER_CREATED' | 'REGISTRY_REPORT' | 'PRINT_JOB';
+import { resolveServiceEndpoint } from '@/utils/serviceEndpoint';
+
+// 'CRITICAL_ALERT' added per direct follow-up ("Can the interface
+// engine be used for any post GA modification to fully implement this
+// feature?") — used only by the new, deliberately NOT-yet-wired
+// services/clinical/postGaAlertChannels/ module; no currently-active
+// call site produces it yet. See that folder's own README.
+export type InterfaceTransactionType = 'A08' | 'A40' | 'A47' | 'ORU_R01' | 'LIS_SYNC' | 'ORDER_CREATED' | 'REGISTRY_REPORT' | 'PRINT_JOB' | 'CRITICAL_ALERT';
 
 export interface InterfaceDispatchEnvelope {
   queueEntryId: string;
@@ -71,8 +78,19 @@ export interface InterfaceDispatchResult {
 // REPORT_PDF_ENDPOINT, not reused — these are two real, separate
 // Cloud Functions (render_report vs. receive_interface_message),
 // each with its own real, independent deployed URL once live.
-export const INTERFACE_RECEIVER_ENDPOINT =
-  (import.meta as any).env?.VITE_INTERFACE_RECEIVER_ENDPOINT ?? 'http://localhost:8080/';
+//
+// Batch 327 (HTTPS): resolved through utils/serviceEndpoint.ts. A
+// production build must set VITE_INTERFACE_RECEIVER_ENDPOINT to an
+// https:// URL; a missing or plain-HTTP value is refused before any
+// request instead of falling back to http://localhost:8080/. The
+// localhost default and loopback HTTP remain for development only.
+export const INTERFACE_RECEIVER = resolveServiceEndpoint({
+  name: 'interface engine',
+  envVar: 'VITE_INTERFACE_RECEIVER_ENDPOINT',
+  configured: (import.meta as any).env?.VITE_INTERFACE_RECEIVER_ENDPOINT,
+  devDefault: 'http://localhost:8080/',
+  isProduction: !!(import.meta as any).env?.PROD,
+});
 
 // Real, per direct follow-up ("We are logging interface errors with
 // human readable error messaging?"): a real, explicit timeout — a
@@ -107,10 +125,13 @@ export async function dispatchInterfaceMessage(
     dispatchedAt: new Date().toISOString(),
     payload,
   };
+  if (INTERFACE_RECEIVER.ok === false) {
+    return { ok: false, errorCode: 'DISPATCH_UNREACHABLE', error: INTERFACE_RECEIVER.message };
+  }
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), DISPATCH_TIMEOUT_MS);
   try {
-    const resp = await fetch(INTERFACE_RECEIVER_ENDPOINT, {
+    const resp = await fetch(INTERFACE_RECEIVER.url, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify(envelope),

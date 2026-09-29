@@ -25,7 +25,7 @@
 import '@/i18n/config';
 import { describe, it, expect, vi, beforeEach } from 'vitest';
 import React from 'react';
-import { renderHook as rtlRenderHook, act } from '@testing-library/react';
+import { renderHook as rtlRenderHook, act, waitFor } from '@testing-library/react';
 import { SystemConfigProvider } from '@/contexts/SystemConfigContext';
 import { useSignOutWorkflow } from '../useSignOutWorkflow';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
@@ -42,6 +42,12 @@ vi.mock('@/services/cases/CaseRouter', () => ({
 vi.mock('@/services/auth/caseAccessControl', () => ({
   getSessionUser: vi.fn().mockReturnValue({ id: 'PATH-001', role: 'pathologist' }),
   canFinalizeCase: vi.fn().mockReturnValue({ granted: true, dimension: 'primary', reason: '' }),
+  // PS-327: defaults to [] (no admin-configured participation type
+  // resolves to a real countersign requirement) — matching this test
+  // file's own pre-PS-327 behavior exactly, since nothing exercised this
+  // path before it existed. Individual tests below override with
+  // mockReturnValueOnce to exercise the new configured-type gate.
+  resolveCountersignRequiredTypeIds: vi.fn().mockReturnValue([]),
 }));
 vi.mock('@/services', () => ({
   countersignService: { release: vi.fn().mockResolvedValue({ ok: true }), countersign: vi.fn().mockResolvedValue({ ok: true }), reject: vi.fn().mockResolvedValue({ ok: true, data: { residentId: 'PATH-002', residentName: 'Dr. Resident' } }) },
@@ -56,6 +62,9 @@ vi.mock('@/services', () => ({
   qaActivityRecordService: { create: vi.fn().mockResolvedValue({ ok: true, data: {} }), getAll: vi.fn().mockResolvedValue({ ok: true, data: [] }) },
   facilityService: { getById: vi.fn().mockResolvedValue({ ok: false, error: 'not mocked' }) },
   concordanceReviewSettingsService: { resolveEffectiveConfigForFacility: vi.fn().mockResolvedValue({ ok: true, data: { aiComparisonEnabled: true, reviewScreenEnabled: true } }) },
+  // Batch 345: the signature check (services/auth/signatureEvidence.ts) is
+  // tested on its own; here it accepts unless a test says otherwise.
+  signatureGate: { accept: vi.fn().mockResolvedValue({ ok: true, evidence: {} }), commit: vi.fn().mockResolvedValue(null), release: vi.fn(), held: vi.fn() },
 }));
 vi.mock('@/services/communications/notificationService', () => ({
   sendEmail: vi.fn().mockResolvedValue(undefined),
@@ -159,7 +168,7 @@ describe('useSignOutWorkflow — finalizeSignOut (CoPilot ordering guarantee)', 
     await act(async () => { await result.current.finalizeSignOut(); });
 
     expect(amendmentService.release).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('could not be transmitted'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('could not be transmitted'), 'warning');
   });
 
   it('DOES release only after a confirmed successful LIS send, and creates a real version record', async () => {
@@ -215,13 +224,41 @@ describe('useSignOutWorkflow — handleSignOutConfirm (real, critical fix: pendi
 
     await act(async () => { await result.current.handleSignOutConfirm(); });
 
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('already Pending Release'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('already Pending Release'), 'warning');
     expect(setShowSignOutModal).toHaveBeenCalledWith(false);
     // Real, load-bearing assertion: neither the resident-countersign
     // path nor any real finalize/version-creation write ever ran.
     expect(countersignService.release).not.toHaveBeenCalled();
     const updateCalls = (caseRouter.updateCase as any).mock.calls;
     expect(updateCalls.length).toBe(0);
+  });
+});
+
+describe('useSignOutWorkflow — signature check (Batch 345)', () => {
+  it('a refused signature stops the sign-out before anything is written', async () => {
+    const { countersignService, signatureGate, reportVersionService } = await import('@/services');
+    const { caseRouter } = await import('@/services/cases/CaseRouter');
+    (signatureGate.accept as any).mockResolvedValueOnce({ ok: false, reason: 'missing' });
+    const showToast = vi.fn();
+    const caseData = makeTestCase({ participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['resident'] }] } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, showToast })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    expect(showToast).toHaveBeenCalledWith(expect.stringMatching(/confirm|signature/i), 'warning');
+    expect(countersignService.release).not.toHaveBeenCalled();
+    expect(reportVersionService.create).not.toHaveBeenCalled();
+    expect((caseRouter.updateCase as any).mock.calls.length).toBe(0);
+    expect(signatureGate.commit).not.toHaveBeenCalled();
+  });
+
+  it('an accepted signature is recorded once the resident has released the case', async () => {
+    const { signatureGate } = await import('@/services');
+    const caseData = makeTestCase({ participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['resident'] }] } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, showToast: vi.fn() })));
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+    expect(signatureGate.accept).toHaveBeenCalledWith(undefined, expect.objectContaining({ caseId: caseData.id, actions: ['case-sign-out', 'countersign'] }));
+    expect(signatureGate.commit).toHaveBeenCalledWith(caseData.id, 'released_for_countersign', { kind: 'report-version' });
   });
 });
 
@@ -238,7 +275,8 @@ describe('useSignOutWorkflow — handleSignOutConfirm (resident/countersign gate
     await act(async () => { await result.current.handleSignOutConfirm(); });
 
     expect(countersignService.release).toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('released for attending countersign'));
+    // Batch 363 (PS-72): it names the case, so it is marked as patient data for screenshot redaction.
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('released for attending countersign'), 'info', { containsPhi: true });
     // Real feature, per direct specification, Phase 4 (spec §15a —
     // "Resident Submissions... route... WITHOUT TRIGGERING A RELEASE
     // BUFFER"). The countersign gate's own real, unconditional early
@@ -283,6 +321,53 @@ describe('useSignOutWorkflow — handleSignOutConfirm (resident/countersign gate
     const createOrder = (reportVersionService.create as any).mock.invocationCallOrder[0];
     const releaseOrder = (countersignService.release as any).mock.invocationCallOrder[0];
     expect(createOrder).toBeLessThan(releaseOrder);
+  });
+
+  it('PS-327: a participant holding an admin-configured (non-hardcoded) participation type whose requiresCountersign resolves true for this lab is also routed to release-for-countersign, not just the two hardcoded resident/cytotechnologist ids', async () => {
+    const { countersignService } = await import('@/services');
+    const { resolveCountersignRequiredTypeIds } = await import('@/services/auth/caseAccessControl');
+    vi.mocked(resolveCountersignRequiredTypeIds).mockReturnValueOnce(['junior_registrar']);
+    const showToast = vi.fn();
+    const caseData = makeTestCase({
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['junior_registrar'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData, showToast })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    expect(countersignService.release).toHaveBeenCalled();
+    // Batch 363 (PS-72): it names the case, so it is marked as patient data for screenshot redaction.
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('released for attending countersign'), 'info', { containsPhi: true });
+  });
+
+  it('PS-327: a participation type NOT in the resolved countersignRequiredTypeIds (and not the hardcoded resident/cytotechnologist ids) signs out normally — no countersign redirect', async () => {
+    const { countersignService } = await import('@/services');
+    const { resolveCountersignRequiredTypeIds } = await import('@/services/auth/caseAccessControl');
+    vi.mocked(resolveCountersignRequiredTypeIds).mockReturnValueOnce(['junior_registrar']);
+    const caseData = makeTestCase({
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['consultant'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    expect(countersignService.release).not.toHaveBeenCalled();
+  });
+
+  it('jurisdiction-bound authority: the performing lab\'s own jurisdiction reaches BOTH the countersign gate and canFinalizeCase()', async () => {
+    const { facilityService } = await import('@/services');
+    const { canFinalizeCase, resolveCountersignRequiredTypeIds } = await import('@/services/auth/caseAccessControl');
+    vi.mocked(facilityService.getById).mockResolvedValueOnce({ ok: true, data: { id: 'lab-au', roles: ['performing_lab'], jurisdiction: 'AU' } } as any);
+    const caseData = makeTestCase({
+      order: { facilityId: 'lab-au' },
+      participants: [{ status: 'active', staffId: 'PATH-001', participationTypeIds: ['attending'] }],
+    } as any);
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleSignOutConfirm(); });
+
+    expect(resolveCountersignRequiredTypeIds).toHaveBeenLastCalledWith(expect.anything(), 'lab-au', 'AU');
+    expect(canFinalizeCase).toHaveBeenLastCalledWith(expect.anything(), expect.anything(), expect.anything(), 'lab-au', 'AU');
   });
 
   it('a resident who is ALSO attending on this case bypasses the countersign gate entirely — falls through to normal finalize', async () => {
@@ -346,7 +431,7 @@ describe('useSignOutWorkflow — handleSignOutConfirm (resident/countersign gate
 
     await act(async () => { await result.current.handleSignOutConfirm(); });
 
-    expect(showToast).toHaveBeenCalledWith('You are not a participant on this case.');
+    expect(showToast).toHaveBeenCalledWith('You are not a participant on this case.', 'warning');
     expect(setShowSignOutModal).toHaveBeenCalledWith(false);
   });
 
@@ -530,7 +615,7 @@ describe('useSignOutWorkflow — handleReturnToTrainee ("Return to Trainee"/"Rej
     await act(async () => { await result.current.handleReturnToTrainee(); });
 
     expect(countersignService.reject).not.toHaveBeenCalled();
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Feedback is required'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Feedback is required'), 'warning');
   });
 
   it('real, per direct guidance: with real feedback, calls countersignService.reject, reassigns ownership back to the resident, and reverts per-instance status to draft', async () => {
@@ -579,7 +664,7 @@ describe('useSignOutWorkflow — handleReturnToTrainee ("Return to Trainee"/"Rej
 
     await act(async () => { await result.current.handleReturnToTrainee(); });
 
-    expect(showToast).toHaveBeenCalledWith('No pending countersign record found for case TEST-CASE-SIGNOUT');
+    expect(showToast).toHaveBeenCalledWith('No pending countersign record found for case TEST-CASE-SIGNOUT', 'warning');
     const updateCalls = (caseRouter.updateCase as any).mock.calls;
     expect(updateCalls.some((call: any[]) => call[1]?.status === 'returned')).toBe(false);
   });
@@ -601,7 +686,7 @@ describe('useSignOutWorkflow — finalizeCase', () => {
     const succeeded = await act(async () => result.current.finalizeCase());
 
     expect(succeeded).toBe(false);
-    expect(showToast).toHaveBeenCalledWith('No relationship to this case.');
+    expect(showToast).toHaveBeenCalledWith('No relationship to this case.', 'warning');
   });
 
   it('the pre-analytic date gate hard-blocks finalization when a specimen is missing collectedAt, and checks BEFORE the fixative-time gate', async () => {
@@ -733,7 +818,7 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
 
     await act(async () => { await result.current.handleRequestFinalize(false); });
 
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Block 2 fragmented on sectioning'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('Block 2 fragmented on sectioning'), 'warning');
     expect(result.current.showPreFinalise).toBe(false);
   });
 
@@ -1028,6 +1113,8 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
       await result.current.handleRecordCriticalNotification({ clinicianName: 'Dr. Faulkner', method: 'verbal_phone', notifiedByName: 'Test User' });
     });
 
+    // Capture is fire-and-forget (it resolves the covering Validation Study first).
+    await waitFor(() => expect(abnormalDetectionSignalService.recordSignal).toHaveBeenCalled());
     expect(abnormalDetectionSignalService.recordSignal).toHaveBeenCalledWith(expect.objectContaining({
       caseId: 'TEST-CASE-CRITICAL',
       source: 'narrative',
@@ -1056,12 +1143,31 @@ describe('useSignOutWorkflow — handleRequestFinalize', () => {
     await act(async () => { await result.current.handleRequestFinalize(false); });
     act(() => { result.current.handleAcknowledgeCriticalFindings(); });
 
+    await waitFor(() => expect(abnormalDetectionSignalService.recordSignal).toHaveBeenCalled());
     expect(abnormalDetectionSignalService.recordSignal).toHaveBeenCalledWith(expect.objectContaining({
       caseId: 'TEST-CASE-CRITICAL',
       outcome: 'dismissed',
     }));
     const updateCalls = (caseRouter.updateCase as any).mock.calls;
     expect(updateCalls.find((c: any[]) => c[1]?.abnormalDetectionStatus)).toBeUndefined();
+  });
+
+  it('PS-137 (Batch 318): agreement signals carry the active Validation Study covering the case', async () => {
+    const { mockValidationStudyService } = await import('@/services/validationStudies/mockValidationStudyService');
+    const spy = vi.spyOn(mockValidationStudyService, 'getStudyForCase').mockResolvedValue({ ok: true, data: { id: 'vs-demo-001' } as any });
+    vi.mocked(detectCriticalFindings).mockResolvedValueOnce({
+      ok: true,
+      data: { flags: [{ term: 'invasive carcinoma', sourceField: 'microscopic', sourceQuote: 'invasive ductal carcinoma identified', severity: 'Malignant', confidence: 92 }] },
+    });
+    const caseData = makeTestCase({ id: 'TEST-CASE-CRITICAL', diagnostic: { microscopicDescription: 'Invasive ductal carcinoma identified.' } as any });
+    const { result } = renderHook(() => useSignOutWorkflow(baseParams({ caseData })));
+
+    await act(async () => { await result.current.handleRequestFinalize(false); });
+    act(() => { result.current.handleAcknowledgeCriticalFindings(); });
+
+    await waitFor(() => expect(abnormalDetectionSignalService.recordSignal).toHaveBeenCalled());
+    expect(abnormalDetectionSignalService.recordSignal).toHaveBeenCalledWith(expect.objectContaining({ outcome: 'dismissed', studyId: 'vs-demo-001' }));
+    spy.mockRestore();
   });
 });
 

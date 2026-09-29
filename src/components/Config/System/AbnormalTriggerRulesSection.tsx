@@ -19,6 +19,7 @@ import type { Facility } from '../../../services/facilities/IFacilityService';
 import type { AbnormalTriggerRule, AbnormalSeverity } from '../../../services/abnormalDetection/IAbnormalTriggerRuleService';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
 import { findDuplicate } from '../../../utils/validateUnique';
+import { duplicateAbnormalTriggerRule } from '@/services/duplication/duplicateEntities';
 
 const SEVERITIES: AbnormalSeverity[] = ['Abnormal', 'Critical', 'Malignant'];
 
@@ -46,8 +47,11 @@ const AbnormalTriggerRulesSection: React.FC = () => {
   useEffect(load, []);
   useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
 
+  // Pre-fill whenever the modal carries a rule: Edit, or Duplicate (an Add
+  // pre-filled from a copy). Keying this off mode === 'edit' left a
+  // duplicate's form blank.
   useEffect(() => {
-    if (modal?.mode === 'edit' && modal.item) {
+    if (modal?.item) {
       setDraft({
         fieldLabel: modal.item.fieldLabel, triggerValues: modal.item.triggerValues.join(', '),
         severity: modal.item.severity, description: modal.item.description ?? '',
@@ -89,7 +93,9 @@ const AbnormalTriggerRulesSection: React.FC = () => {
       performingLabFacilityId: draft.performingLabFacilityId || undefined,
     };
     if (modal?.mode === 'add') {
-      const res = await abnormalTriggerRuleService.add(payload);
+      // A duplicate carries its source's synthetic coding, which this form
+      // doesn't display; a plain Add has none.
+      const res = await abnormalTriggerRuleService.add({ ...payload, syntheticCoding: modal.item?.syntheticCoding });
       if (res.ok) setItems(prev => [...prev, res.data]);
     } else if (modal?.item) {
       const res = await abnormalTriggerRuleService.update(modal.item.id, payload);
@@ -180,6 +186,10 @@ const AbnormalTriggerRulesSection: React.FC = () => {
                 <td>
                   <div className="ps-defic-row-actions">
                     <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', item })}>{t('common.edit')}</button>
+                    {/* Duplicate (PS-73): usually a lab-scoped variant. fieldLabel is a
+                        matching key, so it is not renamed; the uniqueness check forces a
+                        real difference (lab or label) before save. Copy starts Inactive. */}
+                    <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'add', item: duplicateAbnormalTriggerRule(item) })}>{t('common.duplicate')}</button>
                     <button className="ps-conf-btn-row" onClick={() => handleToggleActive(item)}>
                       {item.status === 'Active' ? t('abnormalTriggerRulesSection.table.deactivateButton') : t('abnormalTriggerRulesSection.table.activateButton')}
                     </button>

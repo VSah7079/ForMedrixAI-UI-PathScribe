@@ -67,7 +67,7 @@ const VendorModal: React.FC<{
             onChange={e => setDraft({ ...draft, baseUrl: e.target.value })}
             placeholder={t('imsVendorDictionary.baseUrlPlaceholder')}
           />
-          <p className="ps-conf-section-subtitle" style={{ marginTop: 4 }}>
+          <p className="ps-conf-section-subtitle ps-mt-4">
             {t('imsVendorDictionary.tokenWarning')}
           </p>
         </div>
@@ -120,7 +120,7 @@ const ImageManagementSystemVendorDictionarySection: React.FC = () => {
         <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'add' })}>{t('imsVendorDictionary.addSystemBtn')}</button>
       </div>
 
-      <label className="ps-conf-toggle-label-row" style={{ marginBottom: 12 }}>
+      <label className="ps-conf-toggle-label-row ps-mb-12">
         <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="ps-conf-radio-input" />
         <span className="ps-conf-option-text">{t('common.showInactive')}</span>
       </label>
@@ -130,7 +130,7 @@ const ImageManagementSystemVendorDictionarySection: React.FC = () => {
           <div key={e.id} className="ps-conf-row">
             <span className="ps-conf-value">
               {e.name}
-              <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--ps-conf-text-3, #94a3b8)' }}>
+              <span className="ps-cytqc-priority-inline">
                 {t(`imsVendorDictionary.deployment.${e.deploymentModel}`)} · {t(`imsVendorDictionary.auth.${e.authMethod}`)}
                 {e.baseUrl.trim() ? '' : ` · ${t('imsVendorDictionary.noBaseUrl')}`}
                 {!e.active ? ` · ${t('common.inactive')}` : ''}

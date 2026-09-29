@@ -2,13 +2,14 @@ import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import type { Case } from '@/types/case/Case';
 import { useAuth } from '@/contexts/AuthContext';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import RequestReviewModal from '@/components/RequestReview/RequestReviewModal';
 import ExternalConsultAccessModal from '@/components/ExternalConsult/ExternalConsultAccessModal';
 import { PoolClaimModal } from '@/components/Worklist/PoolClaimModal';
 import EMRSidecarDrawer from './EMRSidecarDrawer';
 import { useCompanionWindow } from '@/hooks/useCompanionWindow';
 import { resolveIsFinalStatus } from '@/services/reportTemplates/TemplateRoutingService';
+import { reportReleaseService } from '@/services';
 
 
 interface BottomActionBarProps {
@@ -97,38 +98,12 @@ const ActionButton: React.FC<{
   title?: string;
   disabled?: boolean;
 }> = ({ onClick, children, variant, color, hoverColor, title, disabled = false }) => {
-  const [isHovered, setIsHovered] = useState(false);
-
-  const baseStyle: React.CSSProperties = {
-    padding:      '6px 11px',                       // slightly tighter to fit more buttons
-    borderRadius: '7px',
-    fontWeight:   700,
-    fontSize:     '12px',
-    cursor:       disabled ? 'not-allowed' : 'pointer',
-    whiteSpace:   'nowrap',
-    transition:   'all 0.15s ease',
-    border:       `1.5px solid ${disabled ? '#475569' : (isHovered && variant === 'solid' ? (hoverColor || color) : color)}`,
-    background:   disabled
-      ? 'transparent'
-      : variant === 'solid'
-        ? (isHovered ? (hoverColor || color) : color)
-        : (isHovered ? `${color}22` : 'transparent'),
-    color:        disabled ? '#475569' : (variant === 'solid' ? 'white' : color),
-    opacity:      disabled ? 0.6 : 1,
-    display:      'flex',
-    alignItems:   'center',
-    gap:          '5px',
-    transform:    (!disabled && isHovered) ? 'translateY(1px)' : 'translateY(0)',
-    boxShadow:    (!disabled && isHovered) ? `0 2px 8px ${color}44` : 'none',
-    lineHeight:   '1.2',            // explicit line-height prevents height variation from emoji/# chars
-    height:       '32px',           // fixed height so ALL buttons are identical regardless of content
-    boxSizing:    'border-box' as const,
-  };
-
+  // Batch 367 (PS-74): the look lives in .ps-bab-action-btn (hover by CSS);
+  // only the button's colour is per instance.
   return (
-    <button onClick={disabled ? undefined : onClick} disabled={disabled} style={baseStyle} title={title}
-      onMouseEnter={() => !disabled && setIsHovered(true)}
-      onMouseLeave={() => setIsHovered(false)}>
+    <button onClick={disabled ? undefined : onClick} disabled={disabled} title={title}
+      className={`ps-bab-action-btn ps-bab-action-btn--${variant}`}
+      style={{ '--ps-hue': color, '--bab-hover': hoverColor || color } as React.CSSProperties}>
       {children}
     </button>
   );
@@ -236,11 +211,9 @@ const BottomActionBar: React.FC<BottomActionBarProps> = ({
   const [printRestricted, setPrintRestricted] = useState(false);
   useEffect(() => {
     if (!isPendingRelease) return;
-    import('@/services/reportRelease/mockReportReleaseService').then(({ mockReportReleaseService }) =>
-      mockReportReleaseService.getOrgDefault().then(res => {
-        if (res.ok) setPrintRestricted(res.data.restrictHardcopyPrinting);
-      })
-    );
+    reportReleaseService.getOrgDefault().then(res => {
+      if (res.ok) setPrintRestricted(res.data.restrictHardcopyPrinting);
+    });
   }, [isPendingRelease]);
   const handlePrintClick = () => {
     if (isPendingRelease && printRestricted) {

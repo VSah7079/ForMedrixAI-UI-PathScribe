@@ -1,4 +1,5 @@
 import { ServiceResult, ID } from '../types';
+import type { CaseSearchDraft } from '../caseSearch/caseSearchTypes';
 
 // ─── Filter shapes per context ────────────────────────────────────────────────
 
@@ -11,8 +12,18 @@ export interface WorklistFilters {
   flagIds?: string[];
 }
 
-export interface CaseSearchFilters {
-  query?: string;              // free text
+/**
+ * Batch 350: a saved search from the Search page stores the page's whole
+ * draft (services/caseSearch/caseSearchTypes.ts), so loading it restores
+ * every filter, including facility and specimen flags, which the page's
+ * old browser-only saved searches dropped. The older, never-used shape
+ * (query, diagnosisContains, subspecialtyIds …) is retired.
+ */
+export type CaseSearchFilters = CaseSearchDraft;
+
+/** Not used by any screen yet. */
+export interface RefinedSearchFilters {
+  query?: string;
   patientName?: string;
   accessionNumber?: string;
   dateRange?: { from: string; to: string };
@@ -22,9 +33,6 @@ export interface CaseSearchFilters {
   status?: string[];
   snomedCodes?: string[];
   icdCodes?: string[];
-}
-
-export interface RefinedSearchFilters extends CaseSearchFilters {
   specimenTypes?: string[];
   physicianIds?: string[];
   facilityIds?: string[];

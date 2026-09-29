@@ -32,8 +32,12 @@ export const mockAbnormalDetectionSignalService: IAbnormalDetectionSignalService
     return ok(load().filter(s => s.caseId === caseId));
   },
 
-  async getStats() {
-    const all = load();
+  async getByStudy(studyId) {
+    return ok(load().filter(s => s.studyId === studyId));
+  },
+
+  async getStats(studyId) {
+    const all = studyId ? load().filter(s => s.studyId === studyId) : load();
     const confirmedCount = all.filter(s => s.outcome === 'confirmed').length;
 
     const bySeverity = {} as AbnormalDetectionSignalStats['bySeverity'];

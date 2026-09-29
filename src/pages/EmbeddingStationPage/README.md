@@ -29,6 +29,15 @@
 - Deliberate scope cuts for this pass, matching PS-284's own documented precedent exactly: no `MatrixBlock`-level scan resolution or embedding (a cassette shared by multiple specimens is a genuinely separate data shape, not covered here), schematic (non-decodable) cassette label preview, no action-registry/voice wiring.
 - **Real fix (foot-pedal follow-up, Sep 2026):** foot-pedal support was originally disclaimed here as out of browser reach — re-verified and found incorrect. `useFootPedal.ts` (same real hook already working for `SynopticReportPage.tsx`'s dictation controls and now `MicrotomyWorkstationPage.tsx`'s own Print/Etch Next) is now wired into this page: Pedal 1 confirms piece count against the expected, grossing-recorded count — PS-285's own named "hands-free triggers for piece-count confirmation." Guarded to no-op with no open work item, no known expected count, or a block already `'Embedded'`. Its sibling trigger, "advancing to next queued cassette," is deliberately NOT wired — this page has no real queue/next-item navigation to advance (a pure scan-to-open, single-cassette workspace), so there's nothing honest to bind a pedal to yet.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`EmbeddingStationPage.tsx`: the patient name in the context bar is tagged. The page reads scan stations through `@/services`, so it came off the mock-import baseline.
+
+## Batch 367 (PS-74): no inline CSS
+
+`components/CassettePrintPanel.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
 ---
 *See [pages/README.md](../README.md) for how this folder fits the whole pages/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

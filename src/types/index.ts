@@ -1,4 +1,5 @@
-export * from './serviceResult';
+// PS-67 (Batch 348): types/serviceResult.ts ({ success, data, error }) is gone;
+// every service now returns ServiceResult from services/types.ts ({ ok, data } | { ok: false, error }).
 
 import type { ProviderCredential } from '@/types/staff/ProviderCredential';
 

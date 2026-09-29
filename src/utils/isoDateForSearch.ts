@@ -48,15 +48,22 @@
 // Korea support (a real 'KR' Jurisdiction entry, patient ID scheme,
 // SNOMED/ICD terminology variant) is real, separate, larger scope not
 // addressed here.
+//
+// Batch 365 (PS-347): every jurisdiction's own format is now written and
+// matched. Before this, a German lab's lookup showed dates of birth month
+// first (DD.MM.YYYY fell through to MM/DD/YYYY) and a date typed as
+// 23.07.1990 or 23-07-1990 matched nobody. Dutch dates use dashes
+// (23-07-1990), German dates use dots.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export type DateSearchFormat = 'MM/DD/YYYY' | 'DD/MM/YYYY' | 'YYYY-MM-DD' | 'YYYY.MM.DD';
+import type { JurisdictionDateFormat } from '../types/systemConfig';
+
+export type DateSearchFormat = JurisdictionDateFormat | 'YYYY.MM.DD';
 
 /** Converts an ISO date (yyyy-mm-dd, optionally with a time component) to
- *  the given format (see dateFormatHint() in formatDate.ts for deriving
- *  MM/DD/YYYY or DD/MM/YYYY from a real Jurisdiction; YYYY-MM-DD and
- *  YYYY.MM.DD are for year-first search-matching — see this file's own
- *  header comment). Returns '' for anything that isn't a genuine
+ *  the given format (dateFormatHint() in formatDate.ts gives a
+ *  jurisdiction's own; YYYY.MM.DD is for year-first search-matching —
+ *  see this file's header comment). Returns '' for anything that isn't a genuine
  *  yyyy-mm-dd string, so a malformed/missing DOB never accidentally
  *  matches an unrelated search query via a garbled partial string.
  *  `format` defaults to 'MM/DD/YYYY' only as a last-resort fallback for a
@@ -72,6 +79,8 @@ export function isoDateForSearch(
   const [, yyyy, mm, dd] = m;
   switch (format) {
     case 'DD/MM/YYYY': return `${dd}/${mm}/${yyyy}`;
+    case 'DD-MM-YYYY': return `${dd}-${mm}-${yyyy}`;
+    case 'DD.MM.YYYY': return `${dd}.${mm}.${yyyy}`;
     case 'YYYY-MM-DD': return `${yyyy}-${mm}-${dd}`;
     case 'YYYY.MM.DD': return `${yyyy}.${mm}.${dd}`;
     default:           return `${mm}/${dd}/${yyyy}`;
@@ -81,7 +90,7 @@ export function isoDateForSearch(
 // Every format this app's search-matching currently tries, regardless of
 // which specific jurisdiction is selected — see this file's own header
 // comment for why matching doesn't guess a single "correct" one.
-const ALL_SEARCH_FORMATS: DateSearchFormat[] = ['MM/DD/YYYY', 'DD/MM/YYYY', 'YYYY-MM-DD', 'YYYY.MM.DD'];
+const ALL_SEARCH_FORMATS: DateSearchFormat[] = ['MM/DD/YYYY', 'DD/MM/YYYY', 'DD-MM-YYYY', 'DD.MM.YYYY', 'YYYY-MM-DD', 'YYYY.MM.DD'];
 
 /** True if `query` is a substring of the ISO date rendered in ANY
  *  supported format. Centralizes the "try every format" list so call

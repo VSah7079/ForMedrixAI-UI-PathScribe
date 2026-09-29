@@ -10,6 +10,24 @@ Staff user directory — the full user profile (name, roles, NPI, license, depar
 
 **Real, new consumer (PS-286, Sep 2026):** `getAll()`, filtered to `roles.includes('Pathologist') && status === 'Active'`, is now how `pages/SlideDistributionStationPage/hooks/useSlideDistributionStation.ts` populates its own Pathologist quick-picker grid — the first real place this directory drives an individual-slide assignment, as opposed to case-level `assignedTo`. Read-only; nothing in this folder's own files changed.
 
+**Spelling language (PS-342, Batch 338):** `StaffUser.spellingLocale?: string | null`, the pathologist's preferred spelling language (`services/spellcheck/spellingLocales.ts`). Null means the facility default. A case assigned to the pathologist is spell-checked in it unless the case has its own choice. Set in Staff → edit; the local `StaffUser` copy in `StaffTab.tsx` gained the field too.
+
+**SSO accounts (PS-60, Batch 343):** `StaffUser.externalIdentities?: ExternalIdentityLink[]`, the single-sign-on accounts a person signs in with (provider, issuer, permanent account id, when and how linked). Sign-in matches on these, never on email alone; a first sign-in can add one by email (`services/auth/externalIdentity.ts`). No admin screen shows them yet.
+
+## Batch 370 (PS-356)
+
+`StaffUser.facilityIds` (new, optional) is the facilities this person works for; empty means all. It narrows where their capabilities apply and doesn't change which cases they can open.
+
+Screens change staff through `services/staff/staffAdministration.ts`, never `userService.add/update` directly.
+
+## Batch 371
+
+New seed staff record `PATH-SJ-001` (Dr. Sarah Johnson, Pathologist, ORG-DVMC). Her demo sign-in is now `pathologist`, not `superadmin`, and without the record she'd have no organisation and so no case access. `USERS_VERSION` was bumped to 10, which replaces a stored staff list with the seed on next load.
+
+## Batch 374
+
+Staff records for the four bench demo users (ACC-001, HT-001, CT-001, MT-001) and for Michelle Nimmo (PATH-MN-001, Pathologist + Admin). Michelle's sign-in had no staff record, so she held no role. `USERS_VERSION` is 11.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

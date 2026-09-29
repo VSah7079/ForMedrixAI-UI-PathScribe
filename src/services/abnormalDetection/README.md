@@ -97,6 +97,19 @@ synoptic answers against it.
   safety case, multi-select handling, inactive-rule exclusion, and the
   highest-severity reduction helper.
 
+## PS-137's open gap closed: signals carry the Validation Study (Batch 318)
+
+PS-137's one remaining gap was that agreement signals never recorded which active Validation Study covered the case. The narrative-edit signals, which PS-137 asked this to mirror, already did.
+
+- **`AbnormalDetectionSignal.studyId`** (optional) is now set when a signal is captured.
+- **`getByStudy(studyId)`** and **`getStats(studyId?)`** can scope to one study, matching `NarrativeSignalService`.
+- **`recordAbnormalDetectionOutcomes.ts`** (new) turns the pathologist's decision on the flagged findings shown at sign-out into signals:
+  - 'confirmed' when they record a notification;
+  - 'dismissed' when they acknowledge without recording.
+
+  It resolves the covering study once per decision (`services/validationStudies/resolveActiveStudyId.ts`) and de-identifies narrative quotes exactly as before. This mapping used to be written out twice inside `useSignOutWorkflow.ts`; that hook now only calls it.
+- **Tests:** `recordAbnormalDetectionOutcomes.test.ts`, plus study-scoping cases in `mockAbnormalDetectionSignalService.test.ts` and `useSignOutWorkflow.test.ts`.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

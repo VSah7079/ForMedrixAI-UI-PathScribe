@@ -201,6 +201,9 @@ export interface MolecularBatch {
    *  StainType.name, not independently typed. */
   assayCode: string;
   assayName: string;
+  /** Batch 356 (PS-326): an instrument's code from the instrument list
+   *  (services/instruments/), e.g. 'PANTHER_02'. It used to be free text.
+   *  Batch 358: an analyser's code in the equipment register (services/equipment/). */
   targetInstrumentId: string;
   deckSlot?: string;
   plateUuid: string;
@@ -245,6 +248,13 @@ export interface MolecularBatch {
    *  silent, unexplained status flip. */
   supersededReason?: string;
 }
+
+/**
+ * Batch 356 (PS-326): create() refuses a target instrument that isn't an
+ * active analyser in the equipment register (services/equipment/, Batch 358), with this
+ * error. The screen shows it translated.
+ */
+export const MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE = 'instrumentUnavailable';
 
 export type NewMolecularBatch = Omit<MolecularBatch, 'id' | 'batchBarcode' | 'batchUuid' | 'plateUuid' | 'plateBarcode' | 'status' | 'createdAt'>;
 

@@ -1,7 +1,8 @@
 # PathScribe — Developer Getting Started
 
-**Last verified:** August 2026. For the full setup steps (install,
-`npm run dev`, build), see the root `README.md` — not duplicated here.
+**Last verified:** September 2026. For the full setup steps (install,
+`npm run dev`, build, every npm script), see the root
+[`README.md`](../../README.md) — not duplicated here.
 This doc is what the root README doesn't cover: conventions, testing
 discipline, and the gotchas that aren't obvious from reading the code
 cold.
@@ -17,20 +18,37 @@ the index into all of them.
 
 ## Core conventions
 
-- **CSS**: real classes in `pathscribe.css` (`ps-*` naming). Inline
-  styles are reserved for genuinely dynamic, per-render values only
-  (colors from props, calculated dimensions) — not a stylistic
-  preference, an enforced convention checked repeatedly throughout this
-  codebase's own review history.
+> **Standing rules** (full text, examples, and the pre-delivery
+> checklist in the repo-root [`CLAUDE.md`](../../CLAUDE.md)): no inline
+> CSS, no business logic in components, and full international support
+> on every change. The three bullets below are the short form; updated
+> Sep 2026 to match, since earlier wording here was looser than the rule.
+
+- **CSS**: real classes in `pathscribe.css` (`ps-*` naming). **No inline
+  CSS declarations.** A genuinely per-instance value (a colour from
+  props, a calculated dimension) is passed only as a CSS custom property
+  that a real rule consumes: `style={{ '--ps-hue': color }}` with
+  `.x { color: var(--ps-hue); background: color-mix(in srgb, var(--ps-hue) 9%, transparent); }`.
+  Never `style={{ background: color }}`, and never colour strings built
+  in JSX.
 - **Service layer**: `I<Domain>Service.ts` interface +
   `mock<Domain>Service.ts` implementation. New domains should follow
   this pattern unless there's a real, specific reason not to (see
   `docs/architecture/SYSTEM_ARCHITECTURE.md` for when the pattern
   legitimately doesn't fit).
-- **No inline business logic in JSX**. Extract to named functions or
-  variables — this has been a recurring, real fix throughout this
-  codebase's history, not a style nitpick (type-narrowing in particular
-  can break silently when logic stays inline).
+- **No business logic in components** (not just "not inline in JSX").
+  Components render and dispatch. Filtering, resolution, permission
+  checks, default-seeding, diffing, and save or audit sequencing belong
+  in `src/services/` or `src/utils/`, pure where possible and tested
+  directly, with dependencies passed in. This has been a recurring real
+  fix, not a style nitpick: type-narrowing in particular can break
+  silently when logic stays inline.
+- **International support**: every user-facing string goes through
+  `t()`, and every key goes into all five locale files
+  (`src/i18n/locales/{en,fr,de,nl,ko}.json`) in the same change.
+  `src/i18n/localeParity.test.ts` enforces parity project-wide; see
+  [`src/i18n/README.md`](../../src/i18n/README.md) → "Setup,
+  conventions, and enforcement".
 - **Real errors, not silent failures**. `ConcurrencyConflictError` and
   similar are meant to be thrown and handled visibly, not swallowed.
 

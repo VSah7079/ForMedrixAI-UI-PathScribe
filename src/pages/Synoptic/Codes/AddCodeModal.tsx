@@ -869,9 +869,9 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
         onClick={e => e.stopPropagation()}
         className="acd-ctx-menu"
         style={{
-          left: Math.min(contextMenu.x, window.innerWidth - 220),
-          top:  Math.min(contextMenu.y, window.innerHeight - 200),
-        }}
+          '--ctx-x': `${Math.min(contextMenu.x, window.innerWidth - 220)}px`,
+          '--ctx-y': `${Math.min(contextMenu.y, window.innerHeight - 200)}px`,
+        } as React.CSSProperties}
       >
         <div className="acd-ctx-menu-label">
           {t('addCodeModal.moveTo')}
@@ -1024,7 +1024,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
                   <span className="acd-ai-panel-count">
                     {t('addCodeModal.suggestionsCount', { count: visibleSuggestions.length })}
                   </span>
-                  <span className="acd-ai-panel-chevron" style={{ transform: aiPanelCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                  <span className={`acd-ai-panel-chevron${aiPanelCollapsed ? ' acd-ai-panel-chevron--collapsed' : ''}`}>▾</span>
                 </div>
                 {!aiPanelCollapsed && visibleSuggestions
                   .map((sug) => {
@@ -1095,11 +1095,8 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
             <div className="acd-filter-row">
               {SYSTEMS.map(s => (
                 <button key={s.id} onClick={() => { setSystem(s.id); setQuery(''); setFocused(-1); inputRef.current?.focus(); }}
-                  className="acd-system-tab-btn"
-                  style={{
-                    background: system === s.id ? s.accent : 'rgba(255,255,255,0.06)',
-                    color: system === s.id ? 'white' : '#94a3b8',
-                  }}
+                  className={`acd-system-tab-btn${system === s.id ? ' acd-system-tab-btn--active' : ''}`}
+                  style={{ '--ps-hue': s.accent } as React.CSSProperties}
                 >{s.id === 'CPT' ? (isOrchestrationMode ? t('addCodeModal.billingCode') : t('addCodeModal.cptRvu')) : t(SYSTEM_LABEL_KEY[s.id])}</button>
               ))}
             </div>
@@ -1109,12 +1106,7 @@ ${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level
               <div className="acd-filter-row">
                 {SNOMED_FILTERS.map(f => (
                   <button key={f.id} onClick={() => setSnomedFilter(f.id)} title={t(SNOMED_FILTER_HINT_KEY[f.id])}
-                    className="acd-snomed-filter-btn"
-                    style={{
-                      border: `1px solid ${snomedFilter === f.id ? '#0891B2' : 'rgba(100,116,139,0.4)'}`,
-                      background: snomedFilter === f.id ? 'rgba(8,145,178,0.15)' : 'transparent',
-                      color: snomedFilter === f.id ? '#38bdf8' : '#64748b',
-                    }}
+                    className={`acd-snomed-filter-btn${snomedFilter === f.id ? ' acd-snomed-filter-btn--active' : ''}`}
                   >{t(SNOMED_FILTER_LABEL_KEY[f.id])}</button>
                 ))}
               </div>

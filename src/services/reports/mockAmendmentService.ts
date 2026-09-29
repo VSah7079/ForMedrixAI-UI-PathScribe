@@ -279,7 +279,9 @@ export const mockAmendmentService: IAmendmentService = {
   async startDraft(input) {
     const existing = load().filter(r => r.caseId === input.caseId && r.type === input.type);
     const newRecord: AmendmentRecord = {
-      id: `amend-${Date.now().toString(36)}`,
+      // Batch 381: a random suffix, so two drafts opened in the same
+      // millisecond don't share an id (found when a test did exactly that).
+      id: `amend-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 7)}`,
       caseId: input.caseId,
       type: input.type,
       reportInstanceId: input.reportInstanceId,
@@ -293,6 +295,21 @@ export const mockAmendmentService: IAmendmentService = {
     };
     persist([...load(), newRecord]);
     return ok(newRecord);
+  },
+
+  async changeDraftType(id, type) {
+    const records = load();
+    const idx = records.findIndex(r => r.id === id);
+    if (idx === -1) return err(`Amendment ${id} not found`);
+    const record = records[idx];
+    if (record.type === type) return ok({ ...record });
+    if (record.status !== 'draft' || record.explanationOfChange) {
+      return err('Only a draft that has not been saved yet can change between amendment, correction and addendum.');
+    }
+    const sameType = records.filter(r => r.caseId === record.caseId && r.type === type && r.id !== id);
+    records[idx] = { ...record, type, sequenceNumber: sameType.length + 1 };
+    persist(records);
+    return ok({ ...records[idx] });
   },
 
   async captureFields(id, fields) {

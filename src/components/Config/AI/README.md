@@ -68,6 +68,10 @@ everything else is UI over it.
   per-client override layer, since voice is a genuinely deployment-wide
   setting (`Config/System/VoiceSection.tsx`'s own words), not resolved
   per ordering-client the way a case's report-generation model is.
+  **`canBecomeDefault(model)` (Batch 320, PS-58):** the Models tab's Set
+  Default gate, moved out of the component. A voice model needs a passing
+  study, since becoming the default is when it goes live. A report model
+  is always allowed, because its gate is the per-facility override.
 
 ## Notes
 

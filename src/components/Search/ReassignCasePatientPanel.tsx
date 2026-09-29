@@ -19,13 +19,13 @@
 //
 // Reuses PatientLinkSearch.tsx for the target-patient search (the same
 // component now used by AccessionPage.tsx and PatientManagementSection.tsx)
-// and mockPatientIndexService.moveCaseToPatient() directly — the exact
+// and patientIndexService.moveCaseToPatient() directly — the exact
 // same, already-tested operation, no new service logic.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
+import { patientIndexService } from '@/services';
 import { PatientLinkSearch } from '@/pages/AccessionPage/PatientLinkSearch';
 import ConfirmModal from '../Common/ConfirmModal';
 import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
@@ -56,14 +56,14 @@ export const ReassignCasePatientPanel: React.FC<ReassignCasePatientPanelProps> =
   // resolution step.
   React.useEffect(() => {
     if (!sourcePatientId) return;
-    mockPatientIndexService.getById(sourcePatientId).then(r => setSourceOrgId(r?.organisationId ?? null));
+    patientIndexService.getById(sourcePatientId).then(r => setSourceOrgId(r?.organisationId ?? null));
   }, [sourcePatientId]);
 
   const handleConfirm = async () => {
     if (!sourcePatientId || !targetPatient) return;
     setBusy(true);
     try {
-      const result = await mockPatientIndexService.moveCaseToPatient(caseData.id, sourcePatientId, targetPatient.id, new Date().toISOString());
+      const result = await patientIndexService.moveCaseToPatient(caseData.id, sourcePatientId, targetPatient.id, new Date().toISOString());
       if (result.moved) {
         setMoveOk(true);
         setStatusMessage(
@@ -132,7 +132,7 @@ export const ReassignCasePatientPanel: React.FC<ReassignCasePatientPanelProps> =
       )}
 
       {statusMessage && (
-        <p className="ps-conf-hint rcpp-status-text" style={{ color: moveOk === false ? '#ef4444' : '#10b981' }} data-phi={moveOk ? 'true' : undefined}>
+        <p className={`ps-conf-hint rcpp-status-text ${moveOk === false ? 'rcpp-status-text--failed' : 'rcpp-status-text--ok'}`} data-phi={moveOk ? 'true' : undefined}>
           {statusMessage}
         </p>
       )}

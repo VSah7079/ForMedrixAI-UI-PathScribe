@@ -20,7 +20,7 @@
 
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { formatFullDisplayName } from '@/utils/personName';
 import { useAddOnOrderStation } from './hooks/useAddOnOrderStation';
@@ -53,6 +53,17 @@ const AddOnOrderPage: React.FC = () => {
   const [submitNotice, setSubmitNotice] = useState<string | null>(null);
 
   useEffect(() => { w.loadDirectories(); }, []); // eslint-disable-line react-hooks/exhaustive-deps
+
+  // Batch 375 (Pete): Add-On Orders is an action on a case now, not a Home
+  // tile. The report page's "Add-on order" opens this page with ?case=<id>,
+  // and the case is opened straight away, as if searched for.
+  const location = useLocation();
+  useEffect(() => {
+    const requested = new URLSearchParams(location.search).get('case');
+    if (!requested) return;
+    setSearchInput(requested);
+    void w.openCase(requested);
+  }, [location.search]); // eslint-disable-line react-hooks/exhaustive-deps
 
   const handleOpen = async () => {
     setSubmitError(null);
@@ -130,7 +141,7 @@ const AddOnOrderPage: React.FC = () => {
       </div>
 
       <div className="ps-addon-context-bar">
-        <span><strong>{fullAccession}</strong></span>
+        <span><strong data-phi="accession">{fullAccession}</strong></span>
         <span data-phi="name">{patientName}</span>
         <span>{t('addOnOrder.context.caseStatus')}: <strong>{caseData.status}</strong></span>
         {caseData.order?.assignedTo && <span>{t('addOnOrder.context.primaryPathologist')}: <strong>{caseData.order.assignedTo}</strong></span>}

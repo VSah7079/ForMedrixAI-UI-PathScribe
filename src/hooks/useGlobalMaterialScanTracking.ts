@@ -39,7 +39,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { processMaterialLocationEvent } from '@/services/hl7/processMaterialLocationEvent';
 import { dispatchMaterialScanEvent } from '@/utils/dispatchMaterialScanEvent';
 import { dispatchSlideLabel } from '@/utils/labels/dispatchSlideLabel';

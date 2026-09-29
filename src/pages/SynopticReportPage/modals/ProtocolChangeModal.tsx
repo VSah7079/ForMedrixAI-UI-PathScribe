@@ -88,7 +88,7 @@ const ChangeRow: React.FC<{
         {/* Confidence */}
         <span
           className="ps-proto-change-confidence"
-          style={{ color: confColor(change.confidence), borderColor: confColor(change.confidence) + '44', background: confColor(change.confidence) + '18' }}
+          style={{ '--ps-hue': confColor(change.confidence) } as React.CSSProperties}
         >
           ✦ {t('protocolChangeModal.confidencePercent', { percent: change.confidence })}
         </span>

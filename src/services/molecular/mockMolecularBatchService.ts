@@ -13,6 +13,9 @@ import { resolveMolecularControlRequirementValidation } from './resolveMolecular
 import { mockMolecularAssayControlRuleService } from './mockMolecularAssayControlRuleService';
 import { generateMolecularBatchBarcode, generateMolecularPlateBarcode } from './resolveMolecularBarcodes';
 import type { IMolecularBatchService, MolecularBatch, NewMolecularBatch, MolecularWell } from './IMolecularBatchService';
+import { MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE } from './IMolecularBatchService';
+import { mockEquipmentService } from '../equipment/mockEquipmentService';
+import { checkBatchInstrument } from '../equipment/equipmentRules';
 
 const STORE_KEY = 'molecular_batches';
 const ok = <T>(data: T) => ({ ok: true as const, data });
@@ -76,6 +79,12 @@ export const mockMolecularBatchService: IMolecularBatchService = {
 
   async create(batch: NewMolecularBatch) {
     await delay();
+    // Batch 356 (PS-326): the target instrument must be an active analyser in
+    // the equipment register (Batch 358). It used to be any typed text.
+    const equipmentRes = await mockEquipmentService.getAll();
+    const instrumentCheck = checkBatchInstrument(batch.targetInstrumentId, equipmentRes.ok ? equipmentRes.data : []);
+    if (!instrumentCheck.ok) return err(MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE);
+    batch = { ...batch, targetInstrumentId: instrumentCheck.equipment.code };
     const gating = resolveMolecularReagentLotGating(batch.reagentLots, batch.wells);
     if (!gating.allowed) {
       const summary = gating.failures.map(f => `${f.componentType} (${f.lotNumber}): ${f.reason.replace(/_/g, ' ')}`).join('; ');

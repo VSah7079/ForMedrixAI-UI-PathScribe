@@ -2,7 +2,7 @@
 import { describe, it, expect, beforeEach } from 'vitest';
 import {
   buildNetworkPrintPayload, dispatchNetworkPrintJob, getDispatchedNetworkPrintJobs,
-  _resetDispatchedNetworkPrintJobsForTests, handleNetworkPrintCallback,
+  _resetDispatchedNetworkPrintJobsForTests, newNetworkPrintJobId,
 } from './dispatchNetworkPrintJob';
 import type { BuildNetworkPrintPayloadError } from './dispatchNetworkPrintJob';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
@@ -81,32 +81,21 @@ describe('dispatchNetworkPrintJob — real PathScribe-side half of PS-51 (Sectio
     expect(getDispatchedNetworkPrintJobs()[0].eventId).toBe(built.payload.eventId);
   });
 
-  it('handleNetworkPrintCallback: a real PRINT_SUCCESS notifies success, not an error', async () => {
-    const built = buildNetworkPrintPayload(validInput);
-    if (!built.ok) throw new Error('setup failed');
-    await dispatchNetworkPrintJob(built.payload);
+  // Batch 347: the answer handling (formerly handleNetworkPrintCallback here)
+  // moved to services/networkPrint/networkPrintJobs.ts, tested there.
 
-    const notifications: { message: string; isError: boolean }[] = [];
-    await handleNetworkPrintCallback(
-      { eventId: built.payload.eventId, status: 'PRINT_SUCCESS', printerResponse: 'OK', durationMs: 150, timestamp: new Date().toISOString() },
-      (message, isError) => notifications.push({ message, isError }),
-    );
-    expect(notifications).toHaveLength(1);
-    expect(notifications[0].isError).toBe(false);
+  it('job ids stay unique for labels sent in the same millisecond (Batch 347)', () => {
+    const at = new Date('2026-09-26T12:00:00Z');
+    const ids = new Set(Array.from({ length: 50 }, () => newNetworkPrintJobId('S26-1', at, () => 0)));
+    expect(ids.size).toBe(50);
   });
 
-  it('handleNetworkPrintCallback: every real Section 7.2 error state produces a real, distinct, human-readable message, not a raw enum value', async () => {
-    const errorStates: Array<'PRINTER_UNREACHABLE' | 'PAPER_OUT' | 'RIBBON_OUT' | 'HEAD_OPEN' | 'MALFORMED_ZPL' | 'INVALID_GS1'> = [
-      'PRINTER_UNREACHABLE', 'PAPER_OUT', 'RIBBON_OUT', 'HEAD_OPEN', 'MALFORMED_ZPL', 'INVALID_GS1',
-    ];
-    for (const status of errorStates) {
-      const notifications: { message: string; isError: boolean }[] = [];
-      await handleNetworkPrintCallback(
-        { eventId: 'evt-test', status, printerResponse: 'ERR', durationMs: 50, timestamp: new Date().toISOString() },
-        (message, isError) => notifications.push({ message, isError }),
-      );
-      expect(notifications[0].isError).toBe(true);
-      expect(notifications[0].message).not.toContain(status); // real, translated message, not the raw enum
-    }
+  it('a slide payload says so and carries level and stain (Batch 347)', () => {
+    const built = buildNetworkPrintPayload({ ...validInput, callbackUrl: undefined, slide: { level: 'L2', stainName: 'H&E' } });
+    if (built.ok === false) throw new Error('setup failed');
+    expect(built.payload.labelData).toMatchObject({ labelType: 'SLIDE', slide: { level: 'L2', stainName: 'H&E' } });
+    expect(built.payload.templateVersion).toBe('ZPL-SLIDE-V1');
+    expect(built.payload.attempt).toBe(1);
+    expect(built.payload.callbackUrl).toBe('/api/print/callbacks');
   });
 });

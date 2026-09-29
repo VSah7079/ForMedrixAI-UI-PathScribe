@@ -506,6 +506,11 @@ usually backed by a real `services/` interface/mock pair.
 - **`DemoResetTab.tsx`** — Real two-level mock data reset (full vs.
   "my hospital's data only"), both paths gated behind confirmation.
 
+  **Batch 320 (PS-58):** `pathscribe_model_adoptions` (per-organisation
+  AI model adoptions) added to `SETTINGS_KEYS` beside the legacy
+  `pathscribe_models`, which the model service now migrates and removes on
+  first load.
+
   **FIXED, both passes:** the participation-types real storage key plus
   its orphaned predecessor were added to `SETTINGS_KEYS`. Separately, a
   **critical** fix: `CASE_KEYS` had referenced `'ps_cases'`, a key
@@ -571,6 +576,26 @@ usually backed by a real `services/` interface/mock pair.
   interface didn't have: `canBeAssignedTemplate`, `canViewWholeCase`.
   `TypeModal.tsx` (below) and `Staff/RoleDictionary.tsx` updated to match.
 
+  **Signing-authority audit trail (Sep 2026, per Pete's human-in-the-loop
+  direction):** `handleSave` now receives `(draft, justifications)` from
+  `TypeModal.tsx` and runs `stampFacilityOverrideChanges()`
+  (`services/participationTypes/authorityProvenance.ts`) before saving —
+  every added/changed/reverted/re-justified facility override is stamped
+  with the acting admin (`getSessionUser()`) and time. Once the save
+  succeeds, one audit entry per change goes to the real `auditService`
+  (who, flags from → to, facility, justification or "none given",
+  `facilityId` set for filtering). A failed save writes nothing. Tested
+  end-to-end in `ParticipationTypesSection.test.tsx` (new).
+
+  **Standing-rules pass (Batch 315):** the save/stamp/audit logic moved
+  out to `services/participationTypes/saveParticipationType.ts` — this
+  screen now only supplies the session actor and facility names. The two
+  remaining raw inline styles (the attribute chips and the abbreviation
+  chip, which built hex-alpha strings in JSX) now pass only the base hue
+  as `--ps-hue`; tints, borders, and the off state are real CSS rules
+  using `color-mix()`, the pattern already used 34 times in
+  `pathscribe.css`.
+
 - **`FontsSection.tsx`** — Approved-fonts toggle list feeding
   `PathScribeEditor`'s toolbar via `SystemConfigContext`. Enforces at
   least one font stays enabled. No issues. **This is the real dictionary
@@ -610,6 +635,37 @@ usually backed by a real `services/` interface/mock pair.
   wrong — missing `requiresNote`) `Omit` locally; `isBuiltIn` prop now
   driven from the real interface's `isSystem` field (was `builtIn`,
   which doesn't exist on the real type).
+
+  **Facility-Level Sign-Out Authority (Sep 2026)** — the per-lab section
+  was rebuilt from a bare checkbox list into the transparent, break-glass
+  control Pete specified. Per performing lab: the lab's jurisdiction; each
+  flag's **active rule** plus its **source of truth** (jurisdiction default
+  with its regulatory basis, platform default, or "Overridden at facility
+  level by [admin] on [date]" — color-coded by tier); an "Override default
+  for this facility" button that seeds from the facility's currently
+  **inherited** values (fixing the old toggle, which seeded from raw
+  platform defaults and so silently dropped a UK lab's RCPath profile the
+  moment it was switched on); a justification field recorded in the audit
+  log; and "Revert to inherited default" with an undo before save. A
+  country-scoped type (e.g. UK-only Advanced Practitioner BMS) lists only
+  its jurisdictions' labs, never hiding one that already has an override.
+  See `services/participationTypes/README.md` for the model. The four
+  `.ps-participationtypes__lab-*` CSS rules were replaced by `.ps-ptauth-*`
+  (their only user was the old toggle). New i18n block
+  `participationTypesSection.modal.authority.*` in all 5 locales; the
+  section's `perLabLabel`/`perLabHint` rewritten to describe inheritance.
+  First test file for this component: `TypeModal.test.tsx` (new, 8).
+
+  **Standing-rules pass (Batch 315):** now render-and-dispatch only —
+  row building, override seeding, and unsaved/pending-removal detection
+  moved to `services/participationTypes/facilityAuthorityEditor.ts`.
+  Jurisdiction names render via `t('jurisdictionNames.<code>')` instead
+  of the English-only `JURISDICTION_LABELS`, and "Flag: Yes" goes
+  through a `ruleWithValue` template (French needs `" : "`). The two
+  colour-swatch inline styles now set only `--swatch-color` — the CSS
+  rule for `.ps-type-color-swatch` already consumed that variable; this
+  component had simply never been switched over. Enforced going forward
+  by `services/participationTypes/standingRules.guard.test.ts`.
 
 - **`GrossingRouteOverridesSection.tsx`** — Own header is an excellent,
   specific bug-history note: documents that it verified the real matching
@@ -692,7 +748,20 @@ invented per screen.
 
 - **`CassetteColorsSection.tsx`** — real admin UI for the cassette
   color dictionary (`services/cassetteColors/`): color keys, display
-  names, hex codes, and per-color fallback policy.
+  names, hex codes, and per-color fallback policy. Duplicate +
+  uniqueness validation (PS-73, lab-scoped `key`/`displayName`) was
+  already real and wired here from an earlier pass. **Real fix
+  (PS-73 whole-file inline-CSS sweep, Sep 2026):** the one real
+  inline style left in this file — the color swatch's
+  `style={{ background: c.hexCode }}` — now goes through the same
+  CSS-custom-property indirection its sibling dictionaries already
+  use for the identical per-row-value need
+  (`DelegationTypeSection.tsx`'s own `--swatch-color`/`--del-badge-*`
+  vars): `style={{ '--swatch-color': c.hexCode }}`, consumed by
+  `.ps-cassette-color-swatch { background: var(--swatch-color); }` in
+  `pathscribe.css`. A per-row hex value is genuinely per-instance
+  data, not something a static class can express, so this stays
+  inline by design — not a leftover gap.
 - **`CassetteRoutingRulesSection.tsx`** — real admin UI for the
   cassette routing rule dictionary (`services/cassetteRouting/`) — the
   "Cassette Colors Basic Routing Algorithm Flow" spec's own missing
@@ -714,6 +783,12 @@ invented per screen.
   all — a genuine gap, not a deliberate one. Now has a real Facility
   column/selector (Global option for a shared network-pool printer)
   and the same `selectedFacilityId` prop as `ScanStationsSection.tsx`.
+  **Batch 346 (PS-52):** an optional **Agent Port** field, shown only
+  when the Bridge Type is PathScribe Agent, with a hint and a range
+  check (1024–65535). The save checks now come from
+  `services/printerProfiles/validatePrinterProfileDraft.ts` instead
+  of being repeated in the component. Still in the component: the
+  facility filter for the list (`filteredProfiles`), untouched here.
 - **`PrintSettingsSection.tsx`** — Tier 1 (system/facility-wide
   default) of the hierarchical print-settings architecture, per direct
   follow-up: "structure your print settings hierarchically so labs can
@@ -971,6 +1046,206 @@ A real, standard 2014 Bethesda System category dictionary — three configurable
 This is deliberately Phase 1 only. The requirements doc this came from (General Cytology & GYN Features) describes a genuinely large, six-module effort — a cytologist-specific worklist, CT workload/QC tracking, HPV integration, multi-jurisdiction compliance, patient follow-up, and a full QA reporting suite are all real, separate, sequenced work, not built here. `services/cytology/README.md`'s own "Explicitly NOT in this phase" section is the authoritative list.
 
 No dedicated modal component — this section's own field shape (section/group/abbreviation/requiresPathologistReview/suggestedAbnormalSeverity) doesn't fit the existing `TypeModal.tsx` (hard-coded to `ParticipationTypeRecord`), so it uses its own small, inline modal rather than force-fitting an incompatible generic one.
+
+## `PrintRoutingRuleSection.tsx` — new, closes PS-278/279's own disclosed "no admin UI" gap
+
+Real admin CRUD for `services/printRouting/`'s `PrintRoutingRule` records — until this existed, a rule could only be created programmatically or via seed data, exactly the same already-accepted gap this folder's own `DeliveryRulesSection.tsx` names for `DeliveryRule`. Registered under `'print_routing_rules'` in the Administration & Compliance group (alphabetically after Print Settings), so it sits with Delivery Rules rather than under Workstation & Hardware's print-hardware group above — this is routing/authoring policy, not a physical-device screen.
+
+Follows `DeliveryRulesSection.tsx`'s own established three-part shape exactly, not a new pattern: a rule table, an Add/Edit modal, and a live Test panel that resolves a real destination by calling `resolvePrintDestination.ts` directly (never a second, parallel simulation of the resolver's own two-pass logic). The modal's scope-tier picker drives a conditional `scopeId` input — free text for `workstation`, a real `<select>` sourced from `mockLocationService`'s `pointsOfCare` for `location`, a real `<select>` sourced from `mockFacilityService`'s `facilities` for `clientAccount`/`facility` — plus the optional `specimenCaseType`/`eventTriggerType` selects and a full `PrintDestination` sub-form (protocol/ipAddress/port/queueName for LPR_LPD only/resourcePath for IPP only/displayName). Confirmed directly by grepping `pathscribe.css` before writing anything: every needed class (`.ps-rr-*`/`.ps-conf-*`/`.ps-modal-dark`/`.ps-overlay`) already exists generically from other dictionary screens in this folder — zero new CSS. `DemoResetTab.tsx`'s own `SETTINGS_KEYS` coverage was checked directly too: `print_routing_rules_v1` was already a pre-existing key there, so no change was needed on that front. Localized across all 5 locales under a new `printRoutingRulesSection` namespace (parity-checked programmatically, zero missing/extra keys in any locale).
+
+## Duplicate, per the PS-73 duplication framework (Batch 317)
+
+Which screens offer Duplicate is now a recorded decision: `services/duplication/duplicatePolicy.ts`, enforced by its guard test. Every screen below opens its ordinary Add form pre-filled from a copy built in `services/duplication/duplicateEntities.ts`. The copy's name is marked in the user's language (`t('common.copyOfName')`), and the save decides add-vs-update from the modal's `mode`.
+
+**Removed** (not appropriate to copy):
+
+- **PhysiciansSection:** a real person.
+- **ContainerTypesSection, DelegationTypeSection, RvuCodeMapSection:** flat lookups.
+
+`RvuCodeMapSection` also stopped hard-coding `en-US` for its dates (it uses `formatDateLong`). `DelegationTypeSection`'s id badge no longer builds colours in JSX (`color + '22'`); it passes `--ps-hue` and CSS derives the tints.
+
+**Added:**
+
+| Screen | What the copy clears or resets | Also fixed |
+|---|---|---|
+| SpecimenCategoriesSection | accession prefix/series, auto-create markers; Active | — |
+| SpecimenDictionarySection | specimen code, synonyms (matching keys); version | **Data loss on every save.** The component rebuilt entries from a partial field list, so `protocolId` and `specimenCategory` were never saved, and six other fields were wiped on edit. Now `services/specimenDictionary/buildSpecimenEntry.ts`. |
+| RoutingRulesSection (+ RuleModal) | always custom; next free priority | RuleModal's priority check excluded the passed-in rule in add mode too; now edit-only (`findRoutingRulePriorityConflict`). An add from a copy keeps lab scope and mapped specimen types. |
+| CassetteRoutingRulesSection | starts **inactive**; conditions deep-copied | — |
+| TATConfigSection | clears a system entry's note | **Add vs edit came from `!!entry`**, so a copy would have overwritten its source. Also **`roleId` was forced to null on every save**, widening per-role targets to all roles on edit. Logic moved to `services/tatConfig/`; types to `types/quality/TatConfigEntry.ts` (re-exported here). |
+| AbnormalTriggerRulesSection | starts **Inactive**; field label kept (it's a matching key) | The form only pre-filled in edit mode, so a copy opened blank. An add from a copy keeps its synthetic coding. |
+| PrinterProfilesSection | printer id and IP (the physical device) | — |
+| WorkstationGroupsSection, ActionGroupsSection | — | — |
+| ParticipationTypesSection (+ TypeModal) | abbreviation, facility authority overrides (audited decisions about one role), each country's regional title; never system | TypeModal's draft now carries `jurisdictionProfiles`, `scopedJurisdictions` and `icon`, so a copy keeps its country scope. Save passes `existing` only in edit mode. |
+
+**Moved to the service and localized** (they used to store English `"(Copy)"` / `"Copy of"` as data):
+
+- StainDictionarySection: a molecular target's gene **symbol** is now cleared rather than suffixed, and the header names the source.
+- CasePoolAssignmentSection.
+- ProtocolDictionarySection: the source's version **history** no longer leaks into the copy.
+- QAConfigurationCenterSection.
+- CytologyQcRulesSection.
+
+## `AssistLisPollingSection.tsx` — Assist LIS Ingestion (Batches 322–323, PS-87)
+
+Integrations group, shown as **Assist LIS Ingestion** since Batch 323. It covers the whole ingestion path for Assist mode:
+- **Settings:** polling on/off, the interval, and the LIS status mapping (which LIS values mean Gross Complete or Microscopic/Diagnosis Complete).
+- **Test an inbound message:** paste an HL7 v2 message or JSON webhook body (or load the example). It goes through the real adapter and staging queue and is handled straight away. Adapter errors are shown translated.
+- **Staging queue:** counts, the 25 most recent events with source, state, result and attempts, and **Retry failed**.
+- **Activity:** **Poll now**, the run log (polls, pushed messages, retries), and the latest run's results by case.
+
+Render and dispatch only; the rules are in `services/lisIngestion/` and `services/assistPolling/`. Unsaved settings report to the Config dirty guard. `DemoResetTab.tsx` clears `pathscribe_assist_lis_polling` and `pathscribe_lis_staging_queue`.
+
+## Template Review (Batch 328, PS-63)
+
+**`TemplateGovernanceSection.tsx`** (Administration & Compliance → **Template Review**) holds the site's two template review settings:
+- **Allow Template Self-Approval**, default off;
+- **Required Reviewers**, 1–3, default 1.
+
+Saving goes through `services/templates/templateGovernanceSettings.ts → saveTemplateGovernanceWithAudit`, which writes an audit entry for each real change. The screen reuses the shared `ps-rbuf-*` setting-row styles. `DemoResetTab.tsx` clears `pathscribe_template_governance`.
+
+## Batch 333 (PS-89)
+
+`DemoResetTab.tsx` keeps the new billing import-job ledger (`billing_code_import_jobs_v1`) out of Demo Reset, in `DELIBERATELY_NOT_RESET`. It has to stay in step with the billing rules it created, which are kept for the same reason.
+
+## Country Signing Rules (Batch 335, PS-341)
+
+**`CountrySigningRulesSection.tsx`** (new; Clinical Lookups → **Country Signing Rules**) is the platform-level editor for each participation type's national rules.
+- **Layout:** pick a country, then see one card per participation type.
+- **Each card has:**
+  - the local title;
+  - Can finalise / Requires countersign / Can view whole case, each set to the platform default (shown), Yes or No;
+  - the regulatory basis;
+  - who last changed it, when, and why.
+- **Country-scoped roles:** roles such as the UK/EU Biomedical Scientist show whether they are offered in this country, with a button to offer or stop offering them there.
+- **Who can edit:** only a platform administrator (`superadmin`). Everyone else sees the rules read-only, with a pointer to Participation Types → Edit for a single lab's exception.
+- **Saving:**
+  - a save needs a reason and writes one audit entry per changed type;
+  - the country picker is locked while there are unsaved changes;
+  - the sign-out check sees saved rules immediately, without a reload.
+- **Where the logic lives:** `services/participationTypes/countryProfileEditor.ts` and `saveCountryProfiles.ts`. Styles: `.ps-csr-*` in `pathscribe.css`.
+- **Guard:** covered by `services/participationTypes/standingRules.guard.test.ts`.
+
+## Code Import (Batch 334, PS-89)
+
+- **`CodeImportSection.tsx`** (new; Financial & Revenue Lookups → **Code Import (Bulk)**) imports billing codes from a CSV as one job for a second person to approve.
+  - **Steps:** file and scope (coding standard, country, site, batch note) → match columns (suggested from the headers; billing code, CPT and effective date required, or one date for the whole file) → check file (refused rows listed with their reason; the admin can skip them) → import.
+  - **Import history:** every job, newest first, with Roll back (reason required) on approved jobs.
+  - **Rules** are in `services/billing/codeEngine/`; the service writes the audit entries. Styles: `.ps-code-import-*` in `pathscribe.css`.
+- **`PendingApprovalSection.tsx`:**
+  - **Import jobs:** a pending job appears once in the dictionary-updates table and is approved or rejected as a whole; the uploader sees it locked. Its versions no longer appear one by one in the billing-rule table.
+  - **Deployment-neutral:** it now uses `@/services` instead of four mock-service imports, and is off the deployment baseline.
+  - **Dates** are formatted in the user's language (`formatDate`), and the scope column's "Enterprise-Wide" is translated.
+  - **Still in the component:** the audit text for single billing-rule and dictionary decisions (older code; import-job audit is in the service).
+
+**Batch 345:** `DemoResetTab.tsx`'s Full Reset also clears the signature records (`pathscribe_signature_records`, in `CASE_KEYS`), since they belong to the cases being reset.
+
+## Batch 353: TAT settings through a service
+
+`TATConfigSection.tsx` reads and saves targets through `tatTargetService` (`services/tatConfig/`). It no longer keeps them in browser storage, and it is off both deployment baselines.
+- **Add or update** comes from the editor's mode, so a duplicate is always an add.
+- **System defaults:** the service refuses to delete one.
+- **Moved out:** the built-in defaults (`SYSTEM_DEFAULTS`) and the storage key are no longer exported from here. They are `services/tatConfig/systemDefaultTatEntries.ts` and the demo service.
+- **Other change:** facilities load through `facilityService`.
+
+## Batch 356: Instruments (PS-326)
+
+- **`InstrumentsSection.tsx`** (new), under Workstation & Hardware; it follows the shared facility selector.
+  - It lists the lab's analytical instruments: name, code, model, performing lab, scan station and status.
+  - Add, edit, deactivate and reactivate. The code can't be edited after creation.
+  - The station list shows only the chosen lab's active stations.
+  - Validation messages are translated (`instrumentsSection.errors.*`).
+  - All rules are in `services/instruments/instrumentRules.ts`. The status toggle is a real button.
+- **`index.tsx`:** registers the section.
+- **`DemoResetTab.tsx`:** clears the `instruments` key.
+
+## Batch 358: the Equipment register
+
+- **`EquipmentSection.tsx`** replaces `InstrumentsSection.tsx`, still under Workstation & Hardware.
+  - Every device has a code, name, kind, make, model, serial number, performing lab, scan station and status.
+  - Filters: text, kind, status, and the shared facility selector.
+  - The rules are in `services/equipment/equipmentRules.ts`.
+- **`index.tsx`:** the section id is now `equipment`.
+- **`DemoResetTab.tsx`:** clears `equipment`, plus the old `instruments` key it migrates from.
+- **`duplicatePolicy.ts`:** records Equipment as no-Duplicate.
+
+## Batch 359: Grossing Hardware, and device links
+
+- **`GrossingHardwareSection.tsx`** (new): grossing cameras and scales.
+  - Connection, Agent address, station, and the register device.
+  - The rules are in `services/grossingHardware/grossingHardwareRules.ts`.
+- **`PrinterProfilesSection.tsx`:**
+  - A **Register Device** field and column (label printers from the register).
+  - A save the service refuses now shows a message; before, every save closed the dialog.
+  - The list filter and support label moved to `services/printerProfiles/printerProfileList.ts`.
+- **`EquipmentSection.tsx`:** a **Settings** column shows which printer and grossing profiles point at each device.
+- **`index.tsx`:** registers the new section.
+
+## Batch 360: equipment service log
+
+- **`EquipmentSection.tsx`:**
+  - Maintenance and calibration schedule fields.
+  - A **Service** column with a status badge and the next (or missed) due date on the facility's calendar.
+  - A **Log** action.
+- **`EquipmentLogModal.tsx`** (new):
+  - Last done and due dates for maintenance and calibration, and an open-malfunction warning.
+  - A form to record an entry, which can't be edited or deleted afterwards.
+  - The history, newest first.
+  - The rules are in `services/equipment/equipmentLogRules.ts`.
+- **`DemoResetTab.tsx`:** clears `equipment_log`.
+
+## Batch 361: devices shown in red
+
+`EquipmentSection.tsx`: a row whose device has an open malfunction or is past due gets `ps-eqlog-row--alert` (red name, red left edge, faint red background). The decision is `isServiceAlert` in `services/equipment/equipmentLogRules.ts`.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+- `CasePoolAssignmentSection.tsx`: test-run results tag each case number. It now reads cases through `@/services` (`caseService`), so it came off the mock-import baseline.
+- `OutboundMessagePreviewSection.tsx`: the case and patient id fields are tagged.
+- `PatientMatchReviewSection.tsx`: the MRN/date-of-birth lines are tagged.
+
+
+## Batch 364 (PS-349, PS-350): support references
+
+`DemoResetTab.tsx`: clears `support_references`.
+
+## Batch 367 (PS-74): no inline CSS
+
+`CytologyCategoriesSection.tsx`, `DeliveryRulesSection.tsx`, `DocumentStyleSection.tsx`, `FontsSection.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`CytologyCategoriesSection.tsx` takes `cytologyCategoryService` from `@/services`. `DemoResetTab.tsx` clears the new `report_change_log` store.
+
+## Batch 370 (PS-356)
+
+`DemoResetTab.tsx` keeps only the screen. The reset logic and key lists moved to `services/demoReset/`, which takes it off the browser-storage baseline. The full reset (everyone's data) needs `config:demo-data:reset`: its button is a `CapabilityButton`, and the service checks again. Resetting your own hospital's data needs nothing. `DemoResetTab.auditTest.ts` and `DemoResetTab.coverage.test.ts` now read the lists from the service.
+
+## Batch 371
+
+- **`GoverningBodiesSection`:** editing now needs `platform:governing-bodies:manage` (Superadmin only; the service checks). It was `isSuperAdmin={true}` for everyone. It takes `governingBodyService` from `@/services` and is off the deployment baseline.
+- **`TerminologyServicesSection`:** it shows its endpoint details to a superadmin session only. That was also hard-coded `true`.
+
+## Batch 372
+
+**`SupportAccessSection`** (Administration & Compliance → Support Access, section id `support_access`). For the hospital: the support access policy and access window, requests waiting for approval (Approve / Reject), active support access with time left (Revoke), and the support activity audit with its tamper check and CSV/JSON export. For ForMedrixAI support (superadmin sessions): request access to an organisation with a ticket and a reason, and see or end your own requests. Every decision is made in `services/supportAccess/`; the buttons are `CapabilityButton`s and the service checks again. Case ids in the audit table and the free-text reason are tagged `data-phi`.
+
+**Correction (Demo Reset):** earlier entries here, including Batch 333's note on `billing_code_import_jobs_v1`, say the keys in `DELIBERATELY_NOT_RESET` survive a Full Reset. They didn't: the mock services store under `pathscribe_mock_`, which the reset swept regardless. They do now; see `services/demoReset/README.md`.
+
+## Batch 376
+
+**`FieldRequirementsSection`** (Administration & Compliance → Field Requirements, section id `field_requirements`, PS-359). You pick a page (Accession for now) and see its fields by group. Locked fields show "Always required" and why; the others have a Required switch, marked when changed from the default. Switching needs `config:field-requirements:manage`. Everything is decided in `services/fieldRequirements/`.
+
+- **Batch 378, `FieldRequirementsSection`:** Grossing is a second page (groups Specimens, Blocks, Fixation; "Checked on every block" hint).
+
+- **Batch 379, `FieldRequirementsSection`:** a field can carry a hint in place of "Checked on every specimen". Grossing's new "Grossing protocol attached" rule (required by default, switchable) says what happens when it's off, and "At least one block" is now switchable, with a hint saying which specimens it covers.
+
+- **Batch 380, `FieldRequirementsSection`:** a third page, Case report, with the groups Add or edit specimen, Amendments and addenda, and Critical findings.
+
+- **Batch 381, `FieldRequirementsSection`:** the Case report page's group 2: Holds, Comments, Delegation, Biopsy arrays, and Block cancellation and restains.
+
+- **Batch 382, `FieldRequirementsSection`:** two more Case report groups: Frozen-final reconciliation, and Billing changes after sign-out (all locked).
 
 ---
 *See [components/Config/README.md](../README.md) for how this folder fits Config/.*

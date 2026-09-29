@@ -25,6 +25,7 @@ import {
 import { subspecialtyService } from '../../../services';
 import { Subspecialty } from '../../../services/subspecialties/ISubspecialtyService';
 import RuleModal from './RuleModal';
+import { duplicateRoutingRule } from '@/services/duplication/duplicateEntities';
 import ConfirmModal from '../../Common/ConfirmModal';
 
 // ─── Main Section ─────────────────────────────────────────────────────────────
@@ -52,15 +53,23 @@ const RoutingRulesSection: React.FC = () => {
 
   const persist = (next: RoutingRule[]) => { setRules(next); saveRoutingRules(next); };
 
+  // Add vs update keys off the modal's mode. For a duplicate, the copy's
+  // fields this form doesn't show (lab scope, mapped specimen types) carry
+  // over from the pre-filled rule instead of being dropped.
   const handleSave = (draft: Omit<RoutingRule, 'id' | 'builtIn'>) => {
     if (modal?.mode === 'add') {
-      const newRule: RoutingRule = { ...draft, id: 'rule-custom-' + Date.now(), builtIn: false };
+      const newRule: RoutingRule = { ...modal.rule, ...draft, id: 'rule-custom-' + Date.now(), builtIn: false };
       persist([...rules, newRule].sort((a, b) => a.priority - b.priority));
     } else if (modal?.rule) {
       persist(rules.map(r => r.id === modal.rule!.id ? { ...r, ...draft } : r).sort((a, b) => a.priority - b.priority));
     }
     setModal(null);
   };
+
+  // Duplicate (PS-73): always a custom rule, next free priority, note marked
+  // in the user's language (services/duplication/duplicateEntities.ts).
+  const handleDuplicate = (source: RoutingRule) =>
+    setModal({ mode: 'add', rule: duplicateRoutingRule(source, rules, name => t('common.copyOfName', { name })) });
 
   const handleDelete = (id: string) => {
     // Safety guard — built-in rules cannot be deleted even if called programmatically
@@ -226,6 +235,10 @@ const RoutingRulesSection: React.FC = () => {
                     <button onClick={() => setModal({ mode: 'edit', rule })}
                       className="ps-routingrules__edit-btn">
                       {t('common.edit')}
+                    </button>
+                    <button onClick={() => handleDuplicate(rule)}
+                      className="ps-routingrules__edit-btn">
+                      {t('common.duplicate')}
                     </button>
                     {!rule.builtIn && (
                       <button onClick={() => handleDelete(rule.id)}

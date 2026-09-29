@@ -156,7 +156,7 @@ const MolecularBatchManagementPage: React.FC = () => {
                                         <tr key={sp.specimenId} className="ps-conf-tr">
                                           <td className="ps-conf-td" data-phi="accession">{sp.accessionNumber ?? '—'}</td>
                                           <td className="ps-conf-td">{sp.specimenLabel}</td>
-                                          <td className="ps-conf-td">{sp.patientMrn ?? '—'}</td>
+                                          <td className="ps-conf-td" data-phi="mrn">{sp.patientMrn ?? '—'}</td>
                                         </tr>
                                       ))}
                                     </tbody>

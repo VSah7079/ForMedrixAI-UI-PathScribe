@@ -79,7 +79,7 @@ export const CytologyHistologyCorrelationPrintView: React.FC<{ report: CytologyH
           <tbody>
             {report.rows.map((r, i) => (
               <tr key={i}>
-                <td>{r.patientMrn ?? '—'}</td>
+                <td data-phi="mrn">{r.patientMrn ?? '—'}</td>
                 <td>{r.cytoAccessionId ?? '—'}</td>
                 <td>{r.cytoDate ? new Date(r.cytoDate).toLocaleDateString() : '—'}</td>
                 <td>{r.cytoDiagnosis}</td>

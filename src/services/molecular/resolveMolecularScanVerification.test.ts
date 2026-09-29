@@ -36,3 +36,13 @@ describe('resolveMolecularScanVerification — real, per the given specification
     expect(result.fullyVerified).toBe(false);
   });
 });
+
+describe('resolveMolecularScanVerification — the instrument\'s scan station (Batch 356, PS-326)', () => {
+  const good = ['PLT-HPV-20260906-012', 'LOC-INST-PANTHER_02-SLOT_A1'] as const;
+  it('a failed station check blocks dispatch; a pass or no check does not', () => {
+    expect(resolveMolecularScanVerification(BATCH, ...good, false)).toMatchObject({ stationVerified: false, fullyVerified: false });
+    expect(resolveMolecularScanVerification(BATCH, ...good, true).fullyVerified).toBe(true);
+    expect(resolveMolecularScanVerification(BATCH, ...good).stationVerified).toBeNull();
+    expect(resolveMolecularScanVerification(BATCH, ...good).fullyVerified).toBe(true);
+  });
+});

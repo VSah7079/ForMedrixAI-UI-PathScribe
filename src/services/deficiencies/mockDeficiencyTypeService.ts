@@ -205,10 +205,26 @@ const SEED_DEFICIENCY_TYPES: DeficiencyType[] = [
   {
     id: 'def-peer-review-discordance', name: 'Post-Sign-Out Peer Review Discordance', status: 'Active', level: 'case',
     description: 'A second pathologist\'s independent post-sign-out peer review of a surgical case reached a materially different diagnosis than the original sign-out. Real, open CAPA record — not merely a logged review history entry.',
+  },  // Batch 379 (PS-359, Pete): an organisation that switches off "Grossing
+  // protocol attached" in Field Requirements can complete grossing on a
+  // specimen with no protocol, after a confirmation. Each such specimen gets
+  // one of these, left open, so it reaches the QA deficiency queue for
+  // secondary review (services/grossing/grossingCompletion.ts).
+  {
+    id: 'def-grossed-without-protocol', name: 'Grossed Without Protocol', status: 'Active', level: 'specimen',
+    description: 'Grossing was completed on a specimen with no grossing protocol attached, which the organisation allows but routes for secondary review. Raised automatically when grossing is completed; left open for a reviewer to check the specimen\'s blocks and handling.',
   },
 ];
 
-const load    = () => storageGet<DeficiencyType[]>('pathscribe_deficiency_types', SEED_DEFICIENCY_TYPES);
+// Batch 379: a stored list gains any seed type it doesn't have yet (by id),
+// so a new built-in type arrives without the version bump above, which
+// would also wipe the site's own custom types. Types can be deactivated but
+// not deleted, so this never brings back one an administrator removed.
+const withNewSeedTypes = (stored: DeficiencyType[]): DeficiencyType[] => {
+  const missing = SEED_DEFICIENCY_TYPES.filter(seed => !stored.some(t => t.id === seed.id));
+  return missing.length ? [...stored, ...missing] : stored;
+};
+const load    = () => withNewSeedTypes(storageGet<DeficiencyType[]>('pathscribe_deficiency_types', SEED_DEFICIENCY_TYPES));
 const persist = (data: DeficiencyType[]) => storageSet('pathscribe_deficiency_types', data);
 let TYPES: DeficiencyType[] = load();
 

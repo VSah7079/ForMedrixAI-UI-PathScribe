@@ -41,6 +41,7 @@ import { dispatchPreliminaryCaseInstances } from './dispatchPreliminaryCaseInsta
 import { dispatchPrintJob } from '../printing/dispatchPrintJob';
 import { resolveRealDeliveryDecision } from '../delivery/resolveRealDeliveryDecision';
 import { mockReportReleasedEventLogService } from './mockReportReleasedEventLogService';
+import { getEffectiveScanStationId } from '@/utils/effectiveScanStation';
 
 /** Real, per the source spec's own "Core Event" field list (Case/
  *  Accession ID, Report Type, Distribution Criteria), adapted to what
@@ -257,7 +258,30 @@ export async function publishReportReleasedEvent(event: ReportReleasedEvent): Pr
         })()
       : Promise.resolve({}),
     runPrint
-      ? dispatchPrintJob(event.caseId, event.performingFacilityId, event.reportType, event.priority ?? 'Routine', event.generatePdf)
+      ? dispatchPrintJob(
+          event.caseId, event.performingFacilityId, event.reportType, event.priority ?? 'Routine', event.generatePdf,
+          // Real, per PS-278 — forwards the same real 'SURGPATH' |
+          // 'CYTOLOGY' signal this event already carries, so
+          // dispatchPrintJob's own DIRECT_NETWORK_PRINT mode (Mode 3)
+          // can resolve the real Specimen/Case Type criterion (see
+          // resolveRealPrintRoutingContext.ts's own header).
+          // Updated (PS-278/279 gap-closing pass, Sep 2026) — real
+          // identity threading, closing this layer's own previously-
+          // disclosed gap: every real interactive call site already
+          // resolves and passes releasedBy (the real signing user), so
+          // forwarding releasedBy.id as userId here is a genuine
+          // signal, never fabricated — it's simply undefined on the
+          // one real, truly non-human path (the release-buffer's own
+          // automatic expiry), same honest behavior as before for that
+          // path specifically. workstationId reuses the same real,
+          // established, non-React getEffectiveScanStationId() this
+          // app's own audit/case-routing services already call from
+          // service-layer code — the sign-out that triggers this IS
+          // the real action of a real pathologist at their real,
+          // current workstation, so this is a real signal too, not a
+          // guess.
+          { source: event.source, userId: event.releasedBy?.id, workstationId: getEffectiveScanStationId() ?? undefined },
+        )
           .then(r => r.outcome)
           .catch(() => 'failed' as const)
       : Promise.resolve(undefined),

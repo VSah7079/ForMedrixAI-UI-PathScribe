@@ -52,7 +52,7 @@ const ScanCenterPanel: React.FC<ScanCenterPanelProps> = ({
 
   return (
     <div>
-      <div className="ps-slidedist-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-slidedist-panel ps-mb-14">
         <p className="ps-slidedist-panel-title">{t('slideDistribution.slots.title')}</p>
         {queue.length === 0 ? (
           <div className="ps-slidedist-empty">{t('slideDistribution.slots.empty')}</div>
@@ -72,7 +72,7 @@ const ScanCenterPanel: React.FC<ScanCenterPanelProps> = ({
 
         {scanExceptions.length > 0 && (
           <>
-            <p className="ps-slidedist-panel-title" style={{ marginTop: 4 }}>{t('slideDistribution.exceptions.scanLogTitle')}</p>
+            <p className="ps-slidedist-panel-title ps-mt-4">{t('slideDistribution.exceptions.scanLogTitle')}</p>
             <ul className="ps-slidedist-event-list">
               {scanExceptions.slice(-5).reverse().map(exc => (
                 <li key={exc.id} className="ps-slidedist-event-item">
@@ -107,7 +107,7 @@ const ScanCenterPanel: React.FC<ScanCenterPanelProps> = ({
             </div>
           ) : (
             <>
-              <p className="ps-slidedist-panel-title" style={{ marginTop: 10 }}>{t('slideDistribution.exceptions.title')}</p>
+              <p className="ps-slidedist-panel-title ps-mt-10">{t('slideDistribution.exceptions.title')}</p>
               <div className="ps-slidedist-exception-grid">
                 {SLIDE_EXCEPTION_REASONS.map(reason => (
                   <button key={reason} type="button" className="ps-slidedist-exception-btn" onClick={() => onFlagException(reason)}>
@@ -118,14 +118,14 @@ const ScanCenterPanel: React.FC<ScanCenterPanelProps> = ({
             </>
           )}
 
-          <button type="button" className="ps-btn-secondary" style={{ marginTop: 10 }} onClick={onRequestReprint}>
+          <button type="button" className="ps-btn-secondary ps-mt-10" onClick={onRequestReprint}>
             🖨️ {t('slideDistribution.activeSlide.reprintLabel')}
           </button>
-          {reprintFeedback && <div className="ps-slidedist-scan-error" style={{ marginTop: 6 }}>{reprintFeedback}</div>}
+          {reprintFeedback && <div className="ps-slidedist-scan-error ps-mt-6">{reprintFeedback}</div>}
 
           {(activeItem.stain.distributionEvents?.length ?? 0) > 0 && (
             <>
-              <p className="ps-slidedist-panel-title" style={{ marginTop: 10 }}>{t('slideDistribution.activeSlide.history')}</p>
+              <p className="ps-slidedist-panel-title ps-mt-10">{t('slideDistribution.activeSlide.history')}</p>
               <ul className="ps-slidedist-event-list">
                 {activeItem.stain.distributionEvents!.slice().reverse().map(ev => (
                   <li key={ev.id} className="ps-slidedist-event-item">{ev.detail} — {new Date(ev.timestamp).toLocaleTimeString()}</li>

@@ -1,6 +1,12 @@
-import React, { useState } from 'react';
+// Batch 381 (PS-359): posting needs text (Field Requirements, locked;
+// services/fieldRequirements/reportPageChecks.commentMissing), and can also be
+// said ("post comment", COMMENT_POST).
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
+import { actionRegistryService, commentMissing } from '../../../services';
+import { useFieldRequirements } from '../../../hooks/useFieldRequirements';
+import { formatDateTime } from '../../../utils/formatDate';
 import PathScribeEditor from '../../../components/Editor/PathScribeEditor';
 import { CommentModalShell } from './CommentModalShell';
 import { OriginBadge } from './OriginBadge';
@@ -17,20 +23,16 @@ interface ReportCommentModalProps {
   onClose: () => void;
 }
 
-const formatTimestamp = (iso: string) => {
-  try {
-    return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' });
-  } catch { return iso; }
-};
-
 const ReportCommentModal: React.FC<ReportCommentModalProps> = ({
   specimenName, specimenId, comments, isFinalized, currentUserId: _currentUserId, currentUserName, onAddComment, onClose,
   // _currentUserId: same as CaseCommentModal.tsx — genuine prop, no
   // authorship-permission consumer built yet.
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const requirements = useFieldRequirements('report');
+  const formatTimestamp = (iso: string) => formatDateTime(iso, i18n.language);
   const [draft, setDraft] = useState('');
-  const isDraftEmpty = !draft.trim() || draft === '<p></p>';
+  const isDraftEmpty = commentMissing(draft, requirements).length > 0;
   const parts = specimenName.split(' › ');
   const titleName = parts[0] ?? specimenName;
 
@@ -39,6 +41,13 @@ const ReportCommentModal: React.FC<ReportCommentModalProps> = ({
     onAddComment(draft);
     setDraft('');
   };
+
+  // Voice/keyboard "post comment": the same Post, with the same check.
+  const postRef = useRef(handlePost);
+  postRef.current = handlePost;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'COMMENT_POST') postRef.current();
+  }), []);
 
   const sorted = [...comments].sort((a, b) => b.createdAt.localeCompare(a.createdAt));
 

@@ -19,23 +19,19 @@
 // focused — same principle as the old version, just retargeted dynamically.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import NarrativeEditor from '@/components/Editor/NarrativeEditor';
 import { useVoice } from '@/contexts/VoiceProvider';
 import type { PathScribeEditorHandle } from '@/components/Editor/PathScribeEditorRef';
 import type { LabelConfig } from '@/types/template';
-import { labelStyle } from '@/pages/ReportPreview/ReportPreviewRenderer';
+import { labelStyleVars } from '@/utils/labelStyleVars';
 import type { Case } from '@/types/case/Case';
-import { mockMacroService } from '@/services/macros/mockMacroService';
-import { useSystemConfig } from '@/contexts/SystemConfigContext';
-import { PathScribeAIService, type SpellingFlag } from '@/services/aiIntegration/PathScribeAIService';
-import { facilityService } from '@/services';
+import { facilityService, macroService, voiceMacroService } from '@/services';
 import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
-import { MockVoiceMacroService } from '@/services/voicemacro/mockVoiceMacroService';
-import type { Jurisdiction } from '@/types/systemConfig';
+import { SpellingLanguageControl } from '@/components/SpellCheck/SpellingLanguageControl';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -154,69 +150,6 @@ function isWellFormedBlockHtml(html: string): boolean {
   return depth === 0;
 }
 
-// ── Spell-check review popover ────────────────────────────────────────────────
-// Shows one flagged word at a time, highlighted in its surrounding sentence
-// for context, with the AI's suggestion and three actions: apply the fix,
-// keep the original wording, or skip (move on without deciding either way —
-// functionally same as keep, but visually distinct so the pathologist knows
-// they explicitly chose not to engage with this one).
-
-function getWordContext(plainText: string, original: string, radius = 40): { before: string; after: string } {
-  const idx = plainText.indexOf(original);
-  if (idx === -1) return { before: '', after: '' };
-  const start = Math.max(0, idx - radius);
-  const end   = Math.min(plainText.length, idx + original.length + radius);
-  return {
-    before: (start > 0 ? '…' : '') + plainText.slice(start, idx),
-    after:  plainText.slice(idx + original.length, end) + (end < plainText.length ? '…' : ''),
-  };
-}
-
-const SpellCheckPopover: React.FC<{
-  sectionLabel: string;
-  text: string;       // current working HTML — used to derive plain-text context
-  flag: SpellingFlag;
-  index: number;
-  total: number;
-  onFix: () => void;
-  onKeep: () => void;
-  onSkip: () => void;
-  onCancel: () => void;
-}> = ({ sectionLabel, text, flag, index, total, onFix, onKeep, onSkip, onCancel }) => {
-  const { t } = useTranslation();
-  const plainText = useMemo(() => text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), [text]);
-  const { before, after } = useMemo(() => getWordContext(plainText, flag.original), [plainText, flag.original]);
-
-  return (
-    <div className="ps-ose-spellcheck-overlay">
-      <div className="ps-ose-spellcheck-popover">
-        <div className="ps-ose-spellcheck-header">
-          <span className="ps-ose-spellcheck-eyebrow">✦ {t('orchestratorSectionEditor.spellCheck.title')} · {sectionLabel}</span>
-          <span className="ps-ose-spellcheck-counter">{t('orchestratorSectionEditor.spellCheck.counter', { index: index + 1, total })}</span>
-        </div>
-
-        <div className="ps-ose-spellcheck-context">
-          {before}<mark className="ps-ose-spellcheck-flagged">{flag.original}</mark>{after}
-        </div>
-
-        <div className="ps-ose-spellcheck-suggestion-row">
-          <span className="ps-ose-spellcheck-arrow">→</span>
-          <span className="ps-ose-spellcheck-suggestion">{flag.suggestion}</span>
-        </div>
-        <div className="ps-ose-spellcheck-reason">{flag.reason}</div>
-
-        <div className="ps-ose-spellcheck-actions">
-          <button className="ps-ose-spellcheck-btn ps-ose-spellcheck-btn--skip" onClick={onSkip} title={t('orchestratorSectionEditor.spellCheck.skipTooltip')}>{t('orchestratorSectionEditor.spellCheck.skipButton')}</button>
-          <button className="ps-ose-spellcheck-btn ps-ose-spellcheck-btn--keep" onClick={onKeep} title={t('orchestratorSectionEditor.spellCheck.keepTooltip')}>{t('orchestratorSectionEditor.spellCheck.keepButton')}</button>
-          <button className="ps-ose-spellcheck-btn ps-ose-spellcheck-btn--fix" onClick={onFix} title={t('orchestratorSectionEditor.spellCheck.fixTooltip')}>✓ {t('orchestratorSectionEditor.spellCheck.fixButton')}</button>
-        </div>
-
-        <button className="ps-ose-spellcheck-cancel" onClick={onCancel}>{t('orchestratorSectionEditor.spellCheck.cancelReview')}</button>
-      </div>
-    </div>
-  );
-};
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -291,22 +224,6 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   const sectionRefs   = useRef<Record<string, HTMLDivElement | null>>({});
   const pageScrollRef = useRef<HTMLDivElement>(null);
 
-  // ── Jurisdiction — for locale-aware spelling checks ──────────────────────────
-  const { config: systemConfig } = useSystemConfig();
-  const aiService = useMemo(() => new PathScribeAIService(), []);
-
-  // ── Spell-check review state ─────────────────────────────────────────────────
-  // When Accept is clicked, we run a spelling check before actually committing.
-  // If flags come back, spellCheckReview holds the in-progress review so the
-  // popover can render; null means no review is active.
-  const [spellCheckReview, setSpellCheckReview] = useState<{
-    sectionId: string;
-    text: string;            // working copy — edited as flags are resolved
-    flags: SpellingFlag[];
-    flagIndex: number;
-  } | null>(null);
-  const [spellCheckLoading, setSpellCheckLoading] = useState<string | null>(null); // sectionId currently being checked
-
   // ── View mode ─────────────────────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<'tabs' | 'page'>('page');
 
@@ -374,28 +291,7 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
     onSectionChange(section.id, editor.getHTML());
   }, [caseData, onSectionChange]);
 
-  // ── Case's real jurisdiction, for spell-check ─────────────────────────────────
-  // Resolved from the case's own Submitting Facility, not the system-wide
-  // SystemConfig.jurisdiction default — that field is a single global
-  // value nothing meaningfully sets (see Facility.jurisdiction, the real
-  // per-case mechanism, added earlier this session). A Fenwick case
-  // should get British spelling regardless of what the system default
-  // happens to be; a Metro General case should get US spelling. Falls
-  // back to the system default only when the client can't be resolved
-  // (e.g. clientId missing, or the lookup fails) — same fail-safe
-  // posture as everywhere else this session, not a fail-open guess.
-  //
-  // jurisdictionFacilityName is kept alongside caseJurisdiction
-  // purely for the visible badge below — deliberate design decision
-  // (see conversation): the report conforms to the receiving
-  // institution's convention regardless of who wrote it, same as a
-  // specialist's consult letter follows the referring GP's own
-  // conventions. The real risk in that design isn't that it's wrong,
-  // it's that it's a silent surprise to the pathologist writing the
-  // report — this badge is the fix for that, not a reversal of the
-  // decision.
-  const [caseJurisdiction, setCaseJurisdiction] = useState<Jurisdiction | undefined>(undefined);
-  const [jurisdictionFacilityName, setJurisdictionFacilityName] = useState<string | undefined>(undefined);
+  // ── Case's performing lab (for personal quick text) ──────────────────────────
   // Real, per direct guidance ("Personal Quick Text" — Enterprise then
   // Facility then Staff): this case's own real performing lab —
   // resolvePerformingLabFacilityId's real single-hop resolution
@@ -403,18 +299,16 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   // facility itself may not be the one that actually performs the
   // work. Auto-attributed, never asked of the pathologist — the whole
   // point of "their name and facility would be known." Set from the
-  // SAME facility fetch as jurisdiction below, not a second one.
+  // from one facility fetch below.
   const [casePerformingLabFacilityId, setCasePerformingLabFacilityId] = useState<string | undefined>(undefined);
   const [casePerformingLabName, setCasePerformingLabName] = useState<string | undefined>(undefined);
 
   useEffect(() => {
     const clientId = caseData?.order?.facilityId;
-    if (!clientId) { setCaseJurisdiction(undefined); setJurisdictionFacilityName(undefined); setCasePerformingLabFacilityId(undefined); setCasePerformingLabName(undefined); return; }
+    if (!clientId) { setCasePerformingLabFacilityId(undefined); setCasePerformingLabName(undefined); return; }
     let cancelled = false;
     facilityService.getById(clientId).then(res => {
       if (cancelled) return;
-      setCaseJurisdiction(res.ok ? res.data.jurisdiction : undefined);
-      setJurisdictionFacilityName(res.ok ? res.data.name : undefined);
       const labId = res.ok ? resolvePerformingLabFacilityId(res.data) : undefined;
       setCasePerformingLabFacilityId(labId);
       if (!labId) { setCasePerformingLabName(undefined); return; }
@@ -431,8 +325,6 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
     });
     return () => { cancelled = true; };
   }, [caseData?.order?.facilityId]);
-
-  const effectiveJurisdiction = caseJurisdiction ?? systemConfig?.jurisdiction;
 
   const registerDictationTarget = useCallback((section: OrchestratorSection) => {
     const editorHandle = editorRefs.current[section.id];
@@ -486,7 +378,6 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   // ownerUserId set — the Personal tier of the same three-tier
   // Enterprise/Facility/Personal model "My Macros" itself now uses
   // (services/macros/IMacroService.ts's own isMacroVisibleTo()).
-  const voiceMacroService = useMemo(() => new MockVoiceMacroService(), []);
   const [quickTextDraft, setQuickTextDraft] = useState<{ sectionId: string; selectedText: string } | null>(null);
   const [quickTextTrigger, setQuickTextTrigger] = useState('');
   const [savingQuickText, setSavingQuickText] = useState(false);
@@ -524,75 +415,15 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
     } finally {
       setSavingQuickText(false);
     }
-  }, [quickTextDraft, quickTextTrigger, voiceMacroService, casePerformingLabFacilityId, caseData?.id]);
-  const spellLocaleLabel = effectiveJurisdiction === 'US' ? t('orchestratorSectionEditor.jurisdiction.americanEnglish')
-    : effectiveJurisdiction ? t('orchestratorSectionEditor.jurisdiction.britishEnglish') // GB_EW/GB_SCT/IE all resolve to en-GB spelling; CA/AU/NZ not yet distinguished here
-    : undefined;
-
-  // ── Accept with spell check ───────────────────────────────────────────────────
-  // Runs a locale-aware spelling check before committing the Accept. If the
-  // check finds nothing, accept proceeds immediately (no added friction for
-  // the common case). If it finds flags, we open the review popover instead
-  // of accepting — the section only actually commits once the pathologist
-  // has stepped through every flag (fix, keep, or skip).
-  const handleAcceptWithSpellCheck = useCallback(async (section: OrchestratorSection) => {
-    setSpellCheckLoading(section.id);
-    try {
-      const result = await aiService.checkSpelling(section.text, effectiveJurisdiction, caseData?.order?.facilityId);
-      const commit = (finalText: string) => {
-        if (onAcceptSection) onAcceptSection(section.id, finalText);
-        else onSectionChange(section.id, finalText); // fallback for parents not yet wired
-      };
-      if (result.success && result.data.flags.length > 0) {
-        setSpellCheckReview({
-          sectionId: section.id,
-          text: section.text,
-          flags: result.data.flags,
-          flagIndex: 0,
-        });
-      } else {
-        // No flags (or check failed) — accept as-is rather than blocking
-        // the pathologist on an AI service hiccup.
-        commit(section.text);
-      }
-    } finally {
-      setSpellCheckLoading(null);
-    }
-  }, [aiService, effectiveJurisdiction, onSectionChange, onAcceptSection]);
-
-  // Resolve the current flag in an active review: apply the suggestion,
-  // keep the original wording, or just move on (skip = same as keep, but
-  // tracked separately in case we want different telemetry later).
-  const resolveSpellCheckFlag = useCallback((action: 'fix' | 'keep' | 'skip') => {
-    setSpellCheckReview(prev => {
-      if (!prev) return prev;
-      const flag = prev.flags[prev.flagIndex];
-      const nextText = action === 'fix' && flag
-        ? prev.text.split(flag.original).join(flag.suggestion)
-        : prev.text;
-
-      const nextIndex = prev.flagIndex + 1;
-      if (nextIndex >= prev.flags.length) {
-        // All flags resolved — commit the section now, explicitly
-        if (onAcceptSection) onAcceptSection(prev.sectionId, nextText);
-        else onSectionChange(prev.sectionId, nextText);
-        return null;
-      }
-      return { ...prev, text: nextText, flagIndex: nextIndex };
-    });
-  }, [onSectionChange, onAcceptSection]);
-
-  const cancelSpellCheckReview = useCallback(() => {
-    // Cancel = accept the section as originally written, flags un-applied.
-    // The pathologist saw the flags existed (via the popover) and chose not
-    // to act on them right now — that's a legitimate outcome, not an error.
-    setSpellCheckReview(prev => {
-      if (prev) {
-        if (onAcceptSection) onAcceptSection(prev.sectionId, prev.text);
-        else onSectionChange(prev.sectionId, prev.text);
-      }
-      return null;
-    });
+  }, [quickTextDraft, quickTextTrigger, casePerformingLabFacilityId, caseData?.id]);
+  // ── Accept ─────────────────────────────────────────────────────────────────────
+  // PS-342 (Batch 338): Accept commits the section directly. The AI spelling
+  // pass that used to run here first is retired: the report editor now
+  // checks spelling as the pathologist types (components/SpellCheck/), in
+  // the case's own spelling language.
+  const acceptSection = useCallback((section: OrchestratorSection) => {
+    if (onAcceptSection) onAcceptSection(section.id, section.text);
+    else onSectionChange(section.id, section.text); // fallback for parents not yet wired
   }, [onSectionChange, onAcceptSection]);
 
   // Real fix (PS-317 — "Regen All" appearing to put Gross Description in
@@ -672,7 +503,7 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   // ── Macros — loaded from service ────────────────────────────────────────────
   const [macros, setMacros] = useState<{ id: string; trigger: string; name: string; content: string }[]>([]);
   useEffect(() => {
-    mockMacroService.getAll().then(r => {
+    macroService.getAll().then(r => {
       if (r.ok) {
         setMacros(
           r.data.filter(m => m.status === 'Active').map(m => ({
@@ -720,7 +551,10 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
       >
         {showHeader && (
           <div className="ps-ose-section-card-header">
-            <span className="ps-ose-section-card-title" style={section.specimenId ? labelStyle(documentStyle?.body) : undefined}>{section.label}</span>
+            <span
+              className={`ps-ose-section-card-title${section.specimenId ? ' ps-ose-section-card-title--specimen' : ''}`}
+              style={section.specimenId ? labelStyleVars(documentStyle?.body) : undefined}
+            >{section.label}</span>
             <span className={`ps-ose-section-card-status ps-ose-section-card-status--${status}`} title={t(meta.titleKey)}>
               {meta.icon} {t(meta.titleKey)}
             </span>
@@ -760,10 +594,9 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
               <button
                 className="ps-ose-section-accept-btn"
                 title={t('orchestratorSectionEditor.acceptSectionTooltip')}
-                disabled={spellCheckLoading === section.id}
-                onClick={() => handleAcceptWithSpellCheck(section)}
+                onClick={() => acceptSection(section)}
               >
-                {spellCheckLoading === section.id ? `⋯ ${t('orchestratorSectionEditor.checkingLabel')}` : `✓ ${t('orchestratorSectionEditor.acceptButton')}`}
+                {`✓ ${t('orchestratorSectionEditor.acceptButton')}`}
               </button>
             )}
 
@@ -820,19 +653,6 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
             </div>
           </div>
         )}
-        {spellCheckReview && spellCheckReview.sectionId === section.id && (
-          <SpellCheckPopover
-            sectionLabel={section.label}
-            text={spellCheckReview.text}
-            flag={spellCheckReview.flags[spellCheckReview.flagIndex]}
-            index={spellCheckReview.flagIndex}
-            total={spellCheckReview.flags.length}
-            onFix={() => resolveSpellCheckFlag('fix')}
-            onKeep={() => resolveSpellCheckFlag('keep')}
-            onSkip={() => resolveSpellCheckFlag('skip')}
-            onCancel={cancelSpellCheckReview}
-          />
-        )}
       </div>
     );
   };
@@ -846,18 +666,9 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
         {/* Single row: [Tabs/Page — left] [Jump to — center] [counts/actions — right] */}
         <div className="ps-ose-summary-row">
 
-          {/* Group 1: jurisdiction badge + Tabs / Page toggle — left justified */}
+          {/* Group 1: spelling language + Tabs / Page toggle — left justified */}
           <div className="ps-ose-group-left">
-            {spellLocaleLabel && (
-              <span
-                className="ps-ose-jurisdiction-badge"
-                title={jurisdictionFacilityName
-                  ? t('orchestratorSectionEditor.jurisdiction.badgeTooltipWithFacility', { facilityName: jurisdictionFacilityName })
-                  : t('orchestratorSectionEditor.jurisdiction.badgeTooltipNoFacility')}
-              >
-                ✎ {spellLocaleLabel}{jurisdictionFacilityName ? ` — ${jurisdictionFacilityName}` : ''}
-              </span>
-            )}
+            <SpellingLanguageControl className="ps-ose-spelllang" />
             <div className="ps-ose-view-toggle">
               <button
                 className={`ps-ose-view-toggle-btn${viewMode === 'tabs' ? ' ps-ose-view-toggle-btn--active' : ''}`}

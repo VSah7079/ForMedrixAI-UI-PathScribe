@@ -32,33 +32,30 @@
 // build on, while the PIN flow is real, working, and already
 // attributes an action to a specific real person the same way.
 //
-// Real, honest scope: the actual real-time push channel (a new
-// request landing, a status change from another terminal, sub-500ms
-// multi-board sync) is a real backend need — filed on the
-// RFP-APLIS-2026-GLOBAL Backend Needs Log, same posture as cold-chain
-// telemetry and referral results before it. This page polls the
-// existing mock services on a real, working interval instead, which
-// is honest about being a stand-in, not a claim of real push
-// infrastructure. The 1-second visual timer tick below is a real,
-// working client-side clock (per this file's own established
-// resilience reasoning) — it is not, and does not claim to be, the
-// real-time board-to-board sync the spec's own "Multi-Board Sync"
-// section asks for.
+// Live updates (PS-262, Batch 342): the board subscribes to its OR
+// locations through hooks/useLiveIntraopUpdates.ts. With the API server's
+// SignalR hub configured, a dismissal, a new frozen-section request or a
+// diagnosis on any device reaches every board showing that location
+// within the 500 ms target; without it (development, demo, mock data) this
+// browser's own windows still update each other instantly and other
+// devices are picked up by the 15-second poll. The status badge in the
+// header says which. Each row keeps its own 1-second clock
+// (OrBoardRow.tsx), computed from absolute timestamps, never a pushed tick.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useCurrentOrTerminal } from '@/hooks/useCurrentOrTerminal';
-import { mockOrSuiteTerminalService } from '@/services/intraopDashboard/mockOrSuiteTerminalService';
-import { mockOrEventLogService } from '@/services/intraopDashboard/mockOrEventLogService';
 import { resolveStaffByQuickAuthPin } from '@/services/intraopDashboard/resolveStaffByQuickAuthPin';
 import { resolveActiveIntraopRequestsForLocations, type ActiveIntraopRequest } from '@/services/intraopDashboard/resolveActiveIntraopRequestsForLocations';
-import { intraoperativeService, locationService } from '@/services';
+import { dismissFromBoardWithAudit } from '@/services/intraopDashboard/dismissFromBoardWithAudit';
+import { resolveBoardLocationIds, resolveFlashState } from '@/services/intraopDashboard/resolveOrBoardLiveView';
+import { intraoperativeService, locationService, orEventLogService, orSuiteTerminalService } from '@/services';
+import { useLiveIntraopUpdates } from '@/hooks/useLiveIntraopUpdates';
+import { LiveStatusBadge } from '@/components/LiveUpdates/LiveStatusBadge';
 import type { OrSuiteTerminal } from '@/services/intraopDashboard/IOrSuiteTerminalService';
 import OrBoardRow from '@/components/OrSuiteDashboard/OrBoardRow';
 import type { Location } from '@/services/locations/ILocationService';
-
-const POLL_INTERVAL_MS = 15_000;
 
 /** Real, per the spec's own "Counts up continuously in MM:SS format."
  *  Pure — computes elapsed seconds between two real timestamps, never
@@ -95,7 +92,7 @@ const VerbalReportModal: React.FC<{ request: ActiveIntraopRequest; onClose: () =
   const submitReport = async () => {
     if (!surgeonName.trim()) return;
     setBusy(true);
-    await mockOrEventLogService.record({
+    await orEventLogService.record({
       locationId: request.locationId, intraopEntryId: request.sessionId, eventType: 'verbal_report_logged',
       staffUserId: staffId, staffUserName: staffName, surgeonName: surgeonName.trim(), note: note.trim() || undefined,
     });
@@ -169,26 +166,14 @@ const DismissConfirmationModal: React.FC<{ request: ActiveIntraopRequest; onClos
     if (!readbackConfirmed) return;
     setBusy(true);
     setError(null);
-    const res = await intraoperativeService.dismissFromBoard(request.sessionId, request.specimenId, staffId, staffName, true);
-    if (!('ok' in res) || !res.ok) {
-      setError('error' in res ? res.error : t('orSuiteDashboard.dismissFailedGeneric'));
+    const { outcome, detail } = await dismissFromBoardWithAudit(request, { id: staffId, name: staffName }, { intraoperativeService, orEventLogService });
+    if (outcome === 'refused') {
+      if (detail) console.warn('[OrSuiteDashboard] dismissal refused:', detail);
+      setError(t('orSuiteDashboard.dismissFailedGeneric'));
       setBusy(false);
       return;
     }
-    const dwellTimeOnBoardSeconds = request.frozenDiagnosisRenderedAt
-      ? Math.max(0, Math.round((Date.now() - new Date(request.frozenDiagnosisRenderedAt).getTime()) / 1000))
-      : undefined;
-    const totalTurnaroundMinutes = request.frozenDiagnosisRenderedAt
-      ? Math.round((new Date(request.frozenDiagnosisRenderedAt).getTime() - new Date(request.arrivalTimestamp).getTime()) / 60000)
-      : undefined;
-    await mockOrEventLogService.record({
-      locationId: request.locationId, intraopEntryId: request.sessionId, eventType: 'case_dismissed',
-      staffUserId: staffId, staffUserName: staffName,
-      accessionNumber: request.orNumber, orRoom: request.locationDisplay,
-      pathologistSignOffTime: request.frozenDiagnosisRenderedAt,
-      dwellTimeOnBoardSeconds, totalTurnaroundMinutes,
-      surgeonReadbackConfirmed: true, finalPreliminaryText: request.frozenSectionDiagnosis,
-    });
+    if (outcome === 'dismissedLogFailed') console.error('[OrSuiteDashboard] case dismissed but the event log write failed:', detail);
     setBusy(false);
     onDismissed();
   };
@@ -211,8 +196,8 @@ const DismissConfirmationModal: React.FC<{ request: ActiveIntraopRequest; onClos
           <>
             <h2 className="ps-orboard-modal-title">{t('orSuiteDashboard.confirmDismissalTitle')}</h2>
             <div className="ps-orboard-safety-redisplay">
-              <div><span className="ps-orboard-safety-label">{t('orSuiteDashboard.patient')}</span> {request.patientName}</div>
-              <div><span className="ps-orboard-safety-label" data-phi="mrn">{t('orSuiteDashboard.mrn')}</span> {request.mrn}</div>
+              <div><span className="ps-orboard-safety-label">{t('orSuiteDashboard.patient')}</span> <span data-phi="name">{request.patientName}</span></div>
+              <div><span className="ps-orboard-safety-label">{t('orSuiteDashboard.mrn')}</span> <span data-phi="mrn">{request.mrn}</span></div>
               <div><span className="ps-orboard-safety-label">{t('orSuiteDashboard.orRoom')}</span> {request.locationDisplay ?? request.orNumber}</div>
               <div className="ps-orboard-safety-diagnosis">
                 <span className="ps-orboard-safety-label">{t('orSuiteDashboard.preliminaryDiagnosis')}</span>
@@ -240,7 +225,7 @@ const DismissConfirmationModal: React.FC<{ request: ActiveIntraopRequest; onClos
 const TerminalSetup: React.FC<{ onBound: (id: string) => void }> = ({ onBound }) => {
   const { t } = useTranslation();
   const [terminals, setTerminals] = useState<OrSuiteTerminal[]>([]);
-  useEffect(() => { mockOrSuiteTerminalService.getActive().then(res => { if (res.ok) setTerminals(res.data); }); }, []);
+  useEffect(() => { orSuiteTerminalService.getActive().then(res => { if (res.ok) setTerminals(res.data); }); }, []);
   return (
     <div className="ps-orboard-setup-page">
       <div className="ps-orboard-setup-content">
@@ -257,6 +242,7 @@ const TerminalSetup: React.FC<{ onBound: (id: string) => void }> = ({ onBound })
 };
 
 const MultiSuiteLocationPicker: React.FC<{ facilityId: string; selected: string[]; onChange: (ids: string[]) => void }> = ({ facilityId, selected, onChange }) => {
+  const { t } = useTranslation();
   const [locations, setLocations] = useState<Location[]>([]);
   useEffect(() => { locationService.listForFacility(facilityId).then(res => { if (res.ok) setLocations(res.data); }); }, [facilityId]);
   return (
@@ -266,7 +252,7 @@ const MultiSuiteLocationPicker: React.FC<{ facilityId: string; selected: string[
       value={selected}
       onChange={e => onChange(Array.from(e.target.selectedOptions).map(o => o.value))}
     >
-      {locations.map(l => <option key={l.id} value={l.id}>{l.pointOfCare}{l.room ? ` — ${l.room}` : ''}</option>)}
+      {locations.map(l => <option key={l.id} value={l.id}>{l.room ? t('orSuiteDashboard.locationWithRoom', { pointOfCare: l.pointOfCare, room: l.room }) : l.pointOfCare}</option>)}
     </select>
   );
 };
@@ -296,7 +282,7 @@ const OrSuiteDashboardPage: React.FC = () => {
 
   useEffect(() => {
     if (!terminalId) { setTerminal(null); return; }
-    mockOrSuiteTerminalService.getById(terminalId).then(res => { if (res.ok) setTerminal(res.data); });
+    orSuiteTerminalService.getById(terminalId).then(res => { if (res.ok) setTerminal(res.data); });
   }, [terminalId]);
 
   useEffect(() => {
@@ -304,32 +290,34 @@ const OrSuiteDashboardPage: React.FC = () => {
     locationService.getById(terminal.locationId).then(res => { if (res.ok) setLocation(res.data); });
   }, [terminal]);
 
-  const effectiveLocationIds = useMemo(() => {
-    if (multiSuiteOn && terminal?.canViewMultiSuite) return multiSuiteLocationIds.length > 0 ? multiSuiteLocationIds : (terminal ? [terminal.locationId] : []);
-    return terminal ? [terminal.locationId] : [];
-  }, [multiSuiteOn, multiSuiteLocationIds, terminal]);
+  const effectiveLocationIds = useMemo(
+    () => resolveBoardLocationIds({ terminal, multiSuiteOn, multiSuiteLocationIds }),
+    [multiSuiteOn, multiSuiteLocationIds, terminal],
+  );
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
     if (effectiveLocationIds.length === 0) return;
     const res = await intraoperativeService.getAll();
     if (!res.ok) return;
     const next = resolveActiveIntraopRequestsForLocations(res.data, effectiveLocationIds);
-    // Real, per the spec's own "3-pulse flash" transition — fires
-    // exactly once, the real moment a specimen's own diagnosisRendered
-    // flips from false to true, never again on a later poll of the
-    // same already-completed specimen.
+    // The "3-pulse flash" plays once, the moment a diagnosis first appears
+    // (resolveOrBoardLiveView.ts), whichever device entered it.
     setFlashedIds(prev => {
-      const stillNew = new Set(prev);
-      for (const r of next) {
-        if (r.diagnosisRendered && !prevRenderedRef.current.has(r.specimenId)) stillNew.delete(r.specimenId);
-      }
-      return stillNew;
+      const { flashed, rendered } = resolveFlashState(prevRenderedRef.current, next, prev);
+      prevRenderedRef.current = rendered;
+      return flashed;
     });
-    prevRenderedRef.current = new Set(next.filter(r => r.diagnosisRendered).map(r => r.specimenId));
     setRequests(next);
-  };
+  }, [effectiveLocationIds]);
+  const refreshRef = useRef(refresh);
+  refreshRef.current = refresh;
 
-  useEffect(() => { refresh(); }, [effectiveLocationIds.join(',')]);
+  useEffect(() => { refresh(); }, [refresh]);
+
+  // PS-262: live updates for this board's locations, with polling as the
+  // fallback (see the header comment).
+  const liveScope = useMemo(() => (effectiveLocationIds.length ? { locationIds: effectiveLocationIds, all: false } : null), [effectiveLocationIds]);
+  const liveState = useLiveIntraopUpdates(liveScope, refresh);
 
   const stopDemo = () => {
     if (demoIntervalRef.current) window.clearInterval(demoIntervalRef.current);
@@ -342,7 +330,7 @@ const OrSuiteDashboardPage: React.FC = () => {
     if (!terminal) return;
     const res = await intraoperativeService.seedOrBoardDemoData(terminal.locationId, terminal.facilityId, 'DEMO');
     if (!res.ok) return;
-    await refresh();
+    await refreshRef.current();
     setDemoActive(true);
     // Real, per direct request's own "simulate the changes" ask — the
     // first seeded case (fresh, no milestones yet) is the one that
@@ -355,7 +343,7 @@ const OrSuiteDashboardPage: React.FC = () => {
       if (!demoSimulationRef.current) return;
       const { sessionId, specimenId } = demoSimulationRef.current;
       const advanceRes = await intraoperativeService.advanceDemoSpecimen(sessionId, specimenId);
-      await refresh();
+      await refreshRef.current(); // the latest refresh, not the one from when the demo started
       if (advanceRes.ok && !advanceRes.data.advanced && demoIntervalRef.current) {
         window.clearInterval(demoIntervalRef.current); // fully progressed — real, honest stop, not an infinite silent loop
         demoIntervalRef.current = null;
@@ -365,26 +353,9 @@ const OrSuiteDashboardPage: React.FC = () => {
 
   useEffect(() => () => { if (demoIntervalRef.current) window.clearInterval(demoIntervalRef.current); }, []);
 
-  // Real, per direct guidance ("there shouldn't be any business logic
-  // in the UI... it's the only way to prevent/control performance
-  // issues when load gets applied"): the real, compulsory 1-second
-  // clock now lives inside each row's own OrBoardRow.tsx, not here —
-  // a shared, parent-level tick was forcing every row in the list to
-  // recompute its full derived state every second, regardless of
-  // whether that row's own data had changed. At real scale (dozens or
-  // hundreds of rows across a Multi-Suite Overview), that's the
-  // difference between N cheap, independent per-row updates and one
-  // expensive, repeated full-list recomputation every second. The
-  // slower POLL_INTERVAL_MS re-fetch remains here — it's the honest
-  // stand-in for the real push channel this gap's own Backend Needs
-  // Log entry names, and genuinely does need to refresh the whole
-  // list when it runs.
-  useEffect(() => {
-    const pollInterval = window.setInterval(refresh, POLL_INTERVAL_MS);
-    return () => window.clearInterval(pollInterval);
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [effectiveLocationIds.join(',')]);
-
+  // The 1-second clock lives in each OrBoardRow (per-row, so one row's tick
+  // never recomputes the whole list); the list itself is re-read by
+  // useLiveIntraopUpdates above.
   const handleFlashed = useCallback((specimenId: string) => {
     setFlashedIds(prev => new Set(prev).add(specimenId));
   }, []);
@@ -408,9 +379,14 @@ const OrSuiteDashboardPage: React.FC = () => {
         <div>
           <div className="ps-orboard-header-eyebrow">{t('orSuiteDashboard.orSuiteTerminal')}</div>
           <div className="ps-orboard-header-name">{terminal.name}</div>
-          {location && <div className="ps-orboard-header-location">{location.pointOfCare}{location.room ? ` · ${t('orSuiteDashboard.room', { room: location.room })}` : ''}</div>}
+          {location && (
+            <div className="ps-orboard-header-location">
+              {location.room ? t('orSuiteDashboard.headerLocationWithRoom', { pointOfCare: location.pointOfCare, room: location.room }) : location.pointOfCare}
+            </div>
+          )}
         </div>
         <div className="ps-orboard-header-actions">
+          <LiveStatusBadge state={liveState} className="ps-orboard-live-badge" />
           {demoActive && <span className="ps-orboard-demo-badge">{t('orSuiteDashboard.demoModeActive')}</span>}
           <button className="ps-btn-secondary" onClick={demoActive ? stopDemo : startDemo}>
             {demoActive ? t('orSuiteDashboard.stopDemo') : t('orSuiteDashboard.startDemo')}

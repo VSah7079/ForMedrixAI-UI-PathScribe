@@ -19,7 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../pathscribe.css';
 import type { Case } from '@/types/case/Case';
 import type { SpecimenTriage } from '@/types/case/Specimen';

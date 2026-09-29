@@ -1,4 +1,11 @@
-import React, { useState, useEffect } from 'react';
+// Batch 381 (PS-359): Confirm Delegation checks the organisation's Field
+// Requirements (report page, Delegation): type, recipient and, when handing
+// over one synoptic report, which one, are locked; a note on every
+// delegation can be required, on top of a delegation type's own "requires
+// note". The check is services/fieldRequirements/reportPageChecks.ts. The
+// service now checks case:delegation:create; a refusal is shown. Confirm can
+// also be said ("confirm delegation", DELEGATE_CONFIRM).
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import {
@@ -7,11 +14,11 @@ import {
 } from '@dnd-kit/core';
 import { CSS } from '@dnd-kit/utilities';
 import { IActionRegistryService } from '../../../services/actionRegistry/IActionRegistryService';
-import { userService, subspecialtyService } from '../../../services';
+import { userService, subspecialtyService, delegationTypeService, delegationService, delegationMissing, delegationNoteShown } from '../../../services';
+import { useFieldRequirements } from '../../../hooks/useFieldRequirements';
+import { CapabilityButton } from '../../../components/Common/CapabilityButton';
 import { getStaffSubspecialtyDisplay } from '../../../utils/staffSubspecialties';
 import type { StaffUser, Subspecialty } from '../../../services';
-import { mockDelegationTypeService } from '../../../services/delegationTypes/mockDelegationTypeService';
-import { delegateCase } from '../../../services/cases/mockCaseService';
 
 interface Pool {
   id: string;
@@ -56,7 +63,8 @@ const RecipientCard: React.FC<RecipientCardProps> = ({ id, primary, secondary, i
       {...attributes}
       onClick={onClick}
       className={`ps-delegate-recipient-card${isDragging ? ' ps-delegate-recipient-card--dragging' : isSelected ? ' ps-delegate-recipient-card--selected' : ''}`}
-      style={{ transform: transform ? CSS.Translate.toString(transform) : undefined }}
+      data-dragged={transform ? '' : undefined}
+      style={transform ? { '--drag-transform': CSS.Translate.toString(transform) } as React.CSSProperties : undefined}
     >
       <div className="ps-delegate-recipient-row">
         <div className="ps-delegate-recipient-avatar">
@@ -91,11 +99,8 @@ const TypeZone: React.FC<TypeZoneProps> = ({ dt, isSelected, isOver, selectedRec
     <div
       ref={setNodeRef}
       onClick={onSelectType}
-      className="ps-delegate-type-zone"
-      style={{
-        background: isOver ? dt.color + '14' : isSelected ? 'rgba(8,145,178,0.08)' : 'rgba(255,255,255,0.02)',
-        border: `1.5px ${isOver ? 'solid' : isSelected ? 'solid' : 'dashed'} ${isOver ? dt.color + '66' : isSelected ? 'rgba(8,145,178,0.4)' : 'rgba(255,255,255,0.08)'}`,
-      }}
+      className={`ps-delegate-type-zone${isSelected ? ' ps-delegate-type-zone--selected' : ''}${isOver ? ' ps-delegate-type-zone--over' : ''}`}
+      style={{ '--ps-hue': dt.color } as React.CSSProperties}
     >
       <div className="ps-delegate-type-zone-row">
         {/* dt.id/label/description are real, admin-configurable
@@ -104,9 +109,7 @@ const TypeZone: React.FC<TypeZoneProps> = ({ dt, isSelected, isOver, selectedRec
             seeded defaults) — same "real, admin-editable dictionary
             stays untranslated" precedent as colorNames in
             EngraverMonitorPage.tsx, not static UI copy. */}
-        <span className="ps-delegate-type-zone-id-badge" style={{
-          background: isSelected ? dt.color + '22' : undefined, color: isSelected ? dt.color : undefined,
-        }}>
+        <span className="ps-delegate-type-zone-id-badge">
           {dt.id.replace('_', ' ')}
         </span>
         <span className="ps-delegate-type-zone-label">{dt.label}</span>
@@ -136,6 +139,8 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
   isOpen, onClose, registry, caseId, currentUserId = 'PATH-001', onDelegated, synopticInstances = []
 }) => {
   const { t } = useTranslation();
+  const requirements = useFieldRequirements('report');
+  const [refusal, setRefusal] = useState<string | null>(null);
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
   const [searchTerm,         setSearchTerm]         = useState('');
   const [selectedId,         setSelectedId]         = useState<string | null>(null);
@@ -184,11 +189,11 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
   useEffect(() => {
     if (isOpen) {
       setSearchTerm(''); setSelectedId(null); setConfirming(false);
-      setDelegationType(null); setNote(''); setSelectedInstanceId(null);
+      setDelegationType(null); setNote(''); setSelectedInstanceId(null); setRefusal(null);
       setLoading(true);
       Promise.all([
         userService.getAll(),
-        mockDelegationTypeService.getActive(),
+        delegationTypeService.getActive(),
         subspecialtyService.getAll(),
       ]).then(([usersResult, typesResult, subspecialtiesResult]) => {
         const allSubspecialties = subspecialtiesResult.ok ? subspecialtiesResult.data : [];
@@ -258,12 +263,13 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
   const selectedLabel     = selectedStaff?.name ?? selectedPool?.name ?? null;
   const selectedDelegType = delegationTypes.find(d => d.id === delegationType);
 
-  const canConfirm =
-    !!delegationType &&
-    !!selectedId &&
-    !confirming &&
-    !(selectedDelegType?.requiresNote && !note) &&
-    !(delegationType === 'SYNOPTIC_ASSIGN' && synopticInstances.length > 0 && !selectedInstanceId);
+  const delegationForm = {
+    delegationType, recipientId: selectedId,
+    synopticChoiceNeeded: delegationType === 'SYNOPTIC_ASSIGN' && synopticInstances.length > 0,
+    synopticInstanceId: selectedInstanceId, note, typeRequiresNote: !!selectedDelegType?.requiresNote,
+  };
+  const noteShown = delegationNoteShown(delegationForm, requirements);
+  const canConfirm = !confirming && delegationMissing(delegationForm, requirements).length === 0;
 
   // ── drag handling — sets BOTH delegationType and selectedId at once ──────────
   // Click-to-select (below, on each type zone and each recipient card) still
@@ -294,25 +300,19 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
     if (!canConfirm) return;
     setConfirming(true);
     try {
-      if (caseId) {
-        if (delegationType === 'SYNOPTIC_ASSIGN' && selectedInstanceId) {
-          const { assignSynoptic } = await import('../../../services/cases/mockCaseService');
-          await assignSynoptic(
-            caseId, selectedInstanceId,
-            selectedId ?? '', selectedLabel ?? '',
-            currentUserId, true, note || undefined,
-          );
-        } else {
-          const isPool = selectedPool !== undefined;
-          await delegateCase({
-            caseId, requestorId: currentUserId, delegationType: delegationType!,
-            targetUserId:   isPool ? undefined : (selectedId ?? undefined),
-            targetUserName: isPool ? undefined : (selectedLabel ?? undefined),
-            targetPoolId:   isPool ? (selectedId ?? undefined) : undefined,
-            targetPoolName: isPool ? selectedLabel ?? undefined : undefined,
-            note: note || undefined,
-          });
-        }
+      // Batch 353: the delegation service decides what the request does
+      // (assign the chosen synoptic, or delegate the case to the user or
+      // pool) and records it.
+      if (caseId && selectedId) {
+        const res = await delegationService.delegate({
+          caseId, requestorId: currentUserId, delegationType: delegationType!,
+          recipient: selectedPool !== undefined
+            ? { kind: 'pool', id: selectedId, name: selectedLabel ?? undefined }
+            : { kind: 'user', id: selectedId, name: selectedLabel ?? undefined },
+          synopticInstanceId: selectedInstanceId ?? undefined,
+          note: note || undefined,
+        });
+        if (res.ok === false) { setRefusal(res.error); return; }
       }
       onDelegated?.();
       onClose();
@@ -320,6 +320,14 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
       setConfirming(false);
     }
   };
+
+  // Voice/keyboard "confirm delegation": the same Confirm, with the same checks.
+  const confirmRef = useRef(handleConfirm);
+  confirmRef.current = handleConfirm;
+  useEffect(() => {
+    if (!isOpen) return;
+    return registry.onAction((actionId) => { if (actionId === 'DELEGATE_CONFIRM') void confirmRef.current(); });
+  }, [isOpen, registry]);
 
   if (!isOpen) return null;
 
@@ -392,7 +400,7 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
               )}
 
               {/* Note field if required — unchanged from before */}
-              {selectedDelegType?.requiresNote && (
+              {noteShown && (
                 <div className="ps-delegate-note-section">
                   <div className="fm-section-label fm-section-label--sm">{t('delegateModal.noteRequired')}</div>
                   <input
@@ -490,6 +498,7 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
 
         {/* ── Footer — unchanged ─────────────────────────────── */}
         <div className="fm-footer">
+          {refusal && <span className="ps-field-still-required" role="alert">{t(`delegateModal.refusals.${refusal}`)}</span>}
           <span className={'fm-footer-status' + (delegationType || selectedLabel ? ' dirty' : '')}>
             {!delegationType
               ? t('delegateModal.chooseDelegationType')
@@ -500,13 +509,15 @@ export const DelegateModal: React.FC<DelegateModalProps> = ({
           </span>
           <div className="fm-del-footer-row">
             <button className="fm-btn-cancel" onClick={onClose}>{t('delegateModal.cancel')}</button>
-            <button
+            <CapabilityButton
+              capability="case:delegation:create"
+              context={caseId ? { caseId } : undefined}
               className="fm-btn-save"
               disabled={!canConfirm}
-              onClick={handleConfirm}
+              onClick={() => { void handleConfirm(); }}
             >
               {confirming ? t('delegateModal.delegating') : t('delegateModal.confirmDelegation')}
-            </button>
+            </CapabilityButton>
           </div>
         </div>
 

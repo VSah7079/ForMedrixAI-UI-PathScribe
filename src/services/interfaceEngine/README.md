@@ -119,6 +119,16 @@ today; `encounter` would need real, resolved `Encounter` data (see
 doesn't yet do. Left genuinely absent (never fabricated) rather than
 guessed at — a real, scoped follow-up if either becomes necessary.
 
+## Dispatch outcomes and the Audit Log's Outbound Dispatches trail (Batch 318, PS-86)
+
+- **Outcomes are stored.** Each OrderCreated send now records what happened: delivered, or failed with the error and error code, plus an attempt count. Outcomes are kept per `messageId` beside the event log (`pathscribe_interface_engine_dispatch_outcomes`), so the stored events stay exactly the payloads that were sent. Events recorded before this change show as "outcome unknown", never assumed delivered.
+- **Bug fixed: failed events were reported as delivered.** Re-posting an event with the same `messageId` used to return `delivered: true` without sending, even when the first send had failed. Now a previously failed event is re-sent and its outcome updated. A delivered one still isn't re-sent (spec §2.3 idempotency). The rule is `shouldResendRedelivery`.
+- **`listDispatchTrail()`** returns every event with its outcome, most recent first. It is not scoped to an organisation, like the Audit Log's other Interfaces views, because it is an administrator's system-wide view. `listDispatchedEvents(organisationId)` is unchanged.
+- **`buildDispatchTrail.ts`** holds the pure join, filter and count rules the UI uses.
+- **Tests:** `buildDispatchTrail.test.ts`, plus three new cases in `mockInterfaceEngineService.test.ts`.
+
+**Noted, not changed:** `buildOrderCreationPayload` fills `organisationId` from `Case.originEnterpriseId`, an **enterprise** id such as `ENT-MFT`. Staff users' `organisationId` values are **organisation** ids such as `ORG-MFT`. Whether the spec's `organisationId` means the enterprise or the organisation needs a decision before anything is scoped by it.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the
 whole services/ layer.*

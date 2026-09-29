@@ -16,10 +16,19 @@ export const mockCriticalAlertDispatchService: ICriticalAlertDispatchService = {
     return ok(load().filter(r => r.caseId === caseId));
   },
 
+  async getAll() {
+    return ok(load());
+  },
+
   async record(input) {
+    // `id` may already be caller-supplied — see ICriticalAlertDispatchService.ts's
+    // own doc comment for why (a reference token needing to link back to
+    // this exact record before it exists in storage). Destructured out so
+    // the spread below can't clobber the resolved id.
+    const { id: providedId, ...rest } = input;
     const record: CriticalAlertDispatchRecord = {
-      id: `cad-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
-      ...input,
+      id: providedId ?? `cad-${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 6)}`,
+      ...rest,
       dispatchedAt: new Date().toISOString(),
     };
     persist([...load(), record]);

@@ -24,3 +24,11 @@ throughout, not this app's own established "no inline CSS, named classes
 only" convention for Config-registered UI (see
 `components/Config/System/README.md`'s own header). Found while auditing
 README coverage, not yet reconciled.
+
+## Batch 367 (PS-74): no inline CSS
+
+`LabelDesignerPage.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`LabelDesignerPage.tsx` takes `labelLayoutService` and `facilityService` from `@/services`, and is off the deployment baseline.

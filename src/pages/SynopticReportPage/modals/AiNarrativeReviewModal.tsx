@@ -24,6 +24,7 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
 
 export type NarrativeTargetField = 'gross' | 'microscopic' | 'ancillary';
 
@@ -74,7 +75,7 @@ export const AiNarrativeReviewModal: React.FC<AiNarrativeReviewModalProps> = ({
           </div>
 
           <span className="fm-eyebrow">{t('aiNarrativeReviewModal.generatedTextLabel')}</span>
-          <textarea
+          <SpellCheckedTextarea
             autoFocus
             value={text}
             onChange={e => setText(e.target.value)}

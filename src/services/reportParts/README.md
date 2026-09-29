@@ -19,6 +19,10 @@ Real, per direct request for Preliminary (not just Final) report templates acros
 
 Real, per direct correction ("a text field on the report should be declared as the final diagnosis"). `specimen.diagnosis` — the real, per-specimen diagnosis text field inside this part's own repeating group — is now marked `isFinalDiagnosisField: true` (spread onto the shared `p()` helper's own output at this one call site, rather than changing that helper's own signature, since it's used widely elsewhere for fields with nothing to do with this). Confirmed directly, via a real integration test with mocks disabled, that this one edit correctly covers all 5 real Final templates that reference this exact part by id (`tmpl-gold-standard`, `tmpl-breast`, `tmpl-gi`, `tmpl-thoracic`, `tmpl-uro`) — see `services/reportTemplates/README.md`'s own fuller account of the resolver and validator this designation feeds.
 
+## `clone(id, newName)`: name now required (Batch 317, PS-73)
+
+The copy's name comes from the caller, in the user's language (`t('common.copyOfName')`). There is no longer an English `"(Copy)"` fallback stored as data.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

@@ -145,12 +145,12 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
             <>
               <div className="ps-conf-form-field">
                 <label className="ps-label" htmlFor="bg-downtime-select">{t('breakGlassRebindModal.downtimeSelectLabel')}</label>
-                <select id="bg-downtime-select" className="ps-input-dark" value={selectedDowntimeId} onChange={e => setSelectedDowntimeId(e.target.value)} disabled={busy}>
+                <select id="bg-downtime-select" className="ps-input-dark" data-phi="true" value={selectedDowntimeId} onChange={e => setSelectedDowntimeId(e.target.value)} disabled={busy}>
                   <option value="">
                     {downtimeRecords.length === 0 ? t('breakGlassRebindModal.noDowntimeRecords') : t('breakGlassRebindModal.selectDowntimePlaceholder')}
                   </option>
                   {downtimeRecords.map(r => (
-                    <option key={r.id} value={r.id}>{r.lastName}, {r.firstName} — MRN {r.mrn}{r.downtimeReasonCode ? ` (${r.downtimeReasonCode})` : ''}</option>
+                    <option key={r.id} value={r.id}>{t('breakGlassRebindModal.downtimeOption', { name: `${r.lastName}, ${r.firstName}`, mrn: r.mrn })}{r.downtimeReasonCode ? ` (${r.downtimeReasonCode})` : ''}</option>
                   ))}
                 </select>
               </div>

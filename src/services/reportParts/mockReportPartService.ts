@@ -748,14 +748,14 @@ class MockReportPartService implements IReportPartService {
     return ok(updated);
   }
 
-  async clone(id: ID, newName?: string): Promise<ServiceResult<ReportPart>> {
+  async clone(id: ID, newName: string): Promise<ServiceResult<ReportPart>> {
     await delay(400);
     const source = storeGet(id);
     if (!source) return err(`Part '${id}' not found`, 'NOT_FOUND');
     const cloned: ReportPart = {
       ...JSON.parse(JSON.stringify(source)),
       id: uid(),
-      name: newName ?? `${source.name} (Copy)`,
+      name: newName,
       status: 'draft' as ReportPartStatus,
       createdBy: 'current-user',
       createdAt: now(), updatedAt: now(),

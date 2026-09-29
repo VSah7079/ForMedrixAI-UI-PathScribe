@@ -32,12 +32,13 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useEffectiveScanStation } from '@/hooks/useEffectiveScanStation';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
 import type { ScanStation } from '@/services/scanStations/IScanStationService';
 import { mockActionRegistryService } from '@/services/actionRegistry/mockActionRegistryService';
 import { mockWorkstationGroupService } from '@/services/workstationGroups/mockWorkstationGroupService';
+import { resolveBenchRouteForGroup } from '@/services/workstationGroups/resolveStationBenchRoute';
 import { mockActionGroupService } from '@/services/actionGroups/mockActionGroupService';
 
 export function NavBarScanStation() {
@@ -97,11 +98,14 @@ export function NavBarScanStation() {
       }
       mockWorkstationGroupService.getById(stationRes.data.workstationGroupId).then(groupRes => {
         mockActionRegistryService.setCurrentStationProfile(groupRes.ok ? groupRes.data.functionalArea : undefined);
-        // Real, deliberately honest: only a real, non-blank route is
-        // ever surfaced — an inactive group's route is never offered
-        // either, since deep-linking to a bench that's been
-        // deactivated is the wrong default.
-        setBenchRoute(groupRes.ok && groupRes.data.status === 'Active' ? groupRes.data.dedicatedPageRoute : undefined);
+        // Real fix, found by this app's own inline-CSS/business-logic
+        // sweep: delegates to resolveStationBenchRoute.ts's shared
+        // Active-gated route rule — the same real "only a real route
+        // on an Active group" guard ScanStationPrompt.tsx's own
+        // one-time login confirmation uses — instead of a second,
+        // independently-maintained copy of the same gate. Passes the
+        // group already fetched above rather than re-fetching it.
+        setBenchRoute(resolveBenchRouteForGroup(groupRes));
         if (!groupRes.ok) { mockActionRegistryService.setCurrentActionGroupActionIds(undefined); return; }
 
         const actionGroupIds = [groupRes.data.defaultActionGroupId, ...(groupRes.data.allowedActionGroupIds ?? [])].filter((id): id is string => !!id);

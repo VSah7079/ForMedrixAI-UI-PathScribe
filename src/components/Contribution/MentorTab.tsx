@@ -31,7 +31,7 @@ import '../../pathscribe.css';
 import { qaSupervisionAssignmentService, qaSupervisionAssignmentTypeService, qaActivityRecordService, countersignService, subspecialtyService } from '@/services';
 import { useAuth } from '@contexts/AuthContext';
 import type { Subspecialty } from '@/services';
-import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services';
 import type { QaSupervisionAssignment } from '@/types/quality/QaSupervisionAssignment';
 import type { QaSupervisionAssignmentType } from '@/types/quality/QaSupervisionAssignmentType';
 import type { QaActivityRecord } from '@/types/quality/QaActivityRecord';
@@ -117,7 +117,7 @@ const MentorTab: React.FC = () => {
                 <span>{progress.label}</span>
               </div>
               <div className="ps-contrib-progress-track">
-                <div className="ps-contrib-progress-fill" style={{ width: `${progress.pct}%` }} />
+                <div className="ps-contrib-progress-fill ps-contrib-progress-fill--pct" style={{ '--bar-pct': `${progress.pct}%` } as React.CSSProperties} />
               </div>
             </div>
 

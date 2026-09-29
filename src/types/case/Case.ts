@@ -308,6 +308,16 @@ export interface SynopticReportInstance {
   status: 'draft' | 'finalized' | 'pending-countersign';
   /** Per-report comment (html) */
   comment?: string;
+  /** Set when an Assist-mode LIS poll (PS-87) created or last refreshed
+   *  this draft: which LIS milestone drove it, and the AI's reason and
+   *  confidence for choosing this template. Absent on every instance a
+   *  person created. See services/assistPolling/. */
+  aiDraftSource?: {
+    milestone:   'gross_complete' | 'micro_diagnosis_complete';
+    generatedAt: string;
+    reason?:     string;
+    confidence?: number;
+  };
 
   // ── Synoptic-level assignment (parent-child sign-off) ──────────────────
   /** Pathologist assigned to finalise this specific synoptic (may differ from case owner) */
@@ -928,6 +938,11 @@ export interface Case {
    *  them via syncPrimaryAssignee() (caseAssignmentSync.ts), not a
    *  replacement for them. */
   participants?: CaseParticipant[];
+  /** PS-342 (Batch 338): the spelling language chosen for this case only
+   *  (a SpellingLocale code, e.g. 'en-GB'). Absent: the assigned
+   *  pathologist's preference, then the ordering facility's default,
+   *  applies (services/spellcheck/resolveSpellingLocale.ts). */
+  spellingLocaleOverride?: string | null;
   /** Real, flat denormalization of participants — the specific staffIds
    *  currently eligible to finalize this case (active Primary/
    *  Attending), maintained automatically by CaseRouter.ts whenever a

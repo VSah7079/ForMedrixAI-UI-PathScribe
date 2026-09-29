@@ -19,7 +19,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TooltipContentProps } from 'recharts';
 import { countersignService, auditService } from '@/services';
@@ -27,7 +27,8 @@ import { caseRouter } from '@/services/cases/CaseRouter';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
 import type { CountersignRecord } from '@/types/case/CountersignRecord';
 import { QaScopeSwitcher } from './QaScopeSwitcher';
-import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope } from './qaReportUtils';
+import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
 
 const hoursBetween = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 3600000;
 
@@ -120,7 +121,7 @@ export const CountersignTurnaroundTab: React.FC = () => {
       'Changed Fields': r.changedFieldCount ?? '',
       'Attending Feedback': r.attendingFeedback ?? '',
     }));
-    exportQaReportRows(rows, `countersign-turnaround-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:countersign-turnaround:export', rows, `countersign-turnaround-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext(scope));
   };
 
   if (loading) return <div className="ps-conf-loading">{t('countersignTurnaroundTab.loading')}</div>;
@@ -129,7 +130,7 @@ export const CountersignTurnaroundTab: React.FC = () => {
     <div>
       <div className="ps-qa-tab-toolbar">
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={visibleClientIds} />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
+        <CapabilityButton capability="qa:countersign-turnaround:export" context={qaScopeContext(scope)} className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</CapabilityButton>
       </div>
 
       <div className="ps-defic-trend-card">

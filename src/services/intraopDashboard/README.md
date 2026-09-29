@@ -89,18 +89,11 @@ mandatory surgeon-read-back checkbox.
   to the surgical case, or RFID badge-scan hardware) — neither has any
   real, existing data model or hardware integration in this app to
   build on.
-- **Real, honest scope**: the spec's own "Multi-Board Sync... via
-  WebSockets or SignalR... sub-500ms latency" is a genuine backend
-  need this app has no infrastructure for anywhere — filed on the
-  RFP-APLIS-2026-GLOBAL Backend Needs Log, same posture as cold-chain
-  telemetry before it. `OrSuiteDashboardPage.tsx` polls on a real,
-  working interval instead (15s data refresh, 1s visual timer tick) —
-  honest about being a stand-in, never a claim of real push
-  infrastructure.
-- **Not yet done**: no page-level render test exists for
-  `OrSuiteDashboardPage.tsx` itself — the underlying resolver and
-  service methods are tested; the page's own rendering/animation
-  logic is not.
+- **Multi-Board Sync** ("via WebSockets or SignalR... sub-500ms latency"):
+  built in Batch 342 (PS-262). See "Live updates" below.
+- **Page test:** `pages/OrSuiteDashboardPage.test.tsx` covers rendering, the
+  dismiss flow, demo mode and (Batch 342) live updates. An earlier note here
+  said no page-level test existed; that was out of date.
 
 ## Sales demo mode (Sep 2026)
 
@@ -184,14 +177,32 @@ since the native `storage` event only ever fires for other tabs).
 CRUD for `OrSuiteTerminal`, with the same real facility→location
 cascade `ScanStationsSection.tsx` already established.
 
-## Real, honest scope
+## Live updates (Batch 342, PS-262)
 
-The actual real-time push channel (a new request landing, a status
-change from another terminal) is a real backend need — filed on the
-RFP-APLIS-2026-GLOBAL Backend Needs Log, same posture as cold-chain
-telemetry and referral results before it. The dashboard page polls
-the existing mock services on a real, working interval instead — an
-honest stand-in, not a claim of real push infrastructure.
+The board subscribes to its OR locations through
+`hooks/useLiveIntraopUpdates.ts` (`services/liveUpdates/`).
+- **With the hub:** the API server's SignalR hub delivers a dismissal, new
+  request or diagnosis from any device to every board showing that location
+  (target under 500 ms).
+- **Without it:** this browser's other windows update instantly and other
+  devices are picked up by 15-second polling.
+- **Badge:** the header shows the connection state.
+
+**Moved out of the page in the same change:**
+- `resolveOrBoardLiveView.ts`: which locations the board shows
+  (Multi-Suite rules) and when the "3-pulse flash" plays;
+- `dismissFromBoardWithAudit.ts`: the dismissal, then its event-log/audit
+  record. A failed log write is now reported rather than ignored.
+
+**Also fixed:**
+- the page imports the terminal and event-log services from `@/services`
+  (off the mock-import baseline);
+- two hard-coded separators became translated templates, and a refused
+  dismissal shows the translated message instead of the service's English
+  text;
+- the demo timer no longer calls a stale copy of the refresh.
+
+Tests: `orBoardLive.test.ts`.
 
 **Not addressed here, and worth naming plainly**: the RFP's own fourth
 sub-requirement for this gap, "Correlation Engine: Automatic

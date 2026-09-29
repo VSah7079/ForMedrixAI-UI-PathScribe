@@ -108,6 +108,28 @@
    future date input gets this for free too. */
 input[type="date"] { color-scheme: dark; }
 
+/* ── Native <select> elements, app-wide (PS-62, Batch 323) ──────────────────
+   Pete's decision on PS-62: keep the browser's own <select> (keyboard,
+   screen-reader and mobile behaviour come for free) rather than replace
+   ~400 of them with a custom component, and make the open list match the
+   dark theme with CSS.
+
+   One set of rules for every select in the app: dark native controls
+   and dark option rows. These replace the per-class option rules that
+   ps-conf-select, ps-input-dark, ps-specedit-input and ps-st-role-filter
+   each carried, in four slightly different colours; the closed box keeps
+   each class's own styling. .ps-scan-prompt-select keeps its deliberate
+   teal option text.
+
+   Not used: Chrome/Edge's fully styled list (appearance: base-select).
+   It sizes each select to its selected value instead of its widest
+   option, so toolbars and table columns would change width as values are
+   picked. See the PS-62 note in components/Common/README.md. */
+select { color-scheme: dark; }
+select option,
+select optgroup { background-color: var(--ps-conf-surface); color: var(--ps-conf-text); }
+select optgroup { color: var(--ps-conf-text-2); font-weight: 600; }
+
 /* ============================================================
    KEYFRAME ANIMATIONS
    Defined here so they are always parsed before first use.
@@ -798,6 +820,8 @@ input[type="date"] { color-scheme: dark; }
 
 /* DelegateModal — RecipientCard subcomponent */
 .ps-delegate-recipient-card    { padding: 9px 12px; border-radius: 8px; cursor: grab; margin-bottom: 4px; user-select: none; touch-action: none; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); border-left: 1px solid rgba(255,255,255,0.08); transition: all 0.12s; }
+/* Batch 353: the drag offset from dnd-kit (was an inline transform). */
+.ps-delegate-recipient-card[data-dragged] { transform: var(--drag-transform); }
 .ps-delegate-recipient-card--dragging { background: rgba(138,180,248,0.15); border-color: rgba(138,180,248,0.4); transition: none; }
 .ps-delegate-recipient-card--selected { background: rgba(8,145,178,0.12); border-color: rgba(8,145,178,0.4); border-left: 2px solid #0891B2; }
 .ps-delegate-recipient-row     { display: flex; align-items: center; gap: 10px; }
@@ -808,7 +832,11 @@ input[type="date"] { color-scheme: dark; }
 .ps-delegate-recipient-grip    { font-size: 14px; color: #374151; flex-shrink: 0; }
 
 /* DelegateModal — TypeZone subcomponent */
-.ps-delegate-type-zone           { padding: 10px 12px; margin-bottom: 6px; border-radius: 10px; cursor: pointer; transition: all 0.15s; }
+.ps-delegate-type-zone           { padding: 10px 12px; margin-bottom: 6px; border-radius: 10px; cursor: pointer; transition: all 0.15s; background: rgba(255,255,255,0.02); border: 1.5px dashed rgba(255,255,255,0.08); }
+/* Batch 353: selected and drag-over states (were inline styles). --ps-hue is the delegation type's colour. */
+.ps-delegate-type-zone--selected { background: rgba(8,145,178,0.08); border: 1.5px solid rgba(8,145,178,0.4); }
+.ps-delegate-type-zone--over     { background: color-mix(in srgb, var(--ps-hue) 8%, transparent); border: 1.5px solid color-mix(in srgb, var(--ps-hue) 40%, transparent); }
+.ps-delegate-type-zone--selected .ps-delegate-type-zone-id-badge { background: color-mix(in srgb, var(--ps-hue) 13%, transparent); color: var(--ps-hue); }
 .ps-delegate-type-zone-row       { display: flex; align-items: center; gap: 8px; }
 .ps-delegate-type-zone-id-badge  { font-size: 9px; font-weight: 700; letter-spacing: 0.03em; padding: 2px 6px; border-radius: 5px; flex-shrink: 0; background: rgba(255,255,255,0.06); color: #94a3b8; }
 .ps-delegate-type-zone-label     { font-size: 13px; font-weight: 600; color: #e5e7eb; flex: 1; }
@@ -839,8 +867,20 @@ input[type="date"] { color-scheme: dark; }
   pointer-events: none;
   display: flex; align-items: center; gap: 8px;
 }
-.ps-save-toast--visible { opacity: 1; transform: translateY(0); }
+.ps-save-toast--visible { opacity: 1; transform: translateY(0); pointer-events: auto; cursor: pointer; }
 .ps-save-toast-check     { color: #10B981; }
+/* PS-100 (batch 349): the kind shows (it was always a green check), long text wraps, and it can be closed. */
+.ps-save-toast { max-width: min(520px, calc(100vw - 80px)); align-items: flex-start; line-height: 1.45; border-left: 4px solid #10B981; }
+.ps-save-toast--info    { border-left-color: var(--ps-teal); }
+.ps-save-toast--info .ps-save-toast-check    { color: var(--ps-teal-light); }
+.ps-save-toast--warning { border-left-color: #f59e0b; }
+.ps-save-toast--warning .ps-save-toast-check { color: #fbbf24; }
+.ps-save-toast--error   { border-left-color: #ef4444; }
+.ps-save-toast--error .ps-save-toast-check   { color: #f87171; }
+.ps-save-toast-text  { flex: 1; font-weight: 500; white-space: pre-line; overflow-wrap: anywhere; }
+.ps-save-toast-close { background: none; border: none; color: #94a3b8; font-size: 18px; line-height: 1; cursor: pointer; padding: 0 0 0 6px; }
+.ps-save-toast-close:hover { color: #e2e8f0; }
+.ps-save-toast-close:focus-visible { outline: 2px solid var(--ps-teal-light); outline-offset: 2px; }
 
 /* Cytology slide-over drawer (Material View / Synoptic Reporting shell) */
 .ps-cytology-slideover        { width: 420px; }
@@ -1190,33 +1230,9 @@ input[type="date"] { color-scheme: dark; }
 
 .ps-input-dark:focus { border-color: rgba(8, 145, 178, 0.6); }
 .ps-input-dark::placeholder { color: #94a3b8; }
-/* Same real bug and fix already established for ps-conf-select/
-   ps-specedit-input elsewhere in this file — see this class's own
-   comment above for the full finding. Fixes every existing <select>
-   using ps-input-dark app-wide, not just the one specifically
-   reported. */
-select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; }
+/* The option-list colours for ps-input-dark selects are now the
+   app-wide select rules near the top of this file (PS-62). */
 
-/* Message input pill */
-.ps-msg-input-wrap {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  background: var(--ps-navy-input);
-  border: 1px solid var(--ps-border-bright);
-  border-radius: 24px;
-  padding: 10px 18px;
-}
-
-.ps-msg-input-wrap input {
-  flex: 1;
-  background: none;
-  border: none;
-  outline: none;
-  color: #e2e8f0;
-  font-size: 14px;
-  font-family: 'Inter', sans-serif;
-}
 
 /* Form field label */
 .ps-label {
@@ -1781,8 +1797,8 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
    misalignment). That dead rule has been renamed to
    .ps-msg-legacy-sidebar (unused by any component) so this, the one
    real ps-msg-sidebar the live Message Drawer (AppShell.tsx) actually
-   uses, now applies uncontested. Left in place for PS-78's own,
-   separate dead-CSS cleanup rather than deleted here. */
+   uses, now applies uncontested. PS-78 (Batch 319) then deleted that
+   renamed rule with the rest of the dead ps-msg-* block. */
 .ps-msg-sidebar {
   width: 320px;
   flex-shrink: 0;
@@ -1804,33 +1820,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   pointer-events: all;
 }
 
-/* Message list item */
-.ps-msg-item {
-  padding: 12px 18px;
-  cursor: pointer;
-  border-bottom: 1px solid rgba(255, 255, 255, 0.04);
-  border-left: 2px solid transparent;
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  transition: all 0.12s;
-}
-
-.ps-msg-item:hover  { background: rgba(255, 255, 255, 0.03); }
-.ps-msg-item.active { background: rgba(8, 145, 178, 0.08); border-left-color: var(--ps-teal); }
-
-/* Message sender name states */
-.ps-msg-sender           { font-weight: 700; font-size: 14px; color: #f1f5f9; }
-.ps-msg-sender.read      { font-weight: 400; color: #6b7f99; }
-.ps-msg-sender.urgent    { color: #FF453A; }
-.ps-msg-sender.urgent.read { color: #7f3530; font-weight: 400; }
-
-/* Message body preview */
-.ps-msg-preview          { font-size: 12px; color: #b8c5d4; }
-.ps-msg-preview.read     { color: #8a9db5; }
-
-/* Message timestamp */
-.ps-msg-time { font-size: 11px; color: #6b7f99; flex-shrink: 0; }
 
 /* Sidebar footer */
 .ps-msg-sidebar-footer {
@@ -1896,16 +1885,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   border-radius: 16px 16px 16px 2px;
 }
 
-/* Thread input footer */
-.ps-msg-input-footer {
-  padding: 14px 20px 34px;
-  border-top: 1px solid rgba(51, 65, 85, 0.9);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--ps-navy-right);
-  flex-shrink: 0;
-}
 
 /* Send button */
 .ps-send-btn {
@@ -2027,7 +2006,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 
 /* Flex spacer */
 .ps-spacer { flex: 1; }
-
 
 
 /* ============================================================
@@ -2778,6 +2756,10 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   flex-shrink: 0;
   max-width: 100%;
   min-width: 0;
+  /* Batch 350: the flag's hue arrives as --ps-hue (was inline background/border/colour). */
+  background: color-mix(in srgb, var(--ps-hue, #3B82F6) 15%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ps-hue, #3B82F6) 40%, transparent);
+  color: var(--ps-hue, #3B82F6);
 }
 /* max-width:100%/min-width:0 added on the chip itself so it can shrink
    within its flex-wrap parent (.wl-card__chips) instead of always
@@ -3725,103 +3707,22 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 }
 
 /* ═══════════════════════════════════════════════════════════════════════════
-   PATHSCRIBE — MESSAGING STYLES
-   Add these rules into pathscribe.css
+   MESSAGING — message drawer (components/AppShell/AppShell.tsx)
+   This section began as a pasted copy of an earlier Messages UI spec. PS-78
+   (Batch 319) removed its 130 rules for 70 ps-msg-* classes no source file
+   uses (the live thread, compose and user-search views use ps-thread-*,
+   ps-compose-* and ps-user-*). What remains here is styling the live drawer
+   renders. See docs/ARCHIVE.md → "PS-78".
    ═══════════════════════════════════════════════════════════════════════════ */
-
-/* ── Tokens ──────────────────────────────────────────────────────────────── */
-/* ── Shell ───────────────────────────────────────────────────────────────── */
-.ps-msg-shell {
-  display: flex;
-  height: 100%;
-  background: var(--msg-bg);
-  font-family: 'Inter', -apple-system, sans-serif;
-  color: var(--msg-text);
-  overflow: hidden;
-}
-
-/* ── Sidebar ─────────────────────────────────────────────────────────────── */
-.ps-msg-legacy-sidebar {
-  width: 300px;
-  min-width: 300px;
-  display: flex;
-  flex-direction: column;
-  background: var(--msg-sidebar-bg);
-  border-right: 1px solid var(--msg-border);
-  overflow: hidden;
-}
-
-.ps-msg-sidebar-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 18px 16px 14px;
-  border-bottom: 1px solid var(--msg-border);
-  flex-shrink: 0;
-}
-
-.ps-msg-sidebar-title {
-  font-size: 17px;
-  font-weight: 700;
-  color: #e8f0fc;
-  letter-spacing: -0.3px;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.ps-msg-unread-badge {
-  background: var(--msg-accent);
-  color: #fff;
-  font-size: 10px;
-  font-weight: 800;
-  padding: 2px 6px;
-  border-radius: 10px;
-  line-height: 1.4;
-}
-
-.ps-msg-unread-badge.urgent {
-  background: var(--msg-urgent);
-  animation: ps-badge-pulse 1.8s ease-in-out infinite;
-}
 
 @keyframes ps-badge-pulse {
   0%, 100% { box-shadow: 0 0 0 0 rgba(239,68,68,0.5); }
   50%       { box-shadow: 0 0 0 5px rgba(239,68,68,0); }
 }
 
-.ps-msg-legacy-header-actions {
-  display: flex;
-  gap: 6px;
-  align-items: center;
-}
-
-.ps-msg-icon-btn {
-  background: none;
-  border: none;
-  color: var(--msg-muted);
-  cursor: pointer;
-  padding: 5px;
-  border-radius: 6px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s, background 0.15s;
-}
-.ps-msg-icon-btn:hover {
-  color: var(--msg-text);
-  background: rgba(255,255,255,0.06);
-}
-.ps-msg-icon-btn.active {
-  color: var(--msg-accent);
-}
 
 /* Search bar in sidebar */
-.ps-msg-search-wrap {
-  padding: 10px 12px;
-  border-bottom: 1px solid var(--msg-border);
-  flex-shrink: 0;
-}
+
 
 .ps-msg-search {
   display: flex;
@@ -3979,270 +3880,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   flex-shrink: 0;
 }
 
-/* Compose button at bottom of sidebar */
-.ps-msg-compose-row {
-  padding: 12px 12px 14px;
-  border-top: 1px solid var(--msg-border);
-  flex-shrink: 0;
-  display: flex;
-  gap: 8px;
-}
-
-.ps-msg-compose-btn {
-  flex: 1;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  gap: 7px;
-  padding: 9px 14px;
-  background: var(--msg-accent);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
-}
-.ps-msg-compose-btn:hover {
-  background: #0a9fc7;
-  transform: translateY(-1px);
-}
-
-.ps-msg-email-btn {
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  padding: 9px 11px;
-  background: rgba(255,255,255,0.05);
-  color: var(--msg-muted);
-  border: 1px solid var(--msg-border);
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-  gap: 6px;
-  white-space: nowrap;
-}
-.ps-msg-email-btn:hover {
-  color: #38bdf8;
-  border-color: rgba(56,189,248,0.3);
-  background: rgba(56,189,248,0.07);
-}
-
-/* ── Thread Panel ─────────────────────────────────────────────────────────── */
-.ps-msg-thread-panel {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  background: var(--msg-bg);
-  overflow: hidden;
-}
-
-.ps-msg-legacy-thread-header {
-  padding: 16px 22px;
-  border-bottom: 1px solid var(--msg-border);
-  flex-shrink: 0;
-  display: flex;
-  align-items: flex-start;
-  justify-content: space-between;
-  gap: 16px;
-}
-
-.ps-msg-legacy-thread-subject {
-  font-size: 16px;
-  font-weight: 700;
-  color: #e8f0fc;
-  letter-spacing: -0.2px;
-  line-height: 1.3;
-}
-
-.ps-msg-thread-meta {
-  margin-top: 4px;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 10px;
-  align-items: center;
-}
-
-.ps-msg-thread-meta-item {
-  font-size: 12px;
-  color: var(--msg-muted);
-  display: flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.ps-msg-thread-meta-item strong {
-  color: var(--msg-text);
-  font-weight: 500;
-}
-
-.ps-msg-case-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  background: rgba(8,145,178,0.1);
-  border: 1px solid rgba(8,145,178,0.25);
-  border-radius: 5px;
-  font-size: 11px;
-  color: var(--msg-accent);
-  font-weight: 600;
-}
-
-.ps-msg-urgent-tag {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  padding: 2px 8px;
-  background: var(--msg-urgent-dim);
-  border: 1px solid rgba(239,68,68,0.3);
-  border-radius: 5px;
-  font-size: 11px;
-  color: var(--msg-urgent);
-  font-weight: 700;
-  text-transform: uppercase;
-  letter-spacing: 0.4px;
-}
-
-.ps-msg-thread-actions {
-  display: flex;
-  gap: 6px;
-  flex-shrink: 0;
-}
-
-/* Thread bubbles */
-.ps-msg-bubbles {
-  flex: 1;
-  overflow-y: auto;
-  padding: 20px 22px;
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
-
-.ps-msg-bubbles::-webkit-scrollbar { width: 4px; }
-.ps-msg-bubbles::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.07); border-radius: 4px; }
-
-.ps-msg-bubble-wrap {
-  display: flex;
-  flex-direction: column;
-}
-
-.ps-msg-bubble-wrap.me { align-items: flex-end; }
-.ps-msg-bubble-wrap.them { align-items: flex-start; }
-
-.ps-msg-bubble-meta {
-  font-size: 11px;
-  color: var(--msg-muted);
-  margin-bottom: 5px;
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
-.ps-msg-bubble {
-  max-width: 72%;
-  padding: 11px 15px;
-  border-radius: 14px;
-  font-size: 13.5px;
-  line-height: 1.6;
-  color: var(--msg-text);
-  word-break: break-word;
-}
-
-.ps-msg-bubble.me {
-  background: var(--msg-bubble-me);
-  border-bottom-right-radius: 4px;
-  color: #d8f0f8;
-}
-
-.ps-msg-bubble.them {
-  background: var(--msg-bubble-them);
-  border-bottom-left-radius: 4px;
-  border: 1px solid var(--msg-border);
-}
-
-/* Reply bar */
-.ps-msg-reply-bar {
-  border-top: 1px solid var(--msg-border);
-  padding: 14px 18px;
-  background: var(--msg-input-bg);
-  flex-shrink: 0;
-}
-
-.ps-msg-reply-inner {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: var(--msg-surface);
-  border: 1px solid var(--msg-border);
-  border-radius: 24px;
-  padding: 6px 8px 6px 14px;
-  transition: border-color 0.15s;
-}
-.ps-msg-reply-inner:focus-within {
-  border-color: rgba(8,145,178,0.5);
-}
-
-.ps-msg-reply-inner input {
-  flex: 1;
-  background: none;
-  border: none;
-  outline: none;
-  color: var(--msg-text);
-  font-size: 13.5px;
-  padding: 6px 0;
-}
-.ps-msg-reply-inner input::placeholder { color: var(--msg-muted); }
-
-.ps-msg-reply-icon-btn {
-  background: none;
-  border: none;
-  color: var(--msg-muted);
-  cursor: pointer;
-  padding: 5px;
-  border-radius: 50%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: color 0.15s, background 0.15s;
-}
-.ps-msg-reply-icon-btn:hover { color: var(--msg-text); background: rgba(255,255,255,0.06); }
-.ps-msg-reply-icon-btn.listening { color: var(--msg-urgent); }
-
-.ps-msg-send-btn {
-  width: 32px;
-  height: 32px;
-  border-radius: 50%;
-  border: none;
-  background: var(--msg-accent);
-  color: #fff;
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  transition: background 0.15s, transform 0.1s;
-  flex-shrink: 0;
-}
-.ps-msg-send-btn:disabled { background: var(--msg-surface-2); color: var(--msg-muted); cursor: default; }
-.ps-msg-send-btn:not(:disabled):hover { background: #0a9fc7; transform: scale(1.05); }
-
-/* ── Empty state ─────────────────────────────────────────────────────────── */
-.ps-msg-empty {
-  flex: 1;
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  color: var(--msg-muted);
-}
-
-.ps-msg-empty svg { opacity: 0.18; }
-.ps-msg-empty p { font-size: 13px; }
 
 /* Real dead code, found and removed: the Compose Modal section
  * (ps-msg-modal-*, ps-msg-form-row, ps-msg-form-label — 9 classes)
@@ -4251,343 +3888,6 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
  * misleadingly high false-positive count). Same removal convention
  * as this file's other dead-code notes. */
 
-/* ── To: field ─────────────────────────────────────────────────────────────
-   The recipient area: chips for added contacts + inline search input         */
-.ps-msg-to-field {
-  flex: 1;
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: 6px;
-  min-height: 30px;
-}
-
-.ps-msg-to-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 5px;
-  padding: 3px 8px 3px 10px;
-  background: var(--msg-accent-dim);
-  border: 1px solid rgba(8,145,178,0.3);
-  border-radius: 20px;
-  font-size: 12.5px;
-  color: #7dcfea;
-  font-weight: 500;
-}
-
-.ps-msg-to-chip button {
-  background: none;
-  border: none;
-  color: rgba(125,207,234,0.6);
-  cursor: pointer;
-  font-size: 14px;
-  line-height: 1;
-  padding: 0;
-  margin-left: 2px;
-  display: flex;
-  align-items: center;
-  transition: color 0.12s;
-}
-.ps-msg-to-chip button:hover { color: var(--msg-urgent); }
-
-.ps-msg-to-input {
-  flex: 1;
-  min-width: 120px;
-  background: none;
-  border: none;
-  outline: none;
-  color: var(--msg-text);
-  font-size: 13.5px;
-  padding: 2px 0;
-}
-.ps-msg-to-input::placeholder { color: var(--msg-muted); }
-
-.ps-msg-to-search-btn {
-  background: none;
-  border: none;
-  color: var(--msg-muted);
-  cursor: pointer;
-  padding: 4px;
-  border-radius: 5px;
-  display: flex;
-  align-items: center;
-  transition: color 0.15s;
-  flex-shrink: 0;
-}
-.ps-msg-to-search-btn:hover { color: var(--msg-accent); }
-
-/* Recipient dropdown */
-.ps-msg-recipient-dropdown {
-  position: absolute;
-  background: var(--msg-surface-2);
-  border: 1px solid var(--msg-border-hover);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
-  z-index: 100;
-  min-width: 280px;
-  max-height: 220px;
-  overflow-y: auto;
-  margin-top: 4px;
-}
-
-.ps-msg-recipient-dropdown::-webkit-scrollbar { width: 4px; }
-.ps-msg-recipient-dropdown::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-
-.ps-msg-recipient-option {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  padding: 10px 12px;
-  cursor: pointer;
-  transition: background 0.1s;
-}
-.ps-msg-recipient-option:hover,
-.ps-msg-recipient-option.highlighted { background: var(--msg-accent-dim); }
-
-.ps-msg-recipient-option-name {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--msg-text);
-}
-
-.ps-msg-recipient-option-role {
-  font-size: 11px;
-  color: var(--msg-muted);
-}
-
-.ps-msg-recipient-no-match {
-  padding: 12px 14px;
-  font-size: 13px;
-  color: var(--msg-muted);
-  text-align: center;
-}
-
-/* Subject + body */
-.ps-msg-form-input {
-  flex: 1;
-  background: none;
-  border: none;
-  outline: none;
-  color: var(--msg-text);
-  font-size: 13.5px;
-  padding: 2px 0;
-}
-.ps-msg-form-input::placeholder { color: var(--msg-muted); }
-
-.ps-msg-form-textarea {
-  width: 100%;
-  background: var(--msg-surface-2);
-  border: 1px solid var(--msg-border);
-  border-radius: 8px;
-  color: var(--msg-text);
-  font-size: 13.5px;
-  line-height: 1.6;
-  padding: 12px 14px;
-  resize: none;
-  outline: none;
-  font-family: inherit;
-  transition: border-color 0.15s;
-  min-height: 120px;
-}
-.ps-msg-form-textarea:focus { border-color: rgba(8,145,178,0.4); }
-.ps-msg-form-textarea::placeholder { color: var(--msg-muted); }
-
-/* Compose options row */
-.ps-msg-compose-options {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding-top: 4px;
-}
-
-.ps-msg-urgent-toggle {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  cursor: pointer;
-  font-size: 13px;
-  color: var(--msg-muted);
-  user-select: none;
-  transition: color 0.15s;
-}
-.ps-msg-urgent-toggle:hover { color: var(--msg-urgent); }
-.ps-msg-urgent-toggle.on { color: var(--msg-urgent); }
-
-.ps-msg-urgent-toggle input { display: none; }
-
-.ps-msg-urgent-toggle-track {
-  width: 30px;
-  height: 17px;
-  border-radius: 10px;
-  background: rgba(255,255,255,0.08);
-  position: relative;
-  transition: background 0.2s;
-}
-.ps-msg-urgent-toggle.on .ps-msg-urgent-toggle-track { background: rgba(239,68,68,0.4); }
-
-.ps-msg-urgent-toggle-thumb {
-  position: absolute;
-  width: 13px;
-  height: 13px;
-  border-radius: 50%;
-  background: var(--msg-muted);
-  top: 2px;
-  left: 2px;
-  transition: left 0.2s, background 0.2s;
-}
-.ps-msg-urgent-toggle.on .ps-msg-urgent-toggle-thumb {
-  left: 15px;
-  background: var(--msg-urgent);
-}
-
-.ps-msg-modal-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  padding: 12px 20px 16px;
-  border-top: 1px solid var(--msg-border);
-  gap: 10px;
-}
-
-.ps-msg-send-internal-btn {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 20px;
-  background: var(--msg-accent);
-  color: #fff;
-  border: none;
-  border-radius: 8px;
-  font-size: 13.5px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: background 0.15s, transform 0.1s;
-}
-.ps-msg-send-internal-btn:hover { background: #0a9fc7; transform: translateY(-1px); }
-.ps-msg-send-internal-btn:disabled { background: var(--msg-surface-2); color: var(--msg-muted); cursor: not-allowed; transform: none; }
-
-.ps-msg-send-email-btn {
-  display: flex;
-  align-items: center;
-  gap: 7px;
-  padding: 9px 16px;
-  background: rgba(56,189,248,0.07);
-  color: #38bdf8;
-  border: 1px solid rgba(56,189,248,0.25);
-  border-radius: 8px;
-  font-size: 13px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.ps-msg-send-email-btn:hover {
-  background: rgba(56,189,248,0.14);
-  border-color: rgba(56,189,248,0.45);
-}
-.ps-msg-send-email-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* ── User-search modal (full search) ─────────────────────────────────────── */
-.ps-msg-user-search-modal {
-  background: var(--msg-surface);
-  border: 1px solid var(--msg-border-hover);
-  border-radius: 14px;
-  width: 100%;
-  max-width: 420px;
-  box-shadow: 0 24px 60px rgba(0,0,0,0.6);
-  overflow: hidden;
-}
-
-.ps-msg-user-search-header {
-  padding: 16px 18px 12px;
-  border-bottom: 1px solid var(--msg-border);
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-}
-
-.ps-msg-user-search-title {
-  font-size: 14px;
-  font-weight: 700;
-  color: #e8f0fc;
-}
-
-.ps-msg-user-search-input-wrap {
-  padding: 12px 16px;
-  border-bottom: 1px solid var(--msg-border);
-}
-
-.ps-msg-user-search-bar {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  background: var(--msg-surface-2);
-  border: 1px solid var(--msg-border);
-  border-radius: 8px;
-  padding: 8px 12px;
-  transition: border-color 0.15s;
-}
-.ps-msg-user-search-bar:focus-within { border-color: var(--msg-accent); }
-.ps-msg-user-search-bar input {
-  flex: 1;
-  background: none;
-  border: none;
-  outline: none;
-  color: var(--msg-text);
-  font-size: 13.5px;
-}
-.ps-msg-user-search-bar input::placeholder { color: var(--msg-muted); }
-
-.ps-msg-user-results {
-  max-height: 260px;
-  overflow-y: auto;
-}
-.ps-msg-user-results::-webkit-scrollbar { width: 4px; }
-.ps-msg-user-results::-webkit-scrollbar-thumb { background: rgba(255,255,255,0.08); border-radius: 4px; }
-
-.ps-msg-user-result-item {
-  display: flex;
-  align-items: center;
-  gap: 11px;
-  padding: 11px 16px;
-  cursor: pointer;
-  transition: background 0.1s;
-  border-bottom: 1px solid var(--msg-border);
-}
-.ps-msg-user-result-item:hover { background: var(--msg-accent-dim); }
-.ps-msg-user-result-item:last-child { border-bottom: none; }
-
-.ps-msg-user-result-avatar {
-  width: 36px;
-  height: 36px;
-  border-radius: 50%;
-  background: var(--msg-surface-2);
-  border: 1px solid var(--msg-border);
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-size: 12px;
-  font-weight: 700;
-  color: var(--msg-accent);
-  flex-shrink: 0;
-}
-
-.ps-msg-user-result-name {
-  font-size: 13.5px;
-  font-weight: 500;
-  color: var(--msg-text);
-}
-
-.ps-msg-user-result-role {
-  font-size: 11.5px;
-  color: var(--msg-muted);
-}
-
-.ps-msg-user-search-footer {
-  padding: 10px 16px;
-  border-top: 1px solid var(--msg-border);
-  display: flex;
-  justify-content: flex-end;
-}
 
 /* ── Edit mode (multi-select) ─────────────────────────────────────────────── */
 .ps-msg-row-checkbox {
@@ -4609,100 +3909,10 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   border-color: var(--msg-accent);
 }
 
-.ps-msg-edit-toolbar {
-  padding: 8px 14px;
-  border-bottom: 1px solid var(--msg-border);
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  background: rgba(239,68,68,0.05);
-  flex-shrink: 0;
-}
-
-.ps-msg-edit-count {
-  font-size: 12px;
-  color: var(--msg-muted);
-  flex: 1;
-}
-
-.ps-msg-edit-delete-btn {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  padding: 6px 12px;
-  background: rgba(239,68,68,0.1);
-  border: 1px solid rgba(239,68,68,0.25);
-  color: var(--msg-urgent);
-  border-radius: 7px;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  transition: all 0.15s;
-}
-.ps-msg-edit-delete-btn:hover { background: rgba(239,68,68,0.2); }
-.ps-msg-edit-delete-btn:disabled { opacity: 0.4; cursor: not-allowed; }
-
-/* ── Deleted banner ───────────────────────────────────────────────────────── */
-.ps-msg-deleted-banner {
-  margin: 12px 22px 0;
-  padding: 10px 14px;
-  background: rgba(239,68,68,0.07);
-  border: 1px solid rgba(239,68,68,0.2);
-  border-radius: 8px;
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 12.5px;
-  color: #f87171;
-  flex-shrink: 0;
-}
-
-.ps-msg-restore-btn {
-  background: none;
-  border: 1px solid rgba(239,68,68,0.3);
-  border-radius: 5px;
-  color: #f87171;
-  font-size: 12px;
-  font-weight: 600;
-  cursor: pointer;
-  padding: 3px 10px;
-  transition: all 0.15s;
-}
-.ps-msg-restore-btn:hover { background: rgba(239,68,68,0.12); }
-
-/* ── Secure email confirm toast ───────────────────────────────────────────── */
-.ps-msg-toast {
-  position: fixed;
-  bottom: 24px;
-  left: 50%;
-  transform: translateX(-50%);
-  background: var(--msg-surface-2);
-  border: 1px solid var(--msg-border-hover);
-  border-radius: 10px;
-  padding: 12px 20px;
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  font-size: 13px;
-  color: var(--msg-text);
-  box-shadow: 0 8px 32px rgba(0,0,0,0.5);
-  z-index: 10000;
-  white-space: nowrap;
-  animation: ps-toast-in 0.25s ease;
-}
-.ps-msg-toast-icon { color: var(--msg-accent); font-size: 16px; }
-
-@keyframes ps-toast-in {
-  from { opacity: 0; transform: translateX(-50%) translateY(10px); }
-  to   { opacity: 1; transform: translateX(-50%) translateY(0); }
-}
 
 /* ── Responsive ───────────────────────────────────────────────────────────── */
 @media (max-width: 680px) {
   .ps-msg-sidebar { width: 100%; min-width: unset; }
-  .ps-msg-thread-panel { display: none; }
-  .ps-msg-shell.thread-open .ps-msg-sidebar { display: none; }
-  .ps-msg-shell.thread-open .ps-msg-thread-panel { display: flex; }
 }
 
 /* ── AppShell drawer badge urgent alias ───────────────────────────────────── */
@@ -5675,6 +4885,9 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .wl-table-scroll { flex: 1; overflow: auto; position: relative; scrollbar-gutter: stable; }
 .wl-table        { width: 100%; border-collapse: collapse; font-family: inherit; }
 .wl-container    { display: flex; flex-direction: column; flex: 1; min-height: 0; min-width: 0; overflow: hidden; }
+/* Batch 350: the measured height arrives as a custom property (was an inline style). */
+.wl-container    { height: var(--wl-container-height, 100%); }
+.wl-divider--clickable { cursor: pointer; }
 
 /* ── Table head ──────────────────────────────────────────── */
 .wl-thead { position: sticky; top: 0; z-index: 2; background: rgba(13,20,38,0.97); backdrop-filter: blur(8px); border-top: 1px solid rgba(255,255,255,0.08); }
@@ -5706,14 +4919,14 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .wl-td-dot-inner{ width: 4px; height: 100%; min-height: 36px; border-radius: 0 2px 2px 0; }
 
 /* ── Status dots ─────────────────────────────────────────── */
-/* --wl-status-color/--wl-status-glow are set inline per-row from
+/* --wl-status-color is set per row (the glow is derived from it; Batch 350) from
    getStatusStyle()'s computed color (batch 31) — the same "CSS custom
    property for a computed color" pattern used elsewhere in this sweep
    (see ValidationStudiesSection.tsx's .ps-vs-study-badge). The glow is
    a separate property (not derived in CSS) because it's the color hex
    with an alpha suffix appended in JS (`${color}66`), which can't be
    built out of a bare custom property with a plain CSS box-shadow. */
-.wl-status-dot  { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; background: var(--wl-status-color); box-shadow: 0 0 4px var(--wl-status-glow); }
+.wl-status-dot  { width: 8px; height: 8px; border-radius: 50%; display: inline-block; flex-shrink: 0; background: var(--wl-status-color); box-shadow: 0 0 4px color-mix(in srgb, var(--wl-status-color) 40%, transparent); } /* Batch 350: glow derived here (was hex + '66' built in JSX) */
 .wl-status-wrap { display: inline-flex; align-items: center; gap: 5px; }
 .wl-urgent-dot  { width: 6px; height: 6px; border-radius: 50%; background: #EF4444; flex-shrink: 0; display: inline-block; animation: urgentPulse 2s ease-in-out infinite; }
 /* Real, per direct guidance (PS-105) — same size/shape convention as
@@ -6603,6 +5816,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-rack-position--selected { border: 2px solid #fff; }
 .ps-btn-small--armed { background: #38bdf8; }
 .ps-mr-8  { margin-right: 8px; }
+.ps-ml-auto { margin-left: auto; }
 .ps-mb-16 { margin-bottom: 16px; }
 .ps-w-full { width: 100%; }
 .ps-panel-title { margin-top: 0; }
@@ -6615,6 +5829,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-mt-4  { margin-top: 4px; }
 .ps-mt-6  { margin-top: 6px; }
 .ps-mt-8  { margin-top: 8px; }
+.ps-mt-10 { margin-top: 10px; }
 .ps-mt-12 { margin-top: 12px; }
 .ps-mt-14 { margin-top: 14px; }
 .ps-mt-20 { margin-top: 20px; }
@@ -6624,6 +5839,7 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-mb-20 { margin-bottom: 20px; }
 .ps-ml-8  { margin-left: 8px; }
 .ps-ml-22 { margin-left: 22px; }
+.ps-fw-600 { font-weight: 600; }
 .ps-flex-row-gap-8--between { justify-content: space-between; }
 .ps-fs-12 { font-size: 12px; }
 
@@ -6658,16 +5874,24 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
   font-size:     8px;
   font-weight:   600;
   padding:       0;
-  background:    var(--mb-well-bg);
-  border:        var(--mb-well-border);
-  color:         var(--mb-well-color);
-  cursor:        var(--mb-well-cursor);
+  background:    #1f2937;
+  border:        1px solid #374151;
+  color:         #6b7280;
+  cursor:        pointer;
 }
+/* Batch 356: a filled well takes its sample type's colour (--ps-hue); was built in JSX. */
+.mb-well-btn--filled   { background: color-mix(in srgb, var(--ps-hue) 19%, transparent); border-color: var(--ps-hue); color: var(--ps-hue); }
+.mb-well-btn--selected { border: 2px solid #fff; }
+.mb-well-btn--readonly { cursor: default; }
 .mb-legend-row { display: flex; gap: 12px; margin-top: 14px; flex-wrap: wrap; font-size: 11px; }
 .mb-legend-item { display: flex; align-items: center; gap: 5px; }
-.mb-legend-swatch { width: 10px; height: 10px; border-radius: 2px; background: var(--mb-swatch-bg); border: 1px solid var(--mb-swatch-border); }
+.mb-legend-swatch { width: 10px; height: 10px; border-radius: 2px; background: color-mix(in srgb, var(--ps-hue) 19%, transparent); border: 1px solid var(--ps-hue); }
 .mb-legend-label { color: #9ca3af; }
-.mb-result-text { margin-top: 14px; font-size: 12px; color: var(--mb-result-color); }
+.mb-result-text { margin-top: 14px; font-size: 12px; }
+.mb-result-text--success { color: #10B981; }
+.mb-result-text--error { color: #ef4444; }
+/* Batch 356: under the target-instrument picker when no instrument is active. */
+.mb-field-hint { margin-top: 4px; font-size: 11px; color: #9ca3af; }
 .mb-trace-cell { background: #00000022; padding: 14px; font-size: 12px; }
 .ps-locked-badge {
   font-size:     11px;
@@ -9043,8 +8267,8 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-tat-client__peer-label { font-size:11px; color:#64748b; }
 
 .ps-tat-client__bar-track  { position:relative; height:8px; background:rgba(255,255,255,0.06); border-radius:99px; overflow:visible; margin:4px 0 10px; }
-.ps-tat-client__bar-fill   { position:absolute; left:0; top:0; height:100%; border-radius:99px; transition:width 0.4s ease; }
-.ps-tat-client__peer-marker{ position:absolute; top:-3px; width:2px; height:14px; background:#64748b; border-radius:1px; transform:translateX(-50%); }
+.ps-tat-client__bar-fill   { position:absolute; left:0; top:0; height:100%; width:var(--bar-pct, 0%); border-radius:99px; transition:width 0.4s ease; }
+.ps-tat-client__peer-marker{ position:absolute; top:-3px; left:var(--peer-pct, 0%); width:2px; height:14px; background:#64748b; border-radius:1px; transform:translateX(-50%); }
 .ps-tat-client__target-marker { position:absolute; right:0; top:-4px; width:2px; height:16px; background:rgba(255,255,255,0.2); border-radius:1px; }
 
 .ps-tat-client__legend-row { display:flex; justify-content:space-between; align-items:center; gap:8px; flex-wrap:wrap; }
@@ -9074,6 +8298,8 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-tat-trend__summary-pill { display:inline-flex; align-items:center; gap:4px; padding:2px 8px; border-radius:99px; font-size:12px; font-weight:700; }
 .ps-tat-trend__summary-pill--teal  { background:rgba(8,145,178,0.15); color:#38bdf8; }
 .ps-tat-trend__summary-pill--amber { background:rgba(245,158,11,0.15); color:#fbbf24; }
+/* Batch 353: the pill in the TAT type's own colour (--ps-hue); was built in JSX. */
+.ps-tat-trend__summary-pill--hue { background:color-mix(in srgb, var(--ps-hue) 10%, transparent); color:var(--ps-hue); border:1px solid color-mix(in srgb, var(--ps-hue) 27%, transparent); }
 .ps-tat-trend__summary-delta{ font-size:11px; color:#94a3b8; margin-top:2px; }
 .ps-tat-trend__summary-divider { width:1px; background:rgba(255,255,255,0.06); align-self:stretch; }
 
@@ -9277,6 +8503,9 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-rbuf-setting-row-label      { font-size: 14px; font-weight: 600; color: #f1f5f9; margin-bottom: 3px; }
 .ps-rbuf-setting-row-desc       { font-size: 12px; color: #cbd5e1; line-height: 1.5; }
 .ps-rbuf-setting-row-control    { flex-shrink: 0; display: flex; align-items: center; padding-top: 2px; }
+
+/* PS-63 Template Review settings: the roles note under the setting rows. */
+.ps-tgov-roles-note { margin: 16px 0 0; font-size: 12px; line-height: 1.5; color: #94a3b8; max-width: 640px; }
 
 .ps-rbuf-toggle             { width: 44px; height: 24px; border-radius: 12px; border: none; position: relative; transition: background 0.2s; flex-shrink: 0; }
 .ps-rbuf-toggle--on         { background: #0891B2; cursor: pointer; }
@@ -9633,7 +8862,8 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-participationtypes__td--right       { text-align: right; }
 .ps-participationtypes__td-desc         { padding: 14px 16px; font-size: 12px; color: #6b7280; max-width: 220px; }
 .ps-participationtypes__type-cell       { display: flex; align-items: center; gap: 10px; }
-.ps-participationtypes__abbr-chip       { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 700; }
+.ps-participationtypes__abbr-chip       { display: inline-block; padding: 3px 12px; border-radius: 20px; font-size: 12px; font-weight: 700;
+                                          color: var(--ps-hue); background: color-mix(in srgb, var(--ps-hue) 13%, transparent); border: 1px solid color-mix(in srgb, var(--ps-hue) 27%, transparent); }
 .ps-participationtypes__type-label      { font-size: 13px; font-weight: 600; color: #e5e7eb; }
 .ps-participationtypes__type-builtin    { font-size: 10px; color: #4b5563; }
 .ps-participationtypes__status-cell     { display: flex; align-items: center; gap: 7px; }
@@ -9643,16 +8873,36 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-participationtypes__status-text--active       { font-size: 13px; color: #d1d5db; }
 .ps-participationtypes__status-text--inactive     { font-size: 13px; color: #6b7280; }
 .ps-participationtypes__attr-chip       { font-size: 11px; padding: 2px 8px; border-radius: 6px; font-weight: 600; }
+.ps-participationtypes__attr-chip--on   { color: var(--ps-hue); background: color-mix(in srgb, var(--ps-hue) 9%, transparent); border: 1px solid color-mix(in srgb, var(--ps-hue) 20%, transparent); }
+.ps-participationtypes__attr-chip--off  { color: #4b5563; background: rgba(255,255,255,0.04); border: 1px solid rgba(255,255,255,0.06); }
 .ps-participationtypes__edit-btn        { padding: 5px 16px; font-size: 12px; font-weight: 600; color: #e5e7eb; background: #1c1c1c; border: 1px solid #374151; border-radius: 7px; cursor: pointer; }
 .ps-participationtypes__edit-btn:hover  { background: #252525; }
 .ps-participationtypes__footer          { margin-top: 16px; display: flex; justify-content: space-between; font-size: 11px; color: #374151; }
 .ps-participationtypes__modal-title     { font-size: 16px; }
 .ps-participationtypes__builtin-badge   { margin-left: 8px; }
 .ps-participationtypes__modal-hint      { font-size: 11px; color: #64748b; margin-bottom: 8px; }
-.ps-participationtypes__lab-row         { display: block; }
-.ps-participationtypes__lab-row-label   { display: flex; align-items: center; gap: 8px; cursor: pointer; }
-.ps-participationtypes__lab-overrides   { margin-top: 8px; margin-left: 24px; display: flex; flex-direction: column; gap: 6px; }
-.ps-participationtypes__lab-override-checkbox { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #cbd5e1; }
+/* TypeModal.tsx — facility-level sign-out authority (Sep 2026). Replaces
+   the four former .ps-participationtypes__lab-* rules (their only user,
+   the old per-lab toggle, was rebuilt). Each lab shows the active rule
+   and its source of truth, color-coded by tier so an admin can see at a
+   glance what's inherited vs. deliberately overridden. */
+.ps-ptauth-lab                  { padding: 10px 12px; border: 1px solid rgba(255,255,255,0.06); border-radius: 8px; display: flex; flex-direction: column; gap: 8px; }
+.ps-ptauth-lab__head            { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.ps-ptauth-lab__jurisdiction    { font-size: 10px; font-weight: 600; color: #94a3b8; padding: 2px 8px; border: 1px solid #334155; border-radius: 6px; }
+.ps-ptauth-rules                { display: flex; flex-direction: column; gap: 4px; }
+.ps-ptauth-rule                 { display: flex; align-items: baseline; justify-content: space-between; gap: 12px; flex-wrap: wrap; }
+.ps-ptauth-rule__label          { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #cbd5e1; }
+.ps-ptauth-rule__value          { color: #e5e7eb; }
+.ps-ptauth-source               { font-size: 11px; }
+.ps-ptauth-source--platform     { color: #64748b; }
+.ps-ptauth-source--jurisdiction { color: #38bdf8; }
+.ps-ptauth-source--facility     { color: #f59e0b; }
+.ps-ptauth-note                 { font-size: 11px; color: #64748b; line-height: 1.4; }
+.ps-ptauth-justification        { display: flex; flex-direction: column; gap: 4px; }
+.ps-ptauth-justification__input { resize: vertical; min-height: 44px; font-size: 12px; }
+.ps-ptauth-pending-removal      { font-size: 11px; color: #f59e0b; }
+.ps-ptauth-actions              { display: flex; justify-content: flex-end; }
+.ps-ptauth-btn                  { padding: 5px 12px; font-size: 12px; }
 
 /* ── TATConfigSection.tsx — batch 59 additions ────────────────────────────────
    This file already used the shared .ps-tat-*, .ps-sub-*, and .ps-conf-* class
@@ -10154,7 +9404,8 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 
 /* ── Table scroll safety (applies everywhere) ───────────────── */
 .ps-table-scroll-wrap { overflow-x: auto; width: 100%; }
-.ps-wl-filter-strip    { isolation: isolate; }
+.ps-table-scroll-wrap--relative { position: relative; }
+.ps-wl-filter-strip    { isolation: isolate; display: flex; gap: 6px; align-items: center; overflow-x: auto; flex-shrink: 1; min-width: 0; padding-bottom: 2px; padding-top: 2px; }
 
 /* ── Home page ───────────────────────────────────────────────── */
 @media (max-width: 1024px) {
@@ -10606,6 +9857,22 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 .ps-modal-dark-input--error:focus { border-color: #ef4444; }
 .ps-modal-dark-fields      { text-align: left; display: flex; flex-direction: column; gap: 10px; }
 .ps-modal-dark-field-error { color: #ef4444; font-size: 12px; margin: 0; }
+
+/* ---- Signer confirmation (Batch 344, PS-60 follow-up) ----
+   components/Signing/: "confirm it's you" before a signature. 'stacked'
+   in modals, 'inline' in the pre-finalisation signing bar. */
+.ps-signer                 { text-align: left; display: flex; flex-direction: column; gap: 8px; margin: 4px 0 12px; }
+.ps-signer-identity        { margin: 0; font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.ps-signer-note            { margin: 0; font-size: 12px; line-height: 1.5; color: #94a3b8; }
+.ps-signer-error           { margin: 0; font-size: 12px; line-height: 1.5; color: #fca5a5; }
+.ps-signer-fields          { display: flex; flex-direction: column; gap: 10px; }
+.ps-signer-field           { display: flex; flex-direction: column; }
+.ps-signer--inline         { margin: 0; gap: 4px; min-width: 0; }
+.ps-signer--inline .ps-signer-fields { flex-direction: row; gap: 8px; }
+.ps-signer--inline .ps-signer-field  { width: 180px; }
+.ps-signer--inline .ps-modal-dark-input { padding: 8px 12px; font-size: 13px; border-width: 1px; }
+.ps-signer-modal-title     { margin: 0 0 6px; font-size: 17px; font-weight: 700; color: #f1f5f9; text-align: center; }
+.ps-signer-modal-message   { margin: 0 0 12px; font-size: 13px; color: #94a3b8; text-align: center; }
 
 /* ── Shared button variants ───────────────────────────────────────────────── */
 .ps-btn-danger  { padding: 9px 20px; border-radius: 8px; border: none; background: #dc2626; color: #fff; font-weight: 700; font-size: 13px; cursor: pointer; }
@@ -11383,6 +10650,8 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 
 .ps-idf-row-label            { font-size: 13px; font-weight: 600; color: #e2e8f0; }
 .ps-idf-kind-badge           { font-size: 10px; font-weight: 700; padding: 2px 8px; border-radius: 4px; }
+/* Batch 363: the kind's hue comes in as --ps-hue (it was three inline style properties built in JSX). */
+.ps-idf-kind-badge { background: color-mix(in srgb, var(--ps-hue) 13%, transparent); color: var(--ps-hue); border: 1px solid color-mix(in srgb, var(--ps-hue) 27%, transparent); }
 
 .ps-idf-tier-badge           { font-size: 9px; font-weight: 700; padding: 2px 7px; border-radius: 4px; }
 .ps-idf-tier-badge--1        { background: rgba(139,92,246,0.12); color: #a78bfa; border: 1px solid rgba(139,92,246,0.2); }
@@ -11890,18 +11159,11 @@ select.ps-input-dark option { background: var(--ps-navy-input); color: #e2e8f0; 
 }
 
 
-
 .ps-conf-select:focus {
   border-color: #0891B2;
   outline: none;
 }
 
-/* Same bug as ps-specedit-input above — select > option renders with the
-   browser's own native popup background regardless of the parent's
-   styling. This fixes every existing dropdown using ps-conf-select
-   across Config, not just newly-added ones. */
-select.ps-conf-select option { background: #0f0f0f; color: #d1d5db; }
-select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weight: 600; }
 
 /* ── TypeModal specific classes ─────────────────────────────────────────────── */
 .ps-type-cap-list          { display: flex; flex-direction: column; gap: 4px; }
@@ -11912,7 +11174,7 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 .ps-type-color-swatch--active { border-color: #fff; transform: scale(1.15); box-shadow: 0 0 0 2px rgba(255,255,255,0.3); }
 .ps-type-color-input       { width: 32px; height: 24px; border-radius: 4px; border: 1px solid #374151; cursor: pointer; padding: 0; background: transparent; }
 .ps-type-preview-row       { display: flex; gap: 8px; }
-.ps-type-preview-chip      { font-size: 11px; padding: 3px 12px; border-radius: 20px; font-weight: 700; }
+.ps-type-preview-chip      { font-size: 11px; padding: 3px 12px; border-radius: 20px; font-weight: 700; background: var(--swatch-color); }
 
 /* ── Delegation Types Section ────────────────────────────────────────────────── */
 .ps-del-shell           { display: flex; flex-direction: column; gap: 24px; }
@@ -11934,9 +11196,9 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
  * custom-property convention already established in
  * SynopticReportPage/modals/CaseTeamModal.tsx's own colorVars(). */
 .ps-del-id-badge        { font-size: 10px; font-weight: 700; font-family: monospace; padding: 2px 8px; border-radius: 4px; display: inline-block;
-                           background: var(--del-badge-bg);
-                           color: var(--del-badge-color);
-                           border: 1px solid var(--del-badge-border); }
+                           background: color-mix(in srgb, var(--ps-hue) 13%, transparent);
+                           color: var(--ps-hue);
+                           border: 1px solid color-mix(in srgb, var(--ps-hue) 27%, transparent); }
 .ps-del-modal            { width: min(600px, 96vw); }
 .ps-del-modal-title      { font-size: 16px; }
 .ps-del-form-row-2col    { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
@@ -12183,12 +11445,19 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 .ps-casebar-dropdown__patient         { font-size: 12px; color: #e2e8f0; flex: 1; }
 .ps-casebar-dropdown__match-hint      { font-size: 10px; color: #94a3b8; flex: 1; }
 .ps-casebar-dropdown__match-value     { color: #fbbf24; font-weight: 600; }
-.ps-casebar-dropdown__status          { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 99px; flex-shrink: 0; }
+.ps-casebar-dropdown__status          { font-size: 10px; font-weight: 600; padding: 2px 7px; border-radius: 99px; flex-shrink: 0;
+  /* Batch 349: a readable neutral pill for statuses without their own colour (was no colour at all). */
+  background: rgba(148,163,184,0.12); color: #cbd5e1; border: 1px solid rgba(148,163,184,0.25); }
 .ps-casebar-dropdown__status--in-progress { background: rgba(14,165,233,0.12); color: #38bdf8; border: 1px solid rgba(14,165,233,0.2); }
 .ps-casebar-dropdown__status--finalized   { background: rgba(16,185,129,0.12); color: #34d399; border: 1px solid rgba(16,185,129,0.2); }
 .ps-casebar-dropdown__status--pending     { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
 .ps-casebar-dropdown__status--pool        { background: rgba(139,92,246,0.12); color: #a78bfa; border: 1px solid rgba(139,92,246,0.2); }
 .ps-casebar-dropdown__status--signed-out  { background: rgba(100,116,139,0.12); color: #94a3b8; border: 1px solid rgba(100,116,139,0.2); }
+.ps-casebar-dropdown__status--pending-review,
+.ps-casebar-dropdown__status--pathologist-review,
+.ps-casebar-dropdown__status--pending-countersign,
+.ps-casebar-dropdown__status--pending-release { background: rgba(245,158,11,0.12); color: #fbbf24; border: 1px solid rgba(245,158,11,0.2); }
+.ps-casebar-dropdown__status--returned       { background: rgba(239,68,68,0.12); color: #f87171; border: 1px solid rgba(239,68,68,0.25); }
 
 @keyframes spin { to { transform: rotate(360deg); } }
 
@@ -12202,7 +11471,9 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
 .ps-casebar-dropdown__client          { font-size: 11px; color: #94a3b8; flex-shrink: 0; }
 .ps-casebar-dropdown__specimens       { font-size: 11px; color: #94a3b8; flex-shrink: 0; }
 .ps-casebar-dropdown__flags           { display: flex; gap: 4px; flex-wrap: wrap; flex: 1; }
-.ps-casebar-dropdown__flag-chip       { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 4px; white-space: nowrap; }
+.ps-casebar-dropdown__flag-chip       { font-size: 9px; font-weight: 600; padding: 1px 5px; border-radius: 4px; white-space: nowrap;
+  /* Batch 349: the flag's colour arrives as --ps-hue (was built inline as hex + '22'). */
+  background: color-mix(in srgb, var(--ps-hue) 13%, transparent); color: var(--ps-hue); border: 1px solid color-mix(in srgb, var(--ps-hue) 27%, transparent); }
 
 /* CaseSearchBar dropdown — grid row matching column headers */
 .ps-casebar-dropdown__row             { display: flex; flex-direction: column; gap: 2px; width: 100%; padding: 8px 14px; background: transparent; border: none; cursor: pointer; text-align: left; border-bottom: 1px solid rgba(255,255,255,0.04); transition: background 0.1s; }
@@ -12644,8 +11915,6 @@ select.ps-conf-select optgroup { background: #0f0f0f; color: #9ca3af; font-weigh
    explicit option background/color was rendering near-invisible against
    the browser's default light popup. Real, named rule — not inline —
    scoped to selects using this class specifically. */
-select.ps-specedit-input option { background: #0d1829; color: #e2e8f0; }
-select.ps-specedit-input optgroup { background: #0d1829; color: #94a3b8; font-weight: 600; }
 .ps-specedit-row-2col          { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
 .ps-specedit-label-badge       { display: inline-flex; align-items: center; justify-content: center; width: 32px; height: 32px; border-radius: 8px; background: rgba(8,145,178,0.15); color: #38bdf8; font-size: 16px; font-weight: 800; border: 1px solid rgba(8,145,178,0.25); }
 .ps-specedit-label-row         { display: flex; align-items: center; gap: 10px; }
@@ -13843,17 +13112,13 @@ h3[data-section-id]:first-child {
 .ps-rd-access                    { font-size: 12px; font-weight: 600; }
 .ps-rd-access--yes               { color: #22c55e; }
 .ps-rd-access--no                { color: #374151; }
-.ps-rd-access--peds-yes          { color: #f59e0b; }
 
 /* Clients cell */
-.ps-rd-clients                   { font-size: 12px; font-weight: 600; }
-.ps-rd-clients--all              { color: #22c55e; }
-.ps-rd-clients--some             { color: #8AB4F8; }
 
 /* Permissions bar */
 .ps-rd-perm-wrap                 { display: flex; align-items: center; gap: 8px; }
 .ps-rd-perm-bar-bg               { flex: 1; max-width: 80px; height: 4px; background: #1f2937; border-radius: 999px; overflow: hidden; }
-.ps-rd-perm-bar-fill             { height: 100%; border-radius: 999px; transition: width 0.3s; }
+.ps-rd-perm-bar-fill             { height: 100%; width: var(--rd-pct, 0%); background: var(--ps-hue, #8AB4F8); border-radius: 999px; transition: width 0.3s; }
 .ps-rd-perm-count                { font-size: 11px; color: #94a3b8; }
 
 /* Edit button */
@@ -13872,7 +13137,6 @@ h3[data-section-id]:first-child {
 .ps-rd-access-label              { display: flex; align-items: center; gap: 8px; cursor: pointer; flex-shrink: 0; }
 .ps-rd-access-label span         { font-size: 13px; color: #9ca3af; font-weight: 600; }
 .ps-rd-checkbox                  { width: 16px; height: 16px; cursor: pointer; accent-color: #8AB4F8; }
-.ps-rd-checkbox--peds            { accent-color: #f59e0b; }
 
 /* Tabs */
 .ps-rd-tabs                      { display: flex; gap: 0; border-bottom: 1px solid rgba(255,255,255,0.08); flex-shrink: 0; padding: 0 24px; }
@@ -13896,7 +13160,7 @@ h3[data-section-id]:first-child {
 .ps-rd-cat-count--some           { color: #8AB4F8; }
 .ps-rd-cat-count--none           { color: #374151; }
 .ps-rd-cat-bar-bg                { width: 28px; height: 3px; background: #1f2937; border-radius: 999px; overflow: hidden; flex-shrink: 0; }
-.ps-rd-cat-bar-fill              { height: 100%; border-radius: 999px; transition: width 0.3s; }
+.ps-rd-cat-bar-fill              { height: 100%; width: var(--rd-pct, 0%); border-radius: 999px; transition: width 0.3s; }
 .ps-rd-cat-bar-fill--all         { background: #22c55e; }
 .ps-rd-cat-bar-fill--some        { background: #8AB4F8; }
 
@@ -13921,36 +13185,44 @@ h3[data-section-id]:first-child {
 .ps-rd-tag-granted               { font-size: 10px; font-weight: 700; color: #22c55e; background: rgba(34,197,94,0.1); border: 1px solid rgba(34,197,94,0.2); border-radius: 4px; padding: 1px 7px; flex-shrink: 0; }
 .ps-rd-no-match                  { padding: 40px 0; text-align: center; color: #374151; font-size: 13px; }
 
+/* PS-355 (Batch 369): Capabilities tab and its dependency prompt */
+.ps-rd-platform-banner           { margin: 0 24px 8px; padding: 10px 14px; border-radius: 8px; font-size: 13px; color: #fbcfe8; background: color-mix(in srgb, #F472B6 10%, transparent); border: 1px solid color-mix(in srgb, #F472B6 30%, transparent); }
+.ps-rd-cap-intro                 { margin: 0; padding: 10px 16px 0; font-size: 12px; color: #94a3b8; line-height: 1.5; }
+.ps-rd-tag-audited               { font-size: 9px; font-weight: 700; color: #f59e0b; background: color-mix(in srgb, #f59e0b 10%, transparent); border: 1px solid color-mix(in srgb, #f59e0b 30%, transparent); border-radius: 4px; padding: 1px 5px; }
+.ps-rd-cap-link                  { font-size: 11px; color: #8AB4F8; margin-top: 3px; }
+.ps-rd-cap-key                   { display: inline-block; margin-top: 4px; font-size: 10px; color: #64748b; }
+.ps-rd-cap-prompt-backdrop       { position: fixed; inset: 0; background: rgba(0,0,0,0.55); display: flex; align-items: center; justify-content: center; z-index: 10050; }
+.ps-rd-cap-prompt                { width: min(460px, calc(100vw - 32px)); background: #0f172a; border: 1px solid #334155; border-radius: 12px; padding: 20px 22px; box-shadow: 0 20px 50px rgba(0,0,0,0.5); }
+.ps-rd-cap-prompt-title          { font-size: 15px; font-weight: 700; color: #f9fafb; margin-bottom: 10px; }
+.ps-rd-cap-prompt-body,
+.ps-rd-cap-prompt-hint           { margin: 0; font-size: 13px; color: #cbd5e1; line-height: 1.5; }
+.ps-rd-cap-prompt-hint           { color: #94a3b8; }
+.ps-rd-cap-prompt-list           { margin: 8px 0 12px; padding-left: 20px; font-size: 13px; color: #e2e8f0; font-weight: 600; }
+.ps-rd-cap-prompt-actions        { justify-content: flex-end; margin-top: 16px; }
+/* PS-356: the credential editor as a fieldset (disabled without config:staff-access:assign). */
+.ps-st-access-fieldset           { border: none; margin: 0; padding: 0; min-width: 0; }
+.ps-st-access-fieldset:disabled  { opacity: 0.6; }
+.ps-st-save-error                { margin-right: auto; }
+
+/* PS-355: an action button the user's roles don't allow (CapabilityButton). */
+.ps-cap-btn--denied,
+.ps-cap-btn--denied:hover        { opacity: 0.4; cursor: not-allowed; }
+
 /* Custom checkbox (TriCheckbox) */
 .ps-rd-tri-none                  { border: 2px solid #374151; background: transparent; }
 .ps-rd-tri-some                  { border: 2px solid #8AB4F8; background: rgba(138,180,248,0.2); }
 .ps-rd-tri-all                   { border: 2px solid #8AB4F8; background: #8AB4F8; }
-.ps-rd-tri-check                 { color: #e2e8f0; font-weight: 900; }
-.ps-rd-tri-dash                  { color: #8AB4F8; font-weight: 900; line-height: 1; }
+.ps-rd-tri-check                 { color: #e2e8f0; font-weight: 900; font-size: calc(var(--rd-cb-size, 16px) * 0.6); }
+.ps-rd-cb--div .ps-rd-tri-check  { font-size: calc(var(--rd-cb-size, 18px) * 0.55); }
+.ps-rd-tri-dash                  { color: #8AB4F8; font-weight: 900; line-height: 1; font-size: calc(var(--rd-cb-size, 16px) * 0.75); }
 
 /* Client access tab */
-.ps-rd-clients-tab               { flex: 1; overflow-y: auto; padding: 20px 24px; }
-.ps-rd-clients-intro             { font-size: 13px; color: #94a3b8; margin-bottom: 20px; line-height: 1.6; }
-.ps-rd-clients-intro strong      { color: #e5e7eb; }
-.ps-rd-all-clients-row           { display: flex; align-items: center; gap: 14px; padding: 14px 16px; border-radius: 10px; cursor: pointer; margin-bottom: 16px; transition: all 0.15s; }
-.ps-rd-all-clients-row--on       { background: rgba(34,197,94,0.08); border: 1px solid rgba(34,197,94,0.3); }
-.ps-rd-all-clients-row--off      { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); }
-.ps-rd-all-clients-label         { font-size: 14px; font-weight: 700; }
-.ps-rd-all-clients-label--on     { color: #22c55e; }
-.ps-rd-all-clients-label--off    { color: #e5e7eb; }
-.ps-rd-all-clients-sub           { font-size: 12px; color: #94a3b8; }
-.ps-rd-clients-section-label     { font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 8px; }
-.ps-rd-client-item               { display: flex; align-items: center; gap: 12px; padding: 10px 14px; border-radius: 8px; cursor: pointer; transition: all 0.12s; margin-bottom: 6px; }
-.ps-rd-client-item--on           { background: rgba(138,180,248,0.08); border: 1px solid rgba(138,180,248,0.2); }
-.ps-rd-client-item--off          { background: rgba(255,255,255,0.02); border: 1px solid rgba(255,255,255,0.06); }
-.ps-rd-client-name               { font-size: 13px; font-weight: 600; }
-.ps-rd-client-name--on           { color: #e5e7eb; }
-.ps-rd-client-name--off          { color: #9ca3af; }
-.ps-rd-client-id                 { font-size: 11px; color: #94a3b8; }
-.ps-rd-no-clients-warn           { margin-top: 12px; padding: 10px 14px; border-radius: 8px; background: rgba(239,68,68,0.08); border: 1px solid rgba(239,68,68,0.2); font-size: 13px; color: #f87171; }
 
 /* Custom checkboxes (div-based) */
-.ps-rd-cb                        { border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; cursor: pointer; }
+.ps-rd-cb                        { width: var(--rd-cb-size, 16px); height: var(--rd-cb-size, 16px); border-radius: 4px; flex-shrink: 0; display: flex; align-items: center; justify-content: center; transition: all 0.15s; cursor: pointer; }
+.ps-rd-cb--size-16               { --rd-cb-size: 16px; }
+.ps-rd-cb--size-18               { --rd-cb-size: 18px; }
+.ps-rd-cb--size-20               { --rd-cb-size: 20px; }
 .ps-rd-cb--off                   { border: 2px solid #374151; background: transparent; }
 .ps-rd-cb--on-blue               { border: 2px solid #8AB4F8; background: #8AB4F8; }
 .ps-rd-cb--on-green              { border: 2px solid #22c55e; background: #22c55e; }
@@ -13971,6 +13243,8 @@ h3[data-section-id]:first-child {
 .ps-rd-part-desc                 { font-size: 11px; color: #94a3b8; margin-bottom: 6px; }
 .ps-rd-part-attrs                { display: flex; flex-wrap: wrap; gap: 4px; }
 .ps-rd-part-attr                 { font-size: 10px; padding: 1px 7px; border-radius: 5px; font-weight: 600; }
+.ps-rd-part-attr--on             { background: color-mix(in srgb, var(--ps-hue, #8AB4F8) 9%, transparent); color: var(--ps-hue, #8AB4F8); border: 1px solid color-mix(in srgb, var(--ps-hue, #8AB4F8) 20%, transparent); }
+.ps-rd-part-attr--off            { background: rgba(255,255,255,0.04); color: #4b5563; border: 1px solid rgba(255,255,255,0.06); }
 .ps-rd-part-count                { margin-top: 16px; font-size: 12px; color: #94a3b8; }
 
 /* Cheat sheet tab */
@@ -13993,7 +13267,7 @@ h3[data-section-id]:first-child {
 .ps-rd-footer-meta               { font-size: 12px; color: #94a3b8; }
 
 /* Role name badge (inline — driven by dynamic color, kept minimal) */
-.ps-rd-role-badge                { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; }
+.ps-rd-role-badge                { display: inline-block; padding: 3px 12px; border-radius: 999px; font-size: 12px; font-weight: 700; background: color-mix(in srgb, var(--ps-hue, #8AB4F8) 13%, transparent); color: var(--ps-hue, #8AB4F8); border: 1px solid color-mix(in srgb, var(--ps-hue, #8AB4F8) 27%, transparent); }
 
 /* ── RoleDictionary.tsx — batch 118 additions ── */
 /* Static replacements for what were previously per-instance inline
@@ -14045,7 +13319,6 @@ h3[data-section-id]:first-child {
    for the open dropdown list, regardless of color-scheme: dark on the
    parent. Same real bug, same proven fix already established
    elsewhere in this file for ps-conf-select/ps-specedit-input. */
-select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 /* Real, new — per-role grouped sections (Staff member Organized under
    Role). Each group gets its own header (role badge + real member
@@ -14083,7 +13356,9 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 /* Role badges in table */
 .ps-st-role-cell            { display: flex; flex-wrap: nowrap; gap: 4px; align-items: center; }
-.ps-st-role-badge           { padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap; }
+.ps-st-role-badge           { padding: 3px 10px; border-radius: 99px; font-size: 12px; font-weight: 600; white-space: nowrap;
+  /* Per-role colour via --ps-hue (Batch 331; was an inline style). */
+  color: var(--ps-hue, #8AB4F8); background: color-mix(in srgb, var(--ps-hue, #8AB4F8) 13%, transparent); border: 1px solid color-mix(in srgb, var(--ps-hue, #8AB4F8) 27%, transparent); }
 .ps-st-role-more            { padding: 3px 8px; border-radius: 99px; font-size: 11px; font-weight: 600; color: #94a3b8; background: rgba(255,255,255,0.07); border: 1px solid rgba(255,255,255,0.12); cursor: default; white-space: nowrap; }
 
 /* Subspecialty badges */
@@ -14140,8 +13415,26 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 /* Role chips in modal */
 .ps-st-role-chips           { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 6px; }
-.ps-st-role-chip            { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600; }
-.ps-st-role-chip-x          { cursor: pointer; font-size: 12px; line-height: 1; opacity: 0.7; }
+.ps-st-role-chip            { display: inline-flex; align-items: center; gap: 5px; padding: 3px 10px; border-radius: 999px; font-size: 12px; font-weight: 600;
+  color: var(--ps-hue, #8AB4F8); background: color-mix(in srgb, var(--ps-hue, #8AB4F8) 13%, transparent); border: 1px solid color-mix(in srgb, var(--ps-hue, #8AB4F8) 27%, transparent); }
+.ps-st-role-chip-x          { cursor: pointer; font-size: 12px; line-height: 1; opacity: 0.7; color: inherit; }
+/* Batch 331 (PS-327): jurisdictional credentials editor in the Staff form. */
+.ps-st-cred-desc   { margin: 0 0 8px; font-size: 12px; color: #94a3b8; line-height: 1.45; }
+.ps-st-cred-empty  { margin: 0 0 8px; font-size: 12px; color: #64748b; font-style: italic; }
+.ps-st-cred-row    { margin-bottom: 10px; padding: 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; background: rgba(255,255,255,0.02); }
+/* Batch 345: linked sign-in accounts (Staff → edit). */
+.ps-st-linked-list     { list-style: none; margin: 0 0 8px; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ps-st-linked-row      { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 10px; border: 1px solid rgba(255,255,255,0.08); border-radius: 8px; background: rgba(255,255,255,0.02); }
+.ps-st-linked-text     { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+.ps-st-linked-provider { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.ps-st-linked-meta     { font-size: 12px; color: #94a3b8; overflow-wrap: anywhere; }
+.ps-st-linked-unlink   { flex-shrink: 0; }
+.ps-st-linked-ok       { margin: 0; font-size: 12px; color: #86efac; }
+.ps-st-cred-grid   { display: grid; grid-template-columns: 1.4fr 1fr 1.2fr auto; gap: 8px; align-items: end; }
+.ps-st-cred-grid > .ps-st-cred-date:nth-of-type(1) { grid-column: 1; }
+.ps-st-cred-date   { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: #94a3b8; }
+.ps-st-cred-remove { grid-column: 4; grid-row: 1; align-self: center; background: none; border: 1px solid rgba(239,68,68,0.35); color: #f87171; border-radius: 6px; width: 30px; height: 30px; cursor: pointer; }
+.ps-st-cred-add    { margin-top: 2px; }
 
 /* Error messages */
 .ps-st-error                { font-size: 11px; color: #ef4444; }
@@ -16957,6 +16250,16 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   flex: 1;
 }
 
+/* Specimen section titles follow the report template's label formatting
+   (utils/labelStyleVars.ts sets --label-* only for configured values). */
+.ps-ose-section-card-title--specimen {
+  text-transform: var(--label-transform, uppercase);
+  font-weight: var(--label-weight, 700);
+  text-decoration: var(--label-decoration, none);
+  font-size: var(--label-size, 13px);
+  font-family: var(--label-family, inherit);
+}
+
 .ps-ose-section-card-status {
   font-size: 10px;
   font-weight: 700;
@@ -17334,146 +16637,6 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   margin-bottom: 8px;
   font-style: italic;
 }
-
-/* ── Spell-check review popover ──────────────────────────────────────────── */
-.ps-ose-spellcheck-overlay {
-  position: absolute;
-  inset: 0;
-  z-index: 60;
-  display: flex;
-  align-items: flex-start;
-  justify-content: center;
-  padding-top: 16px;
-  background: rgba(11,17,32,0.55);
-  border-radius: 8px;
-}
-
-.ps-ose-spellcheck-popover {
-  width: 92%;
-  max-width: 480px;
-  background: #1a2332;
-  border: 1px solid rgba(148,163,184,0.25);
-  border-radius: 10px;
-  box-shadow: 0 12px 32px rgba(0,0,0,0.5);
-  padding: 16px;
-}
-
-.ps-ose-spellcheck-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  margin-bottom: 10px;
-}
-
-.ps-ose-spellcheck-eyebrow {
-  font-size: 11px;
-  font-weight: 700;
-  color: #38bdf8;
-  text-transform: uppercase;
-  letter-spacing: 0.04em;
-}
-
-.ps-ose-spellcheck-counter {
-  font-size: 11px;
-  color: #94a3b8;
-  font-weight: 600;
-}
-
-.ps-ose-spellcheck-context {
-  font-size: 13px;
-  line-height: 1.6;
-  color: #cbd5e1;
-  background: rgba(148,163,184,0.06);
-  border-radius: 6px;
-  padding: 10px 12px;
-  margin-bottom: 12px;
-}
-
-.ps-ose-spellcheck-flagged {
-  background: rgba(248,113,113,0.25);
-  color: #fca5a5;
-  border-radius: 3px;
-  padding: 1px 3px;
-  font-weight: 700;
-  text-decoration: underline wavy #f87171;
-  text-decoration-thickness: 1px;
-}
-
-.ps-ose-spellcheck-suggestion-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-bottom: 4px;
-}
-
-.ps-ose-spellcheck-arrow {
-  color: #64748b;
-  font-size: 14px;
-}
-
-.ps-ose-spellcheck-suggestion {
-  font-size: 15px;
-  font-weight: 700;
-  color: #34d399;
-}
-
-.ps-ose-spellcheck-reason {
-  font-size: 11px;
-  color: #94a3b8;
-  font-style: italic;
-  margin-bottom: 14px;
-}
-
-.ps-ose-spellcheck-actions {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 10px;
-}
-
-.ps-ose-spellcheck-btn {
-  flex: 1;
-  padding: 8px 10px;
-  border-radius: 6px;
-  font-size: 12px;
-  font-weight: 700;
-  cursor: pointer;
-  border: 1px solid transparent;
-  transition: all 0.15s;
-}
-
-.ps-ose-spellcheck-btn--skip {
-  background: rgba(148,163,184,0.08);
-  border-color: rgba(148,163,184,0.2);
-  color: #94a3b8;
-}
-.ps-ose-spellcheck-btn--skip:hover { background: rgba(148,163,184,0.16); }
-
-.ps-ose-spellcheck-btn--keep {
-  background: rgba(245,158,11,0.1);
-  border-color: rgba(245,158,11,0.3);
-  color: #fbbf24;
-}
-.ps-ose-spellcheck-btn--keep:hover { background: rgba(245,158,11,0.18); }
-
-.ps-ose-spellcheck-btn--fix {
-  background: rgba(16,185,129,0.15);
-  border-color: rgba(16,185,129,0.4);
-  color: #34d399;
-}
-.ps-ose-spellcheck-btn--fix:hover { background: rgba(16,185,129,0.25); }
-
-.ps-ose-spellcheck-cancel {
-  width: 100%;
-  background: none;
-  border: none;
-  color: #64748b;
-  font-size: 11px;
-  text-align: center;
-  cursor: pointer;
-  padding: 4px;
-  text-decoration: underline;
-}
-.ps-ose-spellcheck-cancel:hover { color: #94a3b8; }
 
 /* ── Pool case sub-state badge (worklist) ────────────────────────────────── */
 /* Distinguishes a pool case that's just been logged (no gross description
@@ -18899,6 +18062,12 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   border-radius: 50%;
   border: 1px solid rgba(255, 255, 255, 0.2);
   flex-shrink: 0;
+  /* PS-73 (Sep 2026): reads the real, per-row --swatch-color custom
+     property CassetteColorsSection.tsx sets inline — same indirection
+     already used by .ps-type-color-swatch/.ps-del-id-badge above for the
+     identical real need (a value that's genuinely per-instance, not
+     expressible as a static class). */
+  background: var(--swatch-color);
 }
 
 .ps-cassette-color-name {
@@ -21586,6 +20755,9 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   background: #fff; transition: left 0.2s; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
 }
 .ps-conf-toggle-track--active .ps-conf-toggle-thumb { left: 23px; }
+/* Batch 356: the toggle as a real <button> (keyboard and screen-reader friendly). */
+button.ps-conf-toggle-track { border: none; padding: 0; }
+button.ps-conf-toggle-track .ps-conf-toggle-thumb { display: block; }
 .ps-conf-toggle-label { font-size: 13px; font-weight: 600; color: var(--ps-conf-text-3); }
 .ps-conf-toggle-label--active { color: var(--ps-conf-green); }
 
@@ -21781,7 +20953,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   line-height: 1.5;
 }
 
-/* ── OrchestratorSectionEditor: jurisdiction transparency badge ─────────── */
+/* ── OrchestratorSectionEditor: header left group (spelling language + view toggle) ── */
 .ps-ose-group-left {
   display: flex;
   align-items: center;
@@ -21789,20 +20961,10 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   flex-shrink: 0;
 }
 
-.ps-ose-jurisdiction-badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-  font-size: 11px;
-  font-weight: 600;
-  padding: 4px 10px;
-  border-radius: 6px;
-  background: rgba(139, 92, 246, 0.1);
-  border: 1px solid rgba(139, 92, 246, 0.25);
-  color: #c4b5fd;
-  white-space: nowrap;
-  cursor: help;
-}
+/* PS-342 (batch 338): the spelling language control replaced the retired
+   AI spell check's "British/American English" badge here. */
+.ps-ose-spelllang, .ps-ose-spelllang .ps-spelllang__label { color: #a78bfa; }
+.ps-ose-spelllang .ps-spelllang__source { color: #94a3b8; }
 
 /* ── Config System tab: sticky, independently-scrollable sidebar ────────── */
 /* align-items: flex-start is required for position:sticky to work correctly
@@ -22790,7 +21952,6 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 }
 
 
-
 /* ── Protocol Dictionary editor: 2-column layout ──────────────────────────── */
 .ps-ms-modal--protocol {
   width: 1040px;
@@ -23080,6 +22241,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-intraop-capture-inline { background: #0d1829; border: 1px solid #1e293b; border-radius: 12px; padding: 24px; margin-bottom: 20px; }
 .ps-intraop-capture-step1 { display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 12px 0; }
 .ps-intraop-capture-step2 { display: flex; flex-direction: column; gap: 10px; }
+.ps-intraop-spelllang { align-self: flex-end; }
 .ps-intraop-scan-hint { font-size: 12px; color: #64748b; margin: 0; }
 .ps-intraop-manual-link { background: none; border: none; color: #0891B2; font-size: 13px; text-decoration: underline; cursor: pointer; padding: 8px; }
 .ps-intraop-manual-fields { width: 100%; display: flex; flex-direction: column; gap: 10px; margin-top: 8px; }
@@ -23577,7 +22739,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
    absolute — a portaled element has no positioned ancestor to be
    "absolute" relative to) with top/left set inline from the trigger
    button's own real, measured screen position at open time. */
-.ps-syn-devmenu--portaled { position: fixed; top: auto; left: auto; }
+.ps-syn-devmenu--portaled { position: fixed; top: var(--devmenu-top, auto); left: var(--devmenu-left, auto); }
 .ps-syn-devmenu-item {
   text-align: left; font-size: 12px; font-weight: 600; padding: 7px 10px; border-radius: 5px;
   background: none; border: none; cursor: pointer; color: #f59e0b; white-space: nowrap;
@@ -24245,6 +23407,19 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   color: #94a3b8;              /* 5.71:1 */
 }
 
+/* ---- SSO callback (PS-60, Batch 343) ----
+   /auth/callback/<provider>: the logo and a progress line while the
+   sign-in finishes. */
+.ps-auth-callback {
+  text-align: center;
+}
+
+.ps-auth-callback-text {
+  margin: 20px 0 0;
+  font-size: 14px;
+  color: #cbd5e1;
+}
+
 /* ---- environment badge ----
    Renders only when VITE_APP_ENV is set to a known value. Colour is a
    signal, never the only signal — the label always spells the environment
@@ -24457,6 +23632,30 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   font-size: 9px;
   letter-spacing: 0.06em;
   color: #7dd3fc;              /* 7.28:1 on the card */
+}
+
+/* PS-60 (Batch 343): a provider configured for this build is a working
+   sign-in button, not an announcement: solid border, full-strength label.
+   Space it from an error banner shown above it. */
+.ps-login-social--live {
+  border-style: solid;
+  border-color: #475569;
+  background: rgba(148, 163, 184, 0.08);
+  color: #e2e8f0;
+  cursor: pointer;
+}
+
+.ps-login-social--live:hover:not(:disabled) {
+  border-color: #38bdf8;
+}
+
+.ps-login-social--live:disabled {
+  color: #8494a8;              /* 4.72:1 */
+  cursor: progress;
+}
+
+.ps-login-error + .ps-login-social-row {
+  margin-top: 14px;
 }
 
 /* ---- narrow viewports ---- */
@@ -25532,6 +24731,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 .ps-home-main { flex: 1; display: flex; flex-direction: column; justify-content: center; padding: 0 var(--ps-layout-padding-x); overflow: auto; }
 .ps-home-header { margin-bottom: 32px; }
+.ps-home-header--split { display: flex; justify-content: space-between; align-items: flex-start; flex-wrap: wrap; gap: 16px; }
 .ps-home-title { font-size: clamp(26px, 4.5vw, 48px); font-weight: 900; margin: 0; letter-spacing: clamp(-0.5px, -0.04em, -2px); }
 .ps-home-title-name { color: #0891B2; }
 
@@ -25932,7 +25132,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-searchpage-dropdown-code { font-family: monospace; margin-right: 5px; font-size: 11px; }
 .ps-searchpage-dropdown-code--snomed { color: #7dd3fc; }
 .ps-searchpage-dropdown-code--icd { color: #c4b5fd; }
-.ps-searchpage-dropdown-desc { color: #cbd5e1; font-size: 11px; }
+.ps-searchpage-dropdown-desc { color: #cbd5e1; font-size: 11px; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .ps-searchpage-organ-grid { display: flex; flex-wrap: wrap; gap: 5px; padding: 8px 24px; }
 .ps-searchpage-organ-pill {
@@ -26322,33 +25522,57 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-searchpage-export-btn {
   border: 1px solid rgba(148,163,184,0.2);
   background: transparent;
-  color: #64748b;
+  color: #94a3b8; /* Batch 350: was #64748b, hard to read on the dark bar */
   border-radius: 6px;
   padding: 3px 10px;
   font-size: 11px;
   cursor: pointer;
   transition: all 0.15s;
 }
+.ps-searchpage-export-btn:disabled { cursor: default; opacity: 0.7; }
 .ps-searchpage-export-btn:hover {
   border-color: rgba(8,145,178,0.5);
   color: #7dd3fc;
   background: rgba(8,145,178,0.08);
 }
 .ps-searchpage-no-search { display: flex; align-items: center; justify-content: center; height: 100%; color: #94a3b8; font-size: 13px; }
-.ps-searchpage-loadmore-row { display: flex; justify-content: center; padding: 12px 0 4px; flex-shrink: 0; }
-.ps-searchpage-loadmore-btn {
-  padding: 8px 20px; border-radius: 8px; font-size: 13px; font-weight: 600;
-  background: rgba(8,145,178,0.12);
-  border: 1px solid rgba(8,145,178,0.35);
-  color: #38bdf8;
-  cursor: pointer;
+/* Batch 351: date basis and pathologist role selects, and the "More filters" section. */
+.ps-searchpage-basis-select {
+  background: rgba(15,23,42,0.8); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.25);
+  border-radius: 6px; padding: 2px 6px; font-size: 11px; font-weight: 600; letter-spacing: 0.02em;
 }
-.ps-searchpage-loadmore-btn--loading {
-  background: rgba(255,255,255,0.04);
-  border-color: rgba(255,255,255,0.08);
-  color: #94a3b8;
-  cursor: default;
+.ps-searchpage-role-select { margin-top: 6px; width: 100%; }
+.ps-searchpage-more { margin-top: 10px; border-top: 1px solid rgba(148,163,184,0.15); padding-top: 8px; }
+.ps-searchpage-more-toggle {
+  display: flex; align-items: center; justify-content: space-between; width: 100%;
+  background: transparent; border: none; color: #cbd5e1; font-size: 12px; font-weight: 700;
+  letter-spacing: 0.04em; text-transform: uppercase; cursor: pointer; padding: 4px 0;
 }
+.ps-searchpage-more-toggle:hover { color: #7dd3fc; }
+.ps-searchpage-more-count { font-size: 10px; font-weight: 700; padding: 1px 7px; border-radius: 999px; background: rgba(8,145,178,0.25); color: #7dd3fc; }
+.ps-searchpage-more-body { display: flex; flex-direction: column; gap: 10px; padding-top: 6px; }
+.ps-searchpage-more-group { display: flex; flex-direction: column; gap: 4px; }
+
+/* Batch 350: server-side paging. The pager replaces Load More (removed). */
+.ps-searchpage-pager { display: flex; align-items: center; justify-content: center; gap: 6px; padding: 10px 0 4px; flex-shrink: 0; flex-wrap: wrap; }
+.ps-searchpage-pager-btn {
+  padding: 5px 12px; border-radius: 6px; font-size: 12px; font-weight: 600;
+  background: rgba(8,145,178,0.12); border: 1px solid rgba(8,145,178,0.35); color: #38bdf8; cursor: pointer;
+}
+.ps-searchpage-pager-btn:hover:not(:disabled) { background: rgba(8,145,178,0.2); }
+.ps-searchpage-pager-btn:disabled { background: rgba(255,255,255,0.03); border-color: rgba(255,255,255,0.08); color: #64748b; cursor: default; }
+.ps-searchpage-pager-status { font-size: 12px; color: #cbd5e1; padding: 0 6px; }
+.ps-searchpage-pagesize { display: flex; justify-content: center; padding: 4px 0 8px; flex-shrink: 0; }
+.ps-searchpage-sort { display: inline-flex; align-items: center; gap: 6px; }
+.ps-searchpage-pagesize label { display: inline-flex; align-items: center; gap: 6px; }
+.ps-searchpage-sort-label { font-size: 11px; color: #94a3b8; }
+.ps-searchpage-sort-select {
+  background: rgba(15,23,42,0.8); color: #e2e8f0; border: 1px solid rgba(148,163,184,0.25);
+  border-radius: 6px; padding: 3px 6px; font-size: 11px;
+}
+.ps-searchpage-notice { margin: 0 16px 6px; font-size: 12px; color: #fcd34d; }
+.ps-searchpage-notice--error { color: #fca5a5; }
+.ps-searchpage-inline-error { font-size: 11px; color: #fca5a5; }
 
 /* Profile / Resources / Logout modals (pages/SearchPage.tsx) */
 .ps-searchpage-profile-modal {
@@ -26466,6 +25690,15 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-enhance-submit-btn:disabled {
   cursor: not-allowed; border-color: #94a3b8; background: rgba(255,255,255,0.04); color: #94a3b8;
 }
+.ps-enhance-submit-btn--busy { opacity: 0.7; }
+/* Batch 364 (PS-349): identifiers found in a support ticket's text */
+.erm-identifier-warning { padding: 12px 14px; border-radius: 10px; background: rgba(245,158,11,0.08); border: 1px solid rgba(245,158,11,0.35); color: #fde68a; font-size: 13px; }
+.erm-identifier-warning-title { font-weight: 700; margin-bottom: 4px; }
+.erm-identifier-warning-body { color: #e2e8f0; margin-bottom: 6px; }
+.erm-identifier-warning-list { margin: 4px 0 8px 18px; padding: 0; color: #f8fafc; }
+.erm-identifier-warning-note { color: #94a3b8; font-size: 12px; margin-bottom: 8px; }
+.erm-identifier-warning-actions { display: flex; flex-wrap: wrap; gap: 8px; }
+.erm-identifier-ok { font-size: 12px; color: #34d399; }
 .ps-enhance-submit-btn--qa {
   border-color: rgba(245,158,11,0.4);
   background: rgba(245,158,11,0.15);
@@ -27664,6 +26897,8 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
    same real pattern as .ps-batch-stage-tiles above — just a new
    container to lay them out here) ── */
 .ps-qa-tab-tiles { display: flex; gap: 12px; align-items: stretch; flex-wrap: wrap; margin-bottom: 20px; }
+/* PS-98 (Batch 381): breathing room between the Quality Assurance pillar row and what follows it. */
+.ps-qa-pillar-switch { margin-bottom: 20px; }
 
 /* ── Quality Assurance inline action-button rows (replaces two
    style={{ display: 'flex', gap: 6, ... }} occurrences in
@@ -28023,6 +27258,9 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-macro-tier-tab:hover { color: var(--ps-conf-text-2); }
 .ps-macro-tier-tab--active { background: rgba(8,145,178,0.18); color: #38bdf8; }
 .ps-macro-tier-count     { font-size: 10px; font-weight: 700; padding: 1px 6px; border-radius: 999px; background: rgba(255,255,255,0.08); }
+/* Batch 349 (PS-126): administrators get a fourth tab (All), which doesn't fit
+   one row of the 340px sidebar, so their tabs sit two by two. */
+.ps-macro-tier-tabs--grid { display: grid; grid-template-columns: 1fr 1fr; }
 
 /* Real, new — OrchestratorSectionEditor.tsx's Personal Quick Text save
    modal, per direct guidance ("Personal Quick Text" — Enterprise then
@@ -28053,7 +27291,8 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-macro-sidebar-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 4px; }
 .ps-macro-sidebar-title { font-size: 15px; font-weight: 700; color: var(--ps-conf-text); margin: 0; }
 .ps-macro-sidebar-header-actions { display: flex; gap: 6px; }
-.ps-macro-hint { font-size: 11px; color: var(--ps-conf-text-dim); padding: 8px 10px; background: rgba(8,145,178,0.08); border-radius: 6px; line-height: 1.5; }
+/* PS-126 (batch 349): was --ps-conf-text-dim (#475569), about 2.3:1 on this background; #94a3b8 is about 6.5:1. */
+.ps-macro-hint { font-size: 12px; color: var(--ps-conf-text-2); padding: 8px 10px; background: rgba(8,145,178,0.08); border-radius: 6px; line-height: 1.5; }
 .ps-macro-list { flex: 1; overflow-y: auto; display: flex; flex-direction: column; gap: 6px; }
 .ps-macro-list-item {
   padding: 11px 12px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08);
@@ -28063,7 +27302,12 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-macro-list-item--selected { background: rgba(8,145,178,0.15); border-color: #0891B2; color: #38bdf8; }
 .ps-macro-list-item-name { font-size: 13px; font-weight: 600; }
 .ps-macro-list-item-trigger { font-size: 11px; color: var(--ps-conf-text-3); font-family: monospace; }
-.ps-macro-list-empty { text-align: center; color: var(--ps-conf-text-dim); font-size: 13px; padding: 24px 0; }
+.ps-macro-list-empty { text-align: center; color: var(--ps-conf-text-3); font-size: 13px; padding: 24px 0; }
+/* Administrator's "All" list, grouped (batch 349, PS-126). */
+.ps-macro-group { display: flex; flex-direction: column; gap: 6px; }
+.ps-macro-group + .ps-macro-group { margin-top: 10px; }
+.ps-macro-group-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 4px 2px; font-size: 11px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--ps-conf-text-2); border-bottom: 1px solid rgba(255,255,255,0.08); }
+.ps-macro-readonly-note { margin: 0; font-size: 12px; color: #fbbf24; }
 .ps-macro-right-panel { flex: 1; display: flex; flex-direction: column; gap: 14px; min-width: 0; }
 .ps-macro-field-row { display: flex; gap: 14px; align-items: flex-end; }
 .ps-macro-field-flex1 { flex: 1; }
@@ -28426,6 +27670,52 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-extconsult-submit-btn:disabled { cursor: default; }
 
 /* ─────────────────────────────────────────────────────────────────────────
+   PS-136 — Critical Alert Reference Page (pages/CriticalAlertReferencePage/).
+   Same real "standalone, self-contained dark-theme shell" posture as
+   ps-extconsult-* just above — public/unauthenticated, no app chrome —
+   deliberately simpler: no form, since this page never collects or
+   displays clinical content (see the page's own header comment).
+   ───────────────────────────────────────────────────────────────────────── */
+
+.ps-critalert-shell { min-height: 100vh; background: #0b1120; color: #e2e8f0; font-family: inherit; padding: 24px 16px; }
+.ps-critalert-card { max-width: 560px; margin: 0 auto; background: #111827; border: 1px solid rgba(255,255,255,0.08); border-radius: 12px; overflow: hidden; }
+.ps-critalert-card--loading { padding: 32px; text-align: center; color: #64748b; }
+
+.ps-critalert-disclosure-banner { display: flex; gap: 10px; padding: 12px 16px; background: rgba(239,68,68,0.1); border-bottom: 1px solid rgba(239,68,68,0.3); }
+.ps-critalert-disclosure-icon { flex-shrink: 0; margin-top: 1px; }
+.ps-critalert-disclosure-text { font-size: 12px; color: #fca5a5; line-height: 1.5; }
+
+.ps-critalert-invalid-content { padding: 32px; text-align: center; }
+.ps-critalert-invalid-title { font-size: 16px; font-weight: 700; margin-bottom: 8px; }
+.ps-critalert-invalid-desc { font-size: 13px; color: #94a3b8; }
+
+.ps-critalert-section { padding: 20px 24px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+.ps-critalert-section-plain { padding: 20px 24px; }
+
+.ps-critalert-eyebrow { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.12em; color: #64748b; margin-bottom: 6px; }
+.ps-critalert-accession { font-size: 20px; font-weight: 700; }
+.ps-critalert-physician-line { font-size: 13px; color: #94a3b8; margin-top: 4px; }
+.ps-critalert-status-badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 3px 10px; border-radius: 10px; margin-top: 8px; }
+.ps-critalert-status-badge--active { background: rgba(16,185,129,0.15); color: #34d399; }
+.ps-critalert-status-badge--expired { background: rgba(148,163,184,0.15); color: #94a3b8; }
+.ps-critalert-meta-line { font-size: 11px; color: #64748b; margin-top: 8px; }
+
+.ps-critalert-acknowledge-btn { width: 100%; padding: 10px 20px; background: rgba(16,185,129,0.2); border: 1px solid rgba(16,185,129,0.5); border-radius: 8px; color: #34d399; font-size: 13px; font-weight: 600; cursor: pointer; }
+.ps-critalert-acknowledge-btn:disabled { cursor: default; opacity: 0.6; }
+.ps-critalert-acknowledged-box { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 12px 14px; background: rgba(16,185,129,0.08); border: 1px solid rgba(16,185,129,0.25); border-radius: 8px; }
+.ps-critalert-acknowledged-text { font-size: 13px; color: #a7f3d0; }
+
+/* PS-136 — CriticalAlertAuditSection.tsx (Audit Page > Critical Alerts,
+   internal/authenticated). Reuses the normal, light ps-conf-* table
+   chrome (unlike ps-critalert-* above, which is the public page's own
+   standalone dark shell) — this lives inside AuditLogPage.tsx's own
+   normal app chrome, same as OutboundDlqSection.tsx's own sibling tab. */
+.ps-critaudit-channel-row { font-size: 12px; padding: 2px 0; }
+.ps-critaudit-status-badge { display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 2px 8px; border-radius: 8px; }
+.ps-critaudit-status-badge--active { background: rgba(16,185,129,0.12); color: #059669; }
+.ps-critaudit-status-badge--expired { background: rgba(148,163,184,0.15); color: #64748b; }
+
+/* ─────────────────────────────────────────────────────────────────────────
    PS-288 — Facility Ops Dashboard (pages/FacilityOpsDashboard/). Same
    real, high-contrast, wall-display dark palette/typography as
    ps-orboard-* above, generalized across all five department views.
@@ -28695,7 +27985,14 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   border:             1px solid var(--ps-border-bright);
   border-left-width:  4px;
   font-family:        var(--toastify-font-family);
+  /* PS-100 (batch 349): longer messages were hard to read in the narrow default. */
+  font-size:          14px;
+  line-height:        1.45;
 }
+:root { --toastify-toast-width: 420px; }
+.Toastify__toast-body { white-space: pre-line; overflow-wrap: anywhere; }
+/* A toast that stays until closed shows its × clearly. */
+.Toastify__close-button { align-self: flex-start; }
 .Toastify__toast--default { border-left-color: var(--ps-border-bright); }
 .Toastify__toast--info    { border-left-color: var(--ps-teal); }
 .Toastify__toast--success { border-left-color: #10b981; }
@@ -29262,6 +28559,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .fct-action-btn        { padding: 5px 12px; font-size: 12px; }
 .fct-action-btn--verify      { padding: 4px 10px; font-size: 11px; color: #34d399; border-color: rgba(34,197,94,0.35); }
 .fct-action-btn--edit        { padding: 5px 12px; font-size: 12px; }
+.fct-action-btn--duplicate   { padding: 5px 12px; font-size: 12px; }
 .fct-action-btn--deactivate  { padding: 4px 10px; font-size: 11px; color: #f87171; border-color: rgba(239,68,68,0.35); }
 .fct-action-btn--activate    { padding: 4px 10px; font-size: 11px; color: #34d399; border-color: rgba(34,197,94,0.35); }
 
@@ -29775,7 +29073,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   display: inline-block; width: 48px; height: 4px; border-radius: 2px;
   background: rgba(255,255,255,0.1); overflow: hidden; vertical-align: middle;
 }
-.ps-syn-progress-fill { display: block; height: 100%; border-radius: 2px; transition: width 0.4s ease; }
+.ps-syn-progress-fill { display: block; height: 100%; border-radius: 2px; width: var(--syn-progress-pct, 0%); transition: width 0.4s ease; }
 .ps-syn-progress-fill--complete { background: #10b981; }
 .ps-syn-progress-fill--incomplete { background: #fbbf24; }
 
@@ -30099,10 +29397,18 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 .ps-tmplr-unsaved-indicator { font-size: 12px; color: #f59e0b; font-weight: 500; }
 
+/* Per-state colours (Batch 328, replacing TemplateRenderer's inline styles). */
+.ps-tmplr-state--draft         { --tmplr-bg: rgba(100,116,139,0.15); --tmplr-fg: #94a3b8; --tmplr-border: rgba(100,116,139,0.3); }
+.ps-tmplr-state--in_review     { --tmplr-bg: rgba(245,158,11,0.15);  --tmplr-fg: #fbbf24; --tmplr-border: rgba(245,158,11,0.3); }
+.ps-tmplr-state--needs_changes { --tmplr-bg: rgba(239,68,68,0.15);   --tmplr-fg: #f87171; --tmplr-border: rgba(239,68,68,0.3); }
+.ps-tmplr-state--approved      { --tmplr-bg: rgba(16,185,129,0.15);  --tmplr-fg: #10B981; --tmplr-border: rgba(16,185,129,0.3); }
+.ps-tmplr-state--published     { --tmplr-bg: rgba(8,145,178,0.15);   --tmplr-fg: #38bdf8; --tmplr-border: rgba(8,145,178,0.3); }
+
 .ps-tmplr-lifecycle-badge {
   font-size: 12px; font-weight: 700;
   padding: 4px 14px; border-radius: 99px;
   text-transform: capitalize; white-space: nowrap;
+  background: var(--tmplr-bg); color: var(--tmplr-fg); border: 1px solid var(--tmplr-border);
 }
 
 .ps-tmplr-coding-badges { display: inline-flex; gap: 4px; margin-left: 8px; }
@@ -30144,6 +29450,14 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tmplr-transition-btn   {
   padding: 7px 16px; border-radius: 7px; font-size: 13px; font-weight: 600;
   transition: opacity 0.15s;
+  border: 1px solid var(--tmplr-border); background: var(--tmplr-bg); color: var(--tmplr-fg); cursor: pointer;
+}
+.ps-tmplr-transition-btn:disabled {
+  border-color: rgba(255,255,255,0.06); background: rgba(255,255,255,0.02); color: #cbd5e1;
+  cursor: not-allowed; opacity: 0.65;
+}
+.ps-tmplr-transition-notice {
+  margin: 10px 0 0; font-size: 12px; color: #fbbf24;
 }
 .ps-tmplr-transition-btn:hover:not(:disabled) { opacity: 0.85; }
 
@@ -30160,7 +29474,12 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-tmplr-reset-btn:hover { background: rgba(239,68,68,0.12); }
 
 .ps-tmplr-flow-hint  { margin-top: 12px; display: flex; align-items: center; gap: 6px; }
-.ps-tmplr-flow-step  { font-size: 11px; padding: 2px 8px; border-radius: 99px; text-transform: capitalize; }
+.ps-tmplr-flow-step  {
+  font-size: 11px; padding: 2px 8px; border-radius: 99px; text-transform: capitalize;
+  font-weight: 500; color: #1e293b; background: transparent; border: 1px solid #1e293b;
+}
+.ps-tmplr-flow-step--past    { color: #334155; }
+.ps-tmplr-flow-step--current { font-weight: 700; color: var(--tmplr-fg); background: var(--tmplr-bg); border-color: var(--tmplr-border); }
 .ps-tmplr-flow-arrow { color: #64748b; font-size: 12px; }
 
 .ps-tmplr-empty-state {
@@ -30206,7 +29525,9 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   display: flex; align-items: center; gap: 10px;
   padding: 8px 12px; border-radius: 7px; cursor: pointer;
   transition: all 0.15s;
+  border: 1px solid rgba(255,255,255,0.07); background: rgba(255,255,255,0.02);
 }
+.ps-tmplr-option-label--selected { border-color: rgba(8,145,178,0.4); background: rgba(8,145,178,0.08); }
 .ps-tmplr-option-input { accent-color: #0891B2; width: 14px; height: 14px; }
 .ps-tmplr-option-text  { font-size: 13px; color: #e2e8f0; }
 
@@ -30228,6 +29549,14 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   padding: 9px 20px; border-radius: 8px; border: none;
   font-size: 13px; font-weight: 700; cursor: pointer;
   transition: opacity 0.15s;
+  background: var(--tmplr-bg); color: var(--tmplr-fg);
+}
+.ps-tmplr-modal-confirm-btn--destructive { background: #ef4444; color: white; }
+.ps-tmplr-modal-confirm-btn:disabled { cursor: wait; opacity: 0.6; }
+.ps-tmplr-modal-error {
+  margin: 0 0 14px; padding: 10px 12px; border-radius: 8px;
+  font-size: 13px; line-height: 1.45; color: #fecaca;
+  background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35);
 }
 .ps-tmplr-modal-confirm-btn:hover { opacity: 0.85; }
 
@@ -30477,6 +29806,11 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-syned-alert { font-size: 12px; font-weight: 500; }
 .ps-syned-alert--error   { color: #f87171; }
 .ps-syned-alert--warning { color: #fbbf24; }
+/* PS-63 (Batch 329): shown when the user lacks the Template Author role. */
+.ps-syned-readonly-banner {
+  margin: 0; padding: 10px 24px; font-size: 13px; line-height: 1.45;
+  color: #fde68a; background: rgba(245,158,11,0.10); border-bottom: 1px solid rgba(245,158,11,0.3);
+}
 .ps-syned-unsaved { font-size: 12px; color: #f59e0b; font-weight: 500; }
 .ps-syned-saving  { font-size: 12px; color: #64748b; font-weight: 500; }
 .ps-syned-preview-btn {
@@ -31117,6 +30451,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
   box-sizing: border-box;
   position: relative;
 }
+.ps-leftreport-panel--watermark { background-image: var(--ps-watermark-image); background-repeat: repeat; background-attachment: local; }
 
 .ps-leftreport-highlight-mark {
   background: rgba(251,191,36,0.45);
@@ -31583,6 +30918,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 .ps-micro-entry-hint { font-size: 12px; color: #64748b; margin-bottom: 16px; }
 .ps-micro-entry-attest-btn { margin-bottom: 8px; font-size: 12px; }
 .ps-micro-entry-editor-wrap { border-radius: 8px; }
+.ps-micro-entry-spelllang { margin-bottom: 6px; }
 .ps-micro-entry-editor-wrap--dictating { border: 1px solid #ef4444; }
 .ps-micro-entry-dictating-indicator { font-size: 12px; color: #ef4444; margin-top: 6px; display: flex; align-items: center; gap: 6px; }
 .ps-micro-entry-dictating-dot { width: 8px; height: 8px; border-radius: 50%; background: #ef4444; display: inline-block; }
@@ -31982,8 +31318,7 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 /* ── ReleaseBufferBanner.tsx — i18n/cleanup sweep, batch 183 ────────────────
    This file was fully inline-styled (its own header comment explained
    there was no dedicated banner CSS class family for these one-offs at
-   the time it was built, matching its sibling InformalReviewBanner.tsx,
-   still unconverted). New class family, same visual result. */
+   the time it was built). New class family, same visual result. */
 .ps-release-buffer-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 12px;
   padding: 10px 14px; margin: 0 0 12px; border-radius: 6px;
@@ -32033,19 +31368,8 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 }
 .ps-models-set-default-btn:hover { background: rgba(255,255,255,0.12); }
 
-/* InformalReviewBanner.tsx — promoted from an inline style during the
-   i18n sweep's own CSS-cleanup pass; sky-blue accent distinct from
-   .ps-orch-pending-banner/.ps-amendment-deferred-banner's own colors. */
-.ps-informal-review-banner {
-  display: flex; align-items: center; justify-content: space-between; gap: 12px;
-  padding: 10px 14px; margin: 0 0 12px; border-radius: 6px;
-  background: rgba(56,189,248,0.08); border: 1px solid rgba(56,189,248,0.25);
-  color: #e2e8f0; font-size: 13px;
-}
-
 /* RevisionFeedbackBanner.tsx — promoted from an inline style during
-   the i18n sweep's own CSS-cleanup pass, same as InformalReviewBanner
-   above; brown/amber accent distinct from that banner's own sky-blue. */
+   the i18n sweep's own CSS-cleanup pass; brown/amber accent. */
 .ps-revision-feedback-banner {
   display: flex; flex-direction: column; gap: 4px;
   padding: 10px 14px; margin: 0 0 12px; border-radius: 6px;
@@ -32083,3 +31407,1245 @@ select.ps-st-role-filter option { background: #0f172a; color: #DEE4E7; }
 
 .ps-modal-dark-title--session-superseded { display: block; margin-bottom: 10px; }
 .ps-modal-dark-body--session-superseded { margin-bottom: 24px; }
+
+/* ── CytologyScreeningPage.tsx — inline-CSS cleanup sweep, batch 246 ────────
+   The shared SingleSearchSelect/MultiSearchSelect components (a real,
+   reusable searchable-pick-list pattern used throughout this page's
+   Specimen Adequacy/Primary Interpretation/Additional Interpretations/
+   Recommendations fields) were fully inline-styled. Every static value
+   moved to this ps-cytosearch family; the "no results yet" dropdown-item
+   hover state, previously done via onMouseEnter/onMouseLeave inline JS
+   directly mutating style.background, is now a plain :hover rule (removes
+   the redundant handlers as dead code, not just a style move). */
+.ps-cytosearch-selected-wrap { margin-bottom: 12px; }
+.ps-cytosearch-multi-item-wrap { margin-bottom: 6px; }
+.ps-cytosearch-selected-row {
+  display: flex; align-items: center; gap: 8px; padding: 7px 10px;
+  background: #111827; border: 1px solid #1f2937; border-radius: 7px;
+}
+.ps-cytosearch-selected-text { flex: 1; font-size: 12.5px; color: #e5e7eb; }
+.ps-cytosearch-remove-btn { background: none; border: none; color: #6b7280; cursor: pointer; font-size: 14px; line-height: 1; }
+.ps-cytosearch-comment-input {
+  width: 100%; margin-top: 4px; padding: 5px 9px; font-size: 12px; color: #9ca3af;
+  background: #0f0f0f; border: 1px solid #1f2937; border-radius: 6px;
+}
+.ps-cytosearch-query-wrap { position: relative; margin-bottom: 12px; }
+.ps-cytosearch-query-wrap--nested { position: relative; }
+.ps-cytosearch-query-input {
+  width: 100%; padding: 7px 10px; font-size: 12.5px; color: #e5e7eb;
+  background: #0f0f0f; border: 1px solid #1f2937; border-radius: 7px;
+}
+.ps-cytosearch-dropdown {
+  position: absolute; z-index: 10; top: 100%; left: 0; right: 0;
+  background: #161616; border: 1px solid #2a2a2a; border-radius: 8px;
+  margin-top: 3px; max-height: 220px; overflow-y: auto;
+}
+.ps-cytosearch-dropdown-item { padding: 7px 10px; font-size: 12px; color: #d1d5db; cursor: pointer; }
+.ps-cytosearch-dropdown-item:hover { background: #1f2937; }
+
+.ps-cytoscreen-field-label {
+  display: block; font-size: 11.5px; font-weight: 600; color: #9ca3af;
+  margin-bottom: 5px; text-transform: uppercase; letter-spacing: 0.3px;
+}
+.ps-cytoscreen-field-label-hint { font-weight: 400; text-transform: none; color: #4b5563; margin-left: 6px; letter-spacing: 0; }
+
+.ps-cytoscreen-loading { padding: 32px; text-align: center; color: #4b5563; }
+.ps-cytoscreen-loading--constrained { max-width: 480px; margin: 0 auto; }
+.ps-cytoscreen-empty-state-actions { margin-top: 16px; }
+.ps-cytoscreen-back-to-worklist-btn { padding: 8px 16px; background: #1c1c1c; border: 1px solid #374151; border-radius: 8px; color: #e5e7eb; cursor: pointer; }
+.ps-cytoscreen-main { max-width: 1400px; margin: 0 auto; padding: 24px 24px 40px; }
+.ps-cytoscreen-back-link { background: none; border: none; color: #6b7280; font-size: 13px; cursor: pointer; margin-bottom: 10px; }
+.ps-cytoscreen-header-row { display: flex; align-items: baseline; justify-content: space-between; margin-bottom: 18px; flex-wrap: wrap; gap: 12px; }
+.ps-cytoscreen-case-title { font-size: 21px; font-weight: 700; color: #fff; margin: 0; }
+.ps-cytoscreen-patient-line { font-size: 12.5px; color: #6b7280; margin: 2px 0 0; }
+.ps-cytoscreen-toolbar { display: flex; align-items: center; gap: 8px; font-size: 12px; color: #6b7280; }
+.ps-cytoscreen-spelllang { margin-right: 4px; color: #9ca3af; }
+.ps-cytoscreen-tag-btn { padding: 6px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; }
+.ps-cytoscreen-tag-btn--sky { color: #0ea5e9; background: #0ea5e918; border: 1px solid #0ea5e933; }
+.ps-cytoscreen-tag-btn--teal { color: #0891B2; background: #0891B218; border: 1px solid #0891B233; }
+.ps-cytoscreen-tag-btn--cyan { color: #38bdf8; background: #38bdf818; border: 1px solid #38bdf833; }
+.ps-cytoscreen-tag-btn--slate { color: #94a3b8; background: #94a3b818; border: 1px solid #94a3b833; }
+.ps-cytoscreen-tag-btn--pink { color: #EC4899; background: #EC489918; border: 1px solid #EC489933; }
+.ps-cytoscreen-tag-btn--amber { color: #f59e0b; background: #f59e0b18; border: 1px solid #f59e0b33; }
+.ps-cytoscreen-tag-btn--violet { color: #a78bfa; background: #a78bfa18; border: 1px solid #a78bfa33; }
+.ps-cytoscreen-lmp-input { padding: 5px 8px; font-size: 12px; color: #e5e7eb; background: #0f0f0f; border: 1px solid #1f2937; border-radius: 6px; }
+
+.ps-cytoscreen-banner--retro { background: #2e1065; border: 1px solid #7c3aed; border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+.ps-cytoscreen-banner-title--retro { font-size: 13.5px; font-weight: 700; color: #e9d5ff; margin-bottom: 4px; }
+.ps-cytoscreen-banner-body--retro { font-size: 12px; color: #c4b5fd; margin-bottom: 12px; }
+.ps-cytoscreen-banner-form-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: flex-end; }
+.ps-cytoscreen-banner-field--grow { flex: 1; min-width: 220px; }
+.ps-cytoscreen-banner-btn { padding: 8px 16px; font-size: 13px; font-weight: 600; border: none; border-radius: 6px; color: #fff; }
+.ps-cytoscreen-banner-btn--active { background: #7c3aed; cursor: pointer; }
+.ps-cytoscreen-banner-btn--inactive { background: #3f2d63; cursor: not-allowed; }
+.ps-cytoscreen-banner-btn--solid { background: #a21caf; cursor: pointer; }
+.ps-cytoscreen-banner-btn--solid:disabled { cursor: not-allowed; }
+.ps-cytoscreen-banner-btn--outline { padding: 8px 16px; font-size: 13px; font-weight: 600; background: transparent; border: 1px solid #a21caf; border-radius: 6px; color: #f5d0fe; cursor: pointer; }
+
+.ps-cytoscreen-banner--histo { background: #4a044e; border: 1px solid #a21caf; border-radius: 10px; padding: 16px; margin-bottom: 18px; }
+.ps-cytoscreen-banner-title--histo { font-size: 13.5px; font-weight: 700; color: #f5d0fe; margin-bottom: 4px; }
+.ps-cytoscreen-banner-body--histo { font-size: 12px; color: #e9b8f0; margin-bottom: 12px; }
+.ps-cytoscreen-banner-resolving--histo { font-size: 12px; color: #e9b8f0; }
+.ps-cytoscreen-banner-result--histo { font-size: 12px; color: #f5d0fe; margin-bottom: 10px; }
+.ps-cytoscreen-banner-actions { display: flex; gap: 10px; }
+
+.ps-cytoscreen-signedout-banner { padding: 10px 16px; background: #22c55e12; border: 1px solid #22c55e33; border-radius: 10px; margin-bottom: 18px; font-size: 12.5px; color: #22c55e; }
+.ps-cytoscreen-signout-banner--warn { padding: 10px 16px; background: rgba(255,255,255,0.03); border: 1px solid #1f2937; border-radius: 10px; margin-bottom: 18px; font-size: 12.5px; color: #6b7280; }
+.ps-cytoscreen-signout-row { display: flex; align-items: center; gap: 12px; padding: 10px 16px; background: rgba(255,255,255,0.03); border: 1px solid #1f2937; border-radius: 10px; margin-bottom: 18px; }
+.ps-cytoscreen-signout-status { font-size: 12.5px; flex: 1; }
+.ps-cytoscreen-signout-status--ready { color: #e5e7eb; }
+.ps-cytoscreen-signout-status--blocked { color: #f59e0b; }
+.ps-cytoscreen-signout-btn { padding: 8px 18px; font-size: 12.5px; font-weight: 700; color: #0a0a0a; border: none; border-radius: 8px; }
+.ps-cytoscreen-signout-btn--ready { background: #009E73; cursor: pointer; }
+.ps-cytoscreen-signout-btn--blocked { background: #374151; cursor: not-allowed; }
+
+.ps-cytoscreen-two-col { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1.3fr); gap: 20px; }
+.ps-cytoscreen-card { padding: 12px 14px; background: #111827; border: 1px solid #1f2937; border-radius: 10px; margin-bottom: 14px; }
+.ps-cytoscreen-card--hpv-positive { border-color: #ef444433; }
+.ps-cytoscreen-role-value { font-size: 14px; font-weight: 700; color: #009E73; }
+.ps-cytoscreen-role-hint { font-size: 11px; color: #6b7280; margin-top: 2px; }
+
+.ps-cytoscreen-workload-banner { padding: 10px 14px; border-radius: 10px; margin-bottom: 14px; }
+.ps-cytoscreen-workload-banner--exceeded { background: #ef444418; border: 1px solid #ef444433; }
+.ps-cytoscreen-workload-banner--approaching { background: #f59e0b18; border: 1px solid #f59e0b33; }
+.ps-cytoscreen-workload-status-text { font-size: 12.5px; font-weight: 600; }
+.ps-cytoscreen-workload-status-text--exceeded { color: #ef4444; }
+.ps-cytoscreen-workload-status-text--approaching { color: #f59e0b; }
+.ps-cytoscreen-workload-reason { font-size: 11.5px; color: #9ca3af; margin-top: 4px; }
+
+.ps-cytoscreen-qc-flagged-text { font-size: 12.5px; color: #ef4444; margin-bottom: 8px; }
+.ps-cytoscreen-qc-btn--remove { padding: 5px 12px; font-size: 11.5px; font-weight: 600; color: #9ca3af; background: #1c1c1c; border: 1px solid #374151; border-radius: 6px; cursor: pointer; }
+.ps-cytoscreen-qc-hint { font-size: 11px; color: #4b5563; margin-bottom: 6px; }
+.ps-cytoscreen-qc-btn--flag { padding: 5px 12px; font-size: 11.5px; font-weight: 600; color: #ef4444; background: #1c1c1c; border: 1px solid #ef444433; border-radius: 6px; cursor: pointer; }
+
+.ps-cytoscreen-hpv-empty { font-size: 12px; color: #6b7280; }
+.ps-cytoscreen-hpv-detail { font-size: 12px; color: #d1d5db; line-height: 1.9; }
+.ps-cytoscreen-hpv-result--positive { color: #ef4444; }
+.ps-cytoscreen-hpv-result--normal { color: #e5e7eb; }
+.ps-cytoscreen-text-light { color: #e5e7eb; }
+.ps-cytoscreen-text-muted { color: #6b7280; }
+
+.ps-cytoscreen-history-title { font-size: 13px; font-weight: 700; color: #e5e7eb; margin: 0 0 10px; text-transform: uppercase; letter-spacing: 0.4px; }
+.ps-cytoscreen-history-empty { font-size: 12.5px; color: #4b5563; }
+.ps-cytoscreen-history-section-label { font-size: 10.5px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 4px; }
+.ps-cytoscreen-history-row { font-size: 12px; color: #d1d5db; padding: 4px 0; border-bottom: 1px solid #1f2937; }
+.ps-cytoscreen-history-row--between { display: flex; justify-content: space-between; gap: 8px; }
+.ps-cytoscreen-history-date { color: #9ca3af; }
+.ps-cytoscreen-history-link { color: #38bdf8; font-size: 11px; white-space: nowrap; }
+.ps-cytoscreen-history-mb-0 { margin-bottom: 0; }
+.ps-cytoscreen-history-mb-10 { margin-bottom: 10px; }
+
+.ps-cytoscreen-lookback-card { padding: 12px 14px; background: #a855f718; border: 1px solid #a855f733; border-radius: 10px; margin-bottom: 14px; }
+.ps-cytoscreen-lookback-row { font-size: 12px; color: #d1d5db; padding: 4px 0; border-bottom: 1px solid #a855f733; display: flex; justify-content: space-between; gap: 8px; }
+.ps-cytoscreen-lookback-link { color: #a855f7; font-size: 11px; white-space: nowrap; }
+
+.ps-cytoscreen-review-card { padding: 10px 12px; background: #0f0f0f; border-radius: 9px; margin-bottom: 8px; }
+.ps-cytoscreen-review-card--initial { border: 1px solid #009E7333; }
+.ps-cytoscreen-review-card--other { border: 1px solid #1f2937; }
+.ps-cytoscreen-review-row { display: flex; align-items: center; gap: 6px; margin-bottom: 6px; flex-wrap: wrap; }
+.ps-cytoscreen-review-badge { font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 5px; }
+.ps-cytoscreen-review-badge--initial { background: #009E7318; color: #009E73; }
+.ps-cytoscreen-review-badge--other { background: #37415118; color: #9ca3af; }
+.ps-cytoscreen-review-final-tag { font-size: 10px; font-weight: 700; color: #22c55e; }
+.ps-cytoscreen-review-eligibility { font-size: 10px; font-weight: 700; }
+.ps-cytoscreen-review-eligibility--allowed { color: #22c55e; }
+.ps-cytoscreen-review-eligibility--blocked { color: #f59e0b; }
+.ps-cytoscreen-review-meta { font-size: 10.5px; color: #6b7280; margin-left: auto; }
+.ps-cytoscreen-review-detail-line { font-size: 11.5px; color: #d1d5db; margin-bottom: 3px; }
+.ps-cytoscreen-detail-line-notes { font-size: 11.5px; color: #9ca3af; margin-bottom: 6px; font-style: italic; }
+.ps-cytoscreen-review-actions { display: flex; gap: 6px; margin-top: 6px; }
+.ps-cytoscreen-review-action-btn { font-size: 10.5px; padding: 3px 9px; background: #1c1c1c; border: 1px solid #374151; border-radius: 6px; color: #9ca3af; cursor: pointer; }
+.ps-cytoscreen-review-action-btn--disabled { color: #4b5563; cursor: not-allowed; opacity: 0.6; }
+
+.ps-cytoscreen-form-panel { padding: 16px 18px; background: #111827; border: 1px solid #1f2937; border-radius: 12px; }
+.ps-cytoscreen-form-title { font-size: 13px; font-weight: 700; color: #e5e7eb; text-transform: uppercase; letter-spacing: 0.4px; }
+.ps-cytoscreen-form-title--tight { margin: 0 0 4px; }
+.ps-cytoscreen-form-title--roomy { margin: 0 0 14px; }
+.ps-cytoscreen-form-subtitle { font-size: 11px; color: #6b7280; margin-bottom: 14px; }
+.ps-cytoscreen-cisoe-row { margin-bottom: 12px; }
+.ps-cytoscreen-cisoe-inputs { display: flex; gap: 8px; }
+.ps-cytoscreen-cisoe-number-input { width: 70px; padding: 7px 10px; font-size: 13px; color: #e5e7eb; background: #0f0f0f; border: 1px solid #1f2937; border-radius: 8px; }
+.ps-cytoscreen-cisoe-comment-input { flex: 1; padding: 7px 10px; font-size: 12.5px; color: #d1d5db; background: #0f0f0f; border: 1px solid #1f2937; border-radius: 8px; }
+.ps-cytoscreen-textarea { width: 100%; padding: 8px 10px; font-size: 12.5px; color: #d1d5db; background: #0f0f0f; border: 1px solid #1f2937; border-radius: 8px; resize: vertical; font-family: inherit; }
+.ps-mb-12 { margin-bottom: 12px; }
+.ps-cytoscreen-inline-banner { padding: 8px 12px; border-radius: 8px; margin-bottom: 12px; }
+.ps-cytoscreen-inline-banner--error { background: #ef444418; border: 1px solid #ef444433; }
+.ps-cytoscreen-inline-banner--warning { background: #f59e0b18; border: 1px solid #f59e0b33; }
+.ps-cytoscreen-inline-banner--info { background: #0ea5e918; border: 1px solid #0ea5e933; }
+.ps-cytoscreen-inline-banner-text--error { font-size: 12px; color: #ef4444; }
+.ps-cytoscreen-inline-banner-text--warning { font-size: 12px; color: #f59e0b; }
+.ps-cytoscreen-inline-banner-text--info { font-size: 12px; color: #38bdf8; }
+.ps-cytoscreen-form-actions { display: flex; gap: 10px; align-items: center; }
+.ps-cytoscreen-save-btn { padding: 9px 20px; font-size: 12.5px; font-weight: 700; color: #0a0a0a; border: none; border-radius: 8px; }
+.ps-cytoscreen-save-btn--ready { background: #009E73; cursor: pointer; }
+.ps-cytoscreen-save-btn--disabled { background: #374151; cursor: not-allowed; }
+.ps-cytoscreen-peer-review-btn { padding: 9px 16px; font-size: 12.5px; font-weight: 600; color: #a78bfa; background: #a78bfa18; border: 1px solid #a78bfa33; border-radius: 8px; cursor: pointer; }
+
+.ps-cytoscreen-concordance-overlay { position: fixed; inset: 0; z-index: 1000; background: rgba(0,0,0,0.75); display: flex; align-items: center; justify-content: center; }
+.ps-cytoscreen-concordance-modal { background: #111827; border: 1px solid #1f2937; border-radius: 10px; padding: 20px; max-width: 440px; }
+.ps-cytoscreen-concordance-title { color: #e5e7eb; margin-top: 0; font-size: 15px; }
+.ps-cytoscreen-concordance-body { color: #9ca3af; font-size: 13px; }
+.ps-cytoscreen-concordance-actions { display: flex; gap: 8px; justify-content: flex-end; margin-top: 12px; }
+.ps-cytoscreen-concordance-btn--disagree { padding: 7px 14px; font-size: 12.5px; font-weight: 600; color: #f87171; background: #1c1c1c; border: 1px solid #374151; border-radius: 7px; cursor: pointer; }
+.ps-cytoscreen-concordance-btn--agree { padding: 7px 16px; font-size: 12.5px; font-weight: 700; color: #0a0a0a; background: #009E73; border: none; border-radius: 7px; cursor: pointer; }
+
+/* ── CytologyWorklistPage.tsx — inline-CSS cleanup sweep, batch 248 ──────────
+   Fully inline-styled; no prior class family. Tile colors (GYN_TILES/
+   NON_GYN_TILES/QA_COMPLIANCE_TILES) are genuinely data-driven — passed
+   through --ps-hue (Batch 363; it was --cwl-tile-* built in JSX),
+   the same "dynamic value via CSS custom property" convention used
+   elsewhere in this sweep (e.g. VoiceToggleButton.tsx's --vtb-badge-bg). */
+.ps-cytoworklist-main { max-width: 1100px; margin: 0 auto; padding: 32px 24px; }
+.ps-cytoworklist-title { font-size: 24px; font-weight: 700; color: #fff; margin: 0 0 4px; }
+.ps-cytoworklist-subtitle { font-size: 13px; color: #6b7280; margin: 0 0 24px; }
+.ps-cytoworklist-domain-switch { display: flex; gap: 8px; margin-bottom: 16px; }
+.ps-cytoworklist-domain-btn { padding: 10px 20px; border-radius: 10px; cursor: pointer; font-size: 13px; font-weight: 700; }
+.ps-cytoworklist-domain-btn--active { background: #009E7318; border: 1px solid #009E73; color: #009E73; }
+.ps-cytoworklist-domain-btn--inactive { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); color: #9ca3af; }
+.ps-cytoworklist-organsite-row { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 16px; }
+.ps-cytoworklist-pill { padding: 5px 12px; border-radius: 999px; cursor: pointer; font-size: 11.5px; font-weight: 600; border: 1px solid rgba(255,255,255,0.1); }
+.ps-cytoworklist-pill--all-active { background: #37415155; color: #e5e7eb; }
+.ps-cytoworklist-pill--all-inactive { background: transparent; color: #6b7280; }
+.ps-cytoworklist-pill--site-active { background: #38bdf822; border-color: #38bdf8; color: #38bdf8; }
+.ps-cytoworklist-pill--site-inactive { background: transparent; color: #9ca3af; }
+
+.ps-cytoworklist-tiles { display: flex; gap: 12px; margin-bottom: 24px; }
+.ps-cytoworklist-tile { flex: 1; padding: 16px 18px; border-radius: 12px; cursor: pointer; text-align: left; }
+/* Batch 363: the tile's hue comes in as --ps-hue; tints are derived here, not built in JSX. */
+.ps-cytoworklist-tile--active { background: color-mix(in srgb, var(--ps-hue) 9%, transparent); border: 1px solid var(--ps-hue); box-shadow: 0 0 12px color-mix(in srgb, var(--ps-hue) 25%, transparent); }
+.ps-cytoworklist-tile--inactive { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); box-shadow: none; }
+.ps-cytoworklist-tile-count { font-size: 24px; font-weight: 700; color: #e5e7eb; }
+.ps-cytoworklist-tile-label { font-size: 13px; font-weight: 600; margin-top: 4px; color: #9ca3af; }
+.ps-cytoworklist-tile--active .ps-cytoworklist-tile-count, .ps-cytoworklist-tile--active .ps-cytoworklist-tile-label { color: var(--ps-hue); }
+
+.ps-cytoworklist-qa-section { margin-bottom: 20px; }
+.ps-cytoworklist-qa-section-label { font-size: 11px; font-weight: 700; color: #6b7280; text-transform: uppercase; letter-spacing: 0.4px; margin-bottom: 8px; }
+.ps-cytoworklist-qa-tiles { display: flex; gap: 10px; flex-wrap: wrap; }
+.ps-cytoworklist-qa-tile { padding: 10px 14px; border-radius: 10px; cursor: pointer; text-align: left; min-width: 130px; }
+.ps-cytoworklist-qa-tile--active { background: color-mix(in srgb, var(--ps-hue) 9%, transparent); border: 1px solid var(--ps-hue); }
+.ps-cytoworklist-qa-tile--inactive { background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); }
+.ps-cytoworklist-qa-tile-count { font-size: 18px; font-weight: 700; color: #e5e7eb; }
+.ps-cytoworklist-qa-tile-label { font-size: 11.5px; font-weight: 600; margin-top: 2px; color: #9ca3af; }
+.ps-cytoworklist-qa-tile--active .ps-cytoworklist-qa-tile-count, .ps-cytoworklist-qa-tile--active .ps-cytoworklist-qa-tile-label { color: var(--ps-hue); }
+
+.ps-cytoworklist-empty { padding: 32px; text-align: center; color: #4b5563; font-size: 13px; }
+.ps-cytoworklist-list { border: 1px solid #1f2937; border-radius: 12px; overflow: hidden; }
+.ps-cytoworklist-row { display: flex; align-items: center; gap: 16px; padding: 14px 16px; border-bottom: 1px solid #111827; }
+.ps-cytoworklist-row--last { border-bottom: none; }
+.ps-cytoworklist-row--clickable { cursor: pointer; }
+.ps-cytoworklist-row--static { cursor: default; }
+.ps-cytoworklist-row-main { flex: 1; min-width: 0; }
+.ps-cytoworklist-row-title { font-size: 13px; font-weight: 600; color: #e5e7eb; }
+.ps-cytoworklist-row-subtitle { font-size: 12px; color: #6b7280; margin-top: 2px; }
+.ps-cytoworklist-row-actions { display: flex; gap: 8px; }
+.ps-cytoworklist-action-btn { padding: 6px 14px; font-size: 12px; font-weight: 600; color: #9ca3af; background: #1c1c1c; border: 1px solid #374151; border-radius: 7px; cursor: pointer; }
+.ps-cytoworklist-action-btn--violet { padding: 6px 16px; font-size: 12px; font-weight: 600; color: #0a0a0a; background: #8B5CF6; border: none; border-radius: 7px; cursor: pointer; }
+.ps-cytoworklist-action-btn--claim { padding: 6px 16px; font-size: 12px; font-weight: 600; color: #0a0a0a; background: #009E73; border: none; border-radius: 7px; cursor: pointer; }
+
+.ps-cytoworklist-badge { font-size: 11px; font-weight: 600; padding: 3px 10px; border-radius: 6px; }
+.ps-cytoworklist-badge--violet { background: #8B5CF618; color: #8B5CF6; border: 1px solid #8B5CF633; }
+.ps-cytoworklist-badge--red-strong { background: #DC262618; color: #DC2626; border: 1px solid #DC262633; }
+.ps-cytoworklist-badge--green { background: #22c55e18; color: #22c55e; border: 1px solid #22c55e33; }
+.ps-cytoworklist-badge--red { background: #ef444418; color: #ef4444; border: 1px solid #ef444433; }
+.ps-cytoworklist-badge--sky { background: #0ea5e918; color: #38bdf8; border: 1px solid #0ea5e933; }
+.ps-cytoworklist-badge--gray-action { background: #1c1c1c; border: 1px solid #374151; color: #9ca3af; cursor: pointer; }
+.ps-cytoworklist-badge--amber { background: #f59e0b18; color: #f59e0b; border: 1px solid #f59e0b33; }
+.ps-cytoworklist-badge--cyan { background: #38bdf818; color: #38bdf8; border: 1px solid #38bdf833; }
+
+/* ── General utilities added in batch 249 (mb-4/mb-0/fs-13/fs-14/flex-1+minw-0), comma-separated names, not a wildcard slash ── */
+.ps-mb-4  { margin-bottom: 4px; }
+.ps-mb-0  { margin-bottom: 0; }
+.ps-fs-13 { font-size: 13px; }
+.ps-fs-14 { font-size: 14px; }
+.ps-flex-1-minw-0 { flex: 1; min-width: 0; }
+
+/* ── SynopticEditor.tsx — inline-CSS cleanup sweep, batch 249 ── */
+.ps-syned-type-badge-wrap { position: relative; flex-shrink: 0; }
+.ps-syned-coded-dots { display: flex; gap: 4px; flex-shrink: 0; }
+.ps-syned-coded-dot--snomed { background: #38bdf8; }
+.ps-syned-coded-dot--icd { background: #a78bfa; }
+.ps-syned-field-row { display: flex; gap: 12px; margin-bottom: 14px; }
+.ps-syned-field-type-wrap { width: 160px; flex-shrink: 0; }
+.ps-syned-coding-row { display: flex; gap: 10px; }
+.ps-syned-options-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+.ps-syned-condition-spacer { height: 14px; }
+.ps-syned-condition-toggle-row { display: flex; align-items: center; gap: 10px; }
+.ps-syned-condition-toggle-row--expanded { margin-bottom: 12px; }
+.ps-syned-condition-fields-row { display: flex; gap: 10px; align-items: flex-end; }
+.ps-syned-label--amber { color: #fbbf24; }
+.ps-syned-preview-header-actions { display: flex; gap: 10px; align-items: center; }
+.ps-syned-preview-section { transition: opacity 0.2s; }
+.ps-syned-preview-section--visible { margin-bottom: 28px; opacity: 1; pointer-events: auto; height: auto; overflow: visible; }
+.ps-syned-preview-section--hidden { margin-bottom: 0; opacity: 0; pointer-events: none; height: 0; overflow: hidden; }
+.ps-syned-preview-field-row { overflow: hidden; transition: all 0.2s ease; display: flex; gap: 16px; align-items: flex-start; }
+.ps-syned-preview-field-row--visible { margin-bottom: 14px; max-height: 200px; opacity: 1; }
+.ps-syned-preview-field-row--hidden { margin-bottom: 0; max-height: 0; opacity: 0; }
+.ps-syned-preview-field-label-wrap { width: 200px; flex-shrink: 0; }
+.ps-syned-preview-required-mark { color: #ef4444; }
+.ps-syned-preview-code-row { display: flex; gap: 4px; margin-top: 3px; flex-wrap: wrap; }
+.ps-syned-preview-choice-col { display: flex; flex-direction: column; gap: 5px; }
+.ps-syned-preview-choice-input { accent-color: #0891B2; }
+.ps-syned-preview-input--numeric { width: 120px; }
+.ps-syned-preview-input--longtext { resize: vertical; }
+.ps-syned-loading-inner { text-align: center; }
+.ps-syned-version-wrap { width: 170px; }
+.ps-syned-coverage-bar-header { display: flex; justify-content: space-between; margin-bottom: 3px; }
+.ps-overlay--syned-confirm { z-index: 9500; }
+
+/* ── ProductivityTab.tsx — inline-CSS cleanup sweep, batch 250 ──
+   This file styles everything from the shared, static pathscribeTheme
+   token object (see the file's own batch-33 header comment) rather
+   than from this stylesheet — a deliberate, already-documented
+   choice, since duplicating fixed theme colors into CSS custom
+   properties/classes would just be the same value in two places for
+   no benefit. This batch extracts only the pure layout constants
+   (padding/margin/flex/grid/font-size, no theme reference at all)
+   into classes; every theme.colors and theme.gradients value, and the
+   two already-deduplicated btn()/toggle() style-helper functions,
+   stay exactly as they were. ── */
+.ps-prodtab-card { border-radius: 16px; padding: 20px; }
+.ps-prodtab-section-title { font-size: 15px; font-weight: 700; display: flex; align-items: center; gap: 8px; }
+.ps-prodtab-section-sub { font-size: 12px; margin-top: 2px; }
+.ps-prodtab-tooltip { position: absolute; bottom: calc(100% + 8px); left: 50%; transform: translateX(-50%); border-radius: 8px; padding: 8px 12px; font-size: 12px; white-space: nowrap; z-index: 10; }
+.ps-prodtab-barchart-row { display: flex; align-items: flex-end; gap: 6px; height: 200px; }
+.ps-prodtab-bar-col { flex: 1; display: flex; flex-direction: column; align-items: center; position: relative; cursor: pointer; }
+.ps-prodtab-tooltip-month { font-weight: 700; margin-bottom: 4px; }
+.ps-prodtab-bar-labels-row { display: flex; gap: 2px; margin-bottom: 3px; justify-content: center; width: 100%; }
+.ps-prodtab-bar-label { font-size: 10px; font-weight: 700; text-align: center; }
+.ps-prodtab-metric-width--combined { width: 45%; }
+.ps-prodtab-metric-width--single { width: 70%; }
+.ps-prodtab-bars-row { width: 100%; height: 160px; display: flex; align-items: flex-end; justify-content: center; gap: 2px; }
+.ps-prodtab-bar-rect { border-radius: 4px 4px 0 0; transition: height 0.3s ease, opacity 0.15s; }
+.ps-prodtab-bar-rect--hovered { opacity: 1; }
+.ps-prodtab-bar-rect--idle { opacity: 0.85; }
+.ps-prodtab-bar-month-label { font-size: 11px; margin-top: 6px; }
+.ps-prodtab-rvu-header { display: flex; justify-content: space-between; align-items: flex-start; }
+.ps-prodtab-rvu-title { font-size: 13px; margin-bottom: 6px; }
+.ps-prodtab-rvu-total { font-size: 32px; font-weight: 800; line-height: 1; }
+.ps-prodtab-rvu-delta { font-size: 12px; font-weight: 600; margin-top: 6px; }
+.ps-prodtab-rvu-subtitle { font-size: 11px; margin-top: 8px; }
+.ps-prodtab-rvu-warning { font-size: 10px; margin-top: 4px; }
+.ps-prodtab-rvu-right { text-align: right; }
+.ps-prodtab-rvu-caption { font-size: 11px; }
+.ps-prodtab-rvu-avg { font-size: 24px; font-weight: 700; }
+.ps-prodtab-rvu-unit { font-size: 10px; margin-top: 2px; }
+.ps-prodtab-peer-loading { font-size: 12px; padding: 12px 0; }
+.ps-prodtab-peer-rows { display: flex; flex-direction: column; gap: 14px; }
+.ps-prodtab-peer-row-header { display: flex; justify-content: space-between; font-size: 12px; margin-bottom: 5px; }
+.ps-prodtab-peer-row-value { font-weight: 700; }
+.ps-prodtab-bar-track { height: 6px; border-radius: 99px; overflow: hidden; }
+.ps-prodtab-bar-fill { height: 100%; border-radius: 99px; transition: width 0.6s ease; }
+.ps-prodtab-main { display: flex; flex-direction: column; gap: 20px; }
+.ps-prodtab-grid-2col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
+.ps-prodtab-chart-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 20px; }
+.ps-prodtab-chart-nav-group { display: flex; gap: 8px; }
+.ps-prodtab-daterange-group { display: flex; gap: 6px; }
+.ps-prodtab-legend-row { display: flex; align-items: center; gap: 5px; margin-top: 12px; }
+.ps-prodtab-legend-swatch { width: 12px; height: 12px; border-radius: 3px; }
+.ps-prodtab-legend-label { font-size: 11px; }
+.ps-prodtab-ytd-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+.ps-prodtab-toggle-group { display: flex; gap: 16px; }
+.ps-prodtab-checkbox { width: 13px; height: 13px; }
+.ps-prodtab-export-row { display: flex; justify-content: flex-end; gap: 10px; }
+.ps-prodtab-export-btn { padding: 8px 18px; font-size: 13px; font-weight: 600; border-radius: 8px; cursor: pointer; }
+
+/* ── General utilities added in batch 251 (mb-18/mt-2/relative) ── */
+.ps-mb-18 { margin-bottom: 18px; }
+.ps-mt-2  { margin-top: 2px; }
+.ps-relative { position: relative; }
+
+/* ── CytologySynopticFormView.tsx — inline-CSS cleanup sweep, batch 251 ── */
+.ps-cytosynform-label { display: block; font-size: 11.5px; font-weight: 600; margin-bottom: 4px; color: #9ca3af; }
+.ps-cytosynform-label--missing { color: #ef4444; }
+.ps-cytosynform-checkbox-label { display: flex; align-items: center; gap: 6px; font-size: 12.5px; color: #d1d5db; margin-bottom: 4px; }
+.ps-cytosynform-textarea { width: 100%; min-height: 70px; }
+.ps-cytosynform-preview-banner { padding: 8px 10px; background: #f59e0b18; border: 1px solid #f59e0b33; border-radius: 8px; margin-bottom: 16px; font-size: 11.5px; color: #f59e0b; }
+.ps-cytosynform-template-select { width: 100%; margin-bottom: 18px; }
+.ps-cytosynform-section-title { font-size: 12px; font-weight: 700; color: #e5e7eb; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 10px; }
+.ps-cytosynform-error-banner { padding: 8px 10px; background: #ef444418; border: 1px solid #ef444433; border-radius: 8px; margin-bottom: 14px; font-size: 12px; color: #ef4444; }
+.ps-cytosynform-warn-banner { padding: 10px 12px; background: #f59e0b18; border: 1px solid #f59e0b33; border-radius: 8px; margin-bottom: 14px; }
+.ps-cytosynform-warn-title { font-size: 12px; font-weight: 700; color: #f59e0b; margin-bottom: 6px; }
+.ps-cytosynform-warn-text { font-size: 11.5px; color: #d1d5db; margin-bottom: 8px; }
+.ps-cytosynform-term-list { margin: 0 0 10px; padding-left: 18px; font-size: 11.5px; color: #fcd34d; }
+.ps-cytosynform-ack-label { display: flex; align-items: flex-start; gap: 8px; font-size: 12px; color: #e5e7eb; cursor: pointer; }
+.ps-cytosynform-ack-error { font-size: 11.5px; color: #ef4444; margin-top: 6px; }
+.ps-cytosynform-narrative-banner { padding: 10px 12px; background: #1f293766; border: 1px solid #37415155; border-radius: 8px; margin-bottom: 14px; }
+.ps-cytosynform-narrative-title { font-size: 12px; font-weight: 700; color: #9ca3af; margin-bottom: 6px; }
+.ps-cytosynform-narrative-text { font-size: 12.5px; color: #d1d5db; line-height: 1.5; margin-bottom: 10px; }
+.ps-cytosynform-unvalidated-mark { background: #f59e0b2e; color: #fcd34d; border-bottom: 1px dashed #f59e0b; padding: 0 2px; border-radius: 2px; cursor: pointer; }
+.ps-cytosynform-lexicon-badge { display: inline-block; margin-left: 4px; padding: 1px 6px; font-size: 10.5px; font-family: monospace; color: #0a0a0a; background: #fcd34d; border-radius: 4px; vertical-align: middle; }
+.ps-cytosynform-insert-btn { padding: 6px 14px; font-size: 12px; font-weight: 600; color: #94a3b8; background: transparent; border: 1px solid #37415155; border-radius: 6px; cursor: pointer; }
+.ps-cytosynform-save-btn { padding: 9px 20px; font-size: 12.5px; font-weight: 700; color: #0a0a0a; background: #009E73; border: none; border-radius: 8px; cursor: pointer; width: 100%; }
+
+/* ── WorklistTable.tsx — inline-CSS cleanup sweep, batch 252 (follows this file's own existing wl- prefix, not ps-) ── */
+.wl-col-dot { width: 32px; }
+.wl-col-case-id { width: 11%; }
+.wl-col-patient { width: 11%; }
+.wl-col-mrn { width: 5%; }
+.wl-col-sex { width: 30px; }
+.wl-col-dob { width: 8%; }
+.wl-col-accession { width: 6%; }
+.wl-col-physician { width: 9%; }
+.wl-col-specimens { width: 12%; }
+.wl-col-digital-readiness { width: 9%; }
+.wl-col-dp-triage { width: 11%; }
+.wl-col-flags { width: 9%; }
+.wl-col-staff { width: 9%; }
+.wl-col-status { width: 40px; }
+.wl-mirror-bar-spacer { height: 1px; }
+
+/* ── CytologyRoseView.tsx — inline-CSS cleanup sweep, batch 253 ── */
+.ps-roseview-section-title { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 8px; }
+.ps-roseview-eval-card { padding: 8px 10px; background: #111827; border: 1px solid #1f2937; border-radius: 8px; margin-bottom: 8px; }
+.ps-roseview-eval-meta { font-size: 11.5px; color: #9ca3af; margin-bottom: 4px; }
+.ps-roseview-eval-pass { font-size: 12px; color: #d1d5db; }
+.ps-roseview-location-select { width: 100%; margin-bottom: 14px; }
+.ps-roseview-pass-card { padding: 10px 12px; background: #111827; border: 1px solid #1f2937; border-radius: 8px; margin-bottom: 10px; }
+.ps-roseview-pass-title { font-size: 12px; font-weight: 700; color: #e5e7eb; margin-bottom: 8px; }
+.ps-roseview-pass-select { width: 100%; margin-bottom: 8px; }
+.ps-roseview-pass-textarea { width: 100%; min-height: 50px; }
+.ps-roseview-actions-row { display: flex; gap: 8px; }
+.ps-roseview-save-btn { padding: 6px 16px; font-size: 12px; font-weight: 700; color: #0a0a0a; background: #009E73; border: none; border-radius: 6px; cursor: pointer; }
+
+/* ── PathScribeEditor.tsx — inline-CSS cleanup sweep, batch 254 (follows this file's own existing pse- prefix, not ps-editor-).
+   theme here comes from useEditorTheme()/EditorThemeContext, a genuine runtime-switchable
+   light/dark editor theme (unlike ProductivityTab.tsx's static pathscribeTheme constant); since
+   batch 338 it reaches these rules as --pse-* custom properties (see the block below). ── */
+.pse-tbtn { padding: 5px 7px; height: 26px; border: none; border-radius: 5px; font-size: 12px; font-weight: 500; display: flex; align-items: center; justify-content: center; gap: 3px; transition: background 0.12s, color 0.12s; flex-shrink: 0; white-space: nowrap; }
+.pse-divider { width: 1px; height: 18px; margin: 0 5px; flex-shrink: 0; }
+.pse-toolbar { display: flex; flex-wrap: wrap; gap: 1px; align-items: center; padding: 6px 8px; border-radius: 10px 10px 0 0; }
+.pse-toolbar-font-select { padding: 3px 6px; height: 26px; border-radius: 5px; font-size: 12px; font-weight: 500; cursor: pointer; max-width: 140px; }
+.pse-toolbar-size-select { padding: 3px 4px; height: 26px; border-radius: 5px; font-size: 12px; cursor: pointer; width: 48px; }
+.pse-toolbar-anchor { position: relative; }
+.pse-editor-body { flex: 1; overflow-y: auto; border-radius: 0 0 12px 12px; }
+.pse-editor-wrap { display: flex; flex-direction: column; border-radius: 12px; }
+
+/* ── PathScribeEditor.tsx, batch 338: the theme now reaches CSS as custom properties
+   (themeVars() sets --pse-* on .pse-toolbar and .pse-editor-wrap), so the last inline
+   styles, the hover handlers and the component's embedded <style> block live here. ── */
+.pse-toolbar { background: var(--pse-toolbar-bg); border-bottom: 1px solid var(--pse-toolbar-border); }
+.pse-tbtn { min-width: var(--pse-tbtn-min, 28px); background: transparent; color: var(--pse-btn-text); cursor: pointer; }
+.pse-tbtn:hover:not(:disabled), .pse-tbtn--active { background: var(--pse-btn-hover-bg); }
+.pse-tbtn--active { color: var(--pse-accent); }
+.pse-tbtn:disabled { color: var(--pse-btn-text-disabled); cursor: not-allowed; }
+.pse-divider { background: var(--pse-divider-color); }
+.pse-toolbar-font-select, .pse-toolbar-size-select { border: 1px solid var(--pse-input-border); color: var(--pse-input-text); background: var(--pse-input-bg); }
+.pse-toolbar-font-select option, .pse-toolbar-size-select option { color: var(--pse-panel-text); background: var(--pse-panel-bg); }
+.pse-toolbar-icon-x { display: inline-flex; position: absolute; top: -2px; right: -3px; color: #ef4444; }
+.pse-inserttable-grid { grid-template-columns: repeat(var(--pse-grid-cols, 1), 20px); }
+.pse-colorpicker-swatch { background: var(--swatch-color); }
+.pse-loading-wrap { min-height: var(--pse-min-height, 400px); }
+.pse-editor-wrap { border: 1px solid var(--pse-content-border); background: var(--pse-content-bg); }
+.pse-editor-body { min-height: var(--pse-min-height, 400px); }
+.ps-editor-content { padding: 20px 24px; min-height: var(--pse-min-height, 400px); outline: none; font-size: 12pt; line-height: 1.8; color: var(--pse-content-text, #1e293b); font-family: var(--pse-font-family, Arial, sans-serif); }
+.ps-editor-content:focus { outline: none; }
+.ps-editor-content p.is-editor-empty:first-child::before { content: attr(data-placeholder); float: left; color: var(--pse-btn-text-disabled, #94a3b8); pointer-events: none; height: 0; }
+.ps-editor-content p { margin: 0 0 10px 0; }
+.ps-editor-content strong { font-weight: 700; }
+.ps-editor-content em { font-style: italic; }
+.ps-editor-content u { text-decoration: underline; }
+.ps-editor-content s { text-decoration: line-through; }
+.ps-editor-content ul, .ps-editor-content ol { padding-left: 28px; margin: 10px 0; }
+.ps-editor-content li { margin: 4px 0; }
+.ps-editor-content h1 { font-size: 24px; font-weight: 700; margin: 16px 0 10px; }
+.ps-editor-content h2 { font-size: 20px; font-weight: 700; margin: 14px 0 8px; }
+.ps-editor-content h3 { font-size: 16px; font-weight: 700; margin: 12px 0 6px; }
+.ps-editor-content table { border-collapse: collapse; width: 100%; margin: 12px 0; }
+.ps-editor-content th, .ps-editor-content td { border: 1px solid #cbd5e1; padding: 8px 12px; min-width: 60px; vertical-align: top; }
+.ps-editor-content th { background: #f1f5f9; font-weight: 700; text-align: left; }
+.ps-editor-content .selectedCell:after { background: rgba(8,145,178,0.12); content: ''; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; position: absolute; z-index: 2; }
+.ps-editor-content .tableWrapper { overflow-x: auto; }
+.ps-editor-content .ps-tab { display: inline-block; white-space: pre; }
+/* Show Formatting Marks: regular spaces get a grey dot, non-breaking spaces
+   (inserted by Tab) a teal one; pilcrows and tab arrows only while toggled on. */
+.ps-fm-space, .ps-fm-nbsp { position: relative; }
+.ps-fm-space::after, .ps-fm-nbsp::after { content: '·'; position: absolute; left: 0; right: 0; top: -2px; text-align: center; font-weight: 700; pointer-events: none; }
+.ps-fm-space::after { color: #94a3b8; }
+.ps-fm-nbsp::after { color: #0891B2; }
+.ai-generated-content { background: rgba(8,145,178,0.04); border-left: 2px solid rgba(8,145,178,0.25); padding-left: 8px; transition: background 0.2s; }
+.user-edited-content { background: rgba(251,191,36,0.04); border-left: 2px solid rgba(251,191,36,0.25); padding-left: 8px; }
+.pse-editor-wrap--marks .ps-editor-content p::after { content: '¶'; color: #94a3b8; font-size: 10px; margin-left: 2px; }
+.pse-editor-wrap--marks .ps-editor-content br::after { content: '↵'; color: #94a3b8; font-size: 10px; }
+.pse-editor-wrap--marks .ps-editor-content .ps-tab { background: rgba(8,145,178,0.08); outline: 1px dashed #bae6fd; position: relative; }
+.pse-editor-wrap--marks .ps-editor-content .ps-tab::before { content: '→'; color: #94a3b8; font-size: 9px; position: absolute; left: 2px; top: 50%; transform: translateY(-50%); }
+
+/* ── Spell check (PS-342, batch 338): components/SpellCheck/. ──────────────────
+   Squiggles: red for a misspelling, blue for the other English convention's
+   spelling (e.g. "color" in a UK report). Used in the report editor and in
+   SpellCheckedTextarea's underline layer. */
+.ps-spell { text-decoration-line: underline; text-decoration-style: wavy; text-decoration-thickness: 1.5px; text-decoration-skip-ink: none; text-underline-offset: 2px; }
+.ps-spell--misspelled { text-decoration-color: #dc2626; }
+.ps-spell--regionalVariant { text-decoration-color: #2563eb; }
+
+/* SpellCheckedTextarea: the text box and an underline layer share one grid
+   cell, so the layer always has the box's size. The layer copies the box's
+   own class (font, padding, border width), shows no text, and scrolls with it. */
+.ps-spelltext { display: grid; grid-template-columns: minmax(0, 1fr); position: relative; }
+.ps-spelltext > .ps-spelltext__backdrop, .ps-spelltext > .ps-spelltext__input { grid-area: 1 / 1; scrollbar-gutter: stable; }
+.ps-spelltext > .ps-spelltext__backdrop { color: transparent !important; overflow: hidden !important; white-space: pre-wrap; overflow-wrap: break-word; word-break: normal; resize: none; user-select: none; }
+.ps-spelltext > .ps-spelltext__backdrop mark { background: none; color: transparent; padding: 0; }
+.ps-spelltext > .ps-spelltext__input { position: relative; z-index: 1; background-color: transparent !important; background-image: none !important; }
+
+/* Right-click menu (portal to body). */
+.ps-spellmenu { position: fixed; left: var(--spellmenu-x); top: var(--spellmenu-y); z-index: 100000; min-width: 200px; max-width: 320px; padding: 4px; background: #ffffff; border: 1px solid #e2e8f0; border-radius: 8px; box-shadow: 0 10px 28px rgba(15,23,42,0.18); font-size: 13px; color: #1e293b; }
+.ps-spellmenu__item { display: block; width: 100%; text-align: left; padding: 6px 10px; background: none; border: none; border-radius: 5px; font-size: 13px; color: inherit; cursor: pointer; }
+.ps-spellmenu__item:hover, .ps-spellmenu__item:focus-visible { background: #f1f5f9; outline: none; }
+.ps-spellmenu__item--suggestion { font-weight: 600; }
+.ps-spellmenu__hint { padding: 6px 10px; font-size: 12px; color: #64748b; }
+.ps-spellmenu__hint--error { color: #b91c1c; }
+.ps-spellmenu__sep { height: 1px; margin: 4px 2px; background: #e2e8f0; }
+
+/* Spelling language control (report headers). */
+.ps-spelllang { display: inline-flex; align-items: center; gap: 6px; flex-wrap: wrap; font-size: 11px; color: #64748b; }
+.ps-spelllang__label { font-weight: 600; }
+.ps-spelllang__select { padding: 2px 6px; font-size: 11px; border: 1px solid #cbd5e1; border-radius: 5px; background: #ffffff; color: #1e293b; cursor: pointer; }
+.ps-spelllang__select:disabled { opacity: 0.6; cursor: wait; }
+.ps-spelllang__source { font-style: italic; }
+.ps-spelllang__notice { color: #b45309; }
+
+/* ── WorklistPage.tsx — inline-CSS cleanup sweep, batch 255 (follows this file's own existing ps-wl- prefix).
+   The page's own root layout-shell blocks (position/width/height/fontFamily/display/flexDirection on the
+   outermost wrapper divs) are left inline per this file's own existing comment: that conversion is separate,
+   larger, pre-existing work tracked elsewhere as PS-74, not part of this sweep. Only the smaller, self-contained
+   pieces unrelated to that root layout shell are converted here. ── */
+.ps-wl-filter-row { display: flex; align-items: center; min-width: 0; padding-top: 3px; }
+.ps-wl-physician-chip { display: flex; align-items: center; gap: 6px; padding: 6px 12px; background: rgba(139,92,246,0.15); border: 1.5px solid rgba(139,92,246,0.4); border-radius: 8px; font-size: 12px; color: #a78bfa; font-weight: 600; }
+.ps-wl-physician-chip-clear { background: none; border: none; color: #a78bfa; cursor: pointer; font-size: 14px; padding: 0 0 0 4px; line-height: 1; }
+.ps-wl-voice-prompt { flex-shrink: 0; margin-bottom: 8px; padding: 8px 14px; background: rgba(245,158,11,0.1); border: 1px solid rgba(245,158,11,0.25); border-radius: 8px; display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.ps-wl-voice-prompt-text { font-size: 13px; color: #fbbf24; font-weight: 500; }
+.ps-wl-voice-prompt-close { background: none; border: none; color: #64748b; cursor: pointer; font-size: 16px; }
+
+/* ── EmbeddingCenterPanel.tsx — inline-CSS cleanup sweep, batch 256 ── */
+.ps-embedding-field-input--narrow { max-width: 90px; }
+
+/* ── CytologyMaterialView.tsx — inline-CSS cleanup sweep, batch 257 ── */
+.ps-cytmaterial-specimen-label { font-size: 11px; font-weight: 700; color: #9ca3af; text-transform: uppercase; letter-spacing: 0.3px; margin-bottom: 12px; }
+.ps-cytmaterial-no-decants { font-size: 12.5px; color: #4b5563; margin-bottom: 14px; }
+.ps-cytmaterial-decant-card { margin-bottom: 16px; padding: 10px 12px; background: #111827; border: 1px solid #1f2937; border-radius: 8px; }
+.ps-cytmaterial-decant-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px; }
+.ps-cytmaterial-decant-label { font-size: 12.5px; font-weight: 700; color: #e5e7eb; }
+.ps-cytmaterial-add-btn { padding: 6px 14px; font-size: 12px; font-weight: 600; color: #94a3b8; background: transparent; border: 1px solid #37415155; border-radius: 6px; cursor: pointer; }
+.ps-cytmaterial-add-btn--primary { padding: 6px 14px; font-size: 12px; font-weight: 600; color: #0a0a0a; background: #009E73; border: none; border-radius: 6px; cursor: pointer; }
+
+/* ── SynopticReportPage.tsx — inline-CSS cleanup sweep, batch 258 ── */
+.ps-conf-form-field--narrow { max-width: 420px; }
+.ps-defic-review-banner--blue { border-color: rgba(96,165,250,0.4); }
+.ps-syn-right-panel-toolrow { display: flex; justify-content: flex-end; gap: 8px; padding: 8px 12px 0; }
+.ps-syn-toolbtn-sm { font-size: 11px; padding: 4px 10px; }
+
+/* ── CytologyQcRulesSection.tsx — inline-CSS cleanup sweep, batch 259 ── */
+.ps-cytqc-priority-inline { margin-left: 8px; font-size: 12px; color: var(--ps-conf-text-3, #94a3b8); }
+
+/* ── FacilityTable.tsx — inline-CSS cleanup sweep, batch 260 ── */
+.fct-col-facility { width: 24%; }
+.fct-col-roles    { width: 18%; }
+.fct-col-contact  { width: 22%; }
+.fct-col-tat      { width: 13%; }
+.fct-col-status   { width: 9%; }
+.fct-col-actions  { width: 14%; }
+
+/* ── CassettePrintPanel.tsx — inline-CSS cleanup sweep, batch 262 ── */
+.ps-embedding-label-preview { border: 1px solid rgba(148,163,184,0.3); border-radius: 6px; padding: 8px; display: flex; flex-direction: column; justify-content: center; gap: 4px; }
+.ps-embedding-cassette-module-row { display: flex; gap: 1px; flex-wrap: wrap; }
+.ps-embedding-cassette-module-dot { width: 3px; height: 3px; background: #e2e8f0; }
+.ps-embedding-cassette-label-text { font-size: 10px; color: #e2e8f0; }
+
+/* ── FlagManagerModal.tsx — inline-CSS cleanup sweep, batch 263 ── */
+.fm-icon--shrink { flex-shrink: 0; }
+.fm-icon-flag { flex-shrink: 0; color: #ef4444; }
+.fm-overlay--scope-dialog { z-index: 9500; }
+.ps-overlay--flag-discard-warn { z-index: 9500; }
+
+/* ── BiopsyArrayDiagram.tsx — inline-CSS cleanup sweep, batch 264 ── */
+.ps-biopsyarray-wrap { display: flex; align-items: center; gap: 14px; margin-left: 40px; margin-bottom: 12px; }
+.ps-biopsyarray-svg { flex-shrink: 0; }
+.ps-biopsyarray-cell-group { cursor: pointer; }
+.ps-biopsyarray-legend { font-size: 11px; color: #94a3b8; line-height: 1.6; }
+.ps-biopsyarray-legend-bold { font-weight: 700; color: #cbd5e1; }
+
+/* ── CriticalFindingsModal.tsx — inline-CSS cleanup sweep, batch 265 ── */
+.ps-conf-label--clickable { cursor: pointer; }
+
+/* ── FppeTrackingTab.tsx — inline-CSS cleanup sweep, batch 266 ── */
+.ps-qa-tile--overdue { border-color: #f59e0b; }
+.ps-qa-tile-value--overdue { color: #f59e0b; }
+.ps-conf-td--overdue { color: #f59e0b; font-weight: 600; }
+
+/* ── TemplateInspector.tsx — inline-CSS cleanup sweep, batch 267 ── */
+.ps-tinsp-col--w80 { min-width: 80px; }
+.ps-tinsp-col--w60 { min-width: 60px; }
+
+/* ── FacilityEditorModal.tsx — inline-CSS cleanup sweep, batch 268 ── */
+.ps-overlay--facility-editor { z-index: 9000; }
+.cem-suffix-custom-row { display: flex; gap: 6px; align-items: center; }
+.cem-btn-text--link { white-space: nowrap; text-decoration: underline; color: #38bdf8; }
+.cem-credential-row { display: flex; align-items: center; gap: 8px; padding-top: 8px; }
+
+/* ── TemplateRenderer.tsx — inline-CSS cleanup sweep, batch 270 ── */
+.ps-tmplr-modal-msg-highlight { color: #f1f5f9; }
+.ps-tmplr-modal-msg--dim { color: #64748b; }
+
+/* ── BatchManagementPage.tsx — inline-CSS cleanup sweep, batch 272 ── */
+/* Four of the five ps-wl-filter-tile instances on this page are fixed
+   navigation shortcuts (Disposal/Disposal Report/Pending Load/Engraver
+   Monitor) with a permanently-fixed brand color each, unlike the
+   per-node processing-stage tile (whose color is genuinely
+   data-driven) — so their --tile-* custom properties are static and
+   belong in real CSS rules instead of an inline style recomputing the
+   same fixed value on every render. */
+.ps-batch-tile-label--muted { --tile-label-color: #8899aa; }
+.ps-batch-tile--disposal { --tile-bg: #DC26260d; --tile-border: #DC26262e; --tile-shadow: none; }
+.ps-batch-tile-count--disposal { --tile-count-color: #DC2626; }
+.ps-batch-tile--disposal-report { --tile-bg: #8B5CF60d; --tile-border: #8B5CF62e; --tile-shadow: none; }
+.ps-batch-tile-count--disposal-report { --tile-count-color: #8B5CF6; }
+.ps-batch-tile--pending-load { --tile-bg: #EAB3080d; --tile-border: #EAB3082e; --tile-shadow: none; }
+.ps-batch-tile-count--pending-load { --tile-count-color: #EAB308; }
+.ps-batch-tile--engraver-monitor { --tile-bg: #38bdf80d; --tile-border: #38bdf82e; --tile-shadow: none; }
+.ps-batch-tile-count--engraver-monitor { --tile-count-color: #38bdf8; }
+
+/* ── SlideGridPanel.tsx — inline-CSS cleanup sweep, batch 273 ── */
+.ps-microtomy-field--w120 { width: 120px; }
+.ps-microtomy-field--w140 { width: 140px; }
+.ps-microtomy-field--w200 { width: 200px; }
+
+/* ── QualityAssurancePage.tsx — inline-CSS cleanup sweep, batch 276 ──
+   Only the "Failed Dispatches" tile is fixed (a read-only navigation
+   shortcut into Configuration, not one of the tab-switching pillar
+   tiles in tiles.map(), whose per-tile active/inactive styling stays
+   genuinely dynamic and inline). Reuses the existing
+   .ps-batch-tile-label--muted (#8899aa) for the label. */
+.ps-qa-dlq-tile { --tile-bg: #f59e0b0d; --tile-border: #f59e0b2e; --tile-shadow: none; }
+.ps-qa-dlq-tile-count { --tile-count-color: #f59e0b; --tile-sublabel-opacity: 0.75; }
+
+/* ── SpeechConfigTab.tsx — inline-CSS cleanup sweep, batch 276 ── */
+.sct-file-input-hidden { display: none; }
+
+/* ── ModelStoreModal.tsx — inline-CSS cleanup sweep, batch 276 ── */
+.ps-overlay--model-store { z-index: 9600; }
+
+/* ── protocolShared.tsx — inline-CSS cleanup sweep, batch 276 ── */
+.ps-pshare-hidden-file-input { display: none; }
+
+/* ── VoiceSection.tsx — inline-CSS cleanup sweep, batch 276 ──
+   Only usage of .config-toggle-wrap in the codebase, so scoped here
+   rather than as a shared child-selector precedent. */
+.config-toggle-wrap input { display: none; }
+
+/* ── CaseSearchBar.tsx — inline-CSS cleanup sweep, batch 276 ──
+   Reuses the existing `spin` keyframe (already defined for
+   .ps-ph-spinner-circle). */
+.ps-search-icon-spin { animation: spin 0.8s linear infinite; }
+
+/* ── SlideDistributionStationPage.tsx / EmbeddingStationPage.tsx /
+   MicrotomyWorkstationPage's CommentDrawer.tsx — inline-CSS cleanup
+   sweep, batch 276 — all reused pre-existing utilities
+   (ps-mb-16 / ps-ml-auto / ps-mt-8), no new CSS needed. ── */
+
+/* ── QualityTab.tsx — inline-CSS cleanup sweep, batch 277 ──
+   RefLineLabel's <text> halo styling is fixed regardless of which
+   reference line it labels (only fill/x/y/textAnchor vary, and those
+   stay as SVG attributes, not CSS). */
+.ps-tat-refline-label { paint-order: stroke fill; stroke: #0a1628; stroke-width: 3.5px; stroke-linejoin: round; }
+
+/* ── TypeModal.tsx — inline-CSS cleanup sweep, batch 277 ──
+   color/opacity were fixed on every preview chip regardless of
+   draft.color (only background varies, stays inline); folded into
+   the existing base rule instead of a new modifier. */
+.ps-type-preview-chip { color: #0f172a; opacity: 0.85; }
+
+/* ── PatientIdStatusDot.tsx — inline-CSS cleanup sweep, batch 277 ──
+   Shape/layout is fixed for every dot; only size (px, from the `size`
+   prop) and color (from computePatientIdStatus's status.color) vary
+   and stay inline. */
+.ps-patient-id-status-dot-shape { display: inline-block; border-radius: 50%; flex-shrink: 0; cursor: default; }
+
+/* ── ReportPreviewRenderer.tsx — inline-CSS cleanup sweep, batch 277 ──
+   display:grid is fixed for every column-layout node; gridTemplateColumns
+   (node.numColumns) and gap (node.columnGap) are genuinely per-template
+   and stay inline. */
+.rp-cols { display: grid; grid-template-columns: repeat(var(--rp-cols, 1), 1fr); gap: var(--rp-gap, 16px); } /* Batch 363: column count and gap come in as custom properties */
+
+/* ── Batch 317 (PS-73): Duplicate actions + protocol lifecycle actions ── */
+.ps-participationtypes__edit-btn + .ps-participationtypes__edit-btn { margin-left: 6px; }
+
+/* Synoptic protocol library: lifecycle, source and category colours as CSS
+   (Batch 317). Replaces the LIFECYCLE_STYLES / SOURCE_STYLES objects that
+   were painted through inline style props. Each state/source sets one hue;
+   tints and borders derive from it with color-mix(). A protocol's category
+   colour is the only per-instance value and arrives as --ps-hue. */
+.ps-lc-hue--all           { --ps-hue: #0891B2; }
+.ps-lc-hue--draft         { --ps-hue: #94a3b8; }
+.ps-lc-hue--in_review     { --ps-hue: #fbbf24; }
+.ps-lc-hue--needs_changes { --ps-hue: #f87171; }
+.ps-lc-hue--approved      { --ps-hue: #10B981; }
+.ps-lc-hue--published     { --ps-hue: #38bdf8; }
+.ps-lc-hue--archived      { --ps-hue: #64748b; }
+
+.ps-pshare-lifecycle-badge {
+  background: color-mix(in srgb, var(--ps-hue, #94a3b8) 15%, transparent);
+  color: var(--ps-hue, #94a3b8);
+  border: 1px solid color-mix(in srgb, var(--ps-hue, #94a3b8) 30%, transparent);
+}
+.ps-activeprotocols-step-circle--current {
+  background: color-mix(in srgb, var(--ps-hue) 15%, transparent);
+  color: var(--ps-hue);
+  border-color: color-mix(in srgb, var(--ps-hue) 30%, transparent);
+}
+.ps-activeprotocols-step-label--current { color: var(--ps-hue); }
+.ps-activeprotocols-status-filter-btn--active {
+  background: color-mix(in srgb, var(--ps-hue) 15%, transparent);
+  color: var(--ps-hue);
+  border-color: color-mix(in srgb, var(--ps-hue) 30%, transparent);
+}
+
+.ps-protocol-source             { background: color-mix(in srgb, var(--ps-hue) 12%, transparent); color: var(--ps-hue); }
+.ps-protocol-source--cap        { --ps-hue: #60a5fa; }
+.ps-protocol-source--rcpath     { --ps-hue: #a78bfa; }
+.ps-protocol-source--iccr       { --ps-hue: #2dd4bf; }
+.ps-protocol-source--pathscribe { --ps-hue: #34d399; }
+.ps-protocol-source--custom     { --ps-hue: #fbbf24; }
+
+.ps-activeprotocols-cat-bar,
+.ps-reviewqueue-card-accent       { background: var(--ps-hue, #64748b); }
+.ps-activeprotocols-group-label   { color: var(--ps-hue, #64748b); }
+
+.ps-pshare-coverage--good { --ps-hue: #10B981; }
+.ps-pshare-coverage--fair { --ps-hue: #fbbf24; }
+.ps-pshare-coverage--poor { --ps-hue: #f87171; }
+.ps-pshare-coverage-pct   { color: var(--ps-hue); }
+.ps-pshare-coverage-fill  { width: var(--ps-pct, 0%); background: var(--ps-hue); }
+
+.ps-activeprotocols-action-btn--view {
+  --ps-abtn-color: #38bdf8; --ps-abtn-bg: rgba(56,189,248,0.1); --ps-abtn-border: rgba(56,189,248,0.25);
+}
+.ps-activeprotocols-action-btn--review {
+  --ps-abtn-color: #0891B2; --ps-abtn-bg: rgba(8,145,178,0.15); --ps-abtn-border: rgba(8,145,178,0.35);
+}
+.ps-activeprotocols-action-btn:disabled { opacity: 0.5; cursor: wait; }
+.ps-activeprotocols-action-error { font-size: 12px; color: #f87171; margin-top: 8px; }
+.ps-activeprotocols-archived-note { font-size: 12px; color: #94a3b8; margin-bottom: 12px; }
+
+/* SynopticEditor.tsx — inline styles removed (Batch 317). */
+.ps-syned-coding--snomed { --ps-hue: #38bdf8; --syned-focus: #38bdf8; }
+.ps-syned-coding--icd    { --ps-hue: #a78bfa; --syned-focus: #a78bfa; }
+.ps-syned-coding-input-label { color: var(--ps-hue, #94a3b8); }
+
+.ps-syned-ftype--dropdown   { --ps-hue: #0891B2; }
+.ps-syned-ftype--radio      { --ps-hue: #7c3aed; }
+.ps-syned-ftype--checkboxes { --ps-hue: #0d9488; }
+.ps-syned-ftype--numeric    { --ps-hue: #b45309; }
+.ps-syned-ftype--text       { --ps-hue: #475569; }
+.ps-syned-ftype--longtext   { --ps-hue: #334155; }
+.ps-syned-type-badge-btn {
+  border-color: color-mix(in srgb, var(--ps-hue) 31%, transparent);
+  background: color-mix(in srgb, var(--ps-hue) 9%, transparent);
+  color: var(--ps-hue);
+}
+.ps-syned-type-menu-item { font-weight: 400; }
+.ps-syned-type-menu-item--selected { background: color-mix(in srgb, var(--ps-hue) 9%, transparent); color: var(--ps-hue); font-weight: 700; }
+.ps-syned-type-menu-abbr { background: color-mix(in srgb, var(--ps-hue) 13%, transparent); color: var(--ps-hue); }
+
+.ps-syned-chevron--rot90  { transform: rotate(90deg); }
+.ps-syned-chevron--rot-90 { transform: rotate(-90deg); }
+.ps-syned-label-note--dimmer { color: #475569; }
+
+.ps-syned-section-header { border-bottom: 1px solid #334155; }
+.ps-syned-section-header--collapsed   { border-bottom: none; }
+.ps-syned-section-header--conditional { background: rgba(251,191,36,0.04); border-top: 2px solid rgba(251,191,36,0.25); }
+
+.ps-syned-condition-toggle     { background: rgba(255,255,255,0.1); }
+.ps-syned-condition-toggle--on { background: #f59e0b; }
+.ps-syned-condition-toggle-knob { left: 2px; }
+.ps-syned-condition-toggle--on .ps-syned-condition-toggle-knob { left: 18px; }
+.ps-syned-condition-status     { color: #64748b; }
+.ps-syned-condition-status--on { color: #fbbf24; }
+.ps-syned-select--condition:focus { border-color: #f59e0b; }
+.ps-syned-select--needs-value     { border-color: #f59e0b; }
+.ps-syned-select--condition:disabled { opacity: 0.5; cursor: not-allowed; }
+
+.ps-syned-loading-inner { color: #94a3b8; }
+.ps-syned-input--error,
+.ps-syned-input--error:focus { border-color: #f87171; }
+
+.ps-syned-covbar--snomed { --ps-hue: #38bdf8; }
+.ps-syned-covbar--icd    { --ps-hue: #a78bfa; }
+.ps-syned-covbar--answer { --ps-hue: #4ade80; }
+.ps-syned-coverage-bar-fill { width: var(--ps-pct, 0%); background: var(--ps-hue); }
+.ps-syned-coverage-bar-pct--good { color: #10B981; }
+.ps-syned-coverage-bar-pct--fair { color: #fbbf24; }
+.ps-syned-coverage-bar-pct--poor { color: #f87171; }
+.ps-syned-readiness-icon--ok    { color: #10B981; }
+.ps-syned-readiness-icon--todo  { color: #f87171; }
+.ps-syned-readiness-label--ok   { color: #94a3b8; }
+.ps-syned-readiness-label--todo { color: #475569; }
+
+/* Audit Log → Interfaces → Outbound Dispatches (PS-86, Batch 318). */
+.ps-auditlog-thead--dispatch,
+.ps-auditlog-row--dispatch { grid-template-columns: 165px minmax(160px, 1fr) 110px 120px 130px minmax(140px, 1fr) 100px; }
+button.ps-auditlog-row--dispatch {
+  width: 100%; text-align: left; background: transparent; border: none;
+  border-bottom: 1px solid rgba(255,255,255,0.06); color: inherit; font: inherit; cursor: pointer;
+}
+button.ps-auditlog-row--dispatch:hover,
+button.ps-auditlog-row--dispatch:focus-visible { background: rgba(255,255,255,0.04); outline: none; }
+.ps-dispatch-mono { font-family: monospace; font-size: 12px; overflow-wrap: anywhere; }
+.ps-dispatch-status { padding: 3px 8px; border-radius: 12px; font-size: 11px; font-weight: 700; white-space: nowrap; }
+.ps-dispatch-status--delivered { background: rgba(16,185,129,0.12); color: #10B981; }
+.ps-dispatch-status--failed    { background: rgba(239,68,68,0.12);  color: #ef4444; }
+.ps-dispatch-status--recorded  { background: rgba(148,163,184,0.12); color: #94a3b8; }
+.ps-dispatch-attempts { margin-left: 8px; font-size: 12px; color: #94a3b8; }
+.ps-dispatch-meta { display: grid; grid-template-columns: max-content 1fr; gap: 6px 16px; margin: 0 0 12px; font-size: 13px; }
+.ps-dispatch-meta dt { color: #94a3b8; font-weight: 600; }
+.ps-dispatch-meta dd { margin: 0; color: #e2e8f0; }
+.ps-dispatch-json {
+  margin-top: 8px; padding: 12px; max-height: 50vh; overflow: auto;
+  background: rgba(0,0,0,0.25); border: 1px solid rgba(255,255,255,0.08); border-radius: 8px;
+  font-family: monospace; font-size: 12px; line-height: 1.6; color: #e2e8f0;
+}
+.ps-dispatch-json-branch > summary { cursor: pointer; list-style: revert; }
+.ps-dispatch-json-children { padding-left: 18px; border-left: 1px dashed rgba(255,255,255,0.1); margin-left: 4px; }
+.ps-dispatch-json-leaf { padding-left: 14px; }
+.ps-dispatch-json-key { color: #8AB4F8; }
+.ps-dispatch-json-string { color: #81C995; overflow-wrap: anywhere; }
+.ps-dispatch-json-literal { color: #fbbf24; }
+.ps-dispatch-json-null { color: #94a3b8; font-style: italic; }
+.ps-dispatch-json-punct { color: #94a3b8; }
+.ps-dispatch-json-size { margin: 0 4px; font-size: 11px; color: #64748b; }
+
+/* ── Assist LIS Polling (PS-87, Config → System → Integrations) ── */
+.ps-assist-poll-interval { max-width: 120px; min-width: 0; }
+.ps-assist-poll-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.ps-assist-poll-message { display: block; width: 100%; box-sizing: border-box; min-height: 140px; margin-top: 10px; font-family: 'JetBrains Mono', ui-monospace, monospace; font-size: 12px; resize: vertical; }
+
+/* ── Code Import (PS-89, Config → System → Financial & Revenue Lookups) ── */
+.ps-code-import-card { margin-bottom: 16px; }
+.ps-code-import-file-row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin: 8px 0 12px; }
+.ps-code-import-mapping-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); gap: 4px 12px; }
+.ps-code-import-actions { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+.ps-code-import-problems { max-height: 280px; overflow-y: auto; }
+.ps-code-import-skip { display: flex; align-items: center; gap: 8px; margin-top: 10px; font-size: 13px; cursor: pointer; }
+
+/* ── Country Signing Rules (PS-341, Config → System → Clinical Lookups) ── */
+.ps-csr-banner { margin: 0 0 14px; }
+.ps-csr-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 14px; }
+.ps-csr-toolbar .ps-conf-label { margin: 0; }
+.ps-csr-country { max-width: 320px; }
+.ps-csr-list { display: flex; flex-direction: column; gap: 12px; }
+.ps-csr-card { padding: 12px 14px; border-radius: 10px; border: 1px solid color-mix(in srgb, var(--ps-hue) 30%, transparent); background: color-mix(in srgb, var(--ps-hue) 5%, transparent); }
+.ps-csr-card--changed { border-color: #f59e0b; }
+.ps-csr-card--muted { opacity: 0.6; }
+.ps-csr-card__head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.ps-csr-card__dot { width: 10px; height: 10px; border-radius: 50%; background: var(--ps-hue); flex: none; }
+.ps-csr-card__type { font-weight: 600; font-size: 14px; }
+.ps-csr-badge { font-size: 11px; padding: 2px 8px; border-radius: 999px; border: 1px solid #374151; color: #9ca3af; }
+.ps-csr-badge--global { border-color: rgba(96,165,250,0.4); color: #60a5fa; }
+.ps-csr-badge--offered { border-color: rgba(45,212,191,0.4); color: #2dd4bf; }
+.ps-csr-badge--notOffered { border-color: #4b5563; color: #6b7280; }
+.ps-csr-badge--changed { border-color: rgba(245,158,11,0.5); color: #f59e0b; }
+.ps-csr-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(200px, 1fr)); gap: 4px 12px; }
+.ps-csr-note { min-height: 44px; resize: vertical; font-family: inherit; }
+.ps-csr-savebar { position: sticky; bottom: 0; margin-top: 16px; z-index: 2; padding: 12px 16px; background: var(--ps-conf-bg); box-shadow: 0 -6px 16px rgba(0,0,0,0.45); }
+.ps-csr-savebar__actions { display: flex; align-items: center; justify-content: flex-end; gap: 8px; flex-wrap: wrap; }
+.ps-csr-savebar__actions .ps-conf-hint { margin-right: auto; }
+
+/* ── Live-update status badge (PS-262, batch 342): components/LiveUpdates/LiveStatusBadge.tsx.
+   Visual only; the dot's colour and the label say whether the screen is receiving
+   live updates, only local ones, or is reconnecting / offline and polling. ── */
+.ps-live-badge {
+  --ps-hue: #64748b;
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 3px 10px; border-radius: 999px;
+  font-size: 12px; font-weight: 600; white-space: nowrap; cursor: default;
+  color: inherit;
+  background: color-mix(in srgb, var(--ps-hue) 12%, transparent);
+  border: 1px solid color-mix(in srgb, var(--ps-hue) 45%, transparent);
+}
+.ps-live-badge__dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ps-hue); flex-shrink: 0; }
+.ps-live-badge--live { --ps-hue: #22c55e; }
+.ps-live-badge--local { --ps-hue: #38bdf8; }
+.ps-live-badge--connecting, .ps-live-badge--reconnecting { --ps-hue: #f59e0b; }
+.ps-live-badge--offline { --ps-hue: #ef4444; }
+.ps-live-badge--connecting .ps-live-badge__dot,
+.ps-live-badge--reconnecting .ps-live-badge__dot { animation: ps-live-badge-pulse 1.2s ease-in-out infinite; }
+@keyframes ps-live-badge-pulse { 0%, 100% { opacity: 1; } 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) {
+  .ps-live-badge--connecting .ps-live-badge__dot,
+  .ps-live-badge--reconnecting .ps-live-badge__dot { animation: none; }
+}
+/* On the OR wall display the badge is read from across the room. */
+.ps-orboard-live-badge { font-size: 15px; padding: 5px 14px; }
+.ps-orboard-live-badge .ps-live-badge__dot { width: 11px; height: 11px; }
+
+/* ── PathScribe Agent print progress (PS-52, batch 346): components/Printing/AgentPrintStatus.tsx.
+   A small pill at the bottom left while this tab's labels are sending, queued or printing.
+   The region is always present (so screen readers hear the change) and takes no space when empty. ── */
+.ps-agent-print-status-region { pointer-events: none; }
+.ps-agent-print-status {
+  --ps-hue: #38bdf8;
+  display: inline-flex; align-items: center; gap: 8px;
+  padding: 6px 14px; border-radius: 999px;
+  font-size: var(--ps-text-md); font-weight: 600; color: var(--ps-text);
+  background: color-mix(in srgb, var(--ps-hue) 14%, var(--ps-surface));
+  border: 1px solid color-mix(in srgb, var(--ps-hue) 50%, transparent);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+}
+.ps-agent-print-status--queued { --ps-hue: #f59e0b; }
+.ps-agent-print-status--printing { --ps-hue: #22c55e; }
+.ps-agent-print-status-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ps-hue); flex-shrink: 0; }
+.ps-agent-print-status--sending .ps-agent-print-status-dot,
+.ps-agent-print-status--printing .ps-agent-print-status-dot { animation: ps-live-badge-pulse 1.2s ease-in-out infinite; }
+.ps-agent-print-status-more { font-weight: 400; color: var(--ps-text-muted); }
+@media (prefers-reduced-motion: reduce) {
+  .ps-agent-print-status-dot { animation: none !important; }
+}
+
+/* Printer profile editor: the PathScribe Agent port hint (batch 346). */
+.ps-printer-agent-port-hint { margin: 4px 0 0; font-size: var(--ps-text-xs); color: var(--ps-text-muted); }
+.ps-printer-agent-port-hint--error { color: #f87171; }
+
+/* ── Print feedback column (batch 347): the network print jobs above the agent status pill,
+   bottom left, from App.tsx. Only the jobs' buttons take clicks. ── */
+.ps-print-feedback {
+  position: fixed; left: 16px; bottom: 16px; z-index: 9500;
+  display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+  max-width: min(640px, calc(100vw - 32px));
+  pointer-events: none;
+}
+.ps-netprint-jobs { display: flex; flex-direction: column; align-items: flex-start; gap: 6px; }
+.ps-netprint-job {
+  --ps-hue: #38bdf8;
+  display: flex; align-items: center; flex-wrap: wrap; gap: 8px;
+  padding: 8px 12px; border-radius: var(--ps-radius-md);
+  font-size: var(--ps-text-md); color: var(--ps-text);
+  background: color-mix(in srgb, var(--ps-hue) 14%, var(--ps-surface));
+  border: 1px solid color-mix(in srgb, var(--ps-hue) 50%, transparent);
+  box-shadow: 0 6px 18px rgba(0,0,0,0.35);
+  pointer-events: auto;
+}
+.ps-netprint-job--noReply { --ps-hue: #f59e0b; }
+.ps-netprint-job--printed { --ps-hue: #22c55e; }
+.ps-netprint-job--failed { --ps-hue: #ef4444; }
+.ps-netprint-job-dot { width: 8px; height: 8px; border-radius: 50%; background: var(--ps-hue); flex-shrink: 0; }
+.ps-netprint-job--waiting .ps-netprint-job-dot { animation: ps-live-badge-pulse 1.2s ease-in-out infinite; }
+.ps-netprint-job-text { font-weight: 600; }
+.ps-netprint-job-attempt { font-size: var(--ps-text-xs); color: var(--ps-text-muted); }
+.ps-netprint-job-sim,
+.ps-netprint-job-actions { display: inline-flex; gap: 6px; white-space: nowrap; }
+.ps-netprint-job-btn {
+  font-size: var(--ps-text-sm); font-weight: 600; cursor: pointer;
+  padding: 3px 10px; border-radius: var(--ps-radius-sm);
+  color: var(--ps-text); background: transparent;
+  border: 1px solid color-mix(in srgb, var(--ps-text-muted) 45%, transparent);
+}
+.ps-netprint-job-btn:hover { background: color-mix(in srgb, var(--ps-text) 8%, transparent); }
+.ps-netprint-job-btn--primary { background: var(--ps-teal); border-color: var(--ps-teal); color: #fff; }
+.ps-netprint-job-btn--primary:hover { background: var(--ps-teal-hover); }
+.ps-netprint-job-btn--sim { border-style: dashed; color: var(--ps-text-muted); font-weight: 400; }
+.ps-netprint-job-btn:focus-visible { outline: 2px solid var(--ps-teal-light); outline-offset: 2px; }
+@media (prefers-reduced-motion: reduce) {
+  .ps-netprint-job-dot { animation: none !important; }
+}
+
+/* Case Search: note under the identifier box (batch 349, PS-101). */
+.ps-searchpage-identifier-hint { margin: 6px 2px 10px; font-size: 11px; color: var(--ps-text-muted); }
+/* Batch 354: under the organisation filters — a Trust includes its sites. */
+.ps-searchpage-org-hint { margin: 4px 2px 0; font-size: 11px; color: var(--ps-text-muted); }
+
+/* Batch 353: WorklistPage.tsx's page layout (were inline styles). */
+.ps-wl-page { position: relative; width: 100vw; height: var(--app-height, 100vh); font-family: 'Inter', sans-serif; display: flex; flex-direction: column; }
+.ps-wl-page-content { position: relative; z-index: 10; display: flex; flex-direction: column; height: 100%; }
+.ps-wl-page-main { flex: 1; min-height: 0; padding: clamp(8px,1.5vw,12px) clamp(12px,2vw,20px); display: flex; flex-direction: column; }
+.ps-wl-page-main-inner { width: 100%; display: flex; flex-direction: column; flex: 1; min-height: 0; }
+.ps-wl-header--page { margin-bottom: 12px; flex-shrink: 0; }
+
+/* Batch 360: equipment service status and log (EquipmentSection, EquipmentLogModal). */
+.ps-eqlog-state { display: inline-block; padding: 2px 8px; border-radius: 99px; font-size: 11px; font-weight: 700; white-space: nowrap;
+  background: color-mix(in srgb, var(--eqlog-hue, #64748b) 15%, transparent); color: var(--eqlog-hue, #94a3b8);
+  border: 1px solid color-mix(in srgb, var(--eqlog-hue, #64748b) 35%, transparent); }
+.ps-eqlog-state--malfunction, .ps-eqlog-state--overdue { --eqlog-hue: #ef4444; }
+.ps-eqlog-state--neverDone, .ps-eqlog-state--dueSoon { --eqlog-hue: #f59e0b; }
+.ps-eqlog-state--ok { --eqlog-hue: #10b981; }
+.ps-eqlog-state--notScheduled { --eqlog-hue: #64748b; }
+.ps-eqlog-alert { margin-bottom: 12px; padding: 8px 12px; border-radius: 8px; font-size: 13px; color: #fecaca;
+  background: rgba(239,68,68,0.12); border: 1px solid rgba(239,68,68,0.35); }
+.ps-eqlog-due { display: flex; flex-direction: column; gap: 6px; margin-bottom: 14px; }
+.ps-eqlog-due-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; font-size: 13px; }
+.ps-eqlog-due-label { min-width: 110px; font-weight: 600; color: #e2e8f0; }
+.ps-eqlog-muted { font-size: 12px; color: var(--ps-text-muted, #94a3b8); }
+.ps-eqlog-section-title { margin: 14px 0 8px; font-size: 12px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: #94a3b8; }
+.ps-eqlog-add-row { display: flex; align-items: center; justify-content: space-between; gap: 12px; margin: 6px 0 4px; }
+.ps-eqlog-outcome { font-weight: 600; }
+.ps-eqlog-outcome--pass { color: #10b981; }
+.ps-eqlog-outcome--fail { color: #ef4444; }
+.ps-eqlog-outcome--not_applicable { color: #94a3b8; }
+/* Batch 361: a device with an open malfunction or past due, shown in red (flagged, not blocked). */
+.ps-conf-tr.ps-eqlog-row--alert > td { background: color-mix(in srgb, #ef4444 8%, transparent); }
+.ps-conf-tr.ps-eqlog-row--alert > td:first-child { box-shadow: inset 3px 0 0 #ef4444; }
+.ps-eqlog-row--alert .ps-conf-identity-name { color: #f87171; }
+.mb-instrument-select--alert { border-color: #ef4444; box-shadow: 0 0 0 1px #ef4444; }
+.mb-instrument-option--alert { color: #f87171; }
+.mb-instrument-alert { margin-top: 4px; font-size: 11px; font-weight: 600; color: #f87171; }
+
+/* ── Batch 364 (PS-350): support references ─────────────────────────────── */
+.ps-supportref-chip { display: inline-flex; align-items: center; gap: 4px; margin-left: 8px; padding: 1px 7px; border-radius: 999px; border: 1px dashed rgba(148,163,184,0.45); background: transparent; color: #94a3b8; font-size: 11px; font-family: inherit; cursor: pointer; vertical-align: middle; white-space: nowrap; }
+.ps-supportref-chip:hover { border-color: #0891B2; color: #e2e8f0; }
+.ps-supportref-chip--shown { border-style: solid; border-color: rgba(8,145,178,0.5); color: #67e8f9; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.ps-supportref-chip-copied { color: #34d399; font-family: inherit; }
+.ps-hb-field .ps-supportref-chip { margin-left: 0; }
+.ps-supportref-lookup { margin: 0 0 16px; padding: 12px 14px; border-radius: 10px; border: 1px solid rgba(148,163,184,0.2); background: rgba(255,255,255,0.02); }
+.ps-supportref-lookup-title { font-size: 13px; font-weight: 700; color: #e2e8f0; margin-bottom: 8px; }
+.ps-supportref-lookup-form { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.ps-supportref-lookup-input { max-width: 240px; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; text-transform: uppercase; }
+.ps-supportref-lookup-result { margin-top: 10px; display: flex; flex-direction: column; gap: 6px; align-items: flex-start; font-size: 13px; color: #e2e8f0; }
+.ps-supportref-lookup-kind { font-weight: 600; }
+.ps-supportref-lookup-entry { display: flex; gap: 10px; flex-wrap: wrap; align-items: baseline; }
+.ps-supportref-lookup-muted { color: #94a3b8; font-size: 12px; }
+.erm-identifier-warning-actions .ps-conf-btn-secondary { color: #e2e8f0; border-color: rgba(226,232,240,0.4); background: rgba(15,23,42,0.4); opacity: 1; }
+
+/* ── Batch 367 (PS-74): the last inline styles, moved here ─────────────────── */
+
+/* Contribution → Productivity. Colours come from pathscribeTheme.ts as the
+   --prod-* custom properties ProductivityTab.tsx sets on .ps-prodtab-main. */
+.ps-prodtab-card { background: var(--prod-surface-subtle); border: 1px solid var(--prod-border-subtle); }
+.ps-prodtab-tooltip { background: var(--prod-panel); border: 1px solid var(--prod-border-subtle); color: var(--prod-text-secondary); box-shadow: 0 4px 16px var(--prod-shadow); }
+.ps-prodtab-text--primary { color: var(--prod-text-primary); }
+.ps-prodtab-text--secondary { color: var(--prod-text-secondary); }
+.ps-prodtab-text--muted { color: var(--prod-text-muted); }
+.ps-prodtab-text--cases { color: var(--prod-cases); }
+.ps-prodtab-text--rvu { color: var(--prod-rvu); }
+.ps-prodtab-text--success { color: var(--prod-success); }
+.ps-prodtab-text--warning { color: var(--prod-warning); }
+.ps-prodtab-bar-rect { height: var(--bar-h); }
+.ps-prodtab-bar-rect--cases { background: var(--prod-cases); }
+.ps-prodtab-bar-rect--rvu { background: var(--prod-rvu-gradient); }
+.ps-prodtab-peer-row-value { color: var(--ps-hue); }
+.ps-prodtab-bar-track { background: var(--prod-surface-subtle); border: 1px solid var(--prod-border-subtle); }
+.ps-prodtab-bar-fill { width: var(--bar-pct); background: var(--ps-hue); }
+.ps-prodtab-legend-swatch--cases { background: var(--prod-cases); }
+.ps-prodtab-btn { padding: 5px 12px; font-size: 12px; font-weight: 600; border-radius: 6px; cursor: pointer; border: 1px solid var(--prod-border-subtle); background: var(--prod-button-subtle); color: var(--prod-text-muted); transition: all 0.15s; }
+.ps-prodtab-btn--active { border-color: var(--prod-teal-border); background: var(--prod-teal-subtle); color: var(--prod-teal); }
+.ps-prodtab-toggle { display: flex; align-items: center; gap: 6px; cursor: pointer; font-size: 12px; color: var(--prod-text-muted); user-select: none; }
+.ps-prodtab-toggle--active { color: var(--prod-text-secondary); }
+.ps-prodtab-checkbox { accent-color: var(--prod-teal); }
+.ps-prodtab-export-btn--print { border: 1px solid var(--prod-border-subtle); background: var(--prod-button-subtle); color: var(--prod-button-text); }
+.ps-prodtab-export-btn--pdf { border: 1px solid var(--prod-teal-border); background: var(--prod-teal-subtle); color: var(--prod-teal); }
+
+/* Template preview (TemplatePreviewPanel.tsx): page geometry and per-node
+   settings arrive as --tpp-* custom properties. */
+.ps-tpp-field-row { grid-template-columns: var(--tpp-row-cols); }
+.ps-tpp-richtext { font-size: var(--tpp-font-size); text-align: var(--tpp-align); }
+.ps-tpp-col-layout { column-count: var(--tpp-col-count); column-gap: var(--tpp-col-gap); }
+.ps-tpp-image-wrap { text-align: var(--tpp-align); }
+.ps-tpp-image-placeholder { width: var(--tpp-img-w); height: var(--tpp-img-h); }
+.ps-tpp-ruler-tick { left: var(--tpp-tick-x); }
+.ps-tpp-ruler, .ps-tpp-ruler-wrap, .ps-tpp-measure-root { width: var(--tpp-w); }
+.ps-tpp-ruler-margin--left { width: var(--tpp-ml); }
+.ps-tpp-ruler-margin--right { width: var(--tpp-mr); }
+.ps-tpp-page-card { width: var(--tpp-w); min-height: var(--tpp-h); }
+.ps-tpp-page-header { padding: var(--tpp-mt) var(--tpp-mr) 0 var(--tpp-ml); }
+.ps-tpp-page-body { padding-left: var(--tpp-ml); padding-right: var(--tpp-mr); }
+.ps-tpp-page-footer { padding: 0 var(--tpp-mr) var(--tpp-mb) var(--tpp-ml); }
+
+/* Small components (Batch 367). Hue-driven colours use --ps-hue with the same
+   alpha the old hex suffixes gave (18 ≈ 9.4%, 30 ≈ 18.8%, 33 = 20%, 99 = 60%). */
+.ps-modal-dark--draft-recovery { width: 440px; }
+.ps-modal-dark--draft-recovery-wide { width: 480px; }
+.ps-lookup-item-badge { color: var(--ps-hue); background: color-mix(in srgb, var(--ps-hue) 9.4%, transparent); border: 1px solid color-mix(in srgb, var(--ps-hue) 18.8%, transparent); }
+.ps-patient-id-status-dot-shape { width: var(--dot-size); height: var(--dot-size); background: var(--ps-hue); box-shadow: 0 0 4px color-mix(in srgb, var(--ps-hue) 60%, transparent); }
+.ps-cytcat-chip { background: rgba(255,255,255,0.04); color: #4b5563; border: 1px solid rgba(255,255,255,0.06); }
+.ps-cytcat-chip--filled { background: color-mix(in srgb, var(--ps-hue) 9.4%, transparent); color: var(--ps-hue); border-color: color-mix(in srgb, var(--ps-hue) 20%, transparent); }
+
+/* Report preview (ReportPreviewRenderer.tsx): a template's label formatting
+   arrives as --rp-<part>-* custom properties (utils/labelStyleVars.ts), set
+   only for configured values. Each part has its own names so a page's
+   settings don't leak into its headings; unset means the normal look. */
+.rp-page { font-family: var(--rp-body-family, 'Georgia', 'Times New Roman', serif); font-size: var(--rp-body-size, inherit); font-weight: var(--rp-body-weight, inherit); text-transform: var(--rp-body-transform, inherit); text-decoration: var(--rp-body-decoration, none); }
+.rp-doc-header { font-family: var(--rp-header-family, inherit); font-size: var(--rp-header-size, inherit); font-weight: var(--rp-header-weight, inherit); text-transform: var(--rp-header-transform, inherit); text-decoration: var(--rp-header-decoration, none); }
+.rp-doc-footer { font-family: var(--rp-footer-family, inherit); font-size: var(--rp-footer-size, inherit); font-weight: var(--rp-footer-weight, inherit); text-transform: var(--rp-footer-transform, inherit); text-decoration: var(--rp-footer-decoration, none); }
+.rp-node-section-heading { font-family: var(--rp-heading-family, inherit); font-size: var(--rp-heading-size, inherit); font-weight: var(--rp-heading-weight, inherit); text-transform: var(--rp-heading-transform, inherit); text-decoration: var(--rp-heading-decoration, none); }
+.rp-node-label { font-family: var(--rp-label-family, inherit); font-size: var(--rp-label-size, inherit); font-weight: var(--rp-label-weight, inherit); text-transform: var(--rp-label-transform, inherit); text-decoration: var(--rp-label-decoration, none); }
+.rp-static-label--bold { font-weight: 700; }
+.rp-static-label--italic { font-style: italic; }
+/* Label-style previews (Document Style, Template Assembly): unset values show
+   the defaults the editors use (Arial, 10px, normal). */
+.ps-docstyle__preview, .ps-tmpla-style-preview { font-family: var(--preview-family, Arial); font-size: var(--preview-size, 10px); font-weight: var(--preview-weight, 400); text-decoration: var(--preview-decoration, none); text-transform: var(--preview-transform, none); }
+
+/* Configuration, Contribution, editor and template-builder pieces (Batch 367). */
+.config-fonts-card__name { font-family: var(--font-name); }
+.ps-quality-progress-fill--pct, .ps-contrib-progress-fill--pct { width: var(--bar-pct); }
+.fr-row { cursor: default; }
+.fr-row--clickable { cursor: pointer; }
+.fm-sev-dot { background: var(--ps-hue); }
+.rcpp-status-text--ok { color: #10b981; }
+.rcpp-status-text--failed { color: #ef4444; }
+.ps-tc-node-wrap, .ps-tc-free-slot { grid-column: var(--tc-span); }
+.ps-tinsp-textarea { height: var(--tinsp-textarea-h, 72px); }
+.trm-input--with-clear { padding-right: 36px; }
+
+/* Batches, engravers, label previews, label designer (Batch 367). Alphas as
+   before: 22 ≈ 13.3%, 14 ≈ 7.8%, 2e ≈ 18%. */
+.ps-batch-row-status--hued { background: color-mix(in srgb, var(--ps-hue) 13.3%, transparent); color: var(--ps-hue); }
+.ps-engraver-status-tile { background: color-mix(in srgb, var(--ps-hue) 7.8%, transparent); border: 1px solid color-mix(in srgb, var(--ps-hue) 18%, transparent); }
+.ps-engraver-status-tile-count { color: var(--ps-hue); }
+.ps-engraver-device-card { border-left: 3px solid var(--ps-hue); }
+.ps-embedding-label-preview, .ps-microtomy-label-preview { aspect-ratio: var(--label-aspect); }
+.ps-embedding-cassette-module-dot--dim, .ps-microtomy-label-preview-barcode span.ps-microtomy-label-module--dim { opacity: 0.15; }
+.ps-designer-canvas { width: var(--canvas-w); height: var(--canvas-h); }
+.ps-designer-field { left: var(--field-x); top: var(--field-y); width: var(--field-w); height: var(--field-h); font-size: var(--field-font); }
+
+/* Report page pieces (Batch 367). */
+.acd-ctx-menu { left: var(--ctx-x); top: var(--ctx-y); }
+.acd-ai-panel-chevron { transform: rotate(0deg); }
+.acd-ai-panel-chevron--collapsed { transform: rotate(-90deg); }
+.acd-system-tab-btn { background: rgba(255,255,255,0.06); color: #94a3b8; }
+.acd-system-tab-btn--active { background: var(--ps-hue); color: white; }
+.acd-snomed-filter-btn { border: 1px solid rgba(100,116,139,0.4); background: transparent; color: #64748b; }
+.acd-snomed-filter-btn--active { border-color: #0891B2; background: rgba(8,145,178,0.15); color: #38bdf8; }
+.ps-dht-badge { background: color-mix(in srgb, var(--ps-hue) 13.3%, transparent); color: var(--ps-hue); }
+.ps-dht-entry { border-left-color: var(--ps-hue); }
+.ps-seq-progress-fill, .ps-ai-review-progress-fill { width: var(--bar-pct); }
+.ps-matrixblock-core-grid { grid-template-columns: repeat(var(--mb-cols), 1fr); max-width: calc(var(--mb-cols) * 96px); }
+.ps-proto-change-confidence { color: var(--ps-hue); border-color: color-mix(in srgb, var(--ps-hue) 26.7%, transparent); background: color-mix(in srgb, var(--ps-hue) 9.4%, transparent); }
+
+/* Facility editor tabs (Batch 367; was an inline tabStyle()). */
+.ps-fem-tab { padding: 8px 16px; font-size: 13px; font-weight: 600; cursor: pointer; border: none; background: transparent; border-bottom: 2px solid transparent; color: #64748b; }
+.ps-fem-tab--active { border-bottom-color: #0891b2; color: #0891b2; }
+
+/* Comment modal drag position; bottom action bar buttons (Batch 367). */
+.ps-cmnt-modal { position: relative; }
+.ps-cmnt-modal--positioned { position: fixed; left: calc(50% + var(--cmnt-x)); top: calc(50% + var(--cmnt-y)); transform: translate(-50%, -50%); }
+.ps-bab-action-btn { padding: 6px 11px; border-radius: 7px; font-weight: 700; font-size: 12px; cursor: pointer; white-space: nowrap; transition: all 0.15s ease; border: 1.5px solid var(--ps-hue); background: transparent; color: var(--ps-hue); opacity: 1; display: flex; align-items: center; gap: 5px; transform: translateY(0); box-shadow: none; line-height: 1.2; height: 32px; box-sizing: border-box; }
+.ps-bab-action-btn--solid { background: var(--ps-hue); color: white; }
+.ps-bab-action-btn:hover:not(:disabled) { transform: translateY(1px); box-shadow: 0 2px 8px color-mix(in srgb, var(--ps-hue) 26.7%, transparent); }
+.ps-bab-action-btn--outline:hover:not(:disabled) { background: color-mix(in srgb, var(--ps-hue) 13.3%, transparent); }
+.ps-bab-action-btn--solid:hover:not(:disabled) { background: var(--bab-hover); border-color: var(--bab-hover); }
+.ps-bab-action-btn:disabled { cursor: not-allowed; border-color: #475569; background: transparent; color: #475569; opacity: 0.6; }
+
+/* Tints derived from --ps-hue instead of hex strings built in JSX (Batch 367):
+   Case Team badges and drop zones; molecular batch status. */
+.ps-ctm-hued { --badge-bg: color-mix(in srgb, var(--ps-hue) 9.4%, transparent); --badge-border: color-mix(in srgb, var(--ps-hue) 20%, transparent); --badge-border-strong: color-mix(in srgb, var(--ps-hue) 40%, transparent); --badge-color: var(--ps-hue); }
+.ps-status-badge--hued { --status-bg: color-mix(in srgb, var(--ps-hue) 9.4%, transparent); --status-color: var(--ps-hue); --status-border: color-mix(in srgb, var(--ps-hue) 20%, transparent); }
+/* Tints that used to be hex strings with an alpha suffix built in JSX
+   (Batch 367): 0d ≈ 5.1%, 12 ≈ 7.1%, 18 ≈ 9.4%, 2e ≈ 18%, 40 ≈ 25.1%, 55 ≈ 33.3%, 66 = 40%. */
+.vtb-btn { --vtb-bg: color-mix(in srgb, var(--vtb-color) 9.4%, transparent); --vtb-border: var(--vtb-color); }
+.vtb-btn--standby { --vtb-bg: transparent; --vtb-border: rgba(255,255,255,0.1); }
+.ps-vs-study-badge { --ps-vs-badge-border: color-mix(in srgb, var(--ps-vs-badge-color) 25.1%, transparent); --ps-vs-badge-bg: color-mix(in srgb, var(--ps-vs-badge-color) 7.1%, transparent); }
+.ps-wl-filter-tile--hued { --tile-bg: color-mix(in srgb, var(--ps-hue) 5.1%, transparent); --tile-border: color-mix(in srgb, var(--ps-hue) 18%, transparent); --tile-shadow: none; }
+.ps-wl-filter-tile--hued-active { --tile-bg: color-mix(in srgb, var(--ps-hue) 18%, transparent); --tile-border: var(--ps-hue); --tile-shadow: 0 0 12px color-mix(in srgb, var(--ps-hue) 40%, transparent); }
+.eca-status-badge { --eca-status-border: color-mix(in srgb, var(--eca-status-color) 33.3%, transparent); --eca-status-bg: color-mix(in srgb, var(--eca-status-color) 9.4%, transparent); }
+.ps-home-card { --card-accent-dim: color-mix(in srgb, var(--card-accent) 25.1%, transparent); }
+
+/* ── Batch 368 (PS-353): report change history (ChangeHistoryModal.tsx) ──── */
+.ps-chghist-filters { display: flex; flex-wrap: wrap; gap: 6px; margin: 4px 0 14px; }
+.ps-chghist-filter { padding: 4px 10px; border-radius: 99px; border: 1px solid rgba(148,163,184,0.35); background: transparent; color: #94a3b8; font-size: 12px; font-weight: 600; cursor: pointer; }
+.ps-chghist-filter:disabled { opacity: 0.4; cursor: default; }
+.ps-chghist-filter--active { border-color: #0891b2; background: rgba(8,145,178,0.15); color: #38bdf8; }
+.ps-chghist-filter-count { margin-left: 4px; opacity: 0.8; }
+.ps-chghist-entry { border: 1px solid rgba(148,163,184,0.2); border-radius: 8px; padding: 10px 12px; margin-bottom: 10px; }
+.ps-chghist-entry-header { display: flex; flex-wrap: wrap; gap: 10px; align-items: baseline; font-size: 13px; color: #e2e8f0; margin-bottom: 6px; }
+.ps-chghist-station, .ps-chghist-count { color: #94a3b8; font-size: 12px; }
+.ps-chghist-count { margin-left: auto; }
+.ps-chghist-changes { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: 8px; }
+.ps-chghist-change { border-top: 1px solid rgba(148,163,184,0.12); padding-top: 8px; }
+.ps-chghist-field { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; font-size: 12px; margin-bottom: 4px; }
+.ps-chghist-area { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.04em; padding: 1px 6px; border-radius: 4px; background: rgba(148,163,184,0.15); color: #cbd5e1; }
+.ps-chghist-area--synoptic { background: rgba(8,145,178,0.18); color: #67e8f9; }
+.ps-chghist-area--narrative { background: rgba(168,85,247,0.18); color: #d8b4fe; }
+.ps-chghist-area--codes { background: rgba(245,158,11,0.18); color: #fcd34d; }
+.ps-chghist-area--specimens { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+.ps-chghist-path { color: #cbd5e1; font-family: ui-monospace, SFMono-Regular, Menlo, monospace; }
+.ps-chghist-kind { font-size: 11px; font-weight: 700; }
+.ps-chghist-kind--added { color: #34d399; }
+.ps-chghist-kind--removed { color: #f87171; }
+.ps-chghist-values { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; font-size: 13px; }
+.ps-chghist-before { color: #fca5a5; text-decoration: line-through; text-decoration-color: rgba(252,165,165,0.6); }
+.ps-chghist-after { color: #86efac; }
+.ps-chghist-arrow { color: #64748b; }
+.ps-chghist-none { color: #64748b; font-style: italic; }
+.ps-chghist-before--empty { text-decoration: none; }
+.ps-chghist-diff { font-size: 13px; line-height: 1.6; color: #e2e8f0; white-space: pre-wrap; }
+.ps-chghist-del { background: rgba(239,68,68,0.18); color: #fca5a5; text-decoration: line-through; }
+.ps-chghist-ins { background: rgba(34,197,94,0.18); color: #86efac; text-decoration: none; }
+
+/* ── Batch 372: Support access (Configuration → System → Support Access) ── */
+.ps-supacc { display: flex; flex-direction: column; gap: 16px; }
+.ps-supacc-message { padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(8,145,178,0.4); background: rgba(8,145,178,0.12); color: #7dd3fc; font-size: 13px; }
+.ps-supacc-card { border: 1px solid var(--ps-border-bright); border-radius: 10px; padding: 14px 16px; background: rgba(15,23,42,0.5); }
+.ps-supacc-card--support { border-color: rgba(168,85,247,0.45); }
+.ps-supacc-heading { margin: 0 0 10px; font-size: 15px; font-weight: 700; color: #e2e8f0; }
+.ps-supacc-heading--sub { margin-top: 18px; font-size: 14px; }
+.ps-supacc-options { display: flex; flex-direction: column; gap: 8px; margin-bottom: 12px; }
+.ps-supacc-option { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border-radius: 8px; border: 1px solid rgba(148,163,184,0.25); cursor: pointer; }
+.ps-supacc-option input { margin-top: 3px; }
+.ps-supacc-option--on { border-color: #0891b2; background: rgba(8,145,178,0.1); }
+.ps-supacc-option-title { display: block; font-weight: 600; color: #e2e8f0; font-size: 13px; }
+.ps-supacc-option-desc { display: block; color: #94a3b8; font-size: 12px; margin-top: 2px; }
+.ps-supacc-window { max-width: 220px; }
+.ps-supacc-actions { display: flex; gap: 8px; margin-top: 12px; }
+.ps-supacc-empty { color: #64748b; font-size: 13px; font-style: italic; margin: 4px 0; }
+.ps-supacc-row-actions { display: flex; gap: 6px; justify-content: flex-end; white-space: nowrap; }
+.ps-supacc .ps-conf-td { vertical-align: top; }
+.ps-supacc-audit-head { display: flex; flex-wrap: wrap; gap: 10px; align-items: center; }
+.ps-supacc-audit-head .ps-supacc-heading { margin-bottom: 0; }
+.ps-supacc-chain { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.ps-supacc-chain--ok { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+.ps-supacc-chain--broken { background: rgba(239,68,68,0.2); color: #fca5a5; }
+.ps-supacc-audit-exports { margin-left: auto; display: flex; gap: 6px; }
+.ps-supacc-hint { color: #94a3b8; font-size: 12px; margin: 8px 0 10px; }
+.ps-supacc-audit-scroll { max-height: 420px; overflow-y: auto; }
+.ps-supacc-cases { font-family: ui-monospace, SFMono-Regular, Menlo, monospace; font-size: 12px; }
+.ps-supacc-form { display: grid; gap: 6px; max-width: 520px; }
+.ps-supacc-reason { min-height: 70px; resize: vertical; }
+.ps-supacc-status { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; background: rgba(148,163,184,0.15); color: #cbd5e1; }
+.ps-supacc-status--pending { background: rgba(245,158,11,0.18); color: #fcd34d; }
+.ps-supacc-status--approved { background: rgba(16,185,129,0.18); color: #6ee7b7; }
+.ps-supacc-status--rejected, .ps-supacc-status--revoked { background: rgba(239,68,68,0.18); color: #fca5a5; }
+.ps-supacc-status--expired, .ps-supacc-status--ended { background: rgba(148,163,184,0.15); color: #94a3b8; }
+
+/* ── Batch 374: screen access (ScreenGate, Home with no tiles) ── */
+.ps-screen-denied { max-width: 560px; margin: 80px auto; padding: 28px 32px; border: 1px solid var(--ps-border-bright); border-radius: 12px; background: rgba(15,23,42,0.6); text-align: center; }
+.ps-screen-denied-title { margin: 0 0 10px; font-size: 20px; font-weight: 700; color: #e2e8f0; }
+.ps-screen-denied-body { margin: 0 0 18px; font-size: 14px; color: #94a3b8; }
+.ps-home-no-tiles { margin: 24px 0; padding: 16px 18px; border-radius: 10px; border: 1px dashed rgba(148,163,184,0.4); color: #cbd5e1; font-size: 14px; text-align: center; }
+
+/* ── Batch 375: the peer-review queues as Worklist views ── */
+.ps-wl-queue-tile { --tile-bg: rgba(20,184,166,0.05); --tile-border: rgba(20,184,166,0.25); display: flex; align-items: center; max-width: 170px; text-align: left; }
+.ps-wl-queue-tile--active { --tile-bg: rgba(20,184,166,0.18); --tile-border: #14B8A6; --tile-shadow: 0 0 12px rgba(20,184,166,0.4); }
+.ps-wl-queue-tile__label { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.4px; line-height: 1.25; color: #8899aa; white-space: normal; }
+.ps-wl-queue-tile--active .ps-wl-queue-tile__label { color: #5eead4; }
+.ps-wl-queue-view { flex: 1 1 auto; min-height: 0; overflow-y: auto; }
+.ps-wl-queue-view .ps-qcqueue-page { min-height: 0; background: transparent; padding: 12px 0 24px; }
+
+/* ── PS-359 (Batch 376): Field Requirements ── */
+.ps-fieldreq { display: flex; flex-direction: column; gap: 14px; }
+.ps-fieldreq-message { padding: 8px 12px; border-radius: 6px; border: 1px solid rgba(239,68,68,0.4); background: rgba(239,68,68,0.1); color: #fca5a5; font-size: 13px; }
+.ps-fieldreq-note { color: #94a3b8; font-size: 13px; margin: 0; }
+.ps-fieldreq-toolbar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; }
+.ps-fieldreq-page { max-width: 260px; }
+.ps-fieldreq-org { color: #94a3b8; font-size: 12px; }
+.ps-fieldreq-card { border: 1px solid var(--ps-border-bright); border-radius: 10px; padding: 12px 16px; background: rgba(15,23,42,0.5); }
+.ps-fieldreq-heading { margin: 0 0 8px; font-size: 14px; font-weight: 700; color: #e2e8f0; }
+.ps-fieldreq-list { list-style: none; margin: 0; padding: 0; }
+.ps-fieldreq-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; padding: 10px 0; border-top: 1px solid rgba(148,163,184,0.12); }
+.ps-fieldreq-row:first-child { border-top: none; }
+.ps-fieldreq-name { display: flex; flex-direction: column; gap: 2px; }
+.ps-fieldreq-label { font-size: 13px; font-weight: 600; color: #e2e8f0; }
+.ps-fieldreq-hint { font-size: 11px; color: #64748b; }
+.ps-fieldreq-locked { display: flex; flex-direction: column; align-items: flex-end; gap: 2px; text-align: right; }
+.ps-fieldreq-reason { font-size: 11px; color: #94a3b8; max-width: 380px; }
+.ps-fieldreq-switch { display: flex; align-items: center; gap: 8px; font-size: 13px; color: #cbd5e1; cursor: pointer; }
+.ps-fieldreq-badge { font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; }
+.ps-fieldreq-badge--locked { background: rgba(148,163,184,0.15); color: #cbd5e1; }
+.ps-fieldreq-badge--changed { background: rgba(8,145,178,0.18); color: #67e8f9; }
+.ps-accession-missing { margin: 8px 0 0; font-size: 12px; color: #fbbf24; }
+/* Batch 380: a modal's "Still required: …" line (Field Requirements). */
+.ps-field-still-required { margin: 8px 0 0; font-size: 12px; color: #fbbf24; }
+
+/* ── Batch 378: Complete grossing ── */
+.ps-grossing-complete-bar { display: flex; flex-wrap: wrap; align-items: center; gap: 12px; margin: 8px 0 18px; }
+.ps-grossing-complete-missing { margin: 0; font-size: 12px; color: #fbbf24; }
+.ps-grossing-complete-error { margin: 0; font-size: 12px; color: #fca5a5; }
+.ps-grossing-complete-done { font-size: 13px; font-weight: 700; color: #6ee7b7; }
+.ps-grossing-complete-past { font-size: 13px; color: #94a3b8; }
+.ps-grossing-complete-review { margin: 0; font-size: 12px; color: #93c5fd; }
+.ps-batch-modal-body .ps-grossing-complete-review { margin-top: 8px; }

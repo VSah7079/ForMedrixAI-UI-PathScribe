@@ -62,7 +62,7 @@ import type { SigningUser } from './sharedHookTypes';
 interface UseReportGenerationParams {
   caseData: Case | null;
   signingUser: SigningUser;
-  showToast: (message: string) => void;
+  showToast: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
   orchSections: OrchestratorSection[];
   setOrchSections: React.Dispatch<React.SetStateAction<OrchestratorSection[]>>;
   overrideTemplateId: string | null;
@@ -123,7 +123,7 @@ export function useReportGeneration({
     // direct i18next instance call — it's a plain service, not a hook),
     // so this hook stays correct simply by joining and displaying
     // whatever buildContext() returns, in any language.
-    if (ctx.warnings?.length > 0) showToast(ctx.warnings.join(' • '));
+    if (ctx.warnings?.length > 0) showToast(ctx.warnings.join(' • '), 'warning');
   }, [showToast]);
 
   // ── Orchestrator callbacks ─────────────────────────────────────────────────
@@ -195,7 +195,7 @@ export function useReportGeneration({
       setIsOrchestrating(false);
       engineRef.current = null;
       abortRef.current  = null;
-      showToast(t('useReportGeneration.toast.generationError', { error }));
+      showToast(t('useReportGeneration.toast.generationError', { error }), 'warning');
     },
   }), [showToast, setOrchSections, setLastGeneratedAt, t]);
 
@@ -270,7 +270,7 @@ export function useReportGeneration({
       const err = e instanceof Error ? e : undefined;
       showToast(t('useReportGeneration.toast.couldNotOpenManualEntry', {
         message: err?.message ?? t('useReportGeneration.labels.unknownError'),
-      }));
+      }), 'warning');
     }
   }, [caseData, signingUser, overrideTemplateId, setResolvedContext, setResolvedTemplateId, setResolvedTemplateName, setResolvedBy, setOrchSections, safeSetLeftTab, showToast, surfaceContextWarnings, t]);
 
@@ -303,7 +303,7 @@ export function useReportGeneration({
       if (err?.name !== 'AbortError') {
         showToast(t('useReportGeneration.toast.generationFailed', {
           message: err?.message ?? t('useReportGeneration.labels.unknown'),
-        }));
+        }), 'warning');
       }
       setIsOrchestrating(false);
       engineRef.current = null;
@@ -337,7 +337,7 @@ export function useReportGeneration({
       if (err?.name !== 'AbortError') {
         showToast(t('useReportGeneration.toast.regenerationFailed', {
           message: err?.message ?? t('useReportGeneration.labels.unknown'),
-        }));
+        }), 'warning');
       }
     } finally {
       setIsOrchestrating(false);

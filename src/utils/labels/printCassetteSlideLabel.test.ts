@@ -112,12 +112,13 @@ describe('printCassetteSlideLabel — real, parallel printed path alongside engr
       expect(zpl).toContain('^BXN,2,200,,,1'); // the slide template's own, smaller module size; columns/rows blank (auto), not 0
     });
 
-    it('real, honest gap acknowledged directly: direct_interface_engine has no real slide payload shape yet — refuses rather than forcing the cassette shape', async () => {
+    it('direct_interface_engine sends a slide with its own payload: labelType SLIDE, level and stain (Batch 347; it used to refuse)', async () => {
       const printer: PrinterProfile = { ...basePrinter, bridgeType: 'direct_interface_engine' };
       const result = await printSlideLabel(slideInput, printer, '00850000000000');
-      expect(result.ok).toBe(false);
-      if (!result.ok) expect((result as PrintCassetteSlideLabelError).message).toContain('not yet built');
-      expect(dispatchNetworkPrintJob).not.toHaveBeenCalled();
+      expect(result.ok).toBe(true);
+      expect(dispatchNetworkPrintJob).toHaveBeenCalledTimes(1);
+      const [payload] = (dispatchNetworkPrintJob as any).mock.calls[0];
+      expect(payload.labelData).toMatchObject({ labelType: 'SLIDE', slide: { level: slideInput.level, stainName: slideInput.stainName } });
     });
 
     it('real feature, per direct follow-up: a real cellBlockNumber applies the -CB{n} suffix to a slide cut from a cell block too', async () => {

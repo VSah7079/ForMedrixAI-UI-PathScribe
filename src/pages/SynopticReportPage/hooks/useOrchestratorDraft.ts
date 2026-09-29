@@ -130,7 +130,7 @@ interface UseOrchestratorDraftParams {
   setConcurrencyConflict: SetConcurrencyConflict;
   clearDirty: () => void;
   discardDraft: () => void;
-  showToast: (message: string) => void;
+  showToast: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
 }
 
 export function useOrchestratorDraft({

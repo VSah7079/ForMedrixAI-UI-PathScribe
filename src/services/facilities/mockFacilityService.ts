@@ -2,6 +2,7 @@ import { ServiceResult, ID } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
 import type { Facility, IFacilityService } from './IFacilityService';
 import { mockSubspecialtyService } from '../subspecialties/mockSubspecialtyService';
+import { linkFacilitiesToOrganisations } from './facilityHierarchy';
 
 // Facility and IFacilityService now live in IFacilityService.ts — re-exporting
 // here so every existing `import { mockFacilityService, Facility } from
@@ -13,6 +14,22 @@ export type { Facility, IFacilityService };
 // safe, honest default rather than fabricating configuration that
 // isn't real.
 const defaultReporting = () => ({ reportFormat: 'PDF' as const, deliveryMethod: 'Portal' as const, autoRelease: false, copyToReferring: false });
+
+/** An ordering client whose work goes to another facility's lab (Batch 352 seed records). */
+function orderingClient(
+  id: string, name: string, assigningAuthority: string, address: string,
+  jurisdiction: Facility['jurisdiction'], performingLabFacilityId: string, parentId?: string,
+): Facility {
+  return {
+    id, name, assigningAuthority, address, phone: '', fax: '', email: '',
+    roles: ['external_ordering_client', 'specimen_acquisition'], performingLabFacilityId,
+    ...(parentId ? { parentId } : {}),
+    jurisdiction, reporting: defaultReporting(),
+    status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
+    tatFirstTouchHours: null, tatTotalHours: null,
+    escalationTargets: [], escalationPriority: 'high',
+  };
+}
 
 // Keeps the deprecated contactName string in sync with the structured
 // contactGivenNames/contactFamilyNames fields, same mirroring pattern as
@@ -78,7 +95,13 @@ async function ensureDefaultCatchAllPool(facility: Facility): Promise<void> {
 // of whether those facilities' wards actually place their own pathology
 // orders, which isn't determinable from seed data alone. Review and add
 // internal_ordering_client to whichever of these three actually apply.
-const SEED_FACILITIES: Facility[] = [
+// Batch 372: every hospital id is linked to its organisation after the list
+// (linkFacilitiesToOrganisations), so each demo case resolves to the
+// organisation that owns it, which support access needs. The ten
+// international screening labs (Seoul … Lagan Valley) each stand alone and
+// are their own organisation (isEnterprise), as their cases already record
+// (originEnterpriseId = their own id).
+const SEED_FACILITIES: Facility[] = linkFacilitiesToOrganisations([
   {
     id: 'c1', name: 'Metro General Hospital',   assigningAuthority: 'MGH',  address: '100 Main St',      phone: '555-2001', fax: '555-2002', email: 'lab@metrogeneral.org',
     roles: ['external_ordering_client', 'specimen_acquisition'], jurisdiction: 'US', reporting: defaultReporting(),
@@ -168,6 +191,16 @@ const SEED_FACILITIES: Facility[] = [
     identifierFormats: {
       enabledFormatIds: ['accession_generic_uk', 'mrn_nhs'],
     },
+    // Real, per PS-277 §1.2.2 — this Trust's own real, shared
+    // letterhead logo and Director, so a real affiliate that never
+    // sets its own (Fenwick General/Children's below) has real,
+    // honest demo data to fall back to rather than every facility
+    // resolving to undefined. cliaOrIsoNumber deliberately left unset
+    // here — real, per direct guidance, each real Fenwick hospital's
+    // own accreditation is its own, not shared Trust-wide (see
+    // Fenwick Women's Hospital below, which sets its own).
+    headerLogoUrl: 'https://example.com/fenwick-nhs-trust-logo.png',
+    directorName: 'Prof. Alistair Grant',
     roles: ['performing_lab'], jurisdiction: 'GB_EW', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: null, tatTotalHours: null,
@@ -189,6 +222,17 @@ const SEED_FACILITIES: Facility[] = [
     id: 'c-fenwick-womens', name: "Fenwick Women's Hospital", assigningAuthority: 'FWH', parentId: 'c-trust-fenwick',
     address: '2 Trust Way, Fenwick', phone: '+44 191 555 0102', fax: '', email: 'pathology@fenwickwomens.nhs.uk',
     // Same open question as Fenwick General above — review.
+    // Real, per PS-277 §1.2.3 — this is the real hospital that would
+    // perform GYN cytology/cervical screening, so it's the real,
+    // deliberate demo facility for the addendum-forced-page policy.
+    // Deliberately does NOT set its own cliaOrIsoNumber/directorName
+    // here — jsonWebhookBuilder.test.ts's own existing, real test
+    // ("cliaOrIsoNumber is genuinely undefined... hasn't had it set")
+    // already depends on this exact facility staying clean of it; the
+    // real "own value wins over an inherited default" behavior is
+    // still fully covered, just by resolveFacilityPrintBranding.test.ts's
+    // own synthetic fixtures rather than this shared seed data.
+    forceAddendumOnDedicatedPagePrintPolicy: true,
     roles: ['performing_lab'], jurisdiction: 'GB_EW', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
@@ -347,6 +391,35 @@ const SEED_FACILITIES: Facility[] = [
     tatFirstTouchHours: null, tatTotalHours: null,
     escalationTargets: [], escalationPriority: 'high',
   },
+
+  // ── Ordering clients of the Manchester, Midwest, Henry Ford and Desert
+  // Valley labs (Batch 352, PS-101). The demo cases and the physician
+  // master file already used these ids, but no facility had them, so those
+  // cases had no performing lab: searching by lab found nothing, and TAT,
+  // routing and sign-out rules fell back to defaults. Names are the ones the
+  // cases carry. Each client names its lab with performingLabFacilityId.
+  // Addresses are left blank where the demo data has none.
+  // Batch 354: each Manchester client sends to its own hospital site's lab
+  // and sits under that site (parentId), so Trust → site → client: choosing
+  // the Trust in Search includes all three sites and their cases, and
+  // choosing a site finds that site's. (Batch 352 sent all three to the
+  // Trust's lab, with no parent.) They are not direct children of the Trust,
+  // because the Accession page lists a Trust's direct children as its sites.
+  ...([
+    ['c-mft-01', 'Manchester Royal Infirmary',        'MRI',  'Oxford Road, Manchester, M13 9WL',    'c-site-mft-mri'],
+    ['c-mft-02', 'Wythenshawe Hospital',              'WYTH', 'Southmoor Road, Manchester, M23 9LT', 'c-site-mft-wyth'],
+    ['c-mft-03', 'North Manchester General Hospital', 'NMGH', 'Delaunays Road, Manchester, M8 5RB',  'c-site-mft-nmgh'],
+  ] as const).map(([id, name, assigningAuthority, address, site]) => orderingClient(id, name, assigningAuthority, address, 'GB_EW', site, site)),
+  ...([
+    ['c-mpa-01', 'Northwestern Memorial Hospital',           'NMH',  'c-ent-mpa'],
+    ['c-mpa-02', 'Rush University Medical Center',           'RUMC', 'c-ent-mpa'],
+    ['c-mpa-03', 'Advocate Illinois Masonic Medical Center', 'AIMMC', 'c-ent-mpa'],
+    ['c-hfhs-01', 'Henry Ford Macomb Hospital',              'HFMH', 'c-ent-hfhs'],
+    ['c-hfhs-03', 'Detroit Medical Center',                  'DMC',  'c-ent-hfhs'],
+    ['c-hfhs-07', 'Michigan Urology Centre',                 'MUC',  'c-ent-hfhs'],
+    ['c_outreach_urology', 'Desert Hills Urology Associates', 'DHUA', 'c-ent-dvmc'],
+    ['c_outreach_derm',    'Oasis Dermatology Partners',      'ODP',  'c-ent-dvmc'],
+  ] as const).map(([id, name, assigningAuthority, lab]) => orderingClient(id, name, assigningAuthority, '', 'US', lab)),
   {
     // Real, per direct guidance's own South Korea information — a
     // real facility for the Phase 4 international roadmap work
@@ -355,7 +428,7 @@ const SEED_FACILITIES: Facility[] = [
     // reporting).
     id: 'c-kr-seoul-general', name: 'Seoul General Screening Center', assigningAuthority: 'SGSC',
     address: '25 Yeouido-daero, Yeongdeungpo-gu, Seoul', phone: '+82 2 555 0301', fax: '', email: 'pathology@seoulgeneral.kr.example',
-    roles: ['performing_lab'], jurisdiction: 'KR', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'KR', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -368,7 +441,7 @@ const SEED_FACILITIES: Facility[] = [
     // nomenclature and the real, age-stratified screening protocol).
     id: 'c-de-berlin-frauenklinik', name: 'Berlin Frauenklinik Zytologie', assigningAuthority: 'BFZ',
     address: 'Charitéplatz 1, 10117 Berlin', phone: '+49 30 555 0501', fax: '', email: 'pathologie@berlinfrauenklinik.de.example',
-    roles: ['performing_lab'], jurisdiction: 'DE', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'DE', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -386,7 +459,7 @@ const SEED_FACILITIES: Facility[] = [
   {
     id: 'c-nl-amsterdam-cyto', name: 'Amsterdam Cytologie Centrum', assigningAuthority: 'ACC',
     address: 'Meibergdreef 9, 1105 AZ Amsterdam', phone: '+31 20 555 0701', fax: '', email: 'pathologie@amsterdamcyto.nl.example',
-    roles: ['performing_lab'], jurisdiction: 'NL', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'NL', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -405,7 +478,7 @@ const SEED_FACILITIES: Facility[] = [
   {
     id: 'c-fr-paris-cyto', name: 'Centre de Cytologie Paris', assigningAuthority: 'CCP',
     address: '27 Rue du Faubourg Saint-Jacques, 75014 Paris', phone: '+33 1 55 50 0801', fax: '', email: 'pathologie@cytologieparis.fr.example',
-    roles: ['performing_lab'], jurisdiction: 'FR', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'FR', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -425,7 +498,7 @@ const SEED_FACILITIES: Facility[] = [
   {
     id: 'c-be-brussels-cyto', name: 'Brussel Cytologie Instituut', assigningAuthority: 'BCI',
     address: 'Wetstraat 155, 1040 Brussels', phone: '+32 2 555 0901', fax: '', email: 'pathologie@brusselcyto.be.example',
-    roles: ['performing_lab'], jurisdiction: 'BE', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'BE', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -445,7 +518,7 @@ const SEED_FACILITIES: Facility[] = [
   {
     id: 'c-ca-vancouver-cyto', name: 'Vancouver Cytology Laboratory', assigningAuthority: 'VCL',
     address: '899 W 12th Ave, Vancouver, BC V5Z 1M9', phone: '+1 604 555 1001', fax: '', email: 'pathology@vancouvercyto.ca.example',
-    roles: ['performing_lab'], jurisdiction: 'CA', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'CA', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -466,7 +539,7 @@ const SEED_FACILITIES: Facility[] = [
   {
     id: 'c-nz-auckland-cyto', name: 'Auckland Cytology Services', assigningAuthority: 'ACS',
     address: '2 Park Rd, Grafton, Auckland 1023', phone: '+64 9 555 1101', fax: '', email: 'pathology@aucklandcyto.nz.example',
-    roles: ['performing_lab'], jurisdiction: 'NZ', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'NZ', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -485,7 +558,7 @@ const SEED_FACILITIES: Facility[] = [
   {
     id: 'c-au-sydney-cyto', name: 'Sydney Cytology & Pathology', assigningAuthority: 'SCP',
     address: '94 Mallett St, Camperdown NSW 2050', phone: '+61 2 555 1201', fax: '', email: 'pathology@sydneycyto.au.example',
-    roles: ['performing_lab'], jurisdiction: 'AU', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'AU', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -504,7 +577,7 @@ const SEED_FACILITIES: Facility[] = [
   {
     id: 'c-ie-ncsl-dublin', name: 'National Cervical Screening Laboratory', assigningAuthority: 'NCSL',
     address: "St. Luke's Hospital Campus, Highfield Rd, Rathgar, Dublin 6", phone: '+353 1 555 1401', fax: '', email: 'pathology@ncsl.ie.example',
-    roles: ['performing_lab'], jurisdiction: 'IE', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'IE', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
@@ -527,12 +600,12 @@ const SEED_FACILITIES: Facility[] = [
   {
     id: 'c-ni-lagan-valley', name: "Lagan Valley Women's Health Centre", assigningAuthority: 'LVWHC',
     address: '68 Lisburn Road, Belfast BT9 6AA', phone: '+44 28 555 1701', fax: '', email: 'labs@laganvalley.ni.nhs.uk',
-    roles: ['performing_lab'], jurisdiction: 'GB_NIR', reporting: defaultReporting(),
+    roles: ['performing_lab'], isEnterprise: true, jurisdiction: 'GB_NIR', reporting: defaultReporting(),
     status: 'Active', pediatricAgeThreshold: null, authorizedPediatricPathologistIds: [],
     tatFirstTouchHours: 8, tatTotalHours: 48,
     escalationTargets: ['pathGroup', 'admin'], escalationPriority: 'high',
   },
-];
+]);
 
 // Real feature, per direct confirmation: full redesign from Client/
 // clientType to Facility/roles — bumped storage key (was
@@ -545,7 +618,7 @@ const SEED_FACILITIES: Facility[] = [
 // unprotected gap this file's own new Korean facility
 // (c-kr-seoul-general) would otherwise silently never reach anyone
 // with pre-existing cached facility data.
-const SEED_VERSION = '5'; // bumped: real, new Northern Ireland facility added (Lagan Valley Women's Health Centre) — Northern Ireland Cervical Screening Programme work.
+const SEED_VERSION = '8'; // Batch 372: hospital ids linked to their organisations; the international screening labs are their own organisations. (7, Batch 354: Manchester clients under their hospital sites; 6, Batch 352: the ordering clients of the Manchester, Midwest, Henry Ford and Desert Valley labs. 5: Lagan Valley Women's Health Centre.)
 const SEED_VERSION_KEY = 'pathscribe_facilities_seed_version';
 if (storageGet<string | null>(SEED_VERSION_KEY, null) !== SEED_VERSION) {
   storageSet('pathscribe_facilities', SEED_FACILITIES);

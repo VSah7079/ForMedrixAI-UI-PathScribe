@@ -986,3 +986,25 @@ this — e.g., a real fallback/failure rate broken down by client or
 specimen type — is a genuine, separate UI/reporting decision, not
 built speculatively here.
 
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`IntraopMergePromptModal`, `OrderLookupModal` (patient names in the order grid) and `PatientLinkSearch` (the confirmed patient and each result) are tagged.
+
+## Batch 365 (PS-347)
+
+- **`OrderLookupModal.tsx`:**
+  - `searchDobFormat` is now any jurisdiction format (`JurisdictionDateFormat`), not just the two slash forms.
+  - The DOB column follows it. A German lab saw month-first dates under a DD.MM.YYYY header, and now sees 23.07.1990. The Netherlands now sees 23-07-1990.
+  - It takes `patientIndexService` from `@/services`.
+- **`AccessionPage.tsx`:** the cast that narrowed the format to the two slash forms is gone, and its comment is corrected.
+
+## Batch 376 (PS-359)
+
+- **Required fields come from Field Requirements** (`services/fieldRequirements`), per organisation. The locked ones are always required: given and family names, date of birth, submitting facility, requesting provider, a described specimen. Until the organisation's settings load, the defaults apply, which match what the page required before. Next (case tab) and Submit list what's still required.
+- **Labels:** Patient ID and Assign to Pathologist show without "(optional)" when the organisation requires them. If Patient ID is required, the "leave blank to auto-generate" hint no longer applies.
+- **Deployment neutrality:** every service now comes from `@/services` (the file is off the mock-import baseline).
+- **i18n:** the department-conflict names are joined with `formatList`, not an English " and ".
+
+## Batch 377
+
+A required Patient ID left blank is generated at submit, as before, and isn't listed as missing. If none can be generated, submit stops with an alert (`accessionPage.toast.patientIdNotGenerated`). The generation rule moved out of the page into `services/accessioning/patientIdGeneration.ts`.

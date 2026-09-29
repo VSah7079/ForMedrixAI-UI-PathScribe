@@ -1,7 +1,7 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
-import { useNavigate, useSearchParams } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { getFacilityDateParts, getFacilityMidnightUtc } from '@/utils/facilityTime';
@@ -39,8 +39,13 @@ import { downloadCSV, buildMetaHeader } from '../utils/csvExport';
 import BillingLogsSection from './BillingLogsSection';
 import OutboundDlqSection from './OutboundDlqSection';
 import OutboundInterfaceDlqSection from './OutboundInterfaceDlqSection';
+import OutboundDispatchTrailSection from './OutboundDispatchTrailSection';
+import PrintQueueDashboardSection from './PrintQueueDashboardSection';
+import CriticalAlertAuditSection from './CriticalAlertAuditSection';
+import SupportReferenceChip from '../components/Support/SupportReferenceChip';
+import SupportReferenceLookup from '../components/Support/SupportReferenceLookup';
 
-type ActiveTab = 'audit' | 'errors' | 'interfaces' | 'quality' | 'financial';
+type ActiveTab = 'audit' | 'errors' | 'interfaces' | 'quality' | 'financial' | 'criticalAlerts';
 
 // ── Quality Assurance groups ─────────────────────────────────────────────────
 // Every tabbed item group from the Quality Assurance working queue
@@ -309,7 +314,7 @@ const AuditLogPage: React.FC = () => {
   const [isResourcesOpen, setIsResourcesOpen] = useState(false);
   const [activeTab,       setActiveTab]       = useState<ActiveTab>('audit');
   const [financialSubTab, setFinancialSubTab] = useState<'billing_logs' | 'outbound_dlq'>('billing_logs');
-  const [interfacesSubTab, setInterfacesSubTab] = useState<'exceptions' | 'outbound_dlq'>('exceptions');
+  const [interfacesSubTab, setInterfacesSubTab] = useState<'exceptions' | 'outbound_dlq' | 'outbound_dispatches' | 'print_queue'>('exceptions');
   const [searchParams] = useSearchParams();
 
   // Real feature, per direct confirmation: a high-priority message
@@ -342,6 +347,7 @@ const AuditLogPage: React.FC = () => {
     else if (tabParam === 'errors') setActiveTab('errors');
     else if (tabParam === 'quality') setActiveTab('quality');
     else if (tabParam === 'financial') setActiveTab('financial');
+    else if (tabParam === 'criticalAlerts') setActiveTab('criticalAlerts');
     // Real feature, per direct follow-up: "how would I see a report
     // that shows all the tracking events for a case?" — same real
     // deep-link pattern immediately above, extended with a ?search=
@@ -680,7 +686,7 @@ const AuditLogPage: React.FC = () => {
               )}
             </div>
             <div className="ps-auditlog-tabswitch">
-              {(['audit', 'errors', 'interfaces', 'quality', 'financial'] as const).map(tab => (
+              {(['audit', 'errors', 'interfaces', 'quality', 'financial', 'criticalAlerts'] as const).map(tab => (
                 <button
                   key={tab}
                   onClick={() => setActiveTab(tab)}
@@ -694,6 +700,13 @@ const AuditLogPage: React.FC = () => {
               ))}
             </div>
           </div>
+
+          {/* Batch 364 (PS-350): find what a support reference names (support quotes it instead of a case number). */}
+          <SupportReferenceLookup
+            initialRef={searchParams.get('supportRef') ?? undefined}
+            data={{ auditLogs, errorLogs, interfaceExceptions }}
+            onOpenCase={caseId => navigate(`/case/${caseId}/synoptic`)}
+          />
 
           {/* ── AUDIT TAB ── */}
           {activeTab === 'audit' && (
@@ -786,10 +799,10 @@ const AuditLogPage: React.FC = () => {
                       <div key={log.id} className="ps-auditlog-row ps-auditlog-row--audit">
                         <div className="ps-auditlog-cell-time">{formatAuditTimestamp(log.timestamp)}</div>
                         <div><span className={`ps-auditlog-badge ${typeBadge.className}`}>{typeBadge.label}</span></div>
-                        <div className="ps-auditlog-cell-event">{log.event}</div>
-                        <div className="ps-auditlog-cell-detail">{log.detail}</div>
+                        <div className="ps-auditlog-cell-event">{log.event}<SupportReferenceChip kind="auditEntry" recordId={log.id} /></div>
+                        <div className="ps-auditlog-cell-detail" data-phi="true">{log.detail}</div>
                         <div className="ps-auditlog-cell-user">{log.user}</div>
-                        <div>{log.caseId ? <span className="ps-auditlog-case-link" onClick={() => navigate(`/case/${log.caseId}/synoptic`)}>{log.caseId}</span> : <span className="ps-auditlog-case-dash">—</span>}</div>
+                        <div>{log.caseId ? <span className="ps-auditlog-case-link" data-phi="accession" onClick={() => navigate(`/case/${log.caseId}/synoptic`)}>{log.caseId}</span> : <span className="ps-auditlog-case-dash">—</span>}</div>
                       </div>
                     );
                   })}
@@ -857,10 +870,10 @@ const AuditLogPage: React.FC = () => {
                       <div key={log.id} className="ps-auditlog-row ps-auditlog-row--error">
                         <div className="ps-auditlog-cell-time">{formatAuditTimestamp(log.timestamp)}</div>
                         <div><span className={`ps-auditlog-badge ${severityBadge.className}`}>{severityBadge.label}</span></div>
-                        <div className="ps-auditlog-cell-code">{log.code}</div>
-                        <div className="ps-auditlog-cell-detail">{log.message}</div>
+                        <div className="ps-auditlog-cell-code">{log.code}<SupportReferenceChip kind="errorEntry" recordId={log.id} /></div>
+                        <div className="ps-auditlog-cell-detail" data-phi="true">{log.message}</div>
                         <div className="ps-auditlog-cell-user">{log.source}</div>
-                        <div>{log.caseId ? <span className="ps-auditlog-case-link" onClick={() => navigate(`/case/${log.caseId}/synoptic`)}>{log.caseId}</span> : <span className="ps-auditlog-case-dash">—</span>}</div>
+                        <div>{log.caseId ? <span className="ps-auditlog-case-link" data-phi="accession" onClick={() => navigate(`/case/${log.caseId}/synoptic`)}>{log.caseId}</span> : <span className="ps-auditlog-case-dash">—</span>}</div>
                         <div><span className={`ps-auditlog-status-badge ${log.resolved ? 'ps-auditlog-status-badge--resolved' : 'ps-auditlog-status-badge--open'}`}>{log.resolved ? t('auditLog.errorTab.statusResolved') : t('auditLog.errorTab.statusOpen')}</span></div>
                       </div>
                     );
@@ -886,6 +899,9 @@ const AuditLogPage: React.FC = () => {
                 {([
                   { key: 'exceptions' as const, labelKey: 'auditLog.interfacesTab.subTabExceptions' },
                   { key: 'outbound_dlq' as const, labelKey: 'auditLog.interfacesTab.subTabOutboundDlq' },
+                  // PS-86: the trail of what was sent (not a failure queue).
+                  { key: 'outbound_dispatches' as const, labelKey: 'auditLog.interfacesTab.subTabOutboundDispatches' },
+                  { key: 'print_queue' as const, labelKey: 'auditLog.interfacesTab.subTabPrintQueue' },
                 ]).map(sub => (
                   <button
                     key={sub.key}
@@ -897,6 +913,8 @@ const AuditLogPage: React.FC = () => {
                 ))}
               </div>
               {interfacesSubTab === 'outbound_dlq' && <OutboundInterfaceDlqSection />}
+              {interfacesSubTab === 'outbound_dispatches' && <OutboundDispatchTrailSection />}
+              {interfacesSubTab === 'print_queue' && <PrintQueueDashboardSection />}
               {interfacesSubTab === 'exceptions' && (
             <>
               {/* Filters — real counts on every pill, per direct
@@ -968,10 +986,10 @@ const AuditLogPage: React.FC = () => {
                     ) : filteredInterfaceExceptions.map((e) => (
                       <div key={e.id} className="ps-auditlog-row ps-auditlog-row--interfaces">
                         <div className="ps-auditlog-cell-time">{formatAuditTimestamp(e.createdAt)}</div>
-                        <div><span className="ps-auditlog-badge ps-auditlog-badge--info">{e.eventType}</span></div>
-                        <div className="ps-auditlog-cell-detail">{e.reason}</div>
-                        <div className="ps-auditlog-cell-user">{e.sourcePatientIdentifier ?? '—'}</div>
-                        <div className="ps-auditlog-cell-user">{e.targetPatientIdentifier ?? '—'}</div>
+                        <div><span className="ps-auditlog-badge ps-auditlog-badge--info">{e.eventType}</span><SupportReferenceChip kind="interfaceException" recordId={e.id} /></div>
+                        <div className="ps-auditlog-cell-detail" data-phi="true">{e.reason}</div>
+                        <div className="ps-auditlog-cell-user" data-phi="mrn">{e.sourcePatientIdentifier ?? '—'}</div>
+                        <div className="ps-auditlog-cell-user" data-phi="mrn">{e.targetPatientIdentifier ?? '—'}</div>
                         <div>
                           {/* Real feature, per direct confirmation:
                               "Manual Review Queue / Flagging
@@ -1100,9 +1118,9 @@ const AuditLogPage: React.FC = () => {
                   ) : filteredQualityLogs.map((r) => (
                     <div key={r.id} className="ps-auditlog-row ps-auditlog-row--quality">
                       <div className="ps-auditlog-cell-time">{formatAuditTimestamp(r.date)}</div>
-                      <div>{r.caseId ? <span className="ps-auditlog-case-link" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>{r.caseId}</span> : <span className="ps-auditlog-case-dash">—</span>}</div>
+                      <div>{r.caseId ? <span className="ps-auditlog-case-link" data-phi="accession" onClick={() => navigate(`/case/${r.caseId}/synoptic`)}>{r.caseId}</span> : <span className="ps-auditlog-case-dash">—</span>}</div>
                       <div>{r.specimen ?? <span className="ps-auditlog-case-dash">—</span>}</div>
-                      <div className="ps-auditlog-cell-detail">{r.detail}</div>
+                      <div className="ps-auditlog-cell-detail" data-phi="true">{r.detail}</div>
                       <div>
                         <span className={`ps-auditlog-status-badge ps-auditlog-status-badge--${r.statusTone}`}>
                           {t(r.statusLabelKey)}
@@ -1139,6 +1157,14 @@ const AuditLogPage: React.FC = () => {
               {financialSubTab === 'outbound_dlq' && <OutboundDlqSection />}
             </>
           )}
+
+          {/* ── CRITICAL ALERTS TAB ── */}
+          {/* PS-136 — real, per direct guidance's own "Add the Viewer to
+              the Audit Module" ask. See CriticalAlertAuditSection.tsx's
+              own header for why this is a simple, standalone section
+              (the "financial" tab's own pattern) rather than a
+              QaGroup-normalized row in the "quality" tab's table. */}
+          {activeTab === 'criticalAlerts' && <CriticalAlertAuditSection />}
         </main>
 
         {/* Footer */}

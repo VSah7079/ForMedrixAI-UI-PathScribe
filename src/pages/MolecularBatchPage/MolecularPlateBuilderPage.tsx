@@ -27,7 +27,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import '../../pathscribe.css';
 import { mockMolecularBatchService } from '../../services/molecular/mockMolecularBatchService';
 import { resolveMolecularReagentLotGating } from '../../services/molecular/resolveMolecularReagentLotGating';
@@ -45,6 +45,13 @@ import { getSessionUser } from '../../services/auth/caseAccessControl';
 import type { MolecularAssayControlRule } from '../../services/molecular/IMolecularAssayControlRuleService';
 import { printMolecularSpecimenLabels, printMolecularPlateLabel, printMolecularDeckLocationLabel } from '../../utils/labels/printMolecularLabels';
 import { useCurrentScanStation } from '../../hooks/useCurrentScanStation';
+import { equipmentService, equipmentLogService, type Equipment, type EquipmentLogEntry } from '../../services';
+import { equipmentForPicker } from '../../services/equipment/equipmentRules';
+import { isServiceAlert, serviceStatesById } from '../../services/equipment/equipmentLogRules';
+import { useSystemConfig } from '@/contexts/SystemConfigContext';
+import { getFacilityIsoDate } from '../../utils/facilityTime';
+import { MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE } from '../../services/molecular/IMolecularBatchService';
+import { formatList } from '../../utils/formatList';
 import { mockScanStationService } from '../../services/scanStations/mockScanStationService';
 import { workcenterTabForStatus } from '../MolecularWorkcenterPage/MolecularWorkcenterPage';
 import { resolveMolecularMovementRecord } from '../../services/molecular/resolveMolecularMovementRecord';
@@ -87,7 +94,7 @@ function emptyWellsFor(layout: MolecularPlateLayout): MolecularWell[] {
 }
 
 const MolecularPlateBuilderPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const { batchId } = useParams<{ batchId: string }>();
   const isNew = batchId === 'new';
@@ -109,6 +116,17 @@ const MolecularPlateBuilderPage: React.FC = () => {
     });
   }, []);
   const [targetInstrumentId, setTargetInstrumentId] = useState('');
+  // Batch 356 (PS-326): the target instrument is picked from the register's
+  // active analysers (Batch 358), this station's lab first. It used to be free text.
+  const [instruments, setInstruments] = useState<Equipment[]>([]);
+  // Batch 361: an analyser with an open malfunction or past due is shown in
+  // red here, and named under the picker when chosen. Flagged, not blocked.
+  const [instrumentLog, setInstrumentLog] = useState<EquipmentLogEntry[]>([]);
+  const { config: systemConfig } = useSystemConfig();
+  useEffect(() => {
+    equipmentService.getActive('analyser').then(res => { if (res.ok) setInstruments(res.data); });
+    equipmentLogService.list().then(res => { if (res.ok) setInstrumentLog(res.data); });
+  }, []);
   const [deckSlot, setDeckSlot] = useState('');
   const [plateLayout, setPlateLayout] = useState<MolecularPlateLayout>('96_well');
   const [reagentLots, setReagentLots] = useState<MolecularReagentLot[]>([]);
@@ -152,10 +170,16 @@ const MolecularPlateBuilderPage: React.FC = () => {
   // — never a station typed or guessed per scan.
   const { stationId } = useCurrentScanStation();
   const [stationName, setStationName] = useState<string>('Unknown Station');
+  const [stationFacilityId, setStationFacilityId] = useState<string | undefined>(undefined);
   useEffect(() => {
-    if (!stationId) { setStationName('Unknown Station'); return; }
-    mockScanStationService.getById(stationId).then(res => { if (res.ok) setStationName(res.data.name); });
+    if (!stationId) { setStationName('Unknown Station'); setStationFacilityId(undefined); return; }
+    mockScanStationService.getById(stationId).then(res => { if (res.ok) { setStationName(res.data.name); setStationFacilityId(res.data.facilityId); } });
   }, [stationId]);
+  const instrumentOptions = equipmentForPicker(instruments, { kind: 'analyser', preferredFacilityId: stationFacilityId });
+  const instrumentStates = serviceStatesById(instruments, instrumentLog, getFacilityIsoDate(new Date(), systemConfig.facilityTimezone));
+  const selectedInstrument = instrumentOptions.find(i => i.code === targetInstrumentId);
+  const selectedInstrumentState = selectedInstrument ? instrumentStates.get(selectedInstrument.id) : undefined;
+  const selectedInstrumentAlert = selectedInstrumentState && isServiceAlert(selectedInstrumentState) ? selectedInstrumentState : undefined;
 
   useEffect(() => {
     if (isNew || !batchId) return;
@@ -260,14 +284,21 @@ const MolecularPlateBuilderPage: React.FC = () => {
     setDispatching(true);
     setDispatchResult(null);
     try {
-      const result = await dispatchMolecularWorklist(existingBatch, scannedPlateBarcode, scannedDeckLocationLabel, getSessionUser());
+      const result = await dispatchMolecularWorklist(existingBatch, scannedPlateBarcode, scannedDeckLocationLabel, getSessionUser(), stationId);
       if (result.dispatched) {
         setDispatchResult({ message: t('molecularPlateBuilderPage.dispatchSuccess'), success: true });
         const refreshed = await mockMolecularBatchService.getById(existingBatch.id);
         if (refreshed.ok) setExistingBatch(refreshed.data);
         setDispatchPanelOpen(false);
       } else if ('reason' in result) {
-        setDispatchResult({ message: result.reason, success: false });
+        // Batch 356: scan-check failures are shown in the user's language.
+        const failures = result.verificationFailures;
+        setDispatchResult({
+          message: failures?.length
+            ? t('molecularPlateBuilderPage.scanVerificationFailed', { list: formatList(failures.map(f => t(`molecularPlateBuilderPage.scanFailure.${f}`)), i18n.language) })
+            : result.reason,
+          success: false,
+        });
       }
     } finally {
       setDispatching(false);
@@ -348,7 +379,10 @@ const MolecularPlateBuilderPage: React.FC = () => {
         createdByUserId: session?.id ?? 'unknown', createdByUserName: session ? `${session.firstName ?? ''} ${session.lastName ?? ''}`.trim() || session.id : 'Unknown User',
       };
       const res = await mockMolecularBatchService.create(newBatch);
-      if ('error' in res) { setSaveError(res.error); return; }
+      if ('error' in res) {
+        setSaveError(res.error === MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE ? t('molecularPlateBuilderPage.instrumentUnavailableError') : res.error);
+        return;
+      }
       navigate(`/molecular-batch/${res.data.id}`);
     } finally {
       setSaving(false);
@@ -477,7 +511,7 @@ const MolecularPlateBuilderPage: React.FC = () => {
             </div>
           </div>
           {dispatchResult && (
-            <div className="mb-result-text" style={{ '--mb-result-color': dispatchResult.success ? '#10B981' : '#ef4444' } as React.CSSProperties}>{dispatchResult.message}</div>
+            <div className={`mb-result-text ${dispatchResult.success ? 'mb-result-text--success' : 'mb-result-text--error'}`}>{dispatchResult.message}</div>
           )}
           <button className="ps-conf-btn-secondary ps-mt-14" disabled={dispatching || !scannedPlateBarcode || !scannedDeckLocationLabel} onClick={handleDispatchWorklist}>
             {dispatching ? t('molecularPlateBuilderPage.dispatching') : t('molecularPlateBuilderPage.confirmDispatch')}
@@ -503,7 +537,21 @@ const MolecularPlateBuilderPage: React.FC = () => {
             </div>
             <div>
               <label className="ps-label" htmlFor="mb-instrument">{t('molecularPlateBuilderPage.targetInstrumentLabel')}</label>
-              <input id="mb-instrument" className="ps-input-dark" value={targetInstrumentId} onChange={e => setTargetInstrumentId(e.target.value)} placeholder={t('molecularPlateBuilderPage.instrumentPlaceholder')} />
+              <select id="mb-instrument" className={`ps-input-dark ${selectedInstrumentAlert ? 'mb-instrument-select--alert' : ''}`} value={targetInstrumentId} onChange={e => setTargetInstrumentId(e.target.value)}>
+                <option value="">{t('molecularPlateBuilderPage.selectInstrumentOption')}</option>
+                {instrumentOptions.map(i => {
+                  const state = instrumentStates.get(i.id);
+                  return state && isServiceAlert(state)
+                    ? <option key={i.id} value={i.code} className="mb-instrument-option--alert">{t('molecularPlateBuilderPage.instrumentOptionAlert', { name: i.name, code: i.code, state: t(`equipmentLog.state.${state}`) })}</option>
+                    : <option key={i.id} value={i.code}>{t('molecularPlateBuilderPage.instrumentOption', { name: i.name, code: i.code })}</option>;
+                })}
+              </select>
+              {instrumentOptions.length === 0 && <div className="mb-field-hint">{t('molecularPlateBuilderPage.noInstrumentsHint')}</div>}
+              {selectedInstrument && selectedInstrumentAlert && (
+                <div className="mb-instrument-alert" role="alert">
+                  {t(selectedInstrumentAlert === 'malfunction' ? 'molecularPlateBuilderPage.instrumentAlertMalfunction' : 'molecularPlateBuilderPage.instrumentAlertOverdue', { name: selectedInstrument.name })}
+                </div>
+              )}
             </div>
             <div>
               <label className="ps-label" htmlFor="mb-deck-slot">{t('molecularPlateBuilderPage.deckSlotLabel')}</label>
@@ -575,13 +623,8 @@ const MolecularPlateBuilderPage: React.FC = () => {
                   key={w.wellPosition}
                   onClick={() => !readOnly && setSelectedWellPos(w.wellPosition)}
                   title={w.sampleType ? `${w.wellPosition}: ${t(SAMPLE_TYPE_LABEL_KEY[w.sampleType])}${w.accessionNumber ? ` — ${w.accessionNumber}` : ''}` : w.wellPosition}
-                  className="mb-well-btn"
-                  style={{
-                    '--mb-well-bg': color ? `${color}30` : '#1f2937',
-                    '--mb-well-border': isSelected ? '2px solid #fff' : `1px solid ${color ?? '#374151'}`,
-                    '--mb-well-color': color ?? '#6b7280',
-                    '--mb-well-cursor': readOnly ? 'default' : 'pointer',
-                  } as React.CSSProperties}>
+                  className={`mb-well-btn${color ? ' mb-well-btn--filled' : ''}${isSelected ? ' mb-well-btn--selected' : ''}${readOnly ? ' mb-well-btn--readonly' : ''}`}
+                  style={color ? { '--ps-hue': color } as React.CSSProperties : undefined}>
                   {w.wellPosition}
                 </button>
               );
@@ -590,7 +633,7 @@ const MolecularPlateBuilderPage: React.FC = () => {
           <div className="mb-legend-row">
             {MOLECULAR_SAMPLE_TYPES.map(st => (
               <div key={st} className="mb-legend-item">
-                <div className="mb-legend-swatch" style={{ '--mb-swatch-bg': `${SAMPLE_TYPE_COLOR[st]}30`, '--mb-swatch-border': SAMPLE_TYPE_COLOR[st] } as React.CSSProperties} />
+                <div className="mb-legend-swatch" style={{ '--ps-hue': SAMPLE_TYPE_COLOR[st] } as React.CSSProperties} />
                 <span className="mb-legend-label">{t(SAMPLE_TYPE_LABEL_KEY[st])}</span>
               </div>
             ))}
@@ -643,7 +686,7 @@ const MolecularPlateBuilderPage: React.FC = () => {
                   </div>
                 )}
                 <label className="ps-label">{t('molecularPlateBuilderPage.accessionNumberLabel')}</label>
-                <input className="ps-input-dark ps-w-full ps-mb-10" value={selectedWell.accessionNumber ?? ''} onChange={e => updateWell(selectedWell.wellPosition, { accessionNumber: e.target.value })} />
+                <input className="ps-input-dark ps-w-full ps-mb-10" data-phi="accession" value={selectedWell.accessionNumber ?? ''} onChange={e => updateWell(selectedWell.wellPosition, { accessionNumber: e.target.value })} />
                 {/* Real, direct correction, per direct follow-up + full
                     spec audit: §4.1's own worked example carries a real
                     aliquot_volume_ul for a real patient specimen well,

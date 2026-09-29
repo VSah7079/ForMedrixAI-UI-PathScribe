@@ -38,3 +38,28 @@ UI (see `components/Config/System/README.md`'s own header, and
 `src/README.md`'s own documented history of real bugs this exact pattern
 has caused elsewhere). Found while auditing README coverage, not yet
 reconciled — a real, later cleanup, not attempted here.
+
+## Batch 356 (PS-326)
+
+**`MolecularPlateBuilderPage.tsx`:**
+- **Picking the instrument.** The target instrument is picked from the active instruments (`instrumentService`), this station's lab first. It was a text box.
+  - A hint appears when none are active.
+  - A refused instrument is shown translated.
+- **Dispatch.** It passes the device's scan station. Scan-check failures (plate, deck, station) are shown in the user's language, joined with `utils/formatList.ts`.
+- **Inline colours converted.** The well and legend colours were built in JSX (`${color}30`); they now use `--ps-hue` with `color-mix` and state classes (`mb-well-btn--filled/--selected/--readonly`). The result text uses `--success` / `--error` classes.
+- **Still open.** The page still imports several demo services directly and stays on the mock-import baseline.
+
+## Batch 358
+
+The target instrument list now comes from the equipment register: `equipmentService.getActive('analyser')` and `equipmentForPicker`.
+
+## Batch 361
+
+An analyser with an open malfunction or past due is shown in red in the target instrument picker. Pete's decision: flag it, don't block it.
+- The option reads "⚠ Panther 3 (PANTHER_03): Malfunction" and is red. The text matters because some browsers (Safari, and Chrome on macOS) ignore colour on dropdown options.
+- When one is chosen, the picker gets a red border and a warning below it says what's wrong.
+- The page reads `equipmentLogService` (from `@/services`) and uses `serviceStatesById` / `isServiceAlert`, with today on the facility's calendar.
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`MolecularPlateBuilderPage.tsx`: the well's accession-number field is tagged.

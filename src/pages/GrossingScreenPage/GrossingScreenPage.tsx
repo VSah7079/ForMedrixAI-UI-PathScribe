@@ -13,10 +13,15 @@
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useParams, useNavigate } from 'react-router-dom';
+import { useParams, useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { protocolService, stainTypeService, batchService } from '@/services';
+import { protocolService, stainTypeService, batchService, actionRegistryService } from '@/services';
+import { canCompleteGrossingFrom } from '@/services/grossing/grossingCompletion';
+import { VOICE_CONTEXT } from '@/constants/systemActions';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { formatList } from '@/utils/formatList';
+import { formatDateTime } from '@/utils/formatDate';
 import type { Case } from '@/types/case/Case';
 import type { Specimen, HistologyBlock } from '@/types/case/Specimen';
 import type { Protocol, ProtocolPathway } from '@/services/protocols/IProtocolService';
@@ -30,7 +35,7 @@ function findPathwayForBlock(protocol: Protocol | undefined, block: HistologyBlo
 }
 
 const GrossingScreenPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const { caseId } = useParams<{ caseId: string }>();
   const navigate = useNavigate();
   const { user } = useAuth();
@@ -72,16 +77,34 @@ const GrossingScreenPage: React.FC = () => {
   }, []);
 
   const {
+    missingItems, handleCompleteGrossing, completeRefusal,
+    secondaryReviewSpecimens, pendingProtocolConfirmation, confirmCompleteWithoutProtocol, cancelCompleteWithoutProtocol,
+    completionReview,
     handleAddBlock, handleRemoveBlock, handleAddStain, handleRemoveStain,
     pendingStainRemoval, confirmPendingStainRemoval, cancelPendingStainRemoval,
     handleUpdatePieceCount, handleRecordFixationEnded, handleConfirmFixativeRatio,
     handleRaiseFixationDeficiency, specimensWithOpenFixationDeficiency,
   } = useGrossingScreen({ caseData, setCaseData: setCaseData as any, signingUser: user, knownVersionRef, setConcurrencyConflict });
 
+  // Batch 378 (Pete): Complete grossing can be asked for by voice or keyboard
+  // too ("complete grossing", Alt+Shift+F9, action GROSSING_COMPLETE). The
+  // service decides whether it can happen, exactly as for the button.
+  // Batch 379: the "complete without a protocol?" confirmation can be
+  // answered the same way (GROSSING_COMPLETE_CONFIRM / _CANCEL).
+  useEffect(() => {
+    actionRegistryService.setCurrentContext(VOICE_CONTEXT.GROSSING);
+    const unsubscribe = actionRegistryService.onAction((actionId: string) => {
+      if (actionId === 'GROSSING_COMPLETE') void handleCompleteGrossing();
+      else if (actionId === 'GROSSING_COMPLETE_CONFIRM' && pendingProtocolConfirmation) void confirmCompleteWithoutProtocol();
+      else if (actionId === 'GROSSING_COMPLETE_CANCEL' && pendingProtocolConfirmation) cancelCompleteWithoutProtocol();
+    });
+    return () => { unsubscribe(); actionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
+  }, [handleCompleteGrossing, pendingProtocolConfirmation, confirmCompleteWithoutProtocol, cancelCompleteWithoutProtocol]);
+
   const onRemoveBlock = useCallback(async (specimenId: string, blockId: string) => {
     const result = await handleRemoveBlock(specimenId, blockId);
-    if ('error' in result) window.alert(result.error);
-  }, [handleRemoveBlock]);
+    if (!result.ok) window.alert(t('grossingScreen.removeBlockFailed'));
+  }, [handleRemoveBlock, t]);
 
   const onRemoveStainClick = useCallback(async (specimenId: string, blockId: string, stainId: string) => {
     await handleRemoveStain(specimenId, blockId, stainId);
@@ -104,7 +127,52 @@ const GrossingScreenPage: React.FC = () => {
         <button className="ps-btn-secondary" onClick={() => navigate(`/case/${caseId}/synoptic`)}>
           {t('grossingScreen.backToCase')}
         </button>
-        <h1 className="ps-grossing-screen-title">{t('grossingScreen.pageTitle', { accession: caseData.accession?.fullAccession ?? caseData.id })}</h1>
+        <h1 className="ps-grossing-screen-title" data-phi="accession">{t('grossingScreen.pageTitle', { accession: caseData.accession?.fullAccession ?? caseData.id })}</h1>
+      </div>
+
+      {/* Batch 378 (PS-359): Complete grossing, checked against the
+          organisation's Grossing field requirements. */}
+      <div className="ps-grossing-complete-bar">
+        {caseData.status === 'gross-complete' ? (
+          <>
+            <span className="ps-grossing-complete-done">✓ {t('grossingScreen.complete.done')}</span>
+            {completionReview && completionReview.routedForReview.length > 0 && (
+              <p className="ps-grossing-complete-review" role="status">
+                {t('grossingScreen.complete.routedForReview', { count: completionReview.routedForReview.length, specimens: formatList(completionReview.routedForReview, i18n.language) })}
+              </p>
+            )}
+            {completionReview && completionReview.reviewNotRaised.length > 0 && (
+              <p className="ps-grossing-complete-error" role="alert">
+                {t('grossingScreen.complete.reviewNotRaised', { count: completionReview.reviewNotRaised.length, specimens: formatList(completionReview.reviewNotRaised, i18n.language) })}
+              </p>
+            )}
+          </>
+        ) : canCompleteGrossingFrom(caseData.status) ? (
+          <>
+            <CapabilityButton capability="case:grossing:complete" className="ps-btn-primary"
+              context={{ caseId: caseData.id, facilityId: caseData.order?.facilityId ?? null }}
+              disabled={missingItems.length > 0} onClick={() => { void handleCompleteGrossing(); }}>
+              {t('grossingScreen.complete.button')}
+            </CapabilityButton>
+            {missingItems.length > 0 && (
+              <p className="ps-grossing-complete-missing" role="status">
+                {t('fieldRequirements.stillRequired', { fields: formatList(missingItems.map(m => m.where.length
+                  ? t('grossingScreen.complete.missingAt', { field: t(`fieldRequirements.fields.grossing.${m.fieldId}`), where: formatList(m.where, i18n.language) })
+                  : t(`fieldRequirements.fields.grossing.${m.fieldId}`)), i18n.language) })}
+              </p>
+            )}
+            {missingItems.length === 0 && secondaryReviewSpecimens.length > 0 && (
+              <p className="ps-grossing-complete-review" role="status">
+                {t('grossingScreen.complete.reviewNotice', { count: secondaryReviewSpecimens.length, specimens: formatList(secondaryReviewSpecimens, i18n.language) })}
+              </p>
+            )}
+            {completeRefusal && completeRefusal !== 'missing' && completeRefusal !== 'needsConfirmation' && (
+              <p className="ps-grossing-complete-error" role="alert">{t(`grossingScreen.complete.refusals.${completeRefusal}`)}</p>
+            )}
+          </>
+        ) : (
+          <span className="ps-grossing-complete-past">{t('grossingScreen.complete.pastGrossing')}</span>
+        )}
       </div>
 
       {(caseData.specimens ?? []).map((sp: Specimen) => {
@@ -143,24 +211,27 @@ const GrossingScreenPage: React.FC = () => {
                 Specimen.ts's own doc comments for the full reasoning. */}
             <div className="ps-grossing-fixation-tracking">
               <div className="ps-grossing-fixation-field">
-                <span className="ps-grossing-fixation-label">Fixation ended:</span>
+                <span className="ps-grossing-fixation-label">{t('grossingScreen.fixation.endedLabel')}</span>
                 {sp.processing?.fixationEndedAt ? (
-                  <span className="ps-grossing-fixation-value">{new Date(sp.processing.fixationEndedAt).toLocaleString()}</span>
+                  <span className="ps-grossing-fixation-value">{formatDateTime(sp.processing.fixationEndedAt, i18n.language)}</span>
                 ) : (
                   <button type="button" className="ps-grossing-fixation-action" onClick={() => handleRecordFixationEnded(sp.id)}>
-                    Record now
+                    {t('grossingScreen.fixation.recordNow')}
                   </button>
                 )}
               </div>
               <div className="ps-grossing-fixation-field">
-                <span className="ps-grossing-fixation-label">Fixative:tissue ratio:</span>
+                <span className="ps-grossing-fixation-label">{t('grossingScreen.fixation.ratioLabel')}</span>
                 {sp.processing?.fixativeToTissueRatioConfirmation ? (
                   <span className="ps-grossing-fixation-value">
-                    Confirmed by {sp.processing.fixativeToTissueRatioConfirmation.userName} \u2014 {new Date(sp.processing.fixativeToTissueRatioConfirmation.confirmedAt).toLocaleString()}
+                    {t('grossingScreen.fixation.ratioConfirmedBy', {
+                      name: sp.processing.fixativeToTissueRatioConfirmation.userName,
+                      when: formatDateTime(sp.processing.fixativeToTissueRatioConfirmation.confirmedAt, i18n.language),
+                    })}
                   </span>
                 ) : (
                   <button type="button" className="ps-grossing-fixation-action" onClick={() => handleConfirmFixativeRatio(sp.id)}>
-                    Confirm adequate ratio
+                    {t('grossingScreen.fixation.confirmRatio')}
                   </button>
                 )}
               </div>
@@ -171,12 +242,12 @@ const GrossingScreenPage: React.FC = () => {
               {(!sp.processing?.fixationEndedAt || !sp.processing?.fixativeToTissueRatioConfirmation) && (
                 specimensWithOpenFixationDeficiency.has(sp.id) ? (
                   <div className="ps-grossing-fixation-field">
-                    <span className="ps-grossing-fixation-value ps-grossing-fixation-value--flagged">Deficiency raised</span>
+                    <span className="ps-grossing-fixation-value ps-grossing-fixation-value--flagged">{t('grossingScreen.fixation.deficiencyRaised')}</span>
                   </div>
                 ) : (
                   <div className="ps-grossing-fixation-field">
                     <button type="button" className="ps-grossing-fixation-action ps-grossing-fixation-action--deficiency" onClick={() => handleRaiseFixationDeficiency(sp.id)}>
-                      Raise deficiency
+                      {t('grossingScreen.fixation.raiseDeficiency')}
                     </button>
                   </div>
                 )
@@ -319,7 +390,7 @@ const GrossingScreenPage: React.FC = () => {
                         {t('grossingScreen.auditEntry', {
                           blockLabel: ov.blockLabel, field: t(`grossingScreen.auditField.${ov.field}`),
                           originalValue: ov.originalValue, newValue: ov.newValue, actor: ov.actor,
-                          timestamp: new Date(ov.timestamp).toLocaleString(),
+                          timestamp: formatDateTime(ov.timestamp, i18n.language),
                         })}
                       </div>
                     ))
@@ -343,6 +414,29 @@ const GrossingScreenPage: React.FC = () => {
             <div className="ps-batch-modal-footer">
               <button className="ps-btn-secondary" onClick={cancelPendingStainRemoval}>{t('common.cancel')}</button>
               <button className="ps-btn-primary" onClick={confirmPendingStainRemoval}>{t('grossingScreen.confirmRemove')}</button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Batch 379 (Pete): the organisation has switched off the protocol
+          rule, and some specimens have no protocol. Completing routes each
+          of them for secondary review. */}
+      {pendingProtocolConfirmation && (
+        <div className="ps-overlay" onClick={cancelCompleteWithoutProtocol}>
+          <div className="ps-modal-dark" role="alertdialog" aria-labelledby="grossing-no-protocol-title" onClick={e => e.stopPropagation()}>
+            <div className="ps-batch-modal-header">
+              <div id="grossing-no-protocol-title" className="ps-batch-modal-title">{t('grossingScreen.complete.withoutProtocol.title')}</div>
+            </div>
+            <div className="ps-batch-modal-body">
+              <p>{t('grossingScreen.complete.withoutProtocol.body', { count: pendingProtocolConfirmation.length })}</p>
+              <p className="ps-grossing-complete-review">
+                {t('grossingScreen.complete.withoutProtocol.specimens', { count: pendingProtocolConfirmation.length, specimens: formatList(pendingProtocolConfirmation, i18n.language) })}
+              </p>
+            </div>
+            <div className="ps-batch-modal-footer">
+              <button className="ps-btn-secondary" onClick={cancelCompleteWithoutProtocol}>{t('common.cancel')}</button>
+              <button className="ps-btn-primary" onClick={() => { void confirmCompleteWithoutProtocol(); }}>{t('grossingScreen.complete.withoutProtocol.confirm')}</button>
             </div>
           </div>
         </div>

@@ -254,7 +254,7 @@ const InterfaceExceptionReviewModal: React.FC<Props> = ({ exception, requestedBy
                             disabled={busy}
                           />
                           <div className="ps-iexc-case-info">
-                            <div className="ps-iexc-case-id">{c.id}</div>
+                            <div className="ps-iexc-case-id" data-phi="accession">{c.id}</div>
                             <div className="ps-iexc-case-detail">{c.specimenLabel}{c.facilityName ? ` · ${c.facilityName}` : ''} · {c.status}</div>
                           </div>
                         </label>

@@ -247,6 +247,8 @@ rather than left uncovered. Grouped by real, related concern.
   of the same fallback-chain rule `hooks/useEffectiveScanStation.ts`
   already implements reactively — needed as a plain function since
   `audit/auditLogger.ts`'s `logEvent()` isn't a hook and can't call one.
+  Batch 343 (PS-60): the user's home station is read through
+  `services/auth/sessionProfile.ts` instead of parsing the stored session here.
 - **`blockExceptionStates.ts`** — real feature, per direct follow-up
   building a full exception-states matrix for the grossing bench
   (STAT/urgent, 0 slides, Consumed/Entirely Submitted, Damaged, Lost)
@@ -339,6 +341,13 @@ rather than left uncovered. Grouped by real, related concern.
 Both extracted specifically to be reusable across every config
 dictionary, not just the two files that first needed them — per
 direct request for "a general pattern across many dictionary types."
+PS-73 (Sep 2026) rolled this out to most of PathScribe's remaining
+config dictionaries across several passes; this section was found
+stale (left listing only the first two dictionaries, from long before
+that rollout finished) and is rewritten here against a real,
+current, code-verified consumer list rather than extended piecemeal
+again — see each dictionary's own `Config/*/README.md` entry for
+per-dictionary detail.
 
 - **`duplicateEntry.ts`** (+ `.test.ts`) — `prepareDuplicate()`: given
   an existing entry, returns a copy with its display-name field
@@ -347,29 +356,100 @@ direct request for "a general pattern across many dictionary types."
   used to call `.add()` immediately and reload the list — the user had
   to find the silent copy afterward to edit it. Confirmed live (not
   just in code) that the fixed flow now opens the form pre-filled and
-  only saves on a real, explicit Save. Also used by
-  `ContainerTypesSection.tsx` and `DelegationTypeSection.tsx`.
+  only saves on a real, explicit Save.
+
+  Real, current consumers (verified directly against the source, not
+  carried forward from an earlier list):
+  - `StainDictionarySection.tsx` — 4 separate call sites, one per
+    sub-entity this one file manages: Stain Types (`name`), Protocols
+    (`name`), Macros (`label`), Targets (`symbol`).
+  - `ContainerTypesSection.tsx` — `name`.
+  - `DelegationTypeSection.tsx` — `label`.
+  - `CasePoolAssignmentSection.tsx` — `note` (a routing rule's own
+    display field; not caught by the earlier list at all — found via
+    a real, independent grep across the whole codebase for this pass,
+    not by re-reading the old list).
+  - `FacilityDictionaryPage.tsx` (**new, PS-73 Sep 2026 — the one
+    dictionary this ticket's own target matrix named and that had
+    genuinely never been wired**) — `name`, via
+    `handleDuplicateFacility()`. Not a plain `prepareDuplicate()`
+    "(Copy)"-and-done clone: `Facility` carries real person-shaped
+    contact fields (`contactGivenNames`/`email`/`phone`/etc.)
+    alongside its own org-level config, so `preparePersonDuplicate()`
+    below doesn't fit either (deliberately scoped to person records
+    only) — the handler clears those fields by hand instead, plus
+    `assigningAuthority` itself (the field a real, live lookup in
+    `mockOrderIntakeService.ts` keys facility resolution on — copying
+    it verbatim would be an immediate, real collision, caught by
+    `FacilityEditorModal.tsx`'s own new `findDuplicate()` check below
+    if it somehow got through unchanged). See that handler's own
+    header comment for the full field-by-field account.
+  - `preparePersonDuplicate()` (companion function, same file) —
+    scoped deliberately to person-shaped dictionary entries, not a
+    general "clear some fields" tool other dictionaries should reach
+    for (see its own header comment). One real consumer:
+    `PhysiciansSection.tsx`'s `handleClonePhysician()`, via
+    `PHYSICIAN_PERSON_FIELDS` (name fields, `npi`, `physicianCode`,
+    `phone`/`fax`/`email`/SMS fields — `smsCarrier` cleared separately
+    since it's an enum, not a string).
+
 - **`validateUnique.ts`** (+ `.test.ts`) — `findDuplicate()`: generic
   collision check across one or more keys, case-insensitive, with an
   optional id to exclude (so editing an entry unchanged never flags
-  itself). Real, confirmed uses: dictionary name uniqueness (per
-  direct request — "I need the Name to be Unique, or staff will get
-  confused"); `CrosswalkSection.tsx`'s own `clientId` +
-  `externalCode` combination — confirmed against
-  `mockOrderIntakeService.ts`'s real `resolveOrder()` lookup, which
-  does exactly this compound, case-insensitive match; two entries
-  colliding on it would let `.find()` silently resolve a real incoming
-  specimen to the wrong dictionary entry; `ContainerTypesSection.tsx`'s
-  `performingLabFacilityId` + `name` and `performingLabFacilityId` +
-  `aplisMapping`; and `DelegationTypeSection.tsx`'s
-  `performingLabFacilityId` + `label` and `performingLabFacilityId` +
-  `id` — each its own compound check — per direct follow-up
-  ("Each Performing Lab will want their own types"), a collision is
-  only real within the same lab's own scope (including "both
-  undefined" as its own real, global scope), never against a
-  different lab's own types. Verified live, every direction
-  independently for every real use: a same-scope collision is
-  blocked, a genuinely different scope is correctly allowed through.
+  itself). Per direct follow-up on the compound checks below ("Each
+  Performing Lab will want their own types"), a collision is only real
+  within the same lab's own scope (including "both undefined" as its
+  own real, global scope), never against a different lab's own types.
+
+  Real, current consumers (verified directly against the source):
+  - Single-key: `PhysiciansSection.tsx` (`physicianCode`, `npi` —
+    independent checks), `TypeModal.tsx` (`label`, `abbreviation` —
+    the shared modal ~9 admin screens use, per
+    `components/Config/README.md`'s own account),
+    `StainDictionarySection.tsx` (`name` for both Stain Types and
+    Protocols, `label` for Macros — Targets uses its own inline
+    `symbol`+`detail` check instead of this helper, since a colliding
+    `symbol` with a genuinely different `detail` is legitimately not a
+    collision, a shape `findDuplicate()`'s flat key-equality doesn't
+    fit as directly; real and working, just not routed through the
+    shared helper), `CrosswalkSection.tsx` (`clientId` + `externalCode`
+    together, confirmed against `mockOrderIntakeService.ts`'s real
+    `resolveOrder()` lookup, which does exactly this compound,
+    case-insensitive match — two entries colliding on it would let
+    `.find()` silently resolve a real incoming specimen to the wrong
+    dictionary entry), `FacilityEditorModal.tsx` (**new, PS-73 Sep
+    2026** — `assigningAuthority`, the same real reasoning as
+    `CrosswalkSection.tsx`'s check: `mockOrderIntakeService.ts`'s real
+    Facility-resolution lookup keys directly on it).
+  - Compound (lab-scoped): `CassetteColorsSection.tsx`
+    (`performingLabFacilityId`+`key`, `performingLabFacilityId`+
+    `displayName`), `SpecimenCategoriesSection.tsx`
+    (`performingLabFacilityId`+`name`), `DeficienciesSection.tsx`
+    (`performingLabFacilityId`+`name`), `SubspecialtiesSection.tsx`
+    (`performingLabFacilityId`+`name` — real-lab-scoped since
+    Subspecialty linking became ID-based rather than bare-name, PS-75),
+    `ContainerTypesSection.tsx` (`performingLabFacilityId`+`name`,
+    `performingLabFacilityId`+`aplisMapping`),
+    `DelegationTypeSection.tsx` (`performingLabFacilityId`+`label`,
+    `performingLabFacilityId`+`id`), `ProtocolDictionarySection.tsx`
+    (`performingLabFacilityId`+`name`),
+    `AbnormalTriggerRulesSection.tsx`
+    (`performingLabFacilityId`+`fieldLabel`).
+
+  Verified live, every direction independently for every real use: a
+  same-scope collision is blocked, a genuinely different scope is
+  correctly allowed through.
+
+  **Deliberate, confirmed non-consumers — checked, not overlooked:**
+  Governing Bodies and Participation Types (no real downstream
+  `.find()`/lookup keyed on anything in either, confirmed per PS-73's
+  own two-question audit) and Client Dictionary (the standalone
+  `components/ClientDictionary/` fork this ticket's own original
+  matrix named was itself confirmed genuinely dead — zero real imports
+  anywhere — and deleted; `FacilityDictionaryPage.tsx`/
+  `FacilityEditorModal.tsx` above are its real, living successor and
+  are now wired, closing what was actually the same gap under its
+  current name).
 
 ### Performing Lab scoping
 
@@ -394,6 +474,44 @@ direct request for "a general pattern across many dictionary types."
   failed under plain Node until the test file got the same
   `// @vitest-environment happy-dom` directive already used elsewhere
   in this codebase for exactly this reason.
+
+## Batch 317 (PS-73)
+
+- **`duplicateEntry.ts`:** `prepareDuplicate(source, nameKey, copyName)` now requires the caller's localized copy-name formatter. Its English `" (Copy)"` default was being saved as data. `preparePersonDuplicate` was removed: its only user was Physicians, which no longer offers Duplicate. Entity-specific copy rules live in `services/duplication/`.
+- **`downloadJson.ts`** (new): JSON counterpart of `csv.ts`'s `downloadCsv`, used by the protocol Export JSON action.
+
+## Batch 325 (PS-52)
+
+`labels/dispatchNetworkPrintJob.ts` (Batch 347, PS-54): unique job ids per label, slide payloads, a retry `attempt`; the engine's answers are handled by `services/networkPrint/`.
+
+`labels/pathscribeAgent/`: PathScribe's client for the workstation PathScribe Agent (discovery, printing, job outcome matching) and the WebSocket contract the agent is built to. Batch 346 added a configurable port (tried first), the optional `PRINT_STARTED` message, and `printJobStatus.ts` for the on-screen progress line. See `labels/pathscribeAgent/README.md`.
+
+## Batch 330 (deployment readiness)
+
+**`uiPreferences.ts`** (+ `.test.ts`, new) is the one sanctioned place for UI code to keep per-user display preferences in the browser: `getUiPreference`, `setUiPreference`, `clearUiPreference`, stored under a `ps_ui_` prefix. Every access is wrapped, so blocked storage or bad data falls back to the default. Data must go through a service instead. See `services/deploymentReadiness/`.
+
+## Batch 327 (HTTPS)
+
+- **`serviceEndpoint.ts`** (+ `serviceEndpoint.test.ts`, new): HTTPS rules for back-end URLs the browser calls directly.
+  - `resolveServiceEndpoint` gives a production build its configured `https://` URL. A missing, malformed or plain-HTTP value is refused with a message naming the env var to fix.
+  - A development build may use `https://` or plain HTTP to this machine (localhost, 127.0.0.1, [::1]), and falls back to the local emulator default.
+  - `isHttpsUrl` and `isLoopbackHttpUrl` are the checks behind it.
+  - Used for the report renderer and the interface receiver, and for the grossing scale agent's address.
+- **`labels/pathscribeAgent/`:** the agent connection is `wss://` only, with a per-workstation certificate. See `labels/pathscribeAgent/README.md`.
+
+## Batch 356
+
+**`formatList.ts`** (+ `.test.ts`): joins translated items the way the user's language does ("a, b, and c" / "a et b" / "a und b"), using `Intl.ListFormat`. This avoids English commas and "and" between translated pieces.
+
+## Batch 360
+
+**`facilityTime.ts`** gained `getFacilityIsoDate(input, timezone)`: the facility's calendar date as `YYYY-MM-DD`. The equipment register uses it as "today" for due dates.
+
+## Batch 372
+
+- **`downloadText.ts`:** `downloadText(filename, content, mime)` downloads text a service already built (the support audit's CSV or JSON export). A CSV gets a UTF-8 byte-order mark so Excel reads accents correctly.
+
+- **Batch 375, `uiPreferences.ts`:** `getSessionFlag` / `clearSessionFlag` read and clear a per-tab, session-only flag under the exact key another screen set (the report header's "back to messages").
 
 ---
 *Note on structure: earlier entries above this section predate the
@@ -429,3 +547,49 @@ own later additions.*
   content wasn't tall enough to scroll at all, not that the fix
   worked) — see `pages/README.md`'s own `ConfigurationPage.tsx` entry
   for the fuller account.
+
+## Batch 340 (PS-344)
+
+**`safeInternalPath.ts`** (new, + `.test.ts`): returns a navigation target only if it is a PathScribe path. It refuses `//host`, `/\host`, schemes, backslashes, whitespace and control characters. React Router 6 treated `/\evil.example` as another site (GHSA-wrjc-x8rr-h8h6, fixed in React Router 7.18), so any target read from stored data goes through this before `navigate()`. Batch 341 upgraded to React Router 7; the guard stays as a second line of defence. The first user is `AppShell`'s message config links.
+
+## Batch 338 (PS-342)
+
+**`labelStyleVars.ts`** (new): a report template's label formatting (`LabelConfig`: case, weight, underline, size, font) as `--label-*` CSS custom properties, set only for configured values. `OrchestratorSectionEditor.tsx`'s specimen section titles use it in place of an inline `style={labelStyle(…)}`; `.ps-ose-section-card-title--specimen` reads the properties, with the title's normal look as each fallback. `uiPreferences.ts` gained its first editor user: `PathScribeEditor`'s light/dark theme (`editorTheme`).
+
+## Batch 335 (PS-341)
+
+`participationTypeLookup.ts` gains `invalidateParticipationTypeLookup()`. The cached list used to last for the whole session, so a saved signing-rule change (a country profile or a lab override) didn't reach the sign-out check until a reload. `services/participationTypes/saveParticipationType.ts` and `saveCountryProfiles.ts` now clear the cache after every successful save. Tested in `participationTypeLookup.test.ts` (new).
+
+## Batch 349 (PS-100, PS-101)
+
+**`toastPolicy.ts`** (new, + `.test.ts`): how long a toast stays. Warnings and errors, and any message over 120 characters, stay until the user closes them; short confirmations fade after 4 to 9 seconds, depending on length. Pete's report (PS-100): complex warnings disappeared before they could be read.
+
+**`installToastPolicy.ts`** (new, + `.test.ts`): applies that rule to every react-toastify toast. `App.tsx` calls it once; it listens for each new toast and sets its close time, so no `toast.*` call site had to change. A toast can opt out with `data: { keepAutoClose: true }`.
+
+**`search/resolveSearchDateRange.ts`** (new folder, + `.test.ts`): the Search page's accession-date range. When the user searches by an identifier and hasn't chosen dates, every date is searched: an accession number or MRN names the case, so the hidden 30-day default only hid it (PS-101).
+
+**`detectIdentifierType.ts`**: a value that matches no configured format now fills `anyIdentifier` (matched against name, MRN or accession) instead of filling patient name, MRN and MPI together, which all had to match, so an MRN typed alone found nothing (PS-101).
+
+## Batch 350 (Search repair)
+
+- **`search/`** now has its own README. It holds the Search page's decisions: building the server request, the summary, the CSV, date shortcuts, session state, specimen suggestions and picker filters.
+- **`detectIdentifierType.ts`**: a requisition number now fills `orderNo` (the order-number filter). It used to fill `accessionNo`, which is compared to accession numbers only, so it never matched.
+- **`caseRevisionDisplay.ts`**: `getCaseStatusLabel(status, revision, t)` returns a translated label (`caseStatusDisplay.*`). It was English only (Title Case of the status code, and "Final (Amended)"). Callers: `WorklistTable.tsx` (both views) and the report page's `HeaderBar.tsx`. The English wording is unchanged, except "Ai Assisted" is now "AI-Assisted".
+
+**Batch 351:** `search/` gained the section 3 filters' request, labels and summary, and a sign-out column in the CSV. See `search/README.md`.
+
+## Batch 362
+
+`formatOrdinal.ts` treats a regional variant (nl-BE, en-GB) as its language, so Belgian Dutch gets the Dutch ordinal (3e). New `formatOrdinal.test.ts`.
+
+## Batch 365 (PS-347)
+
+- **`isoDateForSearch.ts`** writes and matches every jurisdiction's date format: Dutch DD-MM-YYYY and German DD.MM.YYYY join the slash and year-first forms. German dates of birth were written month first in the order lookup.
+- **`formatDate.ts`:** `dateFormatHint` returns `JurisdictionDateFormat`.
+- New tests in `isoDateForSearch.test.ts` check each jurisdiction's written form, and that the Dutch form matches nl-NL formatting.
+
+## Batch 367 (PS-74)
+
+- **`labelStyleVars.ts`** takes an optional name prefix (`--<prefix>-size`, …), so nested elements each read their own settings. It is used by the report preview's page, header, footer, headings and labels, and by the Document Style and Template Assembly previews.
+
+- **Batch 376:** `formatList` is now also used by the Accession page (missing required fields, department conflicts).

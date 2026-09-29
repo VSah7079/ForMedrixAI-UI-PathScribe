@@ -1,16 +1,48 @@
 type CodeModalSystem = 'snomed' | 'icd' | 'SNOMED' | 'ICD-10' | 'ICD-11' | 'ICD-O-topography' | 'ICD-O-morphology';
 
-import React, { useState, useEffect, useRef } from 'react';
+// src/pages/SearchPage.tsx
+// ─────────────────────────────────────────────────────────────────────────────
+// Case search. Batch 350 (Pete: "the search is largely broken … results
+// should be paged so that the heavy lifting is done on the server side"):
+//   • the page keeps one draft of the filters (CaseSearchDraft) and sends it
+//     to the case search service (@/services caseSearchService), which
+//     applies the user's access rules, matches, sorts, counts and returns one
+//     page; the page shows that page with a pager and the total;
+//   • CSV export asks the service for every match (up to its limit), not just
+//     the rows on screen, and is audited;
+//   • saved searches go through the saved-search service (they were kept in
+//     this browser only, and dropped the facility and specimen-flag filters);
+//   • the last search is restored from utils/search/searchSession.ts (filters
+//     and page only: results are fetched again, so no patient data is kept
+//     in the browser);
+//   • decisions moved to utils/search/ (building the request, the summary,
+//     the CSV, date shortcuts, specimen suggestions) and services/caseSearch/;
+//   • synoptic protocols come from the protocol registry, not a hard-coded
+//     list; flags are chosen by id.
+// ─────────────────────────────────────────────────────────────────────────────
+
+import React, { useState, useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
-import { caseRouter } from '../services/cases/CaseRouter';
 import WorklistTable from '../components/Worklist/WorklistTable';
 import { ReassignCasePatientPanel } from '../components/Search/ReassignCasePatientPanel';
-import { codeService, flagService, userService, physicianService, facilityService, subspecialtyService } from '../services';
+import {
+  codeService, flagService, userService, physicianService, facilityService, subspecialtyService,
+  caseSearchService, savedSearchService, actionRegistryService,
+  CASE_SEARCH_STATUS_OPTIONS, CASE_SEARCH_PRIORITY_OPTIONS, CASE_SEARCH_SEX_OPTIONS, CASE_SEARCH_SORT_OPTIONS,
+  CASE_SEARCH_PAGE_SIZES, DEFAULT_CASE_SEARCH_SORT, DEFAULT_CASE_SEARCH_PAGE_SIZE, emptyCaseSearchDraft,
+  CASE_SEARCH_DATE_BASES, CASE_SEARCH_CASE_TYPES, CASE_SEARCH_PATHOLOGIST_ROLES, CASE_SEARCH_REVISION_TYPES,
+  CASE_SEARCH_HOLD_TYPES, CASE_SEARCH_RESULT_FLAGS, CASE_SEARCH_PENDING_WORK, CASE_SEARCH_INTAKES,
+  CASE_SEARCH_AUTOPSY_AUTHORITIES, CASE_SEARCH_AUTOPSY_REPORTS, locationService,
+} from '../services';
+import type {
+  ClinicalCode, Flag, SavedSearch, CaseSearchDraft, CaseSearchPage, CaseSearchSort, CaseSearchDateBasis, CaseSearchPathologistRole,
+} from '../services';
+import { getActivePerformingLabs } from '../utils/performingLabs';
+import { listTemplatesCached } from '../services/templates/templateService';
 import { getStaffSubspecialtyDisplay } from '../utils/staffSubspecialties';
-import type { PathologyCase, CaseFilterParams, ClinicalCode, Flag } from '../services';
 import { LookupModal, LookupSearch, LookupItem, LookupSection, LookupEmpty } from '../components/Common/LookupModal';
 // Extended component — adds onClear prop until LookupModal.tsx is updated
 const LookupModalX = LookupModal as React.ComponentType<React.ComponentProps<typeof LookupModal> & { onClear?: () => void; onDone?: () => void }>;
@@ -18,220 +50,48 @@ import { useSpecimenDictionary } from '../components/Config/System/useSpecimenDi
 import type { SpecimenEntry } from '../services/specimenDictionary/specimenTypes';
 import { useSystemConfig } from '../contexts/SystemConfigContext';
 import { useEnabledIdentifierFormats } from '../hooks/useEnabledIdentifierFormats';
-import { getFacilityDateParts } from '@/utils/facilityTime';
 import { useBreadcrumb }   from '../contexts/BreadcrumbContext';
-import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { detectIdentifierType, resolveIdentifierApplication } from '../utils/detectIdentifierType';
 import type { IdentifierType } from '../utils/detectIdentifierType';
 import { deriveLegacyFormats } from '../types/systemConfig';
 import { VOICE_CONTEXT } from '../constants/systemActions';
+import { downloadCsv } from '../utils/csv';
+import { getUiPreference, setUiPreference } from '../utils/uiPreferences';
+import {
+  addTerm, applyIdentifierToDraft, buildCaseSearchRequest, countDraftFilters, countMoreFilters, draftToCriteria,
+  normalizeCaseSearchDraft, toggleInList,
+} from '../utils/search/buildCaseSearchRequest';
+import { describeCaseSearch, pageRange } from '../utils/search/describeCaseSearch';
+import { buildCaseSearchCsv, caseSearchCsvFilename, formatCalendarDate } from '../utils/search/caseSearchCsv';
+import {
+  CASE_PRIORITY_HUE, CASE_PRIORITY_LABEL_KEY, CASE_SEARCH_SORT_LABEL_KEY, CASE_SEX_LABEL_KEY,
+  CASE_STATUS_HUE, CASE_STATUS_LABEL_KEY, sortOptionKey,
+  AUTOPSY_AUTHORITY_LABEL_KEY, AUTOPSY_JURISDICTIONS, AUTOPSY_REPORT_LABEL_KEY, CASE_TYPE_LABEL_KEY, DATE_BASIS_LABEL_KEY,
+  HOLD_TYPE_LABEL_KEY, INTAKE_LABEL_KEY, PATHOLOGIST_ROLE_LABEL_KEY, PENDING_WORK_LABEL_KEY, RESULT_FLAG_HUE,
+  RESULT_FLAG_LABEL_KEY, REVISION_TYPE_LABEL_KEY,
+} from '../utils/search/caseSearchLabels';
+import {
+  DEFAULT_SEARCH_DATE_SHORTCUT, SEARCH_DATE_SHORTCUT_DAYS, facilityDateString, matchDateShortcut, shortcutDateRange,
+  type SearchDateShortcut,
+} from '../utils/search/searchDateShortcuts';
+import {
+  clearLastCaseSearch, consumeReturnToSearch, loadLastCaseSearch, saveLastCaseSearch, setCaseOpenedFrom,
+} from '../utils/search/searchSession';
+import { suggestSpecimens } from '../utils/search/suggestSpecimens';
+import { filterLookup, groupLookup } from '../utils/search/lookupFilter';
 
-// â”€â”€â”€ Helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-// Real fix: was d.toISOString().split('T')[0] - extracts the UTC date,
-// not the real, facility-local one. Not caught by the project's
-// no-restricted-properties lint rule at all (toISOString/split isn't
-// one of the restricted methods) despite being the same real bug -
-// worth a real, separate note for whoever next extends that rule.
-const toFacilityDateString = (d: Date, timezone: string): string => {
-  const { year, month, day } = getFacilityDateParts(d, timezone);
-  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
-};
-const today   = (timezone: string): string => toFacilityDateString(new Date(), timezone);
-// eslint-disable-next-line no-restricted-properties -- Real, honest justification: computes the absolute "N days ago" instant (real milliseconds subtraction) - the real, facility-timezone-aware conversion to a displayed calendar date already happens downstream via toFacilityDateString(d, timezone) above.
-const daysAgo = (n: number, timezone: string): string => { const d = new Date(); d.setDate(d.getDate() - n); return toFacilityDateString(d, timezone); };
-
-const DATE_RANGE_SHORTCUTS: [string, number][] = [['7d',7],['30d',30],['90d',90],['1yr',365]];
-// Real, live page size for Load More - both mock and Firestore backends
-// now honor pageSize/cursor identically (caseFilterUtils.ts's
-// applyCasePagination, FirestoreCaseService.ts's limit()/startAfter()).
-const SEARCH_PAGE_SIZE = 25;
-// Shared by applyFilters and the breadcrumb-return session-snapshot
-// restore — both set dateFrom/dateTo from a previously-saved/captured
-// value and need to re-derive whether that value happens to match one of
-// the four shortcut buttons, so the button's active-state highlight stays
-// correct after a restore, not just after a direct click.
-const matchDateRangeShortcut = (from: string, to: string, timezone: string): string | null => {
-  if (!from && !to) return 'all';
-  const match = DATE_RANGE_SHORTCUTS.find(([, days]) => from === daysAgo(days, timezone) && to === today(timezone));
-  return match ? match[0] : null;
-};
-const fmtDate = (iso: string): string => {
-  if (!iso) return '';
-  const [y, m, d] = iso.split('-');
-  const months = ['Jan','Feb','Mar','Apr','May','Jun','Jul','Aug','Sep','Oct','Nov','Dec'];
-  return `${months[parseInt(m,10)-1]} ${parseInt(d,10)}, ${y}`;
-};
-
-// â”€â”€â”€ localStorage / sessionStorage â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-const LS_KEY = 'pathscribe:savedSearches';
-const lsLoad = (): SavedSearch[] => { try { const r = localStorage.getItem(LS_KEY); return r ? JSON.parse(r) : []; } catch { return []; } };
-const lsSave = (s: SavedSearch[]) => { try { localStorage.setItem(LS_KEY, JSON.stringify(s)); } catch {} };
-
-const SS_KEY = 'pathscribe:lastSearch';
-interface LastSearchSnapshot { filters: FilterState; results: PathologyCase[]; hasSearched: boolean; }
-const ssLoad  = (): LastSearchSnapshot | null => { try { const r = sessionStorage.getItem(SS_KEY); return r ? JSON.parse(r) : null; } catch { return null; } };
-const ssSave  = (s: LastSearchSnapshot) => { try { sessionStorage.setItem(SS_KEY, JSON.stringify(s)); } catch {} };
-const ssClear = () => { try { sessionStorage.removeItem(SS_KEY); } catch {} };
-
-// â”€â”€â”€ Specimen dictionary (used for inline typeahead only) â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// Full specimen list lives in mockSpecimenService ”” this is just for the
-// search field suggestions until that service is wired to this page.
-const SPECIMEN_DICTIONARY = [
-  'Left Breast Mastectomy','Right Breast Mastectomy','Right Breast Lumpectomy','Left Breast Lumpectomy',
-  'Right Hemicolectomy','Left Hemicolectomy','Radical Prostatectomy','Left Lower Lobe Lobectomy',
-  'Right Upper Lobe Lobectomy','Total Thyroidectomy','Partial Thyroidectomy',
-  'Cholecystectomy','Appendectomy','Partial Nephrectomy','Radical Nephrectomy',
-  'Total Hysterectomy','Wide Local Excision','Axillary Node Dissection',
-  'TURBT Specimen','Endocervical Curettage','Cervical Cone Biopsy',
-  'Sentinel Lymph Node Biopsy','Core Needle Biopsy Breast','Prostate Biopsy Cores',
-];
-
-// â”€â”€â”€ SNOMED/ICD inline data removed ”” now served by codeService â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// See src/services/codes/mockCodeService.ts
-
-// â”€â”€â”€ Synoptics â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-interface SynopticTemplate { id: string; name: string; organ: string; category: string; templateId: string; }
-const ALL_SYNOPTICS: SynopticTemplate[] = [
-  // Breast
-  { id:'p01', templateId:'generic_test_complex',       name:'Breast Invasive Carcinoma',      organ:'Breast',      category:'Breast'      },
-  { id:'p02', templateId:'generic_test_basic',         name:'Breast DCIS',                    organ:'Breast DCIS', category:'Breast'      },
-  // GI — alphabetical by organ
-  { id:'p05', templateId:'appendix',                   name:'Appendix',                       organ:'Appendix',    category:'GI'          },
-  { id:'p03', templateId:'generic_test_complex',       name:'Colon Resection',                organ:'Colon',       category:'GI'          },
-  { id:'p04', templateId:'generic_test_complex',       name:'Rectum Resection',               organ:'Rectum',      category:'GI'          },
-  // GU — alphabetical by organ
-  { id:'p09', templateId:'bladder_resection',          name:'Bladder Resection',              organ:'Bladder',     category:'GU'          },
-  { id:'p08', templateId:'generic_test_complex',       name:'Kidney Resection',               organ:'Kidney',      category:'GU'          },
-  { id:'p06', templateId:'generic_test_complex',       name:'Prostatectomy',                  organ:'Prostate',    category:'GU'          },
-  { id:'p07', templateId:'generic_test_complex',       name:'Prostate Biopsy',                organ:'Prostate Bx', category:'GU'          },
-  // Thoracic
-  { id:'p10', templateId:'generic_test_complex',       name:'Lung Resection',                 organ:'Lung',        category:'Thoracic'    },
-  { id:'p11', templateId:'mesothelioma',               name:'Mesothelioma',                   organ:'Pleura',      category:'Thoracic'    },
-  // Endocrine — alphabetical
-  { id:'p13', templateId:'adrenal',                    name:'Adrenal',                        organ:'Adrenal',     category:'Endocrine'   },
-  { id:'p12', templateId:'thyroid_malignant',          name:'Thyroid',                        organ:'Thyroid',     category:'Endocrine'   },
-  // Gynaecology — alphabetical
-  { id:'p15', templateId:'cervix_resection',           name:'Cervix Resection',               organ:'Cervix',      category:'Gynaecology' },
-  { id:'p14', templateId:'endometrium_biopsy',         name:'Endometrium',                    organ:'Uterus',      category:'Gynaecology' },
-  { id:'p16', templateId:'ovary',                      name:'Ovary',                          organ:'Ovary',       category:'Gynaecology' },
-  // Skin — alphabetical
-  { id:'p17', templateId:'generic_test_basic',         name:'Melanoma',                       organ:'Skin',        category:'Skin'        },
-  { id:'p18', templateId:'skin_scc',                   name:'Squamous Cell Carcinoma',        organ:'Skin SCC',    category:'Skin'        },
-  // Bone/Soft — alphabetical
-  { id:'p20', templateId:'bone',                       name:'Bone',                           organ:'Bone',        category:'Bone/Soft'   },
-  { id:'p19', templateId:'soft_tissue',                name:'Soft Tissue',                    organ:'Soft Tissue', category:'Bone/Soft'   },
-  // Haem
-  { id:'p22', templateId:'hodgkin_lymphoma',           name:'Hodgkin Lymphoma',               organ:'Lymphoma',    category:'Haem'        },
-  { id:'p21', templateId:'lymph_node',                 name:'Lymph Node',                     organ:'Lymph Node',  category:'Haem'        },
-];
-
-// â”€â”€â”€ Users â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Picker option shapes ───────────────────────────────────────────────────
 
 interface UserStub { id: string; name: string; secondary: string; }
-// Real fix: ALL_PATHOLOGISTS/ALL_ATTENDINGS used to be hardcoded, static
-// snapshots here - pathologists with fake ids never matching a real
-// services/users/ StaffUser record, and an attending list honestly
-// "sourced from requestingProvider values in mock case data" but then
-// frozen as a static array, meaning a real, new attending on a newly
-// accessioned case would never appear in this search filter. Both are
-// now real, live state fetched inside the component (see
-// pathologists/attendings state + effect below) from userService
-// (filtered to real StaffUser.roles.includes('Pathologist') - real,
-// capitalized casing, verified directly against the real seed data
-// after an initial, lowercase version of this filter was caught
-// silently matching zero real users) and physicianService respectively
-// - the same real services RoleDictionary.tsx/AccessionPage.tsx already use.
+interface SynopticTemplateOption { id: string; name: string; category: string; }
+interface FlagOption { id: string; name: string; abbreviation: string; }
 
-// â”€â”€â”€ Flags â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-// Sorted alphabetically. 'STAT' (shorthand) catches all STAT-prefixed flags via name-contains
-// matching in the service. The PRIORITY → STAT chip in the sidebar filters by case priority;
-// these flag entries target case-level flag badges on the case card.
-// Real fix: same bug class as ALL_PATHOLOGISTS/ALL_ATTENDINGS above - a
-// completely separate, fake id scheme (c1-c8) unrelated to the real
-// services/clients/ roster. Now real, live state (see facilities state +
-// effect below) from facilityService.getAll().
-
-// Real CaseStatus values only (see src/types/case/CaseStatus.ts) — this array
-// previously included 'pending' and 'pending-countersign', neither of which
-// is a valid CaseStatus (the latter is a SynopticReportInstance status, not a
-// Case status), so those two pills never matched any real case. Replaced with
-// 'pathologist-review' (the real "ready for sign-out" status) and dropped the
-// non-existent 'pending' value — folded into 'pending-review', which already
-// covers it. Also adds the three new Orchestration statuses: 'accessioned',
-// 'gross-complete', 'intraoperative-complete'.
-//
-// 'pending-release' added later, per direct specification — Post-Sign-Out
-// Release Buffer. Found missing during a pre-push audit: this list is a
-// real, single source of truth for search filtering, and a brand-new
-// CaseStatus value built while focused on SynopticReportPage.tsx's own
-// display components is exactly the kind of thing that's easy to miss
-// here unless specifically checked for.
-const CASE_STATUS_OPTIONS = [
-  'draft','accessioned','gross-complete','in-progress','intraoperative-complete',
-  'pending-review','pathologist-review','finalizing','finalized','pool','pending-countersign',
-  'pending-release','returned',
-] as const;
-
-// Label + accent color per status — kept in one place instead of inline so the
-// mapping stays legible as statuses are added. Colors match getStatusStyle in
-// WorklistTable.tsx where the same status appears, for visual consistency
-// between Worklist and Search.
-// Label-key map — the CaseStatus values above remain the real, underlying
-// values used for filtering/matching and sent to the backend as literal
-// data; only the on-screen label is translated, via t(STATUS_PILL_META[s].label).
-const STATUS_PILL_META: Record<typeof CASE_STATUS_OPTIONS[number], { label: string; color: string }> = {
-  'draft':                    { label: 'searchPage.statusLabelKey.draft',             color: '#94a3b8' },
-  'accessioned':              { label: 'searchPage.statusLabelKey.accessioned',       color: '#38BDF8' },
-  'gross-complete':           { label: 'searchPage.statusLabelKey.grossComplete',     color: '#14B8A6' },
-  'in-progress':              { label: 'searchPage.statusLabelKey.inProgress',        color: '#0891B2' },
-  'intraoperative-complete':  { label: 'searchPage.statusLabelKey.intraopComplete',   color: '#A855F7' },
-  'pending-review':           { label: 'searchPage.statusLabelKey.pendingReview',     color: '#F59E0B' },
-  'pathologist-review':       { label: 'searchPage.statusLabelKey.pathologistReview', color: '#FB7185' },
-  'finalizing':                { label: 'searchPage.statusLabelKey.finalizing',       color: '#EC4899' },
-  'finalized':                 { label: 'searchPage.statusLabelKey.finalized',        color: '#10B981' },
-  'pool':                      { label: 'searchPage.statusLabelKey.pool',             color: '#F97316' },
-  // Real fix: was missing entirely - confirmed a real, live, currently-
-  // reachable CaseStatus (WorklistPage.tsx's own "Awaiting My
-  // Countersign" filter tile checks this exact status, fixed earlier
-  // in this same audit). Color matches that tile's own existing violet.
-  'pending-countersign':       { label: 'searchPage.statusLabelKey.pendingCountersign', color: '#a78bfa' },
-  // Real feature, per direct specification: Post-Sign-Out Release
-  // Buffer. Color matches HeaderBar.tsx's own dedicated teal for this
-  // exact status, for the same cross-page visual-consistency reasoning
-  // as the comment above.
-  'pending-release':           { label: 'searchPage.statusLabelKey.pendingRelease',   color: '#1C8DE3' },
-  // Real, per direct guidance ("Yes we should scope 'Return to
-  // Trainee'/'Reject with Notes'"): color matches WorklistPage.tsx's
-  // own dedicated amber/gold for the "Needs Revision" tile, for the
-  // same cross-page visual-consistency reasoning as the comment above.
-  'returned':                  { label: 'searchPage.statusLabelKey.returned',         color: '#78350F' },
+const DATE_SHORTCUT_LABEL_KEY: Record<Exclude<SearchDateShortcut, 'all'>, string> = {
+  '7d': 'searchPage.dateShortcuts.days7', '30d': 'searchPage.dateShortcuts.days30',
+  '90d': 'searchPage.dateShortcuts.days90', '1yr': 'searchPage.dateShortcuts.year1',
 };
-const PRIORITY_OPTIONS    = ['Routine','Rush','STAT'] as const;
-// Same label-key pattern as STATUS_PILL_META above — PRIORITY_OPTIONS itself
-// stays the real value used for filtering/matching; only the displayed
-// label is translated.
-const PRIORITY_LABEL_KEY: Record<typeof PRIORITY_OPTIONS[number], string> = {
-  'Routine': 'searchPage.priorityLabelKey.routine',
-  'Rush':    'searchPage.priorityLabelKey.rush',
-  'STAT':    'searchPage.priorityLabelKey.stat',
-};
-// Same label-key pattern — the gender option values below stay the real
-// values sent as CaseFilterParams.genderList; only the displayed label is
-// translated. Locale key names (NonBinary) differ from the display value
-// itself (Non-binary) only in punctuation, so the map is keyed explicitly
-// rather than derived.
-const GENDER_OPTIONS = ['Male','Female','Non-binary','Other','Unknown'] as const;
-const GENDER_LABEL_KEY: Record<typeof GENDER_OPTIONS[number], string> = {
-  'Male':       'searchPage.genderLabelKey.Male',
-  'Female':     'searchPage.genderLabelKey.Female',
-  'Non-binary': 'searchPage.genderLabelKey.NonBinary',
-  'Other':      'searchPage.genderLabelKey.Other',
-  'Unknown':    'searchPage.genderLabelKey.Unknown',
-};
+const PAGE_SIZE_PREFERENCE = 'searchPage.pageSize';
+
 // quickLinks' own object keys (Protocols/References/Systems) are data —
 // they drive the JSX .map()/key lookups below — so they stay as-is; this
 // parallel map translates only the on-screen section heading.
@@ -241,57 +101,7 @@ const RESOURCE_SECTION_LABEL_KEY: Record<string, string> = {
   'Systems':    'searchPage.resourceSection.systems',
 };
 
-// â”€â”€â”€ Types â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-interface FilterState {
-  patientName: string; hospitalId: string; patientId: string; accessionNo: string;
-  diagnosisList: string[]; specimenList: string[];
-  snomedList: ClinicalCode[]; icdCodes: ClinicalCode[];
-  synopticIds: string[]; flagsList: string[];
-  pathologistIds: string[]; attendingIds: string[];
-  submittingNames: string[]; statusList: string[]; priorityList: string[];
-  dateFrom: string; dateTo: string;
-  genderList: string[];
-  dobFrom: string; dobTo: string;
-  ageMin: number | undefined; ageMax: number | undefined;
-}
-interface SavedSearch { id: string; name: string; filters: FilterState; createdAt: string; }
-
-// â”€â”€â”€ English summary â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-const buildSummary = (
-  f: FilterState,
-  pathologists: UserStub[],
-  attendings: UserStub[],
-  t: (key: string, opts?: Record<string, unknown>) => string,
-): string => {
-  const parts: string[] = [];
-  if (f.dateFrom || f.dateTo) parts.push(t('searchPage.summaryParts.accessionRange', { from: fmtDate(f.dateFrom) || '…', to: fmtDate(f.dateTo) || t('searchPage.summaryParts.todayFallback') }));
-  if (f.patientName)           parts.push(t('searchPage.summaryParts.patientName', { name: f.patientName }));
-  if (f.accessionNo)           parts.push(t('searchPage.summaryParts.accessionNo', { no: f.accessionNo }));
-  if (f.hospitalId)            parts.push(t('searchPage.summaryParts.mrn', { id: f.hospitalId }));
-  if (f.patientId)             parts.push(t('searchPage.summaryParts.mpi', { id: f.patientId }));
-  if (f.specimenList.length)   parts.push(t('searchPage.summaryParts.specimen', { list: f.specimenList.join(', ') }));
-  if (f.diagnosisList.length)  parts.push(t('searchPage.summaryParts.diagnosis', { list: f.diagnosisList.join(', ') }));
-  if (f.snomedList.length)   parts.push(t('searchPage.summaryParts.snomed', { list: f.snomedList.map(s=>s.code).join(', ') }));
-  if (f.icdCodes.length)     parts.push(t('searchPage.summaryParts.icd', { list: f.icdCodes.map(s=>`${s.system}:${s.code}`).join(', ') }));
-  if (f.statusList.length)     parts.push(t('searchPage.summaryParts.status', { list: f.statusList.join(', ') }));
-  if (f.genderList?.length)    parts.push(t('searchPage.summaryParts.gender', { list: f.genderList.join(', ') }));
-  if (f.dobFrom || f.dobTo)    parts.push(t('searchPage.summaryParts.dob', { from: f.dobFrom||'…', to: f.dobTo||'…' }));
-  if (f.ageMin !== undefined || f.ageMax !== undefined) parts.push(t('searchPage.summaryParts.age', { min: f.ageMin??'0', max: f.ageMax??'∞' }));
-  if (f.priorityList.length)   parts.push(t('searchPage.summaryParts.priority', { list: f.priorityList.join(', ') }));
-  if (f.flagsList.length)      parts.push(t('searchPage.summaryParts.flags', { list: f.flagsList.join(', ') }));
-  if (f.synopticIds.length)    parts.push(t('searchPage.summaryParts.synoptic', { list: f.synopticIds.map(id=>ALL_SYNOPTICS.find(syn=>syn.id===id)?.organ??id).join(', ') }));
-  if (f.pathologistIds.length) parts.push(t('searchPage.summaryParts.pathologist', { list: f.pathologistIds.map(id=>pathologists.find(u=>u.id===id)?.name??id).join(', ') }));
-  if (f.attendingIds.length)   parts.push(t('searchPage.summaryParts.attending', { list: f.attendingIds.map(id=>attendings.find(u=>u.id===id)?.name??id).join(', ') }));
-  return parts.length===0 ? t('searchPage.summary.allCases') : t('searchPage.summary.prefix')+parts.join(' · ');
-};
-
-// â”€â”€â”€ Virtual scroll wrapper removed â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-// WorklistTable manages its own internal scroll and incremental row loading.
-// Passing cases directly is sufficient.
-
-// â”€â”€â”€ Sub-components â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Sub-components ───────────────────────────────────────────────────────────
 
 const Chip: React.FC<{ label: string; onRemove: () => void; title?: string; accent?: string }> = ({ label, onRemove, title, accent='#0891B2' }) => (
   <span title={title} className="ps-searchpage-chip" style={{ '--accent': accent } as React.CSSProperties}>
@@ -315,7 +125,7 @@ const SectionLabel: React.FC<{ title: string; active?: boolean }> = ({ title, ac
   <div className={`ps-searchpage-section-label${active ? ' ps-searchpage-section-label--active' : ''}`}>{title}</div>
 );
 
-// Browse button ”” opens lookup modal, sits inline with input
+// Browse button — opens lookup modal, sits inline with input
 const BrowseBtn: React.FC<{ onClick: () => void; count?: number }> = ({ onClick, count }) => {
   const { t } = useTranslation();
   return (
@@ -328,55 +138,38 @@ const BrowseBtn: React.FC<{ onClick: () => void; count?: number }> = ({ onClick,
 const DROPDOWN_CLASS = 'ps-searchpage-dropdown';
 const DROP_BTN_CLASS = 'ps-searchpage-dropdown-btn';
 
-// â”€â”€â”€ LookupModal and content components imported from Common/LookupModal â”€â”€â”€â”€â”€â”€
+// ─── LookupModal and content components imported from Common/LookupModal ──────
 // LookupModal, LookupSearch, LookupItem, LookupSection, LookupEmpty
 
-// â”€â”€â”€ Synoptic lookup content (local ”” synoptics are search-page-specific) â”€â”€â”€â”€â”€
+// ─── Synoptic lookup content (local — synoptics are search-page-specific) ─────
 
-const SynopticLookupContent: React.FC<{ selected: string[]; onToggle: (id: string) => void }> = ({ selected, onToggle }) => {
+const SynopticLookupContent: React.FC<{ templates: SynopticTemplateOption[]; selected: string[]; onToggle: (id: string) => void }> = ({ templates, selected, onToggle }) => {
   const { t } = useTranslation();
   const [q, setQ] = useState('');
-  const categories = Array.from(new Set(ALL_SYNOPTICS.map(s => s.category)));
-  const filtered = q.length < 1 ? ALL_SYNOPTICS : ALL_SYNOPTICS.filter(s =>
-    s.name.toLowerCase().includes(q.toLowerCase()) || s.organ.toLowerCase().includes(q.toLowerCase())
-  );
+  const filtered = filterLookup(templates, q, s => [s.name, s.category]);
   return (
     <>
       <LookupSearch value={q} onChange={setQ} placeholder={t('searchPage.synopticLookup.searchProtocols')} />
-      {q.length < 1
-        ? categories.map(cat => {
-            const items = ALL_SYNOPTICS.filter(s => s.category === cat);
-            return (
-              <div key={cat}>
-                <LookupSection label={cat} count={items.length} />
-                <div className="ps-searchpage-organ-grid">
-                  {items.map(s => {
-                    const sel = selected.includes(s.id);
-                    return (
-                      <button key={s.id} type="button" onClick={() => onToggle(s.id)}
-                        className={`ps-searchpage-organ-pill${sel ? ' ps-searchpage-organ-pill--selected' : ''}`}
-                      >{s.organ}</button>
-                    );
-                  })}
-                </div>
-              </div>
-            );
-          })
-        : <>
-            {filtered.length === 0
-              ? <LookupEmpty query={q} />
-              : filtered.map(s => (
-                  <LookupItem key={s.id} selected={selected.includes(s.id)} onToggle={() => onToggle(s.id)}
-                    primary={s.name} secondary={s.category} />
-                ))
-            }
-          </>
+      {q.trim().length < 1
+        ? groupLookup(templates, s => s.category).map(([cat, items]) => (
+            <div key={cat}>
+              <LookupSection label={cat} count={items.length} />
+              {items.map(s => (
+                <LookupItem key={s.id} selected={selected.includes(s.id)} onToggle={() => onToggle(s.id)} primary={s.name} secondary={s.id} />
+              ))}
+            </div>
+          ))
+        : filtered.length === 0
+          ? <LookupEmpty query={q} />
+          : filtered.map(s => (
+              <LookupItem key={s.id} selected={selected.includes(s.id)} onToggle={() => onToggle(s.id)} primary={s.name} secondary={s.category} />
+            ))
       }
     </>
   );
 };
 
-// â”€â”€â”€ User lookup content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── User lookup content ──────────────────────────────────────────────────────
 
 const UserLookupContent: React.FC<{ users: UserStub[]; selected: string[]; onToggle: (id: string) => void; accent?: string }> = ({ users, selected, onToggle, accent='#0891B2' }) => {
   const { t } = useTranslation();
@@ -423,33 +216,30 @@ const UserLookupContent: React.FC<{ users: UserStub[]; selected: string[]; onTog
   );
 };
 
-// â”€â”€â”€ Flags lookup content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Flags lookup content ─────────────────────────────────────────────────────
 
-const FlagsLookupContent: React.FC<{ flags: string[]; selected: string[]; onToggle: (f: string) => void }> = ({ flags, selected, onToggle }) => {
+const FlagsLookupContent: React.FC<{ flags: FlagOption[]; selected: string[]; onToggle: (id: string) => void }> = ({ flags, selected, onToggle }) => {
   const { t } = useTranslation();
   const [q, setQ] = useState('');
-  const filtered = q.length < 1 ? flags : flags.filter(f => f.toLowerCase().includes(q.toLowerCase()));
+  const filtered = filterLookup(flags, q, f => [f.name]);
   return (
     <>
       <LookupSearch value={q} onChange={setQ} placeholder={t('searchPage.flagsLookup.searchFlags')} />
       <div className="ps-searchpage-flag-grid">
         {filtered.length === 0
           ? <LookupEmpty query={q} />
-          : filtered.map(f => {
-              const sel = selected.includes(f);
-              return (
-                <button key={f} type="button" onClick={() => onToggle(f)}
-                  className={`ps-searchpage-flag-pill${sel ? ' ps-searchpage-flag-pill--selected' : ''}`}
-                >{f}</button>
-              );
-            })
+          : filtered.map(f => (
+              <button key={f.id} type="button" onClick={() => onToggle(f.id)}
+                className={`ps-searchpage-flag-pill${selected.includes(f.id) ? ' ps-searchpage-flag-pill--selected' : ''}`}
+              >{f.name}</button>
+            ))
         }
       </div>
     </>
   );
 };
 
-// â”€â”€â”€ Specimen lookup content â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Specimen lookup content ──────────────────────────────────────────────────
 
 const SPECIMEN_TYPES = [
   'Biopsy','Resection','Excision','Cytology','FNA',
@@ -485,11 +275,10 @@ const SPECIMEN_TYPE_LABEL_KEY: Record<string, string> = {
   'Other':      'searchPage.specimenTypeLabelKey.Other',
 };
 
-const CompFlagsLookupContent: React.FC<{ flags: string[]; selected: string[]; onToggle: (f: string) => void }> = ({ flags, selected, onToggle }) => {
+const CompFlagsLookupContent: React.FC<{ flags: FlagOption[]; selected: string[]; onToggle: (id: string) => void }> = ({ flags, selected, onToggle }) => {
   const { t } = useTranslation();
   const [q, setQ] = useState('');
-  const filtered = flags.filter(f => q.length < 1 || f.toLowerCase().includes(q.toLowerCase()));
-  const abbr = (name: string) => name.replace(/[^A-Z0-9]/g,'').slice(0,3) || name.slice(0,2).toUpperCase();
+  const filtered = filterLookup(flags, q, f => [f.name]);
   return (
     <>
       <div className="ps-searchpage-client-search-wrap">
@@ -498,23 +287,21 @@ const CompFlagsLookupContent: React.FC<{ flags: string[]; selected: string[]; on
       </div>
       {filtered.length === 0
         ? <LookupEmpty query={q} />
-        : filtered.map(f => {
-            const sel = selected.includes(f);
-            return (
-              <LookupItem key={f} selected={sel} onToggle={() => onToggle(f)}
-                primary={f}
-                secondary={t('searchPage.compFlagsLookup.computationalLisFlag')}
-                badge={abbr(f)}
-                badgeColor="#0891b2"
-              />
-            );
-          })
+        : filtered.map(f => (
+            <LookupItem key={f.id} selected={selected.includes(f.id)} onToggle={() => onToggle(f.id)}
+              primary={f.name}
+              secondary={t('searchPage.compFlagsLookup.computationalLisFlag')}
+              badge={f.abbreviation}
+              badgeColor="#0891b2"
+            />
+          ))
       }
     </>
   );
 };
 
-const FacilityLookupContent: React.FC<{ facilities: UserStub[]; selected: string[]; onToggle: (id: string) => void }> = ({ facilities, selected, onToggle }) => {
+// Also the generic id/name picker for subspecialties, performing labs, locations and jurisdictions (Batch 351).
+const FacilityLookupContent: React.FC<{ facilities: UserStub[]; selected: string[]; onToggle: (id: string) => void; placeholder?: string; showIds?: boolean }> = ({ facilities, selected, onToggle, placeholder, showIds = true }) => {
   const { t } = useTranslation();
   const [nameQ, setNameQ] = useState('');
   const filtered = facilities.filter(c =>
@@ -524,7 +311,7 @@ const FacilityLookupContent: React.FC<{ facilities: UserStub[]; selected: string
   return (
     <>
       <div className="ps-searchpage-client-search-wrap">
-        <input value={nameQ} onChange={e => setNameQ(e.target.value)} placeholder={t('searchPage.facilityLookup.searchByFacilityName')}
+        <input value={nameQ} onChange={e => setNameQ(e.target.value)} placeholder={placeholder ?? t('searchPage.facilityLookup.searchByFacilityName')}
           className="ps-searchpage-client-search-input" />
       </div>
       {filtered.length === 0
@@ -534,7 +321,7 @@ const FacilityLookupContent: React.FC<{ facilities: UserStub[]; selected: string
             return (
               <LookupItem key={c.id} selected={sel} onToggle={() => onToggle(c.id)}
                 primary={c.name}
-                secondary={c.id.toUpperCase()}
+                secondary={c.secondary || (showIds ? c.id.toUpperCase() : undefined)}
                 badge={abbr(c.name)}
                 badgeColor="#8b5cf6"
               />
@@ -570,17 +357,17 @@ const SpecimenLookupContent: React.FC<{
     );
   })();
 
-  // Which types have results right now ”” drives pill highlight
+  // Which types have results right now — drives pill highlight
   const matchedTypes = new Set(searched.map(s => s.type));
 
-  // Final display ”” apply pinned filter on top if set
+  // Final display — apply pinned filter on top if set
   const displayed = pinnedType ? searched.filter(s => s.type === pinnedType) : searched;
 
   return (
     <>
       <LookupSearch value={q} onChange={setQ} placeholder={t('searchPage.specimenLookup.searchPlaceholder')} />
 
-      {/* Pills ”” always single row, horizontal scroll, highlight = has results */}
+      {/* Pills — always single row, horizontal scroll, highlight = has results */}
       <div className="ps-searchpage-type-pills">
         {(['All', ...typesInUse] as const).map(type => {
           const isAll    = type === 'All';
@@ -624,7 +411,7 @@ const SpecimenLookupContent: React.FC<{
   );
 };
 
-// â”€â”€â”€ Unified ICD modal ”” tabs shown only if active in config â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── Unified ICD modal — tabs shown only if active in config ─────────────────
 
 type IcdTab = 'ICD-10' | 'ICD-11' | 'ICD-O-topography' | 'ICD-O-morphology';
 
@@ -664,7 +451,7 @@ const IcdModalContent: React.FC<{
 
   return (
     <>
-      {/* Tab bar ”” only shows active systems */}
+      {/* Tab bar — only shows active systems */}
       <div className="ps-searchpage-icd-tabbar">
         {visibleTabs.map(at => (
           <button key={at.id} type="button" onClick={() => setTab(at.id)}
@@ -680,7 +467,7 @@ const IcdModalContent: React.FC<{
 };
 
 
-// â”€â”€â”€ SNOMED CT modal ”” Big Four axes as tabs â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+// ─── SNOMED CT modal — Big Four axes as tabs ──────────────────────────────────
 
 type SnomedAxis = 'Morphology' | 'Body Structure' | 'Procedure' | 'Specimen';
 
@@ -706,7 +493,7 @@ const SnomedAxisContent: React.FC<{
   // Reset search when axis tab changes
   useEffect(() => { setQ(''); }, [axis]);
 
-  // Load full axis set once ”” client-side search, no re-fetch on keystroke
+  // Load full axis set once — client-side search, no re-fetch on keystroke
   useEffect(() => {
     setLoading(true);
     codeService.search({ system:'SNOMED', category: axis })
@@ -719,7 +506,7 @@ const SnomedAxisContent: React.FC<{
     allCodes.map(c => c.category?.includes('|') ? c.category.split('|')[1] : null).filter(Boolean) as string[]
   ));
 
-  // Displayed results driven purely by search query ”” no pill filter
+  // Displayed results driven purely by search query — no pill filter
   const isSearching = q.trim().length >= 1;
   const displayed = isSearching
     ? allCodes.filter(c =>
@@ -729,7 +516,7 @@ const SnomedAxisContent: React.FC<{
       )
     : allCodes;
 
-  // Which subgroups have at least one match ”” drives pill highlight
+  // Which subgroups have at least one match — drives pill highlight
   const matchedSubgroups = new Set(
     displayed.map(c => c.category?.includes('|') ? c.category.split('|')[1] : null).filter(Boolean) as string[]
   );
@@ -740,7 +527,7 @@ const SnomedAxisContent: React.FC<{
       {loading
         ? <div className="ps-searchpage-lookup-loading">{t('common.loading')}</div>
         : <>
-            {/* Subgroup filter pills ”” only shown while searching, clickable to narrow results */}
+            {/* Subgroup filter pills — only shown while searching, clickable to narrow results */}
             {isSearching && subgroups.length > 1 && (
               <div className="ps-searchpage-subgroup-pills">
                 {subgroups.map(sg => {
@@ -845,7 +632,7 @@ const CodeLookupContent: React.FC<{
       {loading
         ? <div className="ps-searchpage-lookup-loading">{t('common.loading')}</div>
         : <>
-            {/* Category filter pills ”” clickable, wrap, highlight active/matched */}
+            {/* Category filter pills — clickable, wrap, highlight active/matched */}
             {allCategories.length > 1 && (
               <div className="ps-searchpage-cat-pills">
                 {allCategories.map(cat => {
@@ -883,19 +670,22 @@ const CodeLookupContent: React.FC<{
 };
 
 
+
 const SearchPage: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate     = useNavigate();
   const { user }      = useAuth();
   const { pushCrumb } = useBreadcrumb();
   const { dictionary: specimenDictionary } = useSpecimenDictionary();
   const { config } = useSystemConfig();
+  const timeZone = config.facilityTimezone;
+  const defaultRange = () => shortcutDateRange(DEFAULT_SEARCH_DATE_SHORTCUT, timeZone);
 
-  // Real fix: pathologists/attendings/facilities used to be hardcoded,
-  // static module-scope constants (ALL_PATHOLOGISTS/ALL_ATTENDINGS/
-  // ALL_CLIENTS) - see this file's own "Users" section comment for the
-  // full story. Now real, live state, fetched once from the same real
-  // services RoleDictionary.tsx/AccessionPage.tsx already use.
+  // ── Picker data ─────────────────────────────────────────────────────────
+  // Real fix (earlier): pathologists/attendings/facilities used to be
+  // hardcoded; they come from the same services RoleDictionary.tsx and
+  // AccessionPage.tsx use. Batch 350: names are shown as recorded, without
+  // an English "Dr." added.
   const [pathologists, setPathologists] = useState<UserStub[]>([]);
   const [attendings, setAttendings] = useState<UserStub[]>([]);
   const [facilities, setFacilities] = useState<UserStub[]>([]);
@@ -904,28 +694,21 @@ const SearchPage: React.FC = () => {
       ([userRes, physicianRes, clientRes, subsRes]) => {
         const realFacilities = clientRes.ok ? clientRes.data : [];
         setFacilities(realFacilities.map(c => ({ id: c.id, name: c.name, secondary: '' })));
-
         if (userRes.ok) {
-          // Real fix, per direct confirmation: replaces the old
-          // free-text department field — genuinely redundant with the
-          // real Subspecialty dictionary, which is the actual data
-          // this was standing in for.
           const allSubspecialties = subsRes.ok ? subsRes.data : [];
+          setSubspecialties(allSubspecialties.filter(x => x.status === 'Active').map(x => ({ id: x.id, name: x.name, secondary: '' })));
           setPathologists(
             userRes.data
-              .filter(u => u.roles.includes('Pathologist'))
-              .map(u => ({ id: u.id, name: `Dr. ${u.firstName} ${u.lastName}`, secondary: getStaffSubspecialtyDisplay(u.id, allSubspecialties) }))
+              // Batch 351: residents too, for the Resident role.
+              .filter(u => u.roles.includes('Pathologist') || u.roles.includes('Resident'))
+              .map(u => ({ id: u.id, name: `${u.firstName} ${u.lastName}`.trim(), secondary: getStaffSubspecialtyDisplay(u.id, allSubspecialties) }))
           );
         }
-
         if (physicianRes.ok) {
           setAttendings(
             physicianRes.data.map(p => ({
               id: p.id,
-              name: `${p.namePrefix || 'Dr.'} ${p.firstName} ${p.lastName}`,
-              // A real physician can have more than one real client
-              // (clientIds is plural) - joins every real, resolved
-              // name rather than arbitrarily picking just the first.
+              name: [p.namePrefix, p.givenNames || p.firstName, p.familyNames || p.lastName].filter(Boolean).join(' '),
               secondary: p.clientIds.map(cid => realFacilities.find(c => c.id === cid)?.name).filter(Boolean).join(', '),
             }))
           );
@@ -934,38 +717,60 @@ const SearchPage: React.FC = () => {
     );
   }, []);
 
+  // Batch 350: protocols from the protocol registry (the ids cases carry).
+  // Batch 351: subspecialties, performing labs, ordering locations and jurisdictions for the new filters.
+  const [subspecialties, setSubspecialties] = useState<UserStub[]>([]);
+  const [performingLabs, setPerformingLabs] = useState<UserStub[]>([]);
+  const [locations, setLocations] = useState<UserStub[]>([]);
+  useEffect(() => {
+    getActivePerformingLabs().then(labs => setPerformingLabs(labs.map(l => ({ id: l.id, name: l.name, secondary: '' })))).catch(() => {});
+    Promise.all([locationService.getAll(), facilityService.getAll()]).then(([locRes, facRes]) => {
+      if (locRes.ok !== true) return;
+      const facilityName = (id: string) => (facRes.ok === true ? facRes.data.find(f => f.id === id)?.name : undefined) ?? '';
+      setLocations(locRes.data.map(l => ({ id: l.id, name: [l.pointOfCare, l.room].filter(Boolean).join(' · '), secondary: facilityName(l.facilityId) })));
+    }).catch(() => {});
+  }, []);
+  const jurisdictions = useMemo<UserStub[]>(
+    () => AUTOPSY_JURISDICTIONS.map(j => ({ id: j, name: t(`jurisdictionNames.${j}`), secondary: '' })),
+    [t],
+  );
+
+  const [templates, setTemplates] = useState<SynopticTemplateOption[]>([]);
+  useEffect(() => {
+    listTemplatesCached(['published', 'approved', 'archived'])
+      .then(list => setTemplates(list.map(p => ({ id: p.id, name: p.name, category: p.category }))))
+      .catch(() => setTemplates([]));
+  }, []);
+
+  const [flagDefinitions, setFlagDefinitions] = useState<Flag[]>([]);
+  useEffect(() => {
+    flagService.getAll().then(res => { if (res.ok) setFlagDefinitions(res.data); }).catch(() => {});
+  }, []);
+  // Case flags and computational (specimen/LIS) flags, from the flag catalog.
+  const [caseFlagOptions, specimenFlagOptions] = useMemo(() => {
+    const active = flagDefinitions.filter(f => f.status === 'Active');
+    const toOption = (f: Flag): FlagOption => ({ id: f.id, name: f.name, abbreviation: f.lisCode || f.name.slice(0, 3).toUpperCase() });
+    return [
+      active.filter(f => f.tagClass !== 'COMPUTATIONAL').map(toOption),
+      active.filter(f => f.tagClass === 'COMPUTATIONAL').map(toOption),
+    ];
+  }, [flagDefinitions]);
+  const flagName = (id: string) => flagDefinitions.find(f => f.id === id)?.name;
 
   // Measure available height for the table container — mirrors
-  // WorklistPage.tsx's identical hook exactly. That page's own comment is
-  // explicit about why: this is "immune to any parent overflow/flex chain
-  // issues." SearchPage previously relied purely on the CSS flex cascade
-  // for the table's height, which is exactly the thing this technique
-  // exists to avoid trusting — that gap, not a missing min-width/min-height
-  // somewhere, was the actual cause of the table's bottom (and its
-  // horizontal scrollbar, which lives at that bottom edge) rendering past
-  // the visible viewport.
+  // WorklistPage.tsx's identical hook (immune to parent flex/overflow issues).
   const wrapperRef = React.useRef<HTMLDivElement>(null);
   const [tableHeight, setTableHeight] = useState<number>(400);
   useEffect(() => {
     const measure = () => {
       if (!wrapperRef.current) return;
       const top = wrapperRef.current.getBoundingClientRect().top;
-      const available = window.innerHeight - top - 16; // 16px bottom breathing room
-      setTableHeight(Math.max(200, available));
+      setTableHeight(Math.max(200, window.innerHeight - top - 16));
     };
     const timer = setTimeout(measure, 50);
     window.addEventListener('resize', measure);
     return () => { clearTimeout(timer); window.removeEventListener('resize', measure); };
   }, []);
-
-  // Mirrors canViewPediatric's pattern (WorklistPage.tsx/WorklistTable.tsx) —
-  // a Role-level flag surfaced onto the authenticated user, defaulting to
-  // false. Unlike pediatric redaction (same data controller, sensitive
-  // fields hidden within an otherwise-visible case), this gates visibility
-  // of an entire different controller's cases (Orchestration/PathScribe vs.
-  // the NHS Trust LIS) — see IRoleService.ts and CaseRouter.ts for why that
-  // distinction matters for compliance, not just UI.
-  const canViewOrchestration = user?.canViewOrchestration ?? false;
 
   const [isLoaded,        setIsLoaded]        = useState(false);
   const [isResourcesOpen, setIsResourcesOpen] = useState(false);
@@ -978,46 +783,38 @@ const SearchPage: React.FC = () => {
   const [flagsModal,     setFlagsModal]     = useState(false);
   const [pathModal,      setPathModal]      = useState(false);
   const [attendingModal, setAttendingModal] = useState(false);
+  const [compFlagsModal, setCompFlagsModal] = useState(false);
+  const [facilityModal,  setFacilityModal]  = useState(false);
+  // Batch 351: one modal for the simple id/name pickers, and the "More filters" section.
+  const [optionModal, setOptionModal] = useState<null | 'subspecialtyIds' | 'performingLabIds' | 'locationIds' | 'autopsyJurisdictions'>(null);
+  const [moreOpen, setMoreOpen] = useState(false);
+  const [cptText, setCptText] = useState('');
 
   // Active section (for label intensity)
   const [activeSection, setActiveSection] = useState('');
 
-  // Filter state
-  const [patientName,  setPatientName]  = useState('');
-  const [hospitalId,   setHospitalId]   = useState('');
-  const [patientId,    setPatientId]    = useState('');
-  const [accessionNo,  setAccessionNo]  = useState('');
+  // ── The draft: every filter the user has set ────────────────────────────
+  const [draft, setDraft] = useState<CaseSearchDraft>(() => { const r = defaultRange(); return emptyCaseSearchDraft(r.dateFrom, r.dateTo); });
+  const set = (patch: Partial<CaseSearchDraft>) => setDraft(d => ({ ...d, ...patch }));
+  const toggleIn = <K extends keyof CaseSearchDraft>(key: K, value: CaseSearchDraft[K] extends Array<infer V> ? V : never) =>
+    setDraft(d => ({ ...d, [key]: toggleInList(d[key] as unknown as unknown[], value) }));
+  const removeFrom = <K extends keyof CaseSearchDraft>(key: K, keep: (v: CaseSearchDraft[K] extends Array<infer V> ? V : never) => boolean) =>
+    setDraft(d => ({ ...d, [key]: (d[key] as unknown as never[]).filter(keep) }));
+  const [activeDateRange, setActiveDateRange] = useState<SearchDateShortcut | null>(DEFAULT_SEARCH_DATE_SHORTCUT);
 
   // Smart identifier box
-  const [identifierQuery, setIdentifierQuery] = useState('');
   const [detectedType, setDetectedType] = useState<IdentifierType>(null);
-
-  // Real, per direct guidance: replaces config.identifierFormats -
-  // enabledFormats now resolves from the real union of every
-  // Enterprise's own enabled formats, falling back to
-  // IDENTIFIER_FORMAT_LIBRARY's own defaults unchanged when none has
-  // configured this yet (see useEnabledIdentifierFormats.ts). The
-  // legacy accessionPattern this screen also needs is derived the
-  // same real way SystemConfig.identifierFormats itself always
-  // derived it - deriveLegacyFormats() from the enabled formats list,
-  // not a separately-stored value.
+  // Real, per direct guidance: the union of every Enterprise's enabled
+  // identifier formats (useEnabledIdentifierFormats.ts).
   const enabledFormats = useEnabledIdentifierFormats();
   const legacyFormats = deriveLegacyFormats(enabledFormats);
 
-  const applyIdentifier = (val: string, type: IdentifierType) => {
-    const result = resolveIdentifierApplication(val, type, enabledFormats, legacyFormats.accessionPattern);
-    if (result.action === 'navigate') { navigate(result.path); return; }
-    setPatientName(result.patientName);
-    setHospitalId(result.hospitalId);
-    setPatientId(result.patientId);
-    setAccessionNo(result.accessionNo);
-  };
-
   const handleIdentifierChange = (val: string) => {
-    setIdentifierQuery(val);
     const type = detectIdentifierType(val, enabledFormats);
     setDetectedType(type);
-    applyIdentifier(val, type);
+    const result = resolveIdentifierApplication(val, type, enabledFormats, legacyFormats.accessionPattern);
+    if (result.action === 'navigate') { navigate(result.path); return; }
+    setDraft(d => applyIdentifierToDraft(d, val, result));
   };
 
   const IDENTIFIER_BADGE: Record<NonNullable<IdentifierType>, { label: string; color: string }> = {
@@ -1030,171 +827,121 @@ const SearchPage: React.FC = () => {
     ambiguous:   { label: t('searchPage.identifierBadge.ambiguous'),   color: '#F59E0B' },
   };
 
-  const [dateFrom,     setDateFrom]     = useState(daysAgo(30, config.facilityTimezone));
-  const [dateTo,       setDateTo]       = useState(today(config.facilityTimezone));
-  // Tracks which date-range shortcut (7d/30d/90d/1yr) was last clicked, if
-  // any — null once the user edits a date field manually, since at that
-  // point no shortcut's value is necessarily still accurate. Default '30d'
-  // matches the initial dateFrom/dateTo state above exactly.
-  const [activeDateRange, setActiveDateRange] = useState<string | null>('30d');
+  const chooseDateShortcut = (shortcut: SearchDateShortcut) => {
+    set({ ...shortcutDateRange(shortcut, timeZone), datesChosen: true });
+    setActiveDateRange(shortcut);
+  };
 
+  // Typed inputs (not part of the draft until added)
   const [specimenQuery,       setSpecimenQuery]       = useState('');
-  const [specimenList,        setSpecimenList]        = useState<string[]>([]);
-  const [specimenSuggestions, setSpecimenSuggestions] = useState<string[]>([]);
   const [showSpecimenDrop,    setShowSpecimenDrop]    = useState(false);
   const specimenRef = useRef<HTMLDivElement|null>(null);
+  const specimenSuggestions = useMemo(
+    () => suggestSpecimens(specimenDictionary, specimenQuery, draft.specimenTerms),
+    [specimenDictionary, specimenQuery, draft.specimenTerms],
+  );
 
   const [diagnosisText, setDiagnosisText] = useState('');
-  const [diagnosisList, setDiagnosisList] = useState<string[]>([]);
 
   const [snomedQuery,       setSnomedQuery]       = useState('');
-  const [snomedList,        setSnomedList]        = useState<ClinicalCode[]>([]);
   const [snomedSuggestions, setSnomedSuggestions] = useState<ClinicalCode[]>([]);
   const [showSnomedDrop,    setShowSnomedDrop]    = useState(false);
   const snomedRef = useRef<HTMLDivElement|null>(null);
 
   const [icdQuery,       setIcdQuery]       = useState('');
-  const [icdCodes,       setIcdCodes]       = useState<ClinicalCode[]>([]);
   const [icdSuggestions, setIcdSuggestions] = useState<ClinicalCode[]>([]);
   const [showIcdDrop,    setShowIcdDrop]    = useState(false);
   const icdRef = useRef<HTMLDivElement|null>(null);
 
-  const [synopticIds,    setSynopticIds]    = useState<string[]>([]);
-  const [flagsList,      setFlagsList]      = useState<string[]>([]);
-  const [pathologistIds, setPathologistIds] = useState<string[]>([]);
-  const [attendingIds,   setAttendingIds]   = useState<string[]>([]);
-  const [compFlagsList,  setCompFlagsList]  = useState<string[]>([]);
-  const [facilityIds,    setFacilityIds]    = useState<string[]>([]);
-  const [compFlagsModal, setCompFlagsModal] = useState(false);
-  const [facilityModal,  setFacilityModal]  = useState(false);
-  const [submittingNames,setSubmittingNames]= useState<string[]>([]);
-  const [statusList,     setStatusList]     = useState<string[]>([]);
-  const [priorityList,   setPriorityList]   = useState<string[]>([]);
-  // Patient Demographics
-  const [genderList,     setGenderList]     = useState<string[]>([]);
-  const [dobFrom,        setDobFrom]        = useState('');
-  const [dobTo,          setDobTo]          = useState('');
-  const [ageMin,         setAgeMin]         = useState('');
-  const [ageMax,         setAgeMax]         = useState('');
-
-  const [results,     setResults]     = useState<PathologyCase[]|null>(null);
+  // ── Results: one page from the server ───────────────────────────────────
+  const [resultPage,  setResultPage]  = useState<CaseSearchPage | null>(null);
+  /** The draft the shown results came from (paging and export use it, not unsaved edits). */
+  const [searchedDraft, setSearchedDraft] = useState<CaseSearchDraft | null>(null);
   const [hasSearched, setHasSearched] = useState(false);
-  // Real, live pagination - Load More appends rather than replaces,
-  // matching the cursor contract built into caseRouter.getAll() (both the
-  // mock and Firestore paths now honor pageSize/cursor identically).
-  const [hasMoreResults, setHasMoreResults] = useState(false);
-  const [nextCursor,     setNextCursor]     = useState<string | undefined>(undefined);
-  const [isLoadingMore,  setIsLoadingMore]  = useState(false);
-  // Increments only on a genuine fresh search (never on Load More) - used
-  // as WorklistTable's key below instead of results.length, so appending
-  // more results doesn't force a full remount (which would reset the
-  // table's own scroll position, sort state, and internal batching).
-  const [searchGeneration, setSearchGeneration] = useState(0);
-
-  // flagDefinitions still feeds WorklistTable/FlagManagerModal-style
-  // consumers on this page; computationalFlags removed along with the
-  // Sidecar it only ever fed.
-  const [flagDefinitions, setFlagDefinitions] = useState<Flag[]>([]);
-  useEffect(() => {
-    flagService.getAll().then(res => {
-      if (!res.ok) return;
-      setFlagDefinitions(res.data);
-    }).catch(() => {});
-  }, []);
-  // Real fix: ALL_FLAGS/ALL_COMP_FLAGS used to be static, hand-curated
-  // name lists - confirmed directly against the real
-  // services/flags/mockFlagService.ts data that many real, active flags
-  // ('Malignant', 'Discordant', 'Intraoperative Consult', 'Margins
-  // Involved', and more) were completely missing, so a search filtering
-  // by one of those real flags had no way to select it via this picker.
-  // Same bug class as the earlier ALL_ATTENDINGS fix in this same file.
-  //
-  // Sourced from the flag catalog (flagService.getAll()), not scraped
-  // from raw case data, because that catalog is confirmed to be the
-  // real, current, authoritative source: utils/flagAdapter.ts's own
-  // header comment documents FlagManagerModal ("the only place flags
-  // can be applied") as reading from this exact same catalog. Separate,
-  // lower-priority observation, not fixed here: some older seed cases
-  // (mockCaseService.ts) carry inline caseFlags/specimenFlags objects
-  // predating this catalog's centralization (e.g. time-specific MDT
-  // flags like "Colorectal MDT — Mon 13:00") that don't correspond to
-  // any real catalog entry - legacy seed-data artifacts, not something
-  // a flag applied via the current, real FlagManagerModal workflow
-  // would ever produce, so not a gap this picker needs to cover.
-  //
-  // tagClass is documented elsewhere (IFlagService.ts) as vestigial for
-  // real backend decisions, but it's still present on the data and this
-  // is a presentational UI grouping (preserving the existing two-picker
-  // structure), not a functional gate - flags missing tagClass default
-  // to the general list rather than being silently dropped from both.
-  const realFlagNames = React.useMemo(
-    () => flagDefinitions.filter(f => f.status === 'Active' && f.tagClass !== 'COMPUTATIONAL').map(f => f.name),
-    [flagDefinitions]
-  );
-  const realCompFlagNames = React.useMemo(
-    () => flagDefinitions.filter(f => f.status === 'Active' && f.tagClass === 'COMPUTATIONAL').map(f => f.name),
-    [flagDefinitions]
-  );
-  // Real, confirmed fix (Jira PS-57): caseFlags/specimenFlags now
-  // correctly type as FlagInstance[] — an application record
-  // referencing a real flag definition by flagDefinitionId, not an
-  // inline copy of its display fields. Every place below that used
-  // to read .label/.lisCode/.name directly off a case's own flag
-  // entries now resolves through this same, real catalog instead —
-  // the identical lookup FlagManagerModal.tsx itself already uses.
-  const flagDefById = React.useMemo(
-    () => new Map(flagDefinitions.map(f => [f.id, f])),
-    [flagDefinitions]
-  );
-  // Auto-collapses the filter sidebar after a search runs, freeing real
-  // width for the results table — mirrors SynopticReportPage's
-  // Sidebar.tsx collapsed/expanded pattern exactly. Set explicitly at
-  // each search-trigger call site below rather than via a useEffect on
-  // hasSearched, since hasSearched may already be true on a second
-  // search and wouldn't re-fire a dependency-based effect.
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [searchFailed, setSearchFailed] = useState(false);
+  const [sort, setSort] = useState<CaseSearchSort>(DEFAULT_CASE_SEARCH_SORT);
+  const [pageSize, setPageSize] = useState<number>(() => {
+    const saved = getUiPreference<number>(PAGE_SIZE_PREFERENCE, DEFAULT_CASE_SEARCH_PAGE_SIZE);
+    return (CASE_SEARCH_PAGE_SIZES as readonly number[]).includes(saved) ? saved : DEFAULT_CASE_SEARCH_PAGE_SIZE;
+  });
   const [isSearching, setIsSearching] = useState(false);
+  const [isExporting, setIsExporting] = useState(false);
+  const [exportNotice, setExportNotice] = useState<string | null>(null);
+  // Changes on every search, so the table starts fresh (scroll, selection).
+  const [searchGeneration, setSearchGeneration] = useState(0);
+  const latestRequest = useRef(0);
+  const results = resultPage?.items ?? null;
 
-  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>(lsLoad);
+  // Auto-collapses the filter sidebar after a search runs (Sidebar.tsx pattern).
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+
+  const [savedSearches, setSavedSearches] = useState<SavedSearch[]>([]);
   const [activeSavedId, setActiveSavedId] = useState('');
   const [showSaveInput, setShowSaveInput] = useState(false);
   const [saveNameInput, setSaveNameInput] = useState('');
+  const [savedSearchFailed, setSavedSearchFailed] = useState(false);
   const saveInputRef = useRef<HTMLInputElement|null>(null);
 
-  // â”€â”€ Effects â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // ── Voice: selected result index ────────────────────────────
+  const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
 
+  const runSearch = async (opts: { draft?: CaseSearchDraft; page?: number; pageSize?: number; sort?: CaseSearchSort } = {}) => {
+    const d = opts.draft ?? draft;
+    const size = opts.pageSize ?? pageSize;
+    const order = opts.sort ?? sort;
+    const requestId = ++latestRequest.current;
+    setIsSearching(true); setSearchFailed(false); setHasSearched(true); setExportNotice(null);
+    try {
+      const res = await caseSearchService.search(buildCaseSearchRequest(d, { page: opts.page ?? 1, pageSize: size, sort: order, timeZone }));
+      if (requestId !== latestRequest.current) return; // a newer search has started
+      if (res.ok === true) {
+        setResultPage(res.data);
+        setSearchedDraft(d);
+        setSearchGeneration(g => g + 1);
+        setSelectedResultIndex(-1);
+        saveLastCaseSearch({ draft: d, page: res.data.page, pageSize: size, sort: order });
+      } else {
+        setSearchFailed(true);
+      }
+    } catch {
+      if (requestId === latestRequest.current) setSearchFailed(true);
+    } finally {
+      if (requestId === latestRequest.current) setIsSearching(false);
+    }
+  };
+
+  const loadDraft = (d: CaseSearchDraft) => {
+    setDraft(d);
+    if (countMoreFilters(d) > 0) setMoreOpen(true);
+    setActiveDateRange(matchDateShortcut(d.dateFrom, d.dateTo, timeZone));
+    setDetectedType(d.identifierText ? detectIdentifierType(d.identifierText, enabledFormats) : null);
+  };
+
+  // ── Effects ─────────────────────────────────────────────────────────────
+
+  // Coming back from a case: the same search, on the same page, fetched again.
   useEffect(() => {
-    const returning = sessionStorage.getItem('pathscribe:searchReturn') === '1';
-    sessionStorage.removeItem('pathscribe:searchReturn');
-    if (!returning) { ssClear(); return; }
-    const snap = ssLoad(); if (!snap) return;
-    const f = snap.filters;
-    setPatientName(f.patientName); setHospitalId(f.hospitalId); setPatientId(f.patientId); setAccessionNo(f.accessionNo);
-    setDateFrom(f.dateFrom); setDateTo(f.dateTo);
-    setActiveDateRange(matchDateRangeShortcut(f.dateFrom, f.dateTo, config.facilityTimezone));
-    setSnomedList(f.snomedList); setIcdCodes(f.icdCodes);
-    setSynopticIds(f.synopticIds); setFlagsList(f.flagsList);
-    setPathologistIds(f.pathologistIds ?? []); setAttendingIds(f.attendingIds ?? []);
-    setSubmittingNames(f.submittingNames); setStatusList(f.statusList); setPriorityList(f.priorityList);
-    // Restore demographics (previously omitted — back-navigation lost these filters)
-    setGenderList(f.genderList ?? []);
-    setDobFrom(f.dobFrom ?? '');
-    setDobTo(f.dobTo ?? '');
-    setAgeMin(f.ageMin !== undefined ? String(f.ageMin) : '');
-    setAgeMax(f.ageMax !== undefined ? String(f.ageMax) : '');
-    setResults(snap.results); setHasSearched(snap.hasSearched);
+    if (!consumeReturnToSearch()) { clearLastCaseSearch(); return; }
+    const last = loadLastCaseSearch();
+    if (!last) return;
+    const r = defaultRange();
+    const d = normalizeCaseSearchDraft(last.draft, r.dateFrom, r.dateTo);
+    const order = CASE_SEARCH_SORT_OPTIONS.find(o => o.key === last.sort?.key && o.direction === last.sort?.direction) ?? DEFAULT_CASE_SEARCH_SORT;
+    const size = (CASE_SEARCH_PAGE_SIZES as readonly number[]).includes(last.pageSize) ? last.pageSize : pageSize;
+    loadDraft(d); setSort(order); setPageSize(size); setSidebarCollapsed(true);
+    void runSearch({ draft: d, page: last.page, pageSize: size, sort: order });
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
+  useEffect(() => {
+    if (!user?.id) return;
+    savedSearchService.getForUserByContext(user.id, 'caseSearch').then(res => { if (res.ok === true) setSavedSearches(res.data); });
+  }, [user?.id]);
+
   useEffect(() => { const timer = setTimeout(()=>setIsLoaded(true), 80); return ()=>clearTimeout(timer); }, []);
   useEffect(() => { pushCrumb(t('searchPage.page.title'), '/search'); }, [pushCrumb, t]);
-  useEffect(() => { lsSave(savedSearches); }, [savedSearches]);
 
-  // Real bug fix, same pattern already found in AuditLogPage.tsx: this
-  // page declared isResourcesOpen and rendered a Resources modal off it,
-  // but never listened for the global PATHSCRIBE_PAGE_OPEN_RESOURCES
-  // event that actually opens it elsewhere (see WorklistPage.tsx) —
-  // meaning the modal had no way to ever open on this page either.
+  // Real bug fix (earlier): listen for the global Resources event.
   useEffect(() => {
     const openResources = () => setIsResourcesOpen(true);
     window.addEventListener('PATHSCRIBE_PAGE_OPEN_RESOURCES', openResources);
@@ -1213,22 +960,6 @@ const SearchPage: React.FC = () => {
   }, []);
 
   useEffect(() => {
-    if (!specimenQuery || specimenQuery.length < 2) { setSpecimenSuggestions([]); setShowSpecimenDrop(false); return; }
-    const q = specimenQuery.toLowerCase();
-    const hits = specimenDictionary
-      .filter(s => s.active && (
-        (s.name?.toLowerCase() ?? '').includes(q) ||
-        (s.normalizedLabel?.toLowerCase() ?? '').includes(q) ||
-        (s.synonyms ?? []).some(syn => (syn?.toLowerCase() ?? '').includes(q))
-      ) && !specimenList.includes(s.name))
-      .map(s => s.name)
-      .slice(0, 8);
-    const fallback = hits.length > 0 ? hits :
-      SPECIMEN_DICTIONARY.filter(s => s.toLowerCase().includes(q) && !specimenList.includes(s)).slice(0, 8);
-    setSpecimenSuggestions(fallback); setShowSpecimenDrop(fallback.length > 0);
-  }, [specimenQuery, specimenList, specimenDictionary]);
-
-  useEffect(() => {
     if (!snomedQuery || snomedQuery.length < 2) { setSnomedSuggestions([]); setShowSnomedDrop(false); return; }
     codeService.search({ system:'SNOMED', query: snomedQuery }).then(r => {
       if (r.ok) { const hits = r.data.slice(0,6); setSnomedSuggestions(hits); setShowSnomedDrop(hits.length>0); }
@@ -1242,267 +973,117 @@ const SearchPage: React.FC = () => {
     });
   }, [icdQuery]);
 
-  // REMOVED: previously auto-re-ran the search on every single filter
-  // change once hasSearched was true (any checkbox/dropdown edit fired a
-  // real query immediately, no debounce, no confirmation step). Under
-  // concurrent multi-pathologist usage that's a real backend-load concern
-  // — someone adjusting several filters in sequence while deciding what
-  // they actually want fires one query per click, not one query per
-  // decision. "Search Cases" (handleSubmit) is now the single deliberate
-  // trigger for any query, matching how the very first search already
-  // worked (this effect was a no-op until hasSearched flipped true).
-  // Filter state still updates instantly in the UI either way — only the
-  // actual backend query is now gated behind the explicit button press.
+  // "Search Cases" is the one deliberate trigger for a query (filter edits
+  // don't re-run it), so adjusting several filters costs one query.
 
-  // â”€â”€ Filter helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
-
-  const currentFilters = (): FilterState => ({
-    patientName, hospitalId, patientId, accessionNo, diagnosisList, specimenList,
-    snomedList, icdCodes, synopticIds, flagsList, pathologistIds, attendingIds,
-    submittingNames, statusList, priorityList, dateFrom, dateTo,
-    // Previously hardcoded to empty — now reads actual state so session
-    // snapshots and saved searches correctly preserve demographic filters.
-    genderList,
-    dobFrom,
-    dobTo,
-    ageMin: ageMin ? parseInt(ageMin, 10) : undefined,
-    ageMax: ageMax ? parseInt(ageMax, 10) : undefined,
-  });
-
-  const applyFilters = (f: FilterState) => {
-    setPatientName(f.patientName); setHospitalId(f.hospitalId); setPatientId(f.patientId); setAccessionNo(f.accessionNo);
-    // Restore smart identifier box from whichever field was populated
-    const restored = f.accessionNo || f.patientName || f.hospitalId || f.patientId;
-    setIdentifierQuery(restored);
-    setDetectedType(restored ? detectIdentifierType(restored, enabledFormats) : null);
-    setDiagnosisList(f.diagnosisList); setSpecimenList(f.specimenList);
-    setSnomedList(f.snomedList); setIcdCodes(f.icdCodes ?? []);
-    setSynopticIds(f.synopticIds); setFlagsList(f.flagsList);
-    setPathologistIds(f.pathologistIds ?? []); setAttendingIds(f.attendingIds ?? []);
-    setSubmittingNames(f.submittingNames); setStatusList(f.statusList); setPriorityList(f.priorityList);
-    setDateFrom(f.dateFrom); setDateTo(f.dateTo);
-    setActiveDateRange(matchDateRangeShortcut(f.dateFrom, f.dateTo, config.facilityTimezone));
-    // Restore demographics — previously hardcoded to empty which broke saved-search round-trips
-    setGenderList(f.genderList ?? []);
-    setDobFrom(f.dobFrom ?? '');
-    setDobTo(f.dobTo ?? '');
-    setAgeMin(f.ageMin !== undefined ? String(f.ageMin) : '');
-    setAgeMax(f.ageMax !== undefined ? String(f.ageMax) : '');
-  };
-
-  const toggle = (val: string, list: string[], setter: (v: string[]) => void) =>
-    list.includes(val) ? setter(list.filter(x=>x!==val)) : setter([...list, val]);
+  // ── Filter helpers ──────────────────────────────────────────────────────
 
   const addSpecimen = (val: string) => {
-    const v = val.trim(); if (!v) return;
-    setSpecimenList(p=>p.includes(v)?p:[...p,v]); setSpecimenQuery(''); setShowSpecimenDrop(false);
+    set({ specimenTerms: addTerm(draft.specimenTerms, val) }); setSpecimenQuery(''); setShowSpecimenDrop(false);
   };
-  const addDiagnosis = () => {
-    const v = diagnosisText.trim(); if (!v) return;
-    setDiagnosisList(p=>p.includes(v)?p:[...p,v]); setDiagnosisText('');
-  };
+  const addDiagnosis = () => { set({ diagnosisTerms: addTerm(draft.diagnosisTerms, diagnosisText) }); setDiagnosisText(''); };
+  const addCpt = () => { set({ cptCodes: addTerm(draft.cptCodes, cptText) }); setCptText(''); };
   const addSnomed = (s: ClinicalCode) => {
-    setSnomedList(p=>p.some(x=>x.code===s.code)?p:[...p,s]); setSnomedQuery(''); setShowSnomedDrop(false);
+    setDraft(d => d.snomedCodes.some(x => x.code === s.code) ? d : { ...d, snomedCodes: [...d.snomedCodes, s] });
+    setSnomedQuery(''); setShowSnomedDrop(false);
   };
   const addIcd = (s: ClinicalCode) => {
-    setIcdCodes(p=>p.some(x=>x.code===s.code)?p:[...p,s]); setIcdQuery(''); setShowIcdDrop(false);
+    setDraft(d => d.icdCodes.some(x => x.code === s.code) ? d : { ...d, icdCodes: [...d.icdCodes, s] });
+    setIcdQuery(''); setShowIcdDrop(false);
+  };
+  const toggleCode = (key: 'snomedCodes' | 'icdCodes', c: ClinicalCode) =>
+    setDraft(d => ({ ...d, [key]: d[key].some(x => x.code === c.code) ? d[key].filter(x => x.code !== c.code) : [...d[key], c] }));
+
+  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); setSidebarCollapsed(true); void runSearch({ page: 1 }); };
+
+  // Paging, sort and page size re-run the search that produced the results.
+  const goToPage = (page: number) => { if (searchedDraft) void runSearch({ draft: searchedDraft, page }); };
+  const changeSort = (value: string) => {
+    const order = CASE_SEARCH_SORT_OPTIONS.find(o => sortOptionKey(o) === value) ?? DEFAULT_CASE_SEARCH_SORT;
+    setSort(order);
+    if (searchedDraft) void runSearch({ draft: searchedDraft, page: 1, sort: order });
+  };
+  const changePageSize = (value: string) => {
+    const size = Number(value);
+    setPageSize(size); setUiPreference(PAGE_SIZE_PREFERENCE, size);
+    if (searchedDraft) void runSearch({ draft: searchedDraft, page: 1, pageSize: size });
   };
 
-  const runSearch = async (loadMore = false) => {
-    if (loadMore) setIsLoadingMore(true); else { setIsSearching(true); setSearchGeneration(g => g + 1); }
+  const handleClear = () => {
+    const r = defaultRange();
+    setDraft(emptyCaseSearchDraft(r.dateFrom, r.dateTo));
+    setActiveDateRange(DEFAULT_SEARCH_DATE_SHORTCUT);
+    setDetectedType(null);
+    setDiagnosisText(''); setSpecimenQuery(''); setSnomedQuery(''); setIcdQuery(''); setCptText('');
+    setResultPage(null); setSearchedDraft(null); setHasSearched(false); setSearchFailed(false);
+    setActiveSavedId(''); setExportNotice(null);
+    clearLastCaseSearch();
+  };
+
+  // Batch 350: every matching case (not just this page), built by the
+  // service; headings, statuses and dates in the user's language.
+  const handleExportCSV = async () => {
+    if (!searchedDraft) return;
+    setIsExporting(true); setExportNotice(null);
     try {
-      const params: CaseFilterParams = {
-        patientName,
-        hospitalId,
-        patientId,
-        accessionNo,
-        dateFrom:            dateFrom || undefined,
-        dateTo:              dateTo   || undefined,
-        diagnosisList,
-        specimenList,
-        // Pass codes (not display text) so service can match c.coding.snomed / c.coding.icd10
-        snomedCodes:         snomedList.map(s => s.code),
-        icdCodes:            icdCodes.map(s => s.code),
-        statusList:          statusList  as CaseFilterParams['statusList'],
-        priorityList:        priorityList as CaseFilterParams['priorityList'],
-        genderList:          genderList.length ? genderList as CaseFilterParams['genderList'] : undefined,
-        dobFrom:             dobFrom || undefined,
-        dobTo:               dobTo   || undefined,
-        ageMin:              ageMin  ? parseInt(ageMin, 10)  : undefined,
-        ageMax:              ageMax  ? parseInt(ageMax, 10)  : undefined,
-        facilityIds:         facilityIds.length    ? facilityIds    : undefined,
-        // Previously omitted — these are the filters that were being tracked in state but never sent
-        flagIds:             flagsList.length      ? flagsList      : undefined,
-        pathologistIds:      pathologistIds.length ? pathologistIds : undefined,
-        // Resolve p01 → 'breast_invasive' templateId before passing so service can match synopticReports
-        synopticProtocolIds: synopticIds.length
-          ? synopticIds.map(id => ALL_SYNOPTICS.find(syn => syn.id === id)?.templateId ?? '').filter(Boolean)
-          : undefined,
-        // Pass full provider names (not att-1 IDs) — service matches c.order.requestingProvider
-        ...(attendingIds.length && {
-          attendingNames: attendingIds
-            .map(id => attendings.find(u => u.id === id)?.name ?? '')
-            .filter(Boolean) as string[],
-        }),
-        pageSize: SEARCH_PAGE_SIZE,
-        cursor: loadMore ? nextCursor : undefined,
-      };
-      const result = await caseRouter.getAll(params, {
-        includeOrchestration: canViewOrchestration,
-        userId: user?.id,
-      });
-      if (result.ok) {
-        const filteredData = compFlagsList.length > 0
-          ? result.data.filter((c: PathologyCase) =>
-              compFlagsList.some(code =>
-                (c.specimens ?? []).flatMap(sp => sp.specimenFlags ?? []).some(sf => {
-                  // Real fix (Jira PS-57 + its follow-up "should be
-                  // able to assign Flags at either a Case or Specimen
-                  // level"): sf is a real FlagInstance now —
-                  // id/flagDefinitionId/appliedAt/source/deletedAt,
-                  // no .label/.lisCode of its own. Resolve against the
-                  // real catalog (flagDefById, built from the same
-                  // flagService.getAll() this file already fetches)
-                  // instead, the same lookup FlagManagerModal.tsx
-                  // itself uses. Aggregated across every specimen on
-                  // the case — there's deliberately no case-level
-                  // specimenFlags field; each specimen's own
-                  // specimenFlags is the only real place a flag
-                  // applied to a specific specimen can live, since
-                  // FlagInstance itself carries no specimenId. Deleted
-                  // instances (a flag removed from the case)
-                  // correctly excluded — the old, wrong type had no
-                  // real field for this at all, so this file could
-                  // never previously respect it.
-                  if (sf.deletedAt) return false;
-                  const def = flagDefById.get(sf.flagDefinitionId);
-                  return !!def && (def.lisCode === code || def.id === code || def.name === code);
-                })
-              )
-            )
-          : result.data;
-        // compFlagsList filters client-side, after the real page was
-        // already fetched — hasMore/nextCursor still reflect the real,
-        // unfiltered page boundary from the backend, not this narrower
-        // view. Honest, known limitation: a heavily-narrowing computational
-        // flag filter combined with Load More can mean a "full" page from
-        // the backend renders as a short (or empty) visible page here —
-        // clicking Load More again still correctly advances to genuinely
-        // new cases, it just may take more than one click to see new rows.
-        const combined = loadMore ? [...(results ?? []), ...filteredData] : filteredData;
-        setResults(combined);
-        setHasMoreResults(!!result.meta?.hasMore);
-        setNextCursor(result.meta?.nextCursor);
-        ssSave({ filters: currentFilters(), results: combined, hasSearched: true });
+      const res = await caseSearchService.exportRows({ criteria: draftToCriteria(searchedDraft), sort, timeZone });
+      if (res.ok === true) {
+        downloadCsv(
+          caseSearchCsvFilename(facilityDateString(new Date(), timeZone)),
+          buildCaseSearchCsv(res.data.rows, { t, locale: i18n.language, timeZone }),
+        );
+        if (res.data.truncated) setExportNotice(t('searchPage.export.truncated', { count: res.data.rows.length, total: res.data.total }));
+      } else {
+        setExportNotice(t('searchPage.export.failed'));
       }
-    } catch (err) {
-      console.error('[SearchPage] runSearch error:', err);
+    } catch {
+      setExportNotice(t('searchPage.export.failed'));
     } finally {
-      // Always reset — even if caseService throws
-      setIsSearching(false);
-      setIsLoadingMore(false);
+      setIsExporting(false);
     }
   };
 
-  const loadMoreResults = () => { void runSearch(true); };
-
-  const handleSubmit = (e: React.FormEvent) => { e.preventDefault(); setHasSearched(true); setSidebarCollapsed(true); void runSearch(); };
-
-  const handleClear = () => {
-    setPatientName(''); setHospitalId(''); setPatientId(''); setAccessionNo('');
-    setIdentifierQuery(''); setDetectedType(null);
-    setDiagnosisText(''); setDiagnosisList([]);
-    setSpecimenQuery(''); setSpecimenList([]);
-    setSnomedQuery(''); setSnomedList([]);
-    setIcdQuery(''); setIcdCodes([]);
-    setSynopticIds([]); setFlagsList([]); setPathologistIds([]); setAttendingIds([]);
-    setSubmittingNames([]); setStatusList([]); setPriorityList([]);
-    setGenderList([]); setDobFrom(''); setDobTo(''); setAgeMin(''); setAgeMax('');
-    setDateFrom(daysAgo(30, config.facilityTimezone)); setDateTo(today(config.facilityTimezone)); setActiveDateRange('30d');
-    setResults(null); setHasSearched(false); setActiveSavedId('');
-    ssClear();
-  };
-
-  const handleExportCSV = () => {
-    if (!results || results.length === 0) return;
-    const headers = [
-      'Accession', 'Patient Name', 'MRN', 'Sex', 'DOB',
-      'Specimen(s)', 'Accession Date', 'Physician', 'Priority', 'Status', 'Flags',
-    ];
-    const rows = results.map(c => [
-      c.accession?.fullAccession ?? '',
-      `${c.patient?.firstName ?? ''} ${c.patient?.lastName ?? ''}`.trim(),
-      c.patient?.mrn ?? '',
-      c.patient?.sex ?? '',
-      c.patient?.dateOfBirth
-        ? new Date(c.patient.dateOfBirth).toLocaleDateString('en-US', { year:'numeric', month:'2-digit', day:'2-digit' })
-        : '',
-      (c.specimens ?? []).map(s => s.description ?? s.label ?? '').join('; '),
-      c.specimens?.[0]?.receivedAt
-        ? new Date(c.specimens[0].receivedAt).toLocaleDateString('en-US', { year:'numeric', month:'2-digit', day:'2-digit' })
-        : '',
-      c.order?.requestingProvider ?? '',
-      c.order?.priority ?? '',
-      c.status ?? '',
-      // Real fix (Jira PS-57): same real-catalog resolution as the
-      // computational-flags filter above — f is a FlagInstance, its
-      // real display name lives on the flag definition it references,
-      // not on the instance itself. Deleted (removed) flags excluded
-      // from the export, same as the filter above.
-      (c.caseFlags ?? [])
-        .filter(f => !f.deletedAt)
-        .map(f => flagDefById.get(f.flagDefinitionId)?.name ?? '')
-        .join('; '),
-    ]);
-    const escape = (v: string) => `"${String(v).replace(/"/g, '""')}"`;
-    const csv = [headers, ...rows].map(row => row.map(escape).join(',')).join('\r\n');
-    const blob = new Blob(['\uFEFF' + csv, ''], { type: 'text/csv;charset=utf-8;' });
-    const url  = URL.createObjectURL(blob);
-    const a    = document.createElement('a');
-    a.href     = url;
-    a.download = `pathscribe-cases-${new Date().toISOString().split('T')[0]}.csv`;
-    document.body.appendChild(a);
-    a.click();
-    document.body.removeChild(a);
-    URL.revokeObjectURL(url);
-  };
-
-  const handleSaveSearch = () => {
-    const name = saveNameInput.trim(); if (!name) return;
-    const ns: SavedSearch = { id:crypto.randomUUID(), name, filters:currentFilters(), createdAt:new Date().toISOString() };
-    setSavedSearches(p=>[...p,ns]); setActiveSavedId(ns.id); setSaveNameInput(''); setShowSaveInput(false);
+  const handleSaveSearch = async () => {
+    const name = saveNameInput.trim();
+    if (!name || !user?.id) return;
+    setSavedSearchFailed(false);
+    const res = await savedSearchService.save({ userId: user.id, name, context: 'caseSearch', filters: draft });
+    if (res.ok === true) {
+      setSavedSearches(p => [...p, res.data]); setActiveSavedId(res.data.id); setSaveNameInput(''); setShowSaveInput(false);
+    } else {
+      setSavedSearchFailed(true);
+    }
   };
 
   const handleLoadSearch = (id: string) => {
-    const s = savedSearches.find(x=>x.id===id); if (!s) return;
-    applyFilters(s.filters); setActiveSavedId(id); setHasSearched(true); setSidebarCollapsed(true); void runSearch();
+    const s = savedSearches.find(x => x.id === id); if (!s) return;
+    const r = defaultRange();
+    const d = normalizeCaseSearchDraft(s.filters, r.dateFrom, r.dateTo);
+    loadDraft(d); setActiveSavedId(id); setSidebarCollapsed(true);
+    void savedSearchService.recordUse(id);
+    void runSearch({ draft: d, page: 1 });
   };
 
-  const handleDeleteSearch = (id: string, e: React.MouseEvent) => {
-    e.stopPropagation(); setSavedSearches(p=>p.filter(x=>x.id!==id));
-    if (activeSavedId===id) setActiveSavedId('');
+  const handleDeleteSearch = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    const res = await savedSearchService.delete(id);
+    if (res.ok === true) {
+      setSavedSearches(p => p.filter(x => x.id !== id));
+      if (activeSavedId === id) setActiveSavedId('');
+    } else {
+      setSavedSearchFailed(true);
+    }
   };
 
-  // ── Voice: selected result index ────────────────────────────
-  const [selectedResultIndex, setSelectedResultIndex] = useState<number>(-1);
-
-  // Real, per direct guidance (gap #6 — the proactive
-  // moveCaseToPatient() trigger, complementing PatientManagementSection.tsx's
-  // own patient-first "Move a Case…" action with this case-first
-  // entry point): shows ReassignCasePatientPanel for whichever real
-  // result row is currently selected via WorklistTable's own real
-  // onRowSelect click handler — never a new per-row action embedded
-  // in that shared table component itself.
+  // Real, per direct guidance (gap #6): ReassignCasePatientPanel for the
+  // selected result row; closed whenever the selection or results change.
   const [reassignPanelOpen, setReassignPanelOpen] = useState(false);
-  // Real, defensive: closes the panel if the underlying selection
-  // changes (a new search, arrow-key navigation to a different row)
-  // rather than leaving it silently open against a stale case.
-  useEffect(() => { setReassignPanelOpen(false); }, [selectedResultIndex, results]);
+  useEffect(() => { setReassignPanelOpen(false); }, [selectedResultIndex, resultPage]);
 
   // ── Voice: set SEARCH context on mount ─────────────────────────
   useEffect(() => {
-    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.SEARCH);
-    return () => mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
+    actionRegistryService.setCurrentContext(VOICE_CONTEXT.SEARCH);
+    return () => actionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST);
   }, []);
 
   // ── Voice: table navigation and search action listeners ─────────────────────
@@ -1519,21 +1100,12 @@ const SearchPage: React.FC = () => {
 
     const openSelected = () => {
       if (selectedResultIndex >= 0 && resultList[selectedResultIndex]) {
-        sessionStorage.setItem('pathscribe:navFrom', 'search');
+        setCaseOpenedFrom('search');
         navigate(`/case/${resultList[selectedResultIndex].id}/synoptic`);
       }
     };
-
-    const clearSearch = () => {
-      handleClear();
-      setSelectedResultIndex(-1);
-    };
-
-    const runVoiceSearch = () => {
-      setHasSearched(true);
-      setSidebarCollapsed(true);
-      void runSearch();
-    };
+    const clearSearch = () => { handleClear(); setSelectedResultIndex(-1); };
+    const runVoiceSearch = () => { setSidebarCollapsed(true); void runSearch({ page: 1 }); };
 
     window.addEventListener('PATHSCRIBE_TABLE_NEXT',          next);
     window.addEventListener('PATHSCRIBE_TABLE_PREVIOUS',      previous);
@@ -1544,7 +1116,6 @@ const SearchPage: React.FC = () => {
     window.addEventListener('PATHSCRIBE_TABLE_OPEN_SELECTED', openSelected);
     window.addEventListener('PATHSCRIBE_TABLE_CLEAR_SEARCH',  clearSearch);
     window.addEventListener('PATHSCRIBE_TABLE_SEARCH',        runVoiceSearch);
-
     return () => {
       window.removeEventListener('PATHSCRIBE_TABLE_NEXT',          next);
       window.removeEventListener('PATHSCRIBE_TABLE_PREVIOUS',      previous);
@@ -1557,55 +1128,39 @@ const SearchPage: React.FC = () => {
       window.removeEventListener('PATHSCRIBE_TABLE_SEARCH',        runVoiceSearch);
     };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [results, selectedResultIndex, navigate]);
+  }, [results, selectedResultIndex, navigate, draft]);
 
-  // â”€â”€ Style helpers â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+  // onF/onB update activeSection via the data-section attribute.
+  const onF = (e: React.FocusEvent<HTMLInputElement>) => { setActiveSection(e.currentTarget.dataset.section ?? ''); };
+  const onB = () => { setActiveSection(''); };
 
-  // onF/onB update activeSection via data-section attribute. Was also
-  // directly mutating e.currentTarget.style.borderColor for the focus
-  // ring — replaced with a real CSS :focus rule on ps-searchpage-filter-
-  // input, same fix already applied to hover-driven inline-style hacks
-  // elsewhere in this review.
-  const onF = (e: React.FocusEvent<HTMLInputElement>) => {
-    setActiveSection(e.currentTarget.dataset.section ?? '');
-  };
-  const onB = () => {
-    setActiveSection('');
-  };
+  const activeCount = countDraftFilters(draft);
 
-  const activeCount = [
-    patientName, hospitalId, patientId, accessionNo,
-    ...diagnosisList, ...specimenList,
-    ...snomedList.map(s=>s.code), ...icdCodes.map(s=>s.code),
-    ...synopticIds, ...flagsList, ...pathologistIds, ...attendingIds, ...submittingNames,
-    ...statusList, ...priorityList, dateFrom?'df':'', dateTo?'dt':'',
-  ].filter(Boolean).length;
-
-  const summary = hasSearched ? buildSummary(currentFilters(), pathologists, attendings, t) : null;
+  const summaryParts = searchedDraft
+    ? describeCaseSearch(searchedDraft, {
+        pathologist: id => pathologists.find(u => u.id === id)?.name,
+        physician:   id => attendings.find(u => u.id === id)?.name,
+        facility:    id => facilities.find(u => u.id === id)?.name,
+        flag:        flagName,
+        template:    id => templates.find(x => x.id === id)?.name,
+        subspecialty:  id => subspecialties.find(x => x.id === id)?.name,
+        performingLab: id => performingLabs.find(x => x.id === id)?.name,
+        location:      id => locations.find(x => x.id === id)?.name,
+      }, t, day => formatCalendarDate(day, i18n.language, timeZone))
+    : null;
+  const range = resultPage ? pageRange(resultPage.page, resultPage.pageSize, resultPage.total) : null;
 
   const quickLinks = {
     Protocols:  [{ title:'CAP Cancer Protocols', url:'https://www.cap.org/protocols-and-guidelines' }, { title:'WHO Classification', url:'https://www.who.int/publications' }],
     References: [{ title:'PathologyOutlines', url:'https://www.pathologyoutlines.com' }, { title:'UpToDate', url:'https://www.uptodate.com' }],
-    Systems:    [{ title:'Hospital LIS', url:'#' }, { title:'Lab Management', url:'#' }],
+    Systems:    [{ title: t('searchPage.resourceLinks.hospitalLis'), url:'#' }, { title: t('searchPage.resourceLinks.labManagement'), url:'#' }],
   };
-
-
-  // â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
   return (
     <div className={`ps-search-page-root${isLoaded ? ' ps-search-page-root--loaded' : ''}`}>
-
-      {/* Real, per direct UI-review follow-up ("Fix the root"): this
-          page's own competing background image/gradient removed —
-          this page now falls through to AppShell's own real
-          .ps-app-root background, matching Configuration/Quality
-          Assurance/Intraop Queue/Contribution. See
-          pathscribe.css's own .ps-search-bg-image/.ps-search-bg-gradient
-          rules (now deleted) for the fuller account. */}
-
       <div className="ps-search-shell">
 
-        {/* â”€â”€ Page header â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Page header ──────────────────────────────────────────────── */}
         <div className="ps-search-header">
           <div className="ps-search-header-row">
             <div>
@@ -1616,30 +1171,31 @@ const SearchPage: React.FC = () => {
               {savedSearches.map(s => (
                 <button key={s.id} type="button" onClick={()=>handleLoadSearch(s.id)} className={`ps-searchpage-saved-chip${activeSavedId===s.id ? ' ps-searchpage-saved-chip--active' : ''}`}>
                   {s.name}
-                  <span onClick={e=>handleDeleteSearch(s.id,e)} className="ps-searchpage-saved-chip-remove">×</span>
+                  <span onClick={e=>{ void handleDeleteSearch(s.id,e); }} className="ps-searchpage-saved-chip-remove" aria-label={t('searchPage.savedSearch.deleteAria', { name: s.name })}>×</span>
                 </button>
               ))}
               {showSaveInput ? (
                 <div className="ps-searchpage-save-row">
                   <input ref={saveInputRef} type="text" value={saveNameInput} onChange={e=>setSaveNameInput(e.target.value)}
-                    onKeyDown={e=>{if(e.key==='Enter')handleSaveSearch();if(e.key==='Escape'){setShowSaveInput(false);setSaveNameInput('');}}}
+                    onKeyDown={e=>{if(e.key==='Enter')void handleSaveSearch();if(e.key==='Escape'){setShowSaveInput(false);setSaveNameInput('');}}}
                     placeholder={t('searchPage.savedSearch.namePlaceholder')} className="ps-searchpage-save-input" />
-                  <button type="button" onClick={handleSaveSearch} className="ps-searchpage-save-btn">{t('common.save')}</button>
-                  <button type="button" onClick={()=>{setShowSaveInput(false);setSaveNameInput('');}} className="ps-searchpage-save-cancel-btn">✕</button>
+                  <button type="button" onClick={()=>void handleSaveSearch()} className="ps-searchpage-save-btn">{t('common.save')}</button>
+                  <button type="button" onClick={()=>{setShowSaveInput(false);setSaveNameInput('');}} className="ps-searchpage-save-cancel-btn" aria-label={t('common.cancel')}>✕</button>
                 </div>
               ) : (
                 <button type="button" onClick={()=>setShowSaveInput(true)} className="ps-searchpage-save-new-btn">{t('searchPage.savedSearch.saveNew')}</button>
               )}
+              {savedSearchFailed && <span className="ps-searchpage-inline-error" role="alert">{t('searchPage.savedSearch.failed')}</span>}
               {activeCount>0&&<span className="ps-searchpage-active-count-badge">{t('searchPage.filterCount', { count: activeCount })}</span>}
             </div>
           </div>
         </div>
 
-        {/* â”€â”€ Body â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+        {/* ── Body ─────────────────────────────────────────────────────── */}
         <main className="ps-search-main">
           <div className="ps-search-row">
 
-          {/* â”€â”€ Sidebar â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* ── Sidebar ────────────────────────────────────────────────── */}
           <aside className={`ps-search-sidebar ${sidebarCollapsed ? 'collapsed' : 'expanded'}`}>
             {sidebarCollapsed ? (
               <div className="ps-search-rail">
@@ -1658,30 +1214,22 @@ const SearchPage: React.FC = () => {
               {/* Accession Date */}
               <div className="ps-search-date-section">
                 <div className="ps-searchpage-date-header-row">
-                  <SectionLabel title={t('searchPage.sections.accessionDate')} active={activeSection==="date"} />
+                  {/* Batch 351: which date the range applies to. */}
+                  <select className="ps-searchpage-basis-select" value={draft.dateBasis} aria-label={t('searchPage.dateBasis.aria')}
+                    onChange={e => set({ dateBasis: e.target.value as CaseSearchDateBasis })}>
+                    {CASE_SEARCH_DATE_BASES.map(b => <option key={b} value={b}>{t(DATE_BASIS_LABEL_KEY[b])}</option>)}
+                  </select>
                   <div className="ps-searchpage-date-shortcuts">
-                    {([['7d',7],['30d',30],['90d',90],['1yr',365]] as [string,number][]).map(([label,days])=>{
-                      const isActive = activeDateRange === label;
-                      return (
-                        <button key={label} type="button"
-                          onClick={()=>{setDateFrom(daysAgo(days, config.facilityTimezone));setDateTo(today(config.facilityTimezone));setActiveDateRange(label);}}
-                          className={`ps-searchpage-date-shortcut-btn${isActive ? ' ps-searchpage-date-shortcut-btn--active' : ''}`}
-                        >{label}</button>
-                      );
-                    })}
-                    {/* "All" — deliberately separate from the days-based
-                        shortcuts above (not representable as N-days-back).
-                        Amber/warning coloring rather than cyan to visually
-                        flag it as a different kind of action, not just a
-                        wider version of the same thing. The tooltip is a
-                        forward-looking caution about a real production
-                        concern (unbounded query against years of clinical
-                        records) — with the current mock service this
-                        actually returns instantly, so the warning describes
-                        the eventual real backend, not a live measurement of
-                        anything slow happening today. */}
+                    {SEARCH_DATE_SHORTCUT_DAYS.map(([shortcut])=>(
+                      <button key={shortcut} type="button"
+                        onClick={()=>chooseDateShortcut(shortcut)}
+                        className={`ps-searchpage-date-shortcut-btn${activeDateRange === shortcut ? ' ps-searchpage-date-shortcut-btn--active' : ''}`}
+                      >{t(DATE_SHORTCUT_LABEL_KEY[shortcut])}</button>
+                    ))}
+                    {/* "All": no date limit. Amber to set it apart; the tooltip
+                        warns it can be slow against years of records. */}
                     <button type="button"
-                      onClick={()=>{setDateFrom('');setDateTo('');setActiveDateRange('all');}}
+                      onClick={()=>chooseDateShortcut('all')}
                       title={t('searchPage.dateShortcuts.allTooltip')}
                       className={`ps-searchpage-date-shortcut-btn ps-searchpage-date-shortcut-btn--all${activeDateRange === 'all' ? ' ps-searchpage-date-shortcut-btn--all-active' : ''}`}
                     >{t('searchPage.dateShortcuts.all')}</button>
@@ -1690,11 +1238,11 @@ const SearchPage: React.FC = () => {
                 <div className="ps-searchpage-date-grid">
                   <div>
                     <div className={`ps-searchpage-date-label${activeSection==='date' ? ' ps-searchpage-date-label--active' : ''}`}>{t('searchPage.dateShortcuts.from')}</div>
-                    <input type="date" value={dateFrom} onChange={e=>{setDateFrom(e.target.value);setActiveDateRange(null);}} onFocus={onF} onBlur={onB} data-section="date" aria-label={t('searchPage.identifierField.dateFromAria')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                    <input type="date" value={draft.dateFrom} onChange={e=>{set({ dateFrom: e.target.value, datesChosen: true });setActiveDateRange(null);}} onFocus={onF} onBlur={onB} data-section="date" aria-label={t('searchPage.identifierField.dateFromAria')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                   </div>
                   <div>
                     <div className={`ps-searchpage-date-label${activeSection==='date' ? ' ps-searchpage-date-label--active' : ''}`}>{t('searchPage.dateShortcuts.to')}</div>
-                    <input type="date" value={dateTo} onChange={e=>{setDateTo(e.target.value);setActiveDateRange(null);}} onFocus={onF} onBlur={onB} data-section="date" aria-label={t('searchPage.identifierField.dateToAria')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
+                    <input type="date" value={draft.dateTo} onChange={e=>{set({ dateTo: e.target.value, datesChosen: true });setActiveDateRange(null);}} onFocus={onF} onBlur={onB} data-section="date" aria-label={t('searchPage.identifierField.dateToAria')} className="ps-searchpage-filter-input ps-searchpage-filter-input--date" />
                   </div>
                 </div>
               </div>
@@ -1702,21 +1250,20 @@ const SearchPage: React.FC = () => {
               {/* Scrollable filters */}
               <div className="ps-search-filter-scroll">
 
-                {/* Identifiers */}
-                {/* Identifiers ”” smart single box */}
+                {/* Identifier — one smart box */}
                 <div onMouseEnter={()=>setActiveSection('id')} onMouseLeave={()=>setActiveSection(s=>s==='id'?'':s)}>
                   <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.identifier')} active={activeSection==='id'} /></div>
                   <div className="ps-searchpage-rel-wrap">
                     <input
                       data-capture-hide="true"
                       type="text"
-                      value={identifierQuery}
+                      value={draft.identifierText}
                       onChange={e => handleIdentifierChange(e.target.value)}
                       onFocus={onF} onBlur={onB} data-section="id"
                       className="ps-searchpage-filter-input"
                       placeholder={t('searchPage.identifierField.placeholder')}
                     />
-                    {identifierQuery && (
+                    {draft.identifierText && (
                       <button
                         type="button"
                         onClick={() => handleIdentifierChange('')}
@@ -1727,11 +1274,24 @@ const SearchPage: React.FC = () => {
                         ×
                       </button>
                     )}
-                    {detectedType && identifierQuery && (
+                    {detectedType && draft.identifierText && (
                       <div className="ps-searchpage-identifier-badge" style={{ '--accent': IDENTIFIER_BADGE[detectedType].color } as React.CSSProperties}>
                         {IDENTIFIER_BADGE[detectedType].label}
                       </div>
                     )}
+                  </div>
+                  {draft.identifierText.trim() && !draft.datesChosen && (
+                    <p className="ps-searchpage-identifier-hint">{t('searchPage.identifierField.allDatesHint')}</p>
+                  )}
+                </div>
+
+                {/* Case type (Batch 351) */}
+                <div className="ps-searchpage-section-mb8">
+                  <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.caseType')} /></div>
+                  <div className="ps-searchpage-pill-row">
+                    {CASE_SEARCH_CASE_TYPES.map(x => (
+                      <CheckPill key={x} label={t(CASE_TYPE_LABEL_KEY[x])} checked={draft.caseTypes.includes(x)} onChange={()=>toggleIn('caseTypes', x)} />
+                    ))}
                   </div>
                 </div>
 
@@ -1743,12 +1303,12 @@ const SearchPage: React.FC = () => {
                 >
                   <div className="ps-searchpage-section-mb6"><SectionLabel title={t('searchPage.sections.patientDemographics')} active={activeSection==='demographics'} /></div>
 
-                  {/* Gender */}
+                  {/* Sex, as recorded on the patient */}
                   <div className="ps-searchpage-section-mb8">
                     <div className="ps-searchpage-mini-label">{t('searchPage.sections.gender')}</div>
                     <div className="ps-searchpage-pill-row">
-                      {GENDER_OPTIONS.map(g => (
-                        <CheckPill key={g} label={t(GENDER_LABEL_KEY[g])} checked={genderList.includes(g)} onChange={()=>toggle(g,genderList,setGenderList)} />
+                      {CASE_SEARCH_SEX_OPTIONS.map(g => (
+                        <CheckPill key={g} label={t(CASE_SEX_LABEL_KEY[g])} checked={draft.sexes.includes(g)} onChange={()=>toggleIn('sexes', g)} />
                       ))}
                     </div>
                   </div>
@@ -1759,13 +1319,13 @@ const SearchPage: React.FC = () => {
                     <div className="ps-searchpage-mini-grid">
                       <div>
                         <div className="ps-searchpage-mini-field-label">{t('searchPage.dateShortcuts.from')}</div>
-                        <input type="date" value={dobFrom} onChange={e=>setDobFrom(e.target.value)}
+                        <input type="date" value={draft.dobFrom} onChange={e=>set({ dobFrom: e.target.value })}
                           aria-label={t('searchPage.demographics.dobFromAria')}
                           className="ps-searchpage-filter-input ps-searchpage-filter-input--date ps-searchpage-filter-input--sm" />
                       </div>
                       <div>
                         <div className="ps-searchpage-mini-field-label">{t('searchPage.dateShortcuts.to')}</div>
-                        <input type="date" value={dobTo} onChange={e=>setDobTo(e.target.value)}
+                        <input type="date" value={draft.dobTo} onChange={e=>set({ dobTo: e.target.value })}
                           aria-label={t('searchPage.demographics.dobToAria')}
                           className="ps-searchpage-filter-input ps-searchpage-filter-input--date ps-searchpage-filter-input--sm" />
                       </div>
@@ -1778,19 +1338,19 @@ const SearchPage: React.FC = () => {
                     <div className="ps-searchpage-mini-grid">
                       <div>
                         <div className="ps-searchpage-mini-field-label ps-searchpage-mini-field-label--dim">{t('searchPage.demographics.ageMinLabel')}</div>
-                        <input type="number" min={0} max={130} placeholder={t('searchPage.demographics.ageMinPlaceholder')} value={ageMin} onChange={e=>setAgeMin(e.target.value)}
+                        <input type="number" min={0} max={130} placeholder={t('searchPage.demographics.ageMinPlaceholder')} value={draft.ageMin} onChange={e=>set({ ageMin: e.target.value })}
                           className="ps-searchpage-filter-input" />
                       </div>
                       <div>
                         <div className="ps-searchpage-mini-field-label ps-searchpage-mini-field-label--dim">{t('searchPage.demographics.ageMaxLabel')}</div>
-                        <input type="number" min={0} max={130} placeholder={t('searchPage.demographics.ageMaxPlaceholder')} value={ageMax} onChange={e=>setAgeMax(e.target.value)}
+                        <input type="number" min={0} max={130} placeholder={t('searchPage.demographics.ageMaxPlaceholder')} value={draft.ageMax} onChange={e=>set({ ageMax: e.target.value })}
                           className="ps-searchpage-filter-input" />
                       </div>
                     </div>
                   </div>
                 </div>
 
-                {/* Status + Priority ”” single row */}
+                {/* Status + Priority — single row */}
                 <div className="ps-searchpage-status-priority-row">
                   <div className="ps-searchpage-label-pair-row">
                     <SectionLabel title={t('searchPage.sections.status')} active={activeSection==='status'} />
@@ -1802,9 +1362,9 @@ const SearchPage: React.FC = () => {
                     onMouseLeave={()=>setActiveSection(s=>s==='status'||s==='priority'?'':s)}
                     className="ps-searchpage-pill-row"
                   >
-                    {CASE_STATUS_OPTIONS.map(s=><CheckPill key={s} label={t(STATUS_PILL_META[s].label)} checked={statusList.includes(s)} onChange={()=>toggle(s,statusList,setStatusList)} accent={STATUS_PILL_META[s].color} />)}
+                    {CASE_SEARCH_STATUS_OPTIONS.map(s=><CheckPill key={s} label={t(CASE_STATUS_LABEL_KEY[s])} checked={draft.statuses.includes(s)} onChange={()=>toggleIn('statuses', s)} accent={CASE_STATUS_HUE[s]} />)}
                     <div className="ps-searchpage-vdivider--stretch" />
-                    {PRIORITY_OPTIONS.map(p=><CheckPill key={p} label={t(PRIORITY_LABEL_KEY[p])} checked={priorityList.includes(p)} onChange={()=>toggle(p,priorityList,setPriorityList)} accent={p==='STAT'?'#ef4444':p==='Rush'?'#f59e0b':'#0891B2'} />)}
+                    {CASE_SEARCH_PRIORITY_OPTIONS.map(p=><CheckPill key={p} label={t(CASE_PRIORITY_LABEL_KEY[p])} checked={draft.priorities.includes(p)} onChange={()=>toggleIn('priorities', p)} accent={CASE_PRIORITY_HUE[p]} />)}
                   </div>
                 </div>
 
@@ -1815,59 +1375,66 @@ const SearchPage: React.FC = () => {
                 <div onMouseEnter={()=>setActiveSection('flags')} onMouseLeave={()=>setActiveSection(s=>s==='flags'?'':s)}>
                   <div className="ps-searchpage-header-row">
                     <SectionLabel title={t('searchPage.sections.flags')} active={activeSection==='flags'} />
-                    <BrowseBtn onClick={()=>setFlagsModal(true)} count={realFlagNames.length} />
+                    <BrowseBtn onClick={()=>setFlagsModal(true)} count={draft.caseFlagIds.length||undefined} />
                   </div>
-                  {flagsList.length>0&&<div className="ps-searchpage-pill-row">{flagsList.map(f=><Chip key={f} label={f} onRemove={()=>setFlagsList(p=>p.filter(x=>x!==f))} />)}</div>}
+                  {draft.caseFlagIds.length>0&&<div className="ps-searchpage-pill-row">{draft.caseFlagIds.map(id=><Chip key={id} label={flagName(id) ?? id} onRemove={()=>removeFrom('caseFlagIds', x=>x!==id)} />)}</div>}
                 </div>
 
                 {/* Synoptic */}
                 <div onMouseEnter={()=>setActiveSection('synoptic')} onMouseLeave={()=>setActiveSection(s=>s==='synoptic'?'':s)}>
                   <div className="ps-searchpage-header-row">
                     <SectionLabel title={t('searchPage.sections.synopticProtocol')} active={activeSection==='synoptic'} />
-                    <BrowseBtn onClick={()=>setSynopticModal(true)} count={ALL_SYNOPTICS.length} />
+                    <BrowseBtn onClick={()=>setSynopticModal(true)} count={draft.synopticTemplateIds.length||undefined} />
                   </div>
-                  {synopticIds.length>0&&<div className="ps-searchpage-pill-row">{synopticIds.map(id=>{const t=ALL_SYNOPTICS.find(s=>s.id===id);return t?<Chip key={id} label={t.organ} onRemove={()=>setSynopticIds(p=>p.filter(x=>x!==id))} />:null;})}</div>}
+                  {draft.synopticTemplateIds.length>0&&<div className="ps-searchpage-pill-row">{draft.synopticTemplateIds.map(id=><Chip key={id} label={templates.find(x=>x.id===id)?.name ?? id} onRemove={()=>removeFrom('synopticTemplateIds', x=>x!==id)} />)}</div>}
                 </div>
 
-                {/* Pathologist */}
+                {/* Pathologist: anyone on the case (assigned, participant, signed) */}
                 <div onMouseEnter={()=>setActiveSection('path')} onMouseLeave={()=>setActiveSection(s=>s==='path'?'':s)}>
                   <div className="ps-searchpage-header-row">
                     <SectionLabel title={t('searchPage.sections.pathologist')} active={activeSection==='path'} />
-                    <BrowseBtn onClick={()=>setPathModal(true)} count={pathologists.length} />
+                    <BrowseBtn onClick={()=>setPathModal(true)} count={draft.pathologistIds.length||undefined} />
                   </div>
-                  {pathologistIds.length>0&&<div className="ps-searchpage-pill-row">{pathologistIds.map(id=>{const u=pathologists.find(x=>x.id===id);return u?<Chip key={id} label={u.name.replace('Dr. ','')} onRemove={()=>setPathologistIds(p=>p.filter(x=>x!==id))} />:null;})}</div>}
+                  {draft.pathologistIds.length>0&&<div className="ps-searchpage-pill-row">{draft.pathologistIds.map(id=><Chip key={id} label={pathologists.find(x=>x.id===id)?.name ?? id} onRemove={()=>removeFrom('pathologistIds', x=>x!==id)} />)}</div>}
+                  {/* Batch 351: how they must be on the case (once someone is chosen). */}
+                  {draft.pathologistIds.length>0&&(
+                    <select className="ps-searchpage-basis-select ps-searchpage-role-select" value={draft.pathologistRole} aria-label={t('searchPage.pathologistRole.aria')}
+                      onChange={e => set({ pathologistRole: e.target.value as CaseSearchPathologistRole })}>
+                      {CASE_SEARCH_PATHOLOGIST_ROLES.map(r => <option key={r} value={r}>{t(PATHOLOGIST_ROLE_LABEL_KEY[r])}</option>)}
+                    </select>
+                  )}
                 </div>
 
                 {/* Attending Physician */}
                 <div onMouseEnter={()=>setActiveSection('attending')} onMouseLeave={()=>setActiveSection(s=>s==='attending'?'':s)}>
                   <div className="ps-searchpage-header-row">
                     <SectionLabel title={t('searchPage.sections.attendingPhysician')} active={activeSection==='attending'} />
-                    <BrowseBtn onClick={()=>setAttendingModal(true)} count={attendings.length} />
+                    <BrowseBtn onClick={()=>setAttendingModal(true)} count={draft.orderingPhysicianIds.length||undefined} />
                   </div>
-                  {attendingIds.length>0&&<div className="ps-searchpage-pill-row">{attendingIds.map(id=>{const u=attendings.find(x=>x.id===id);return u?<Chip key={id} label={u.name.replace('Dr. ','')} onRemove={()=>setAttendingIds(p=>p.filter(x=>x!==id))} />:null;})}</div>}
+                  {draft.orderingPhysicianIds.length>0&&<div className="ps-searchpage-pill-row">{draft.orderingPhysicianIds.map(id=><Chip key={id} label={attendings.find(x=>x.id===id)?.name ?? id} onRemove={()=>removeFrom('orderingPhysicianIds', x=>x!==id)} />)}</div>}
                 </div>
 
-
-                {/* Computational Flags */}
+                {/* Computational (specimen) flags */}
                 <div className="ps-searchpage-section-mb4">
                   <div className="ps-searchpage-header-row">
                     <SectionLabel title={t('searchPage.sections.compFlags')} active={false} />
-                    <BrowseBtn onClick={()=>setCompFlagsModal(true)} count={compFlagsList.length||undefined} />
+                    <BrowseBtn onClick={()=>setCompFlagsModal(true)} count={draft.specimenFlagIds.length||undefined} />
                   </div>
-                  {compFlagsList.length>0&&<div className="ps-searchpage-pill-row">
-                    {compFlagsList.map(f=><Chip key={f} label={f} onRemove={()=>setCompFlagsList(p=>p.filter(x=>x!==f))} accent="#0891b2" />)}
+                  {draft.specimenFlagIds.length>0&&<div className="ps-searchpage-pill-row">
+                    {draft.specimenFlagIds.map(id=><Chip key={id} label={flagName(id) ?? id} onRemove={()=>removeFrom('specimenFlagIds', x=>x!==id)} accent="#0891b2" />)}
                   </div>}
                 </div>
 
-                {/* Facility */}
+                {/* Submitting facility */}
                 <div className="ps-searchpage-section-mb4">
                   <div className="ps-searchpage-header-row">
                     <SectionLabel title={t('searchPage.sections.facility')} active={false} />
-                    <BrowseBtn onClick={()=>setFacilityModal(true)} count={facilityIds.length||undefined} />
+                    <BrowseBtn onClick={()=>setFacilityModal(true)} count={draft.submittingFacilityIds.length||undefined} />
                   </div>
-                  {facilityIds.length>0&&<div className="ps-searchpage-pill-row">
-                    {facilityIds.map(id=><Chip key={id} label={facilities.find(c=>c.id===id)?.name??id} onRemove={()=>setFacilityIds(p=>p.filter(x=>x!==id))} accent="#8b5cf6" />)}
+                  {draft.submittingFacilityIds.length>0&&<div className="ps-searchpage-pill-row">
+                    {draft.submittingFacilityIds.map(id=><Chip key={id} label={facilities.find(c=>c.id===id)?.name??id} onRemove={()=>removeFrom('submittingFacilityIds', x=>x!==id)} accent="#8b5cf6" />)}
                   </div>}
+                  {draft.submittingFacilityIds.length>0&&<div className="ps-searchpage-org-hint">{t('searchPage.includesSitesHint')}</div>}
                 </div>
 
                 </div>{/* end ps-search-2col */}
@@ -1877,22 +1444,22 @@ const SearchPage: React.FC = () => {
                   <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.specimen')} active={activeSection==='specimen'} /></div>
                   <div className="ps-searchpage-input-row" ref={specimenRef}>
                     <div className="ps-searchpage-rel-wrap--flex1">
-                      <input type="text" value={specimenQuery} onChange={e=>setSpecimenQuery(e.target.value)} onFocus={onF} onBlur={onB} data-section="specimen" className="ps-searchpage-filter-input" placeholder={t('searchPage.specimenSection.placeholder')}
+                      <input type="text" value={specimenQuery} onChange={e=>{setSpecimenQuery(e.target.value);setShowSpecimenDrop(true);}} onFocus={onF} onBlur={onB} data-section="specimen" className="ps-searchpage-filter-input" placeholder={t('searchPage.specimenSection.placeholder')}
                         onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();if(specimenQuery.trim())addSpecimen(specimenQuery);}}} />
-                      {showSpecimenDrop&&(
+                      {showSpecimenDrop&&specimenQuery.trim().length>=2&&(
                         <div className={DROPDOWN_CLASS}>
                           {specimenSuggestions.map(s=>(
                             <button key={s} type="button" onClick={()=>addSpecimen(s)} className={DROP_BTN_CLASS}>{s}</button>
                           ))}
-                          {specimenQuery.trim()&&!SPECIMEN_DICTIONARY.some(s=>s.toLowerCase()===specimenQuery.toLowerCase())&&(
-                            <button type="button" onClick={()=>addSpecimen(specimenQuery)} className={`${DROP_BTN_CLASS} ps-searchpage-dropdown-btn--add`}>{t('searchPage.specimenSection.addOption', { query: specimenQuery })}</button>
+                          {!specimenSuggestions.some(s=>s.toLowerCase()===specimenQuery.trim().toLowerCase())&&(
+                            <button type="button" onClick={()=>addSpecimen(specimenQuery)} className={`${DROP_BTN_CLASS} ps-searchpage-dropdown-btn--add`}>{t('searchPage.specimenSection.addOption', { query: specimenQuery.trim() })}</button>
                           )}
                         </div>
                       )}
                     </div>
-                    <BrowseBtn onClick={()=>setSpecimenModal(true)} count={specimenList.length||undefined} />
+                    <BrowseBtn onClick={()=>setSpecimenModal(true)} count={draft.specimenTerms.length||undefined} />
                   </div>
-                  {specimenList.length>0&&<div className="ps-searchpage-pill-row--mt4">{specimenList.map(s=><Chip key={s} label={s} onRemove={()=>setSpecimenList(p=>p.filter(x=>x!==s))} />)}</div>}
+                  {draft.specimenTerms.length>0&&<div className="ps-searchpage-pill-row--mt4">{draft.specimenTerms.map(s=><Chip key={s} label={s} onRemove={()=>removeFrom('specimenTerms', x=>x!==s)} />)}</div>}
                 </div>
 
                 {/* Diagnosis */}
@@ -1901,9 +1468,9 @@ const SearchPage: React.FC = () => {
                   <div className="ps-searchpage-input-row">
                     <input type="text" value={diagnosisText} onChange={e=>setDiagnosisText(e.target.value)} onFocus={onF} onBlur={onB} data-section="diagnosis" className="ps-searchpage-filter-input" placeholder={t('searchPage.diagnosisSection.placeholder')}
                       onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addDiagnosis();}}} />
-                    <button type="button" onClick={addDiagnosis} className="ps-searchpage-add-btn">+</button>
+                    <button type="button" onClick={addDiagnosis} className="ps-searchpage-add-btn" aria-label={t('searchPage.diagnosisSection.addAria')}>+</button>
                   </div>
-                  {diagnosisList.length>0&&<div className="ps-searchpage-pill-row--mt4">{diagnosisList.map(d=><Chip key={d} label={d} onRemove={()=>setDiagnosisList(p=>p.filter(x=>x!==d))} />)}</div>}
+                  {draft.diagnosisTerms.length>0&&<div className="ps-searchpage-pill-row--mt4">{draft.diagnosisTerms.map(d=><Chip key={d} label={d} onRemove={()=>removeFrom('diagnosisTerms', x=>x!==d)} />)}</div>}
                 </div>
 
                 {/* SNOMED CT */}
@@ -1917,22 +1484,22 @@ const SearchPage: React.FC = () => {
                           {snomedSuggestions.map(s=>(
                             <button key={s.code} type="button" onClick={()=>addSnomed(s)} className={DROP_BTN_CLASS}>
                               <span className="ps-searchpage-dropdown-code ps-searchpage-dropdown-code--snomed">{s.code}</span>
-                              <span className="ps-searchpage-dropdown-desc">{s.display.substring(0,38)}…</span>
+                              <span className="ps-searchpage-dropdown-desc">{s.display}</span>
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
-                    <BrowseBtn onClick={()=>setSnomedModal(true)} count={snomedList.length||undefined} />
+                    <BrowseBtn onClick={()=>setSnomedModal(true)} count={draft.snomedCodes.length||undefined} />
                   </div>
-                  {snomedList.length>0&&(
+                  {draft.snomedCodes.length>0&&(
                     <div className="ps-searchpage-pill-row--mt4">
-                      {snomedList.map(s=><Chip key={s.code} label={s.code} title={`SNOMED CT: ${s.display}`} onRemove={()=>setSnomedList(p=>p.filter(x=>x.code!==s.code))} accent='#8B5CF6' />)}
+                      {draft.snomedCodes.map(s=><Chip key={s.code} label={s.code} title={t('searchPage.snomedSection.chipTitle', { display: s.display })} onRemove={()=>removeFrom('snomedCodes', x=>x.code!==s.code)} accent='#8B5CF6' />)}
                     </div>
                   )}
                 </div>
 
-                {/* ICD Codes ”” unified ICD-10 / ICD-11 / ICD-O */}
+                {/* ICD Codes — ICD-10 / ICD-11 / ICD-O */}
                 <div onMouseEnter={()=>setActiveSection('icd')} onMouseLeave={()=>setActiveSection(s=>s==='icd'?'':s)} className="ps-searchpage-icd-section-pb">
                   <div className="ps-searchpage-section-mb4"><SectionLabel title={t('searchPage.sections.icdCodes')} active={activeSection==='icd'} /></div>
                   <div className="ps-searchpage-input-row" ref={icdRef}>
@@ -1943,20 +1510,109 @@ const SearchPage: React.FC = () => {
                           {icdSuggestions.map(s=>(
                             <button key={s.code} type="button" onClick={()=>addIcd(s)} className={DROP_BTN_CLASS}>
                               <span className="ps-searchpage-dropdown-code ps-searchpage-dropdown-code--icd">{s.code}</span>
-                              <span className="ps-searchpage-dropdown-desc">{s.display.substring(0,38)}…</span>
+                              <span className="ps-searchpage-dropdown-desc">{s.display}</span>
                             </button>
                           ))}
                         </div>
                       )}
                     </div>
-                    <BrowseBtn onClick={()=>setIcdModal(true)} count={icdCodes.length||undefined} />
+                    <BrowseBtn onClick={()=>setIcdModal(true)} count={draft.icdCodes.length||undefined} />
                   </div>
-                  {icdCodes.length>0&&(
+                  {draft.icdCodes.length>0&&(
                     <div className="ps-searchpage-pill-row--mt4">
-                      {icdCodes.map(s=>{
+                      {draft.icdCodes.map(s=>{
                         const icdAccent = s.system==='ICD-11'?'#F59E0B':s.system?.startsWith('ICD-O')?'#10B981':'#8B5CF6';
-                        return <Chip key={`${s.system}-${s.code}`} label={`${s.system} ${s.code}`} title={s.display} onRemove={()=>setIcdCodes(p=>p.filter(x=>x.code!==s.code))} accent={icdAccent} />;
+                        return <Chip key={`${s.system}-${s.code}`} label={t('searchPage.icdSection.chipLabel', { system: s.system, code: s.code })} title={s.display} onRemove={()=>removeFrom('icdCodes', x=>x.code!==s.code)} accent={icdAccent} />;
                       })}
+                    </div>
+                  )}
+                </div>
+
+                {/* ── More filters (Batch 351) ─────────────────────────────── */}
+                <div className="ps-searchpage-more">
+                  <button type="button" className="ps-searchpage-more-toggle" aria-expanded={moreOpen} onClick={() => setMoreOpen(o => !o)}>
+                    <span>{moreOpen ? '▾' : '▸'} {t('searchPage.moreFilters.toggle')}</span>
+                    {countMoreFilters(draft) > 0 && <span className="ps-searchpage-more-count">{countMoreFilters(draft)}</span>}
+                  </button>
+                  {moreOpen && (
+                    <div className="ps-searchpage-more-body">
+                      <div className="ps-searchpage-more-group">
+                        <div className="ps-searchpage-mini-label">{t('searchPage.moreFilters.revisions')}</div>
+                        <div className="ps-searchpage-pill-row">
+                          {CASE_SEARCH_REVISION_TYPES.map(x => <CheckPill key={x} label={t(REVISION_TYPE_LABEL_KEY[x])} checked={draft.revisionTypes.includes(x)} onChange={()=>toggleIn('revisionTypes', x)} accent="#8B5CF6" />)}
+                        </div>
+                      </div>
+                      <div className="ps-searchpage-more-group">
+                        <div className="ps-searchpage-mini-label">{t('searchPage.moreFilters.holds')}</div>
+                        <div className="ps-searchpage-pill-row">
+                          {CASE_SEARCH_HOLD_TYPES.map(x => <CheckPill key={x} label={t(HOLD_TYPE_LABEL_KEY[x])} checked={draft.holdTypes.includes(x)} onChange={()=>toggleIn('holdTypes', x)} accent="#f97316" />)}
+                        </div>
+                      </div>
+                      <div className="ps-searchpage-more-group">
+                        <div className="ps-searchpage-mini-label">{t('searchPage.moreFilters.resultFlag')}</div>
+                        <div className="ps-searchpage-pill-row">
+                          {CASE_SEARCH_RESULT_FLAGS.map(x => <CheckPill key={x} label={t(RESULT_FLAG_LABEL_KEY[x])} checked={draft.resultFlags.includes(x)} onChange={()=>toggleIn('resultFlags', x)} accent={RESULT_FLAG_HUE[x]} />)}
+                        </div>
+                      </div>
+                      <div className="ps-searchpage-more-group">
+                        <div className="ps-searchpage-mini-label">{t('searchPage.moreFilters.pendingWork')}</div>
+                        <div className="ps-searchpage-pill-row">
+                          {CASE_SEARCH_PENDING_WORK.map(x => <CheckPill key={x} label={t(PENDING_WORK_LABEL_KEY[x])} checked={draft.pendingWork.includes(x)} onChange={()=>toggleIn('pendingWork', x)} />)}
+                          <CheckPill label={t('searchPage.moreFilters.pastTat')} checked={draft.pastTatTarget} onChange={()=>set({ pastTatTarget: !draft.pastTatTarget })} accent="#ef4444" />
+                        </div>
+                      </div>
+                      <div className="ps-search-2col">
+                        {([
+                          ['subspecialtyIds', 'searchPage.moreFilters.subspecialty', subspecialties],
+                          ['performingLabIds', 'searchPage.moreFilters.performingLab', performingLabs],
+                          ['locationIds', 'searchPage.moreFilters.location', locations],
+                        ] as const).map(([key, labelKey, options]) => (
+                          <div key={key} className="ps-searchpage-section-mb4">
+                            <div className="ps-searchpage-header-row">
+                              <SectionLabel title={t(labelKey)} />
+                              <BrowseBtn onClick={()=>setOptionModal(key)} count={draft[key].length||undefined} />
+                            </div>
+                            {draft[key].length>0&&<div className="ps-searchpage-pill-row">
+                              {draft[key].map(id=><Chip key={id} label={options.find(o=>o.id===id)?.name ?? id} onRemove={()=>removeFrom(key, x=>x!==id)} />)}
+                            </div>}
+                            {key==='performingLabIds'&&draft[key].length>0&&<div className="ps-searchpage-org-hint">{t('searchPage.includesSitesHint')}</div>}
+                          </div>
+                        ))}
+                      </div>
+                      <div className="ps-searchpage-more-group">
+                        <div className="ps-searchpage-mini-label">{t('searchPage.moreFilters.intake')}</div>
+                        <div className="ps-searchpage-pill-row">
+                          {CASE_SEARCH_INTAKES.map(x => <CheckPill key={x} label={t(INTAKE_LABEL_KEY[x])} checked={draft.intakes.includes(x)} onChange={()=>toggleIn('intakes', x)} />)}
+                        </div>
+                      </div>
+                      <div className="ps-searchpage-more-group">
+                        <div className="ps-searchpage-mini-label">{t('searchPage.moreFilters.payer')}</div>
+                        <input type="text" value={draft.payer} onChange={e=>set({ payer: e.target.value })} className="ps-searchpage-filter-input" placeholder={t('searchPage.moreFilters.payerPlaceholder')} />
+                      </div>
+                      <div className="ps-searchpage-more-group">
+                        <div className="ps-searchpage-mini-label">{t('searchPage.moreFilters.cpt')}</div>
+                        <div className="ps-searchpage-input-row">
+                          <input type="text" value={cptText} onChange={e=>setCptText(e.target.value)} className="ps-searchpage-filter-input" placeholder={t('searchPage.moreFilters.cptPlaceholder')}
+                            onKeyDown={e=>{if(e.key==='Enter'){e.preventDefault();addCpt();}}} />
+                          <button type="button" onClick={addCpt} className="ps-searchpage-add-btn" aria-label={t('searchPage.moreFilters.cptAddAria')}>+</button>
+                        </div>
+                        {draft.cptCodes.length>0&&<div className="ps-searchpage-pill-row--mt4">{draft.cptCodes.map(c=><Chip key={c} label={c} onRemove={()=>removeFrom('cptCodes', x=>x!==c)} />)}</div>}
+                      </div>
+                      <div className="ps-searchpage-more-group">
+                        <div className="ps-searchpage-header-row">
+                          <SectionLabel title={t('searchPage.moreFilters.autopsy')} />
+                          <BrowseBtn onClick={()=>setOptionModal('autopsyJurisdictions')} count={draft.autopsyJurisdictions.length||undefined} />
+                        </div>
+                        {draft.autopsyJurisdictions.length>0&&<div className="ps-searchpage-pill-row">
+                          {draft.autopsyJurisdictions.map(j=><Chip key={j} label={t(`jurisdictionNames.${j}`)} onRemove={()=>removeFrom('autopsyJurisdictions', x=>x!==j)} />)}
+                        </div>}
+                        <div className="ps-searchpage-pill-row">
+                          {CASE_SEARCH_AUTOPSY_AUTHORITIES.map(x => <CheckPill key={x} label={t(AUTOPSY_AUTHORITY_LABEL_KEY[x])} checked={draft.autopsyAuthorities.includes(x)} onChange={()=>toggleIn('autopsyAuthorities', x)} />)}
+                        </div>
+                        <div className="ps-searchpage-pill-row">
+                          {CASE_SEARCH_AUTOPSY_REPORTS.map(x => <CheckPill key={x} label={t(AUTOPSY_REPORT_LABEL_KEY[x])} checked={draft.autopsyReports.includes(x)} onChange={()=>toggleIn('autopsyReports', x)} />)}
+                        </div>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -1976,38 +1632,52 @@ const SearchPage: React.FC = () => {
             )}
           </aside>
 
-          {/* â”€â”€ Results pane â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+          {/* ── Results pane ───────────────────────────────────────────── */}
           <div data-capture-hide="true" className="ps-search-results-pane">
 
             {/* Summary bar */}
             <div className="ps-search-summary-bar">
-              {summary ? (
+              {summaryParts ? (
                 <p className="ps-searchpage-summary-text">
-                  
-                  {summary.split(' · ').map((part,i,arr)=>(
-                    <React.Fragment key={i}>
-                      <span className={i===0 ? 'ps-searchpage-summary-part--first' : 'ps-searchpage-summary-part'}>{part}</span>
-                      {i<arr.length-1&&<span className="ps-searchpage-summary-sep">·</span>}
-                    </React.Fragment>
-                  ))}
+                  {summaryParts.length === 0
+                    ? <span className="ps-searchpage-summary-part--first">{t('searchPage.summary.allCases')}</span>
+                    : summaryParts.map((part,i,arr)=>(
+                        <React.Fragment key={i}>
+                          <span className={i===0 ? 'ps-searchpage-summary-part--first' : 'ps-searchpage-summary-part'}>{i===0 ? t('searchPage.summary.prefix') + part : part}</span>
+                          {i<arr.length-1&&<span className="ps-searchpage-summary-sep">·</span>}
+                        </React.Fragment>
+                      ))}
                 </p>
               ) : (
                 <p className="ps-searchpage-summary-empty">{t('searchPage.summary.empty', { cta: t('searchPage.actions.searchCases') })}</p>
               )}
               <div className="ps-search-summary-actions">
-                {results!==null&&<span className="ps-searchpage-result-count">{t('searchPage.summary.resultCount', { count: results.length })}</span>}
-                {results!==null&&results.length>0&&(
+                {resultPage && range && (
+                  <span className="ps-searchpage-result-count" aria-live="polite">
+                    {resultPage.total === 0
+                      ? t('searchPage.summary.noResults')
+                      : t('searchPage.summary.rangeOfTotal', { from: range.from, to: range.to, count: resultPage.total })}
+                  </span>
+                )}
+                {resultPage && (
+                  <label className="ps-searchpage-sort">
+                    <span className="ps-searchpage-sort-label">{t('searchPage.sort.label')}</span>
+                    <select className="ps-searchpage-sort-select" value={sortOptionKey(sort)} onChange={e=>changeSort(e.target.value)} disabled={isSearching}>
+                      {CASE_SEARCH_SORT_OPTIONS.map(o => (
+                        <option key={sortOptionKey(o)} value={sortOptionKey(o)}>{t(CASE_SEARCH_SORT_LABEL_KEY[sortOptionKey(o)])}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
+                {resultPage && resultPage.total>0 && (
                   <button
                     type="button"
-                    onClick={handleExportCSV}
+                    onClick={()=>void handleExportCSV()}
+                    disabled={isExporting}
                     className="ps-searchpage-export-btn"
-                  >{t('searchPage.summary.exportCsv')}</button>
+                  >{isExporting ? t('searchPage.export.exporting') : t('searchPage.summary.exportCsv')}</button>
                 )}
-                {/* Real, per direct guidance (gap #6): only enabled when
-                    a real result row is actually selected — reuses
-                    selectedResultIndex, the same real signal
-                    WorklistTable's own onRowSelect already drives via
-                    real user click, not keyboard alone. */}
+                {/* Real, per direct guidance (gap #6): only when a result row is selected. */}
                 {selectedResultIndex>=0 && results?.[selectedResultIndex] && (
                   <button
                     type="button"
@@ -2017,6 +1687,8 @@ const SearchPage: React.FC = () => {
                 )}
               </div>
             </div>
+            {exportNotice && <p className="ps-searchpage-notice" role="status">{exportNotice}</p>}
+            {searchFailed && <p className="ps-searchpage-notice ps-searchpage-notice--error" role="alert">{t('searchPage.summary.searchFailed')}</p>}
 
             {reassignPanelOpen && selectedResultIndex>=0 && results?.[selectedResultIndex] && (
               <ReassignCasePatientPanel
@@ -2024,33 +1696,37 @@ const SearchPage: React.FC = () => {
                 onClose={() => setReassignPanelOpen(false)}
                 onReassigned={() => {
                   setReassignPanelOpen(false);
-                  runSearch();
+                  if (searchedDraft && resultPage) void runSearch({ draft: searchedDraft, page: resultPage.page });
                 }}
               />
             )}
 
-            {/* Result table — WorklistTable owns its own internal scroll
-                (.wl-table-scroll). minWidth:0 here (and on .ps-search-results-body
-                in pathscribe.css) is required for that to actually kick in —
-                without it, the 1100px-wide table can push this flex chain wider
-                instead of being clamped, which only shows up as truncation on
-                narrower viewports rather than a visible bug on a wide monitor. */}
+            {/* Result table — WorklistTable owns its own internal scroll. It
+                keeps the server's order (preserveOrder): paging and sorting
+                are done by the search service. */}
             <div ref={wrapperRef} className="ps-search-table-wrap">
               {hasSearched
-                ? <WorklistTable key={searchGeneration} cases={results??[]} activeFilter="all" selectedIndex={selectedResultIndex} onRowSelect={setSelectedResultIndex} onBeforeNavigate={(_caseId)=>sessionStorage.setItem('pathscribe:navFrom','search')} tableHeight={tableHeight} forceCardView flagDefinitions={flagDefinitions} />
+                ? <WorklistTable key={searchGeneration} cases={results??[]} activeFilter="all" selectedIndex={selectedResultIndex} onRowSelect={setSelectedResultIndex} navSource="search" preserveOrder tableHeight={tableHeight} forceCardView flagDefinitions={flagDefinitions} />
                 : <div className="ps-searchpage-no-search">{t('searchPage.summary.noSearchYet')}</div>
               }
             </div>
-            {hasSearched && hasMoreResults && (
-              <div className="ps-searchpage-loadmore-row">
-                <button
-                  type="button"
-                  onClick={loadMoreResults}
-                  disabled={isLoadingMore}
-                  className={`ps-searchpage-loadmore-btn${isLoadingMore ? ' ps-searchpage-loadmore-btn--loading' : ''}`}
-                >
-                  {isLoadingMore ? t('common.loading') : t('searchPage.summary.loadMore', { count: SEARCH_PAGE_SIZE })}
-                </button>
+            {resultPage && resultPage.pageCount > 1 && (
+              <nav className="ps-searchpage-pager" aria-label={t('searchPage.pager.aria')}>
+                <button type="button" className="ps-searchpage-pager-btn" onClick={()=>goToPage(1)} disabled={isSearching || resultPage.page <= 1}>{t('searchPage.pager.first')}</button>
+                <button type="button" className="ps-searchpage-pager-btn" onClick={()=>goToPage(resultPage.page - 1)} disabled={isSearching || resultPage.page <= 1}>{t('searchPage.pager.previous')}</button>
+                <span className="ps-searchpage-pager-status">{t('searchPage.pager.pageOf', { page: resultPage.page, pageCount: resultPage.pageCount })}</span>
+                <button type="button" className="ps-searchpage-pager-btn" onClick={()=>goToPage(resultPage.page + 1)} disabled={isSearching || resultPage.page >= resultPage.pageCount}>{t('searchPage.pager.next')}</button>
+                <button type="button" className="ps-searchpage-pager-btn" onClick={()=>goToPage(resultPage.pageCount)} disabled={isSearching || resultPage.page >= resultPage.pageCount}>{t('searchPage.pager.last')}</button>
+              </nav>
+            )}
+            {resultPage && resultPage.total > 0 && (
+              <div className="ps-searchpage-pagesize">
+                <label>
+                  <span className="ps-searchpage-sort-label">{t('searchPage.pager.perPage')}</span>
+                  <select className="ps-searchpage-sort-select" value={pageSize} onChange={e=>changePageSize(e.target.value)} disabled={isSearching}>
+                    {CASE_SEARCH_PAGE_SIZES.map(n => <option key={n} value={n}>{n}</option>)}
+                  </select>
+                </label>
               </div>
             )}
           </div>
@@ -2058,19 +1734,19 @@ const SearchPage: React.FC = () => {
         </main>
       </div>
 
-      {/* â”€â”€ Lookup modals â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Lookup modals ────────────────────────────────────────────────── */}
 
       {specimenModal&&(
         <LookupModal
           title={t('searchPage.lookupModals.specimenTitle')}
           subtitle={t('searchPage.lookupModals.specimenSubtitle', { count: specimenDictionary.filter(s=>s.active).length, types: [...new Set(specimenDictionary.map(s=>s.type))].length })}
-          selectedCount={specimenList.length}
+          selectedCount={draft.specimenTerms.length}
           onClose={()=>setSpecimenModal(false)}
         >
           <SpecimenLookupContent
             specimens={specimenDictionary}
-            selected={specimenList}
-            onToggle={name => setSpecimenList(p => p.includes(name) ? p.filter(x=>x!==name) : [...p, name])}
+            selected={draft.specimenTerms}
+            onToggle={name => toggleIn('specimenTerms', name)}
           />
         </LookupModal>
       )}
@@ -2079,13 +1755,10 @@ const SearchPage: React.FC = () => {
         <LookupModal
           title={t('searchPage.lookupModals.snomedTitle')}
           subtitle={t('searchPage.lookupModals.snomedSubtitle', { count: SNOMED_AXIS_META.length, axes: SNOMED_AXIS_META.map(m=>t(m.labelKey)).join(', ') })}
-          selectedCount={snomedList.length}
+          selectedCount={draft.snomedCodes.length}
           onClose={()=>setSnomedModal(false)}
         >
-          <SnomedModalContent
-            selected={snomedList}
-            onToggle={c=>setSnomedList(p=>p.some(x=>x.code===c.code)?p.filter(x=>x.code!==c.code):[...p,c])}
-          />
+          <SnomedModalContent selected={draft.snomedCodes} onToggle={c=>toggleCode('snomedCodes', c)} />
         </LookupModal>
       )}
 
@@ -2093,12 +1766,12 @@ const SearchPage: React.FC = () => {
         <LookupModal
           title={t('searchPage.lookupModals.icdTitle')}
           subtitle={t('searchPage.lookupModals.icdSubtitle')}
-          selectedCount={icdCodes.length}
+          selectedCount={draft.icdCodes.length}
           onClose={()=>setIcdModal(false)}
         >
           <IcdModalContent
-            selected={icdCodes}
-            onToggle={c=>setIcdCodes(p=>p.some(x=>x.code===c.code)?p.filter(x=>x.code!==c.code):[...p,c])}
+            selected={draft.icdCodes}
+            onToggle={c=>toggleCode('icdCodes', c)}
             icd10Active={config.terminologyConfig.icd10.active}
             icd11Active={config.terminologyConfig.icd11.active}
             icdoActive={config.terminologyConfig.icdo.active}
@@ -2107,26 +1780,26 @@ const SearchPage: React.FC = () => {
       )}
 
       {synopticModal&&(
-        <LookupModal title={t('searchPage.lookupModals.synopticTitle')} subtitle={t('searchPage.lookupModals.synopticSubtitle', { count: ALL_SYNOPTICS.length, categories: Array.from(new Set(ALL_SYNOPTICS.map(s=>s.category))).length })} selectedCount={synopticIds.length} onClose={()=>setSynopticModal(false)}>
-          <SynopticLookupContent selected={synopticIds} onToggle={id=>toggle(id,synopticIds,setSynopticIds)} />
+        <LookupModal title={t('searchPage.lookupModals.synopticTitle')} subtitle={t('searchPage.lookupModals.synopticSubtitle', { count: templates.length, categories: new Set(templates.map(s=>s.category)).size })} selectedCount={draft.synopticTemplateIds.length} onClose={()=>setSynopticModal(false)}>
+          <SynopticLookupContent templates={templates} selected={draft.synopticTemplateIds} onToggle={id=>toggleIn('synopticTemplateIds', id)} />
         </LookupModal>
       )}
 
       {flagsModal&&(
-        <LookupModal title={t('searchPage.lookupModals.flagsTitle')} subtitle={t('searchPage.lookupModals.flagsSubtitle', { count: realFlagNames.length })} selectedCount={flagsList.length} onClose={()=>setFlagsModal(false)}>
-          <FlagsLookupContent flags={realFlagNames} selected={flagsList} onToggle={f=>toggle(f,flagsList,setFlagsList)} />
+        <LookupModal title={t('searchPage.lookupModals.flagsTitle')} subtitle={t('searchPage.lookupModals.flagsSubtitle', { count: caseFlagOptions.length })} selectedCount={draft.caseFlagIds.length} onClose={()=>setFlagsModal(false)}>
+          <FlagsLookupContent flags={caseFlagOptions} selected={draft.caseFlagIds} onToggle={id=>toggleIn('caseFlagIds', id)} />
         </LookupModal>
       )}
 
       {pathModal&&(
-        <LookupModal title={t('searchPage.lookupModals.pathologistTitle')} subtitle={t('searchPage.lookupModals.pathologistSubtitle')} selectedCount={pathologistIds.length} onClose={()=>setPathModal(false)}>
-          <UserLookupContent users={pathologists} selected={pathologistIds} onToggle={id=>toggle(id,pathologistIds,setPathologistIds)} />
+        <LookupModal title={t('searchPage.lookupModals.pathologistTitle')} subtitle={t('searchPage.lookupModals.pathologistSubtitle')} selectedCount={draft.pathologistIds.length} onClose={()=>setPathModal(false)}>
+          <UserLookupContent users={pathologists} selected={draft.pathologistIds} onToggle={id=>toggleIn('pathologistIds', id)} />
         </LookupModal>
       )}
 
       {attendingModal&&(
-        <LookupModal title={t('searchPage.lookupModals.attendingTitle')} subtitle={t('searchPage.lookupModals.attendingSubtitle')} selectedCount={attendingIds.length} onClose={()=>setAttendingModal(false)}>
-          <UserLookupContent users={attendings} selected={attendingIds} onToggle={id=>toggle(id,attendingIds,setAttendingIds)} accent="#10B981" />
+        <LookupModal title={t('searchPage.lookupModals.attendingTitle')} subtitle={t('searchPage.lookupModals.attendingSubtitle')} selectedCount={draft.orderingPhysicianIds.length} onClose={()=>setAttendingModal(false)}>
+          <UserLookupContent users={attendings} selected={draft.orderingPhysicianIds} onToggle={id=>toggleIn('orderingPhysicianIds', id)} accent="#10B981" />
         </LookupModal>
       )}
 
@@ -2135,38 +1808,50 @@ const SearchPage: React.FC = () => {
         <LookupModalX
           title={t('searchPage.lookupModals.facilityTitle')}
           subtitle={t('searchPage.lookupModals.facilitySubtitle')}
-          selectedCount={facilityIds.length}
+          selectedCount={draft.submittingFacilityIds.length}
           onClose={() => setFacilityModal(false)}
-          onClear={() => setFacilityIds([])}
+          onClear={() => set({ submittingFacilityIds: [] })}
           onDone={() => setFacilityModal(false)}
         >
+          <FacilityLookupContent facilities={facilities} selected={draft.submittingFacilityIds} onToggle={id => toggleIn('submittingFacilityIds', id)} />
+        </LookupModalX>
+      )}
+
+      {/* Batch 351: subspecialty, performing lab, location and autopsy jurisdiction pickers */}
+      {optionModal && (
+        <LookupModalX
+          title={t(`searchPage.lookupModals.option.${optionModal}`)}
+          subtitle={t('searchPage.lookupModals.optionSubtitle')}
+          selectedCount={draft[optionModal].length}
+          onClose={() => setOptionModal(null)}
+          onClear={() => set({ [optionModal]: [] } as Partial<CaseSearchDraft>)}
+          onDone={() => setOptionModal(null)}
+        >
           <FacilityLookupContent
-            facilities={facilities}
-            selected={facilityIds}
-            onToggle={id => toggle(id, facilityIds, setFacilityIds)}
+            facilities={{ subspecialtyIds: subspecialties, performingLabIds: performingLabs, locationIds: locations, autopsyJurisdictions: jurisdictions }[optionModal]}
+            selected={draft[optionModal]}
+            onToggle={id => toggleIn(optionModal, id)}
+            placeholder={t('searchPage.lookupModals.optionSearch')}
+            showIds={false}
           />
         </LookupModalX>
       )}
 
-      {/* Computational Flags browse modal */}
+      {/* Computational (specimen) flags browse modal */}
       {compFlagsModal && (
         <LookupModalX
           title={t('searchPage.lookupModals.compFlagsTitle')}
           subtitle={t('searchPage.lookupModals.compFlagsSubtitle')}
-          selectedCount={compFlagsList.length}
+          selectedCount={draft.specimenFlagIds.length}
           onClose={() => setCompFlagsModal(false)}
-          onClear={() => setCompFlagsList([])}
+          onClear={() => set({ specimenFlagIds: [] })}
           onDone={() => setCompFlagsModal(false)}
         >
-          <CompFlagsLookupContent
-            flags={realCompFlagNames}
-            selected={compFlagsList}
-            onToggle={f => toggle(f, compFlagsList, setCompFlagsList)}
-          />
+          <CompFlagsLookupContent flags={specimenFlagOptions} selected={draft.specimenFlagIds} onToggle={id => toggleIn('specimenFlagIds', id)} />
         </LookupModalX>
       )}
 
-      {/* â”€â”€ Resources modal â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ */}
+      {/* ── Resources modal ──────────────────────────────────────────────── */}
       {isResourcesOpen&&(
         <div className="ps-modal-overlay" onClick={()=>setIsResourcesOpen(false)}>
           <div className="ps-searchpage-resources-modal" onClick={e=>e.stopPropagation()}>
@@ -2176,7 +1861,7 @@ const SearchPage: React.FC = () => {
                 <div className="ps-searchpage-resource-section-label">{t(RESOURCE_SECTION_LABEL_KEY[section] ?? section)}</div>
                 {links.map((link,i)=>(
                   <a key={i} href={link.url} target="_blank" rel="noopener noreferrer" onClick={()=>setIsResourcesOpen(false)}
-                    className="ps-searchpage-resource-link">→ {link.title}</a>
+                    className="ps-searchpage-resource-link">{t('searchPage.resourcesModal.linkLabel', { title: link.title })}</a>
                 ))}
               </div>
             ))}
@@ -2190,6 +1875,3 @@ const SearchPage: React.FC = () => {
 };
 
 export default SearchPage;
-
-
-

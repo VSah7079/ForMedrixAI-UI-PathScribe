@@ -17,6 +17,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { toast } from 'react-toastify';
+import i18n from '@/i18n/config';
+import { phiToastContent } from '../phi/phiToast';
 import { caseRouter } from '../cases/CaseRouter';
 import type { CassetteDispatchOutcomeEventPayload } from '@/types/events/CassetteDispatchOutcomeEventPayload';
 
@@ -45,14 +47,24 @@ export async function processCassetteDispatchOutcomeEvent(
   }
 
   const accession = caseData.accession?.fullAccession ?? caseData.id;
-  const specimenText = payload.specimenLabel ? ` (${payload.specimenLabel})` : '';
+  // Batch 363 (PS-72): translated, and redacted in support-ticket screenshots (they name the case).
+  const specimen = payload.specimenLabel ? i18n.t('hl7Notifications.specimenSuffix', { label: payload.specimenLabel }) : '';
+  const requested = payload.requestedColorKey;
 
   if (payload.outcome === 'fallback_used') {
-    toast.warn(`🧊 ${accession}${specimenText}: cassette color fell back from ${payload.requestedColorKey} to ${payload.actualColorKey ?? 'a substitute'} — ${payload.message ?? 'requested hopper unavailable.'}`);
+    toast.warn(phiToastContent(i18n.t('hl7Notifications.cassetteFallback', {
+      accession, specimen, requested,
+      actual: payload.actualColorKey ?? i18n.t('hl7Notifications.cassetteFallbackUnknownColor'),
+      message: payload.message ?? i18n.t('hl7Notifications.cassetteFallbackDefaultMessage'),
+    })));
   } else if (payload.outcome === 'prompted') {
-    toast.warn(`🧊 ${accession}${specimenText}: ${payload.requestedColorKey} hopper unavailable and needs a technician decision at the bench — ${payload.message ?? 'no auto-fallback configured.'}`);
+    toast.warn(phiToastContent(i18n.t('hl7Notifications.cassettePrompted', {
+      accession, specimen, requested, message: payload.message ?? i18n.t('hl7Notifications.cassettePromptedDefaultMessage'),
+    })));
   } else if (payload.outcome === 'error') {
-    toast.error(`🧊 ${accession}${specimenText}: cassette dispatch failed — ${payload.message ?? 'unknown error from the Engine.'}`);
+    toast.error(phiToastContent(i18n.t('hl7Notifications.cassetteFailed', {
+      accession, specimen, message: payload.message ?? i18n.t('hl7Notifications.cassetteFailedDefaultMessage'),
+    })));
   } else {
     // 'dispatched' — genuinely routine, no notification.
     processedMessageIds.add(payload.messageId);

@@ -23,6 +23,7 @@ import { isPathwayCountValid } from '../../../services/protocols/resolvePathwayC
 import { findDuplicate } from '../../../utils/validateUnique';
 import { getActivePerformingLabs } from '../../../utils/performingLabs';
 import type { Facility } from '../../../services/facilities/IFacilityService';
+import { duplicateProcessingProtocol } from '@/services/duplication/duplicateEntities';
 
 type Draft = Omit<Protocol, 'id' | 'version' | 'updatedBy' | 'updatedAt'>;
 
@@ -332,6 +333,10 @@ const StainMultiSelect: React.FC<{
 interface EditorModalProps {
   mode: 'add' | 'edit';
   entry?: Protocol;
+  /** Name of the protocol being duplicated (header only). The copy's own
+   *  name is already marked in the user's language, so the header names
+   *  the source instead of stripping a marker back off. */
+  duplicateOf?: string;
   stainTypes: StainType[];
   fixatives: FixativeDictionaryEntry[];
   processingFormats: ProcessingFormatDictionaryEntry[];
@@ -356,7 +361,7 @@ interface EditorModalProps {
   onClose: () => void;
 }
 
-const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, fixatives, processingFormats, usage, existingEntries, labs, defaultsToDecant, onSave, onRestore, onClose }) => {
+const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, duplicateOf, stainTypes, fixatives, processingFormats, usage, existingEntries, labs, defaultsToDecant, onSave, onRestore, onClose }) => {
   const { t } = useTranslation();
   // Real, per direct correction — resolves the real, live catalog's
   // own isDefault entry, never a string baked into this component.
@@ -455,7 +460,7 @@ const EditorModal: React.FC<EditorModalProps> = ({ mode, entry, stainTypes, fixa
             {mode === 'edit'
               ? t('protocolDictionarySection.modal.editTitle', { name: entry?.name })
               : entry
-                ? t('protocolDictionarySection.modal.addClonedTitle', { name: entry.name.replace(' (Copy)', '') })
+                ? t('protocolDictionarySection.modal.addClonedTitle', { name: duplicateOf ?? entry.name })
                 : t('protocolDictionarySection.modal.addTitle')}
           </div>
           <button className="ps-ms-close-btn" onClick={onClose} title={t('common.close')}>✕</button>
@@ -796,7 +801,7 @@ const ProtocolDictionarySection: React.FC = () => {
       loadAll();
     });
   };
-  const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: Protocol } | null>(null);
+  const [modal, setModal] = useState<{ mode: 'add' | 'edit'; entry?: Protocol; duplicateOf?: string } | null>(null);
   // Real, direct follow-up (PS-75): same "Performing Lab is going to be
   // a fixture" scoping every other dictionary already has
   // (utils/performingLabs.ts). Loaded once here, passed down to the
@@ -851,21 +856,12 @@ const ProtocolDictionarySection: React.FC = () => {
     protocolService.restoreVersion(protocolId, version).then(() => { setModal(null); loadAll(); });
   };
 
-  // Cloning — opens the Add modal pre-filled with an existing
-  // protocol's data. Deep-clones tracks/steps with fresh ids so editing
-  // the clone can never accidentally mutate the original's identifiers.
+  // Cloning — opens the Add modal pre-filled with an existing protocol.
+  // services/duplication/duplicateEntities.ts deep-copies tracks/tasks with
+  // fresh ids (so editing the copy can never touch the original's), starts
+  // a new version history, and marks the name in the user's language.
   const handleClone = (source: Protocol) => {
-    const cloned: Protocol = {
-      ...source,
-      id: '__clone__',
-      name: `${source.name} (Copy)`,
-      pathways: source.pathways.map(pw => ({
-        ...pw,
-        id: `track-${Date.now()}-${Math.random().toString(36).slice(2, 6)}`,
-        tasks: pw.tasks.map(t => ({ ...t, id: `task-${Date.now()}-${Math.random().toString(36).slice(2, 6)}` })),
-      })),
-    };
-    setModal({ mode: 'add', entry: cloned });
+    setModal({ mode: 'add', entry: duplicateProcessingProtocol(source, name => t('common.copyOfName', { name })), duplicateOf: source.name });
   };
 
   return (
@@ -961,7 +957,7 @@ const ProtocolDictionarySection: React.FC = () => {
       </div>
 
       {modal && (
-        <EditorModal mode={modal.mode} entry={modal.entry} stainTypes={stainTypes} fixatives={fixatives} processingFormats={processingFormats} usage={modal.entry ? usageFor(modal.entry.id) : []} existingEntries={protocols} labs={labs}
+        <EditorModal mode={modal.mode} entry={modal.entry} duplicateOf={modal.duplicateOf} stainTypes={stainTypes} fixatives={fixatives} processingFormats={processingFormats} usage={modal.entry ? usageFor(modal.entry.id) : []} existingEntries={protocols} labs={labs}
           defaultsToDecant={!!modal.entry && usageFor(modal.entry.id).some(e => !!e.departmentId && fluidDepartmentIds.has(e.departmentId))}
           onSave={handleSave} onRestore={handleRestore} onClose={() => setModal(null)} />
       )}

@@ -6,6 +6,7 @@ import { useTranslation } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import type { ReportTemplate as OldTemplate, TemplateNode } from '../../types/template';
 import type { StructuredContext } from '../../orchestrator/contextBuilder';
+import { evalCondition } from '../../pages/ReportPreview/ReportPreviewRenderer';
 
 // ── Page sizes ─────────────────────────────────────────────────
 const MM = 96 / 25.4;
@@ -89,22 +90,16 @@ function resolveExpr(tpl: string, ctx: StructuredContext): string {
     return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
   });
 }
-function evalCond(expr: { logic: 'AND'|'OR'; clauses: { field: string; operator: string; value?: unknown }[] }, ctx: StructuredContext): boolean {
-  if (!expr.clauses.length) return true;
-  const rs = expr.clauses.map(c => {
-    let v: any = ctx; for (const p of c.field.split('.')) v = v?.[p];
-    const sv = v == null ? '' : String(v), cv = String(c.value ?? '');
-    switch (c.operator) {
-      case '==': return sv === cv; case '!=': return sv !== cv;
-      case 'notEmpty': return sv.length > 0; case 'isEmpty': return sv.length === 0;
-      case 'contains': return sv.includes(cv);
-      case '>': return parseFloat(sv) > parseFloat(cv);
-      case '<': return parseFloat(sv) < parseFloat(cv);
-      default: return true;
-    }
-  });
-  return expr.logic === 'AND' ? rs.every(Boolean) : rs.some(Boolean);
-}
+/** Real fix, found by this app's own inline-CSS/business-logic sweep:
+ *  this file used to keep its own local copy of the showWhen condition
+ *  evaluator, missing the '>=' and '<=' operators that the real report
+ *  renderer (ReportPreviewRenderer.tsx's evalClause/evalCondition,
+ *  exported for exactly this reuse) already supports — a template
+ *  author testing a >=/<= condition here would see it silently
+ *  evaluate as always-true, disagreeing with the real, signed-out
+ *  report. Now calls the one real implementation instead of a second,
+ *  drifted copy. */
+const evalCond = evalCondition;
 function dig(ctx: StructuredContext, key: string): any { let v: any = ctx; for (const p of key.split('.')) v = v?.[p]; return v; }
 
 /** 'lymphovascularInvasion' → 'Lymphovascular Invasion' */
@@ -183,8 +178,8 @@ const FieldTable: React.FC<{ nodes: TemplateNode[]; ctx: StructuredContext }> = 
     <div className="ps-tpp-field-table">
       {rows.map((row, ri) => (
         <div key={ri}
-          // gridTemplateColumns is computed per-row from each node's arbitrary colSpan — stays inline.
-          style={{ gridTemplateColumns: row.map(n => `${n.colSpan ?? 12}fr`).join(' ') }}
+          // Batch 367 (PS-74): per-row columns from each node's colSpan, as a custom property.
+          style={{ '--tpp-row-cols': row.map(n => `${n.colSpan ?? 12}fr`).join(' ') } as React.CSSProperties}
           className={`ps-tpp-field-row${ri % 2 ? ' ps-tpp-field-row--alt' : ''}`}
         >
           {row.map(n => (
@@ -241,8 +236,8 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
     }
     case 'rich-text-block':
       return <div
-        // fontSize/textAlign are per-node user-configured values — stay inline.
-        style={{ fontSize: node.fontSize ?? 12, textAlign: node.textAlign ?? 'left' }}
+        // Per-node font size and alignment, as custom properties (Batch 367).
+        style={{ '--tpp-font-size': `${node.fontSize ?? 12}px`, '--tpp-align': node.textAlign ?? 'left' } as React.CSSProperties}
         className="ps-tpp-richtext"
       >
         {node.content || <span className="ps-tpp-no-content">{t('templatePreviewPanel.emptyState.noContent')}</span>}
@@ -281,8 +276,8 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
       // split mid-content across a column break.
       return (
         <div
-          // columnCount/columnGap are per-node user-configured values — stay inline.
-          style={{ columnCount: node.numColumns, columnGap: `${node.columnGap ?? 16}px` }}
+          // Per-node column count and gap, as custom properties (Batch 367).
+          style={{ '--tpp-col-count': node.numColumns, '--tpp-col-gap': `${node.columnGap ?? 16}px` } as React.CSSProperties}
           className="ps-tpp-col-layout"
         >
           {node.children.map(child => (
@@ -295,14 +290,14 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
     case 'image-embed':
       return (
         <div
-          // textAlign is a per-node user-configured alignment — stays inline.
-          style={{ textAlign: node.alignment === 'center' ? 'center' : node.alignment === 'right' ? 'right' : 'left' }}
+          // Per-node alignment, as a custom property (Batch 367).
+          style={{ '--tpp-align': node.alignment === 'center' ? 'center' : node.alignment === 'right' ? 'right' : 'left' } as React.CSSProperties}
           className="ps-tpp-image-wrap"
         >
           {node.src ? <img src={node.src} alt={node.alt ?? ''} width={node.width ?? 80} height={node.height ?? 80} className="ps-tpp-image" />
             : <div
-                // width/height are per-node user-configured placeholder dimensions — stay inline.
-                style={{ width: node.width ?? 80, height: node.height ?? 80 }}
+                // Per-node placeholder size, as custom properties (Batch 367).
+                style={{ '--tpp-img-w': `${node.width ?? 80}px`, '--tpp-img-h': `${node.height ?? 80}px` } as React.CSSProperties}
                 className="ps-tpp-image-placeholder"
               >{t('templatePreviewPanel.emptyState.imagePlaceholder')}</div>}
           {node.caption && <div className="ps-tpp-image-caption">{node.caption}</div>}
@@ -358,19 +353,19 @@ const Ruler: React.FC<{ widthPx: number; mL: number; mR: number }> = ({ widthPx,
   const bodyMm = Math.round((widthPx - mL - mR) / MM);
   for (let i = 0; i <= bodyMm; i += 10) {
     ticks.push(
-      // left position is a computed tick offset — stays inline.
-      <div key={i} style={{ left: mL + i * MM }} className="ps-tpp-ruler-tick">
+      // Computed tick offset, as a custom property (Batch 367).
+      <div key={i} style={{ '--tpp-tick-x': `${mL + i * MM}px` } as React.CSSProperties} className="ps-tpp-ruler-tick">
         <div className={`ps-tpp-ruler-tick-bar${i % 50 === 0 ? ' ps-tpp-ruler-tick-bar--major' : ''}`} />
         {i % 50 === 0 && i > 0 && <span className="ps-tpp-ruler-tick-label">{i}</span>}
       </div>
     );
   }
   return (
-    // width is the computed page width in px — stays inline.
-    <div style={{ width: widthPx }} className="ps-tpp-ruler">
+    // Computed page width and margins, as custom properties (Batch 367).
+    <div style={{ '--tpp-w': `${widthPx}px`, '--tpp-ml': `${mL}px`, '--tpp-mr': `${mR}px` } as React.CSSProperties} className="ps-tpp-ruler">
       {ticks}
-      <div style={{ width: mL }} className="ps-tpp-ruler-margin ps-tpp-ruler-margin--left" />
-      <div style={{ width: mR }} className="ps-tpp-ruler-margin ps-tpp-ruler-margin--right" />
+      <div className="ps-tpp-ruler-margin ps-tpp-ruler-margin--left" />
+      <div className="ps-tpp-ruler-margin ps-tpp-ruler-margin--right" />
     </div>
   );
 };
@@ -448,23 +443,23 @@ const PageCard: React.FC<{
   const { t } = useTranslation();
   const [mL, mR, mT, mB] = [mm(margins.left), mm(margins.right), mm(margins.top), mm(margins.bottom)];
   return (
-    // width/minHeight are computed page dimensions (from mm + scale) — stay inline.
-    <div style={{ width: widthPx, minHeight: heightPx }} className="ps-tpp-page-card">
+    // Computed page size and margins (from mm + scale), as custom properties (Batch 367).
+    <div style={{ '--tpp-w': `${widthPx}px`, '--tpp-h': `${heightPx}px`, '--tpp-ml': `${mL}px`, '--tpp-mr': `${mR}px`, '--tpp-mt': `${mT}px`, '--tpp-mb': `${mB}px` } as React.CSSProperties} className="ps-tpp-page-card">
       {totalPages > 1 && (
         <div className="ps-tpp-page-num">
           {t('templatePreviewPanel.pageNumber', { pageNum, totalPages })}
         </div>
       )}
-      <div style={{ paddingLeft: mL, paddingRight: mR, paddingTop: mT }}>
+      <div className="ps-tpp-page-header">
         {headers.filter(h => pageNum === 1
           ? (h as import('../../types/template').HeaderNode).scope !== 'pages2plus'
           : (h as import('../../types/template').HeaderNode).scope !== 'page1')
           .map(h => <ContentNode key={h.id} node={h} ctx={ctx} pageNum={pageNum} totalPages={totalPages} />)}
       </div>
-      <div className="ps-tpp-page-body" style={{ paddingLeft: mL, paddingRight: mR }}>
+      <div className="ps-tpp-page-body">
         {sections.flat().map(n => <ContentNode key={n.id} node={n} ctx={ctx} pageNum={pageNum} totalPages={totalPages} />)}
       </div>
-      <div style={{ paddingLeft: mL, paddingRight: mR, paddingBottom: mB }}>
+      <div className="ps-tpp-page-footer">
         {footers.filter(f => pageNum === 1
           ? (f as import('../../types/template').FooterNode).scope !== 'pages2plus'
           : (f as import('../../types/template').FooterNode).scope !== 'page1')
@@ -563,13 +558,13 @@ export const TemplatePreviewPanel: React.FC<Props> = ({ template, onClose }) => 
       <div className="ps-tpp-doc-area">
 
         {/* Ruler */}
-        <div style={{ width: pw }} className="ps-tpp-ruler-wrap">
+        <div style={{ '--tpp-w': `${pw}px` } as React.CSSProperties} className="ps-tpp-ruler-wrap">
           <Ruler widthPx={pw} mL={mL} mR={mR} />
         </div>
 
         {/* Hidden measurement div — off-screen, at page body width */}
         <div id="preview-measure-root"
-          style={{ width: pw - mL - mR }}
+          style={{ '--tpp-w': `${pw - mL - mR}px` } as React.CSSProperties}
           className="ps-tpp-measure-root">
           {bodyNodes.map(n => (
             <div key={n.id}><ContentNode node={n} ctx={ctx} /></div>

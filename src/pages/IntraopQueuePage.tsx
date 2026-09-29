@@ -30,13 +30,12 @@
 // would be dishonest about what's actually wired.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useAuth } from '@/contexts/AuthContext';
-import { intraoperativeService, facilityService, locationService } from '@/services';
-import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
+import { intraoperativeService, facilityService, locationService, actionRegistryService } from '@/services';
 import type { IntraoperativeEntry, IntraopSpecimen, MatchCandidate, MilestoneType, SkipReason, FrozenCategory, PreparationType } from '@/types/intraop/IntraoperativeEntry';
 import type { Facility } from '@/services/facilities/IFacilityService';
 import type { Location } from '@/services/locations/ILocationService';
@@ -46,6 +45,16 @@ import CameraCaptureControl from '@/components/GrossingHardware/CameraCaptureCon
 import { formatDateLong } from '@/utils/formatDate';
 import { VOICE_CONTEXT } from '@/constants/systemActions';
 import { useVoice } from '@/contexts/VoiceProvider';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
+import { SpellCheckProvider } from '@/components/SpellCheck/SpellCheckContext';
+import { SpellingLanguageControl } from '@/components/SpellCheck/SpellingLanguageControl';
+import { useCaseSpellCheck } from '@/hooks/useCaseSpellCheck';
+import { useLiveIntraopUpdates } from '@/hooks/useLiveIntraopUpdates';
+import { LiveStatusBadge } from '@/components/LiveUpdates/LiveStatusBadge';
+import type { IntraopScope } from '@/services/liveUpdates/liveUpdateContract';
+
+/** PS-262: the queue lists every pending session, so it follows every change. */
+const ALL_INTRAOP: IntraopScope = { locationIds: [], all: true };
 
 const MILESTONE_LABEL_KEY: Record<MilestoneType, string> = {
   gross_logged: 'intraopQueue.milestones.grossLogged',
@@ -96,6 +105,10 @@ const NewEntryForm: React.FC<{
   const [facilityId, setFacilityId] = useState('');
   const [locations, setLocations] = useState<Location[]>([]);
   const [locationId, setLocationId] = useState('');
+  // PS-342 (Batch 338): quick gross and frozen diagnosis are checked in the
+  // performing pathologist's language, else the chosen facility's. There is
+  // no case yet, so there's no per-case choice to save.
+  const spellCheck = useCaseSpellCheck({ caseId: 'intraop-new-session', orderingFacilityId: facilityId || null, assignedPathologistId: performedBy.userId });
   useEffect(() => {
     facilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(c => c.status === 'Active')); });
   }, []);
@@ -288,7 +301,7 @@ const NewEntryForm: React.FC<{
       <div className="ps-intraop-capture-step1">
         <div className="ps-intraop-identified-banner ps-intraop-identified-banner--warn ps-intraop-identified-banner--stacked">
           <div className="ps-intraop-id-heading">{t('intraopQueue.resetConfirm.heading')}</div>
-          <p className="ps-intraop-discard-body">
+          <p className="ps-intraop-discard-body" data-phi="name">
             {patientName
               ? t('intraopQueue.resetConfirm.bodyNamed', { name: patientName })
               : t('intraopQueue.resetConfirm.bodyGeneric')}
@@ -365,16 +378,16 @@ const NewEntryForm: React.FC<{
           </div>
         ) : (
           <>
-            <div className="ps-intraop-identified-banner ps-intraop-identified-banner--warn">
+            <div className="ps-intraop-identified-banner ps-intraop-identified-banner--warn" data-phi="mrn">
               {t('intraopQueue.demographicsStep.noAdtMatch', { mrn })}
             </div>
             <div className="ps-conf-form-field">
               <label className="ps-conf-label">{t('intraopQueue.demographicsStep.patientNameLabel')}</label>
-              <input className="ps-conf-input" value={patientName} onChange={e => { setPatientName(e.target.value); setPatientConfirmed(false); }} onFocus={() => setFocusedFieldId('patientName')} placeholder={t('intraopQueue.demographicsStep.patientNamePlaceholder')} />
+              <input className="ps-conf-input" data-phi="name" value={patientName} onChange={e => { setPatientName(e.target.value); setPatientConfirmed(false); }} onFocus={() => setFocusedFieldId('patientName')} placeholder={t('intraopQueue.demographicsStep.patientNamePlaceholder')} />
             </div>
             <div className="ps-conf-form-field">
               <label className="ps-conf-label">{t('intraopQueue.demographicsStep.dateOfBirthLabel')}</label>
-              <input className="ps-conf-input" type="date" value={dateOfBirth} onChange={e => { setDateOfBirth(e.target.value); setPatientConfirmed(false); }} />
+              <input className="ps-conf-input" type="date" data-phi="dob" value={dateOfBirth} onChange={e => { setDateOfBirth(e.target.value); setPatientConfirmed(false); }} />
             </div>
           </>
         )}
@@ -438,8 +451,10 @@ const NewEntryForm: React.FC<{
 
   // step === 'specimen'
   return (
+    <SpellCheckProvider value={spellCheck}>
     <div className="ps-intraop-capture-step2">
-      <div className="ps-intraop-identified-banner">
+      <SpellingLanguageControl className="ps-intraop-spelllang" />
+      <div className="ps-intraop-identified-banner" data-phi="true">
         {patientName} · {mrn} · {orNumber} · {surgeon}
         {facilityId ? ` · ${facilities.find(c => c.id === facilityId)?.name ?? ''}` : ''}
         {locationId ? ` · ${(() => { const l = locations.find(l => l.id === locationId); return l ? [l.pointOfCare, l.room, l.bed].filter(Boolean).join(' / ') : ''; })()}` : ''}
@@ -451,12 +466,12 @@ const NewEntryForm: React.FC<{
       </div>
       <div className="ps-conf-form-field">
         <label className="ps-conf-label">{t('intraopQueue.specimenStep.quickGrossLabel')}</label>
-        <textarea className="ps-conf-input ps-conf-textarea" value={quickGross} onChange={e => setQuickGross(e.target.value)} onFocus={() => setFocusedFieldId('quickGross')}
+        <SpellCheckedTextarea className="ps-conf-input ps-conf-textarea" value={quickGross} onChange={e => setQuickGross(e.target.value)} onFocus={() => setFocusedFieldId('quickGross')}
           placeholder={t('intraopQueue.specimenStep.quickGrossPlaceholder')} />
       </div>
       <div className="ps-conf-form-field">
         <label className="ps-conf-label">{t('intraopQueue.specimenStep.frozenDxLabel')}</label>
-        <textarea className="ps-conf-input ps-conf-textarea" value={frozenDx} onChange={e => setFrozenDx(e.target.value)} onFocus={() => setFocusedFieldId('frozenDx')}
+        <SpellCheckedTextarea className="ps-conf-input ps-conf-textarea" value={frozenDx} onChange={e => setFrozenDx(e.target.value)} onFocus={() => setFocusedFieldId('frozenDx')}
           placeholder={t('intraopQueue.specimenStep.frozenDxPlaceholder')} />
       </div>
       <div className="ps-conf-form-field">
@@ -482,6 +497,7 @@ const NewEntryForm: React.FC<{
         </button>
       </div>
     </div>
+    </SpellCheckProvider>
   );
 };
 
@@ -581,7 +597,7 @@ const PreparationLogger: React.FC<{ sessionId: string; specimen: IntraopSpecimen
   // more than one could be listening.
   useEffect(() => {
     if (!voiceEligible) return;
-    const unsubscribe = mockActionRegistryService.onAction((actionId: string) => {
+    const unsubscribe = actionRegistryService.onAction((actionId: string) => {
       if (busy) return;
       if (actionId === 'INTRAOP_FROZEN_SECTION_CUT') handleLog('frozen_block');
       else if (actionId === 'INTRAOP_TOUCH_PREP_PERFORMED') handleLog('touch_prep');
@@ -685,7 +701,7 @@ const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen;
   // same reasoning as PreparationLogger's own listener.
   useEffect(() => {
     if (!voiceEligible || hasTouchPrepStep) return;
-    const unsubscribe = mockActionRegistryService.onAction((actionId: string) => {
+    const unsubscribe = actionRegistryService.onAction((actionId: string) => {
       if (busy) return;
       if (actionId === 'INTRAOP_TOUCH_PREP_PERFORMED') log('touch_prep_performed');
       else if (actionId === 'INTRAOP_TOUCH_PREP_SKIP') log('touch_prep_skipped', 'direct_to_frozen');
@@ -697,7 +713,7 @@ const MilestoneActions: React.FC<{ sessionId: string; specimen: IntraopSpecimen;
     return (
       <div className="ps-intraop-action-block">
         <label className="ps-conf-label">{t('intraopQueue.specimenStep.quickGrossLabel')}</label>
-        <textarea className="ps-conf-input ps-conf-textarea" value={quickGrossDraft} onChange={e => setQuickGrossDraft(e.target.value)}
+        <SpellCheckedTextarea className="ps-conf-input ps-conf-textarea" value={quickGrossDraft} onChange={e => setQuickGrossDraft(e.target.value)}
           onFocus={() => setGrossFocused(true)} onBlur={() => setGrossFocused(false)}
           placeholder={t('intraopQueue.specimenStep.quickGrossPlaceholder')} />
         <button className="ps-conf-btn-primary" disabled={busy || !quickGrossDraft.trim()} onClick={() => log('gross_logged', undefined, undefined, quickGrossDraft)}>
@@ -780,7 +796,7 @@ const MergeModal: React.FC<{
               only opens when a pathologist has actually chosen to
               review/claim this specific entry, which is the moment
               they have a real reason to see who it's for. */}
-          <p className="ps-intraop-merge-patient">{entry.patientMatch.patientName} · {entry.patientMatch.mrn}</p>
+          <p className="ps-intraop-merge-patient" data-phi="true">{entry.patientMatch.patientName} · {entry.patientMatch.mrn}</p>
           <p className="ps-intraop-merge-intro">
             {t('intraopQueue.mergeModal.intro')}
           </p>
@@ -817,7 +833,7 @@ const MergeModal: React.FC<{
         </div>
         <div className="ps-ms-footer">
           <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
-          <button className="ps-conf-btn-primary" disabled={!finalCaseId} onClick={() => finalCaseId && onConfirm(finalCaseId)}>
+          <button className="ps-conf-btn-primary" data-phi="accession" disabled={!finalCaseId} onClick={() => finalCaseId && onConfirm(finalCaseId)}>
             {t('intraopQueue.mergeModal.mergeInto', { caseId: finalCaseId || '…' })}
           </button>
         </div>
@@ -902,14 +918,19 @@ const EntryCard: React.FC<{
   // stray recognition can't double-fire while the write is in flight.
   useEffect(() => {
     if (!reporting) return;
-    const unsubscribe = mockActionRegistryService.onAction((actionId: string) => {
+    const unsubscribe = actionRegistryService.onAction((actionId: string) => {
       if (busy) return;
       if (actionId === 'INTRAOP_LOG_SURGEON_REPORT') handleReportToSurgeon();
     });
     return unsubscribe;
   }, [reporting, busy, note, handleReportToSurgeon]);
 
+  // PS-342 (Batch 338): quick-gross edits in this session are checked in
+  // the performing pathologist's language, else the session facility's.
+  const spellCheck = useCaseSpellCheck({ caseId: entry.id, orderingFacilityId: entry.facilityId, assignedPathologistId: entry.performedBy.userId });
+
   return (
+  <SpellCheckProvider value={spellCheck}>
   <div className="ps-intraop-card">
     <div className="ps-intraop-card-header">
       <div>
@@ -977,6 +998,7 @@ const EntryCard: React.FC<{
       <button className="ps-conf-btn-secondary" onClick={() => setReporting(true)}>{t('intraopQueue.entryCard.reportToSurgeonButton')}</button>
     )}
   </div>
+  </SpellCheckProvider>
   );
 };
 
@@ -995,8 +1017,8 @@ const IntraopQueuePage: React.FC = () => {
   // commands could never correctly activate here. Same one-line pattern
   // every other real page feature already uses.
   useEffect(() => {
-    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.INTRAOP);
-    return () => { mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
+    actionRegistryService.setCurrentContext(VOICE_CONTEXT.INTRAOP);
+    return () => { actionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
   }, []);
 
   // Below this width, the page is almost certainly a phone at the bench,
@@ -1016,6 +1038,9 @@ const IntraopQueuePage: React.FC = () => {
     });
   };
   useEffect(() => { load(); }, []);
+  // PS-262: new sessions, diagnoses, dismissals and merges from other
+  // devices appear without a reload (polling when there's no live hub).
+  const liveState = useLiveIntraopUpdates(ALL_INTRAOP, load);
 
   const onSessionSaved = () => {
     load();
@@ -1061,8 +1086,11 @@ const IntraopQueuePage: React.FC = () => {
             </p>
           </div>
           <div className="ps-intraop-header-actions">
+            <LiveStatusBadge state={liveState} />
             <button className="ps-conf-btn-row" onClick={() => setShowLog(v => !v)}>
-              {showLog ? t('intraopQueue.page.hideLog') : t('intraopQueue.page.viewLog')}{entries.length > 0 ? ` (${entries.length})` : ''}
+              {entries.length > 0
+                ? t('intraopQueue.page.logButtonWithCount', { label: showLog ? t('intraopQueue.page.hideLog') : t('intraopQueue.page.viewLog'), count: entries.length })
+                : (showLog ? t('intraopQueue.page.hideLog') : t('intraopQueue.page.viewLog'))}
             </button>
             {shouldRestrictToMobileWorkflow() && (
               <button

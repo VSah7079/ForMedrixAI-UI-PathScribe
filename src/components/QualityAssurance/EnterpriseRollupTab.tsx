@@ -1,10 +1,13 @@
 // src/components/QualityAssurance/EnterpriseRollupTab.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// i18n note: `JURISDICTION_LABELS` (types/systemConfig.ts) is a shared,
-// multi-consumer map used across seven other files — left as literal
-// English data, out of scope for this file's own batch. CSV export
-// column headers in `handleExport` stay literal English (persisted/
-// exported data convention).
+// i18n note: on screen, jurisdiction names come from
+// t('jurisdictionNames.<code>') (Batch 353; this used the English-only
+// JURISDICTION_LABELS). The CSV export keeps literal English headers and
+// names (exported data convention).
+//
+// Batch 353: TAT targets come from tatTargetService, and facilities, RVU
+// tables and the audit log through @/services (this read the TAT settings
+// screen's browser storage and imported four demo services directly).
 // ─────────────────────────────────────────────────────────────────────────────
 // Real, per the RFP-APLIS-2026-GLOBAL Enterprise Business Intelligence
 // Rollup Dashboard gap: a genuinely new, cross-facility view
@@ -33,16 +36,12 @@
 import React, { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { mockFacilityService } from '@/services/facilities/mockFacilityService';
-import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService';
-import { specimenDictionaryService } from '@/services';
-import { mockAuditService } from '@/services/auditlog/mockAuditService';
+import { specimenDictionaryService, facilityService, rvuCodeMapService, auditService, tatTargetService } from '@/services';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
-import { TAT_STORAGE_KEY, SYSTEM_DEFAULTS as TAT_SYSTEM_DEFAULTS } from '@components/Config/System/TATConfigSection';
-import type { TatEntryForResolution } from '@/components/Contribution/qualityCalculations';
 import { resolveJurisdictionRollup, type EnterpriseRollupResult, type CaseForJurisdictionRollup } from '@/services/qualityAssurance/resolveJurisdictionRollup';
 import { JURISDICTION_LABELS } from '@/types/systemConfig';
-import { exportQaReportRows } from './qaReportUtils';
+import { exportQaReportRows, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
 
 export const EnterpriseRollupTab: React.FC = () => {
   const { t } = useTranslation();
@@ -53,7 +52,7 @@ export const EnterpriseRollupTab: React.FC = () => {
     const session = getSessionUser();
     const crossTenant = canViewCrossTenantQaData(session);
     if (crossTenant) {
-      mockAuditService.logEvent({
+      auditService.logEvent({
         type: 'system',
         event: 'qa.cross_tenant_access_executed',
         detail: `Cross-tenant QA access: Enterprise Rollup tab, user ${session?.id ?? 'unknown'}`,
@@ -63,19 +62,13 @@ export const EnterpriseRollupTab: React.FC = () => {
       }).catch(() => {});
     }
 
-    const tatEntries = (() => {
-      try {
-        const raw = localStorage.getItem(TAT_STORAGE_KEY);
-        return raw ? JSON.parse(raw) : TAT_SYSTEM_DEFAULTS;
-      } catch { return TAT_SYSTEM_DEFAULTS; }
-    })() as TatEntryForResolution[];
-
     Promise.all([
       caseRouter.getAll(undefined, { includeOrchestration: true, bypassAccessControl: crossTenant }),
-      mockFacilityService.getAll(),
-      mockRvuCodeMapService.getAllVersions(),
+      facilityService.getAll(),
+      rvuCodeMapService.getAllVersions(),
       specimenDictionaryService.getAll(),
-    ]).then(([casesRes, facilitiesRes, versionsRes, dictionaryRes]) => {
+      tatTargetService.getAll(),
+    ]).then(([casesRes, facilitiesRes, versionsRes, dictionaryRes, tatRes]) => {
       if (!casesRes.ok || !facilitiesRes.ok) { setLoading(false); return; }
       const enterpriseFacilities = facilitiesRes.data.filter(f => f.isEnterprise);
       const versions = versionsRes.ok ? versionsRes.data : [];
@@ -83,7 +76,7 @@ export const EnterpriseRollupTab: React.FC = () => {
       setResult(resolveJurisdictionRollup(
         casesRes.data as CaseForJurisdictionRollup[],
         enterpriseFacilities,
-        tatEntries,
+        tatRes.ok ? tatRes.data : [],
         versions,
         dictionaryEntries,
       ));
@@ -106,7 +99,7 @@ export const EnterpriseRollupTab: React.FC = () => {
       'Total Case Avg (hrs)': r.totalCaseAvgHrs,
       'On-Target %': r.onTargetPct,
     }));
-    exportQaReportRows(rows, `enterprise-rollup-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:enterprise-rollup:export', rows, `enterprise-rollup-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext());
   };
 
   if (loading) return <div className="ps-conf-page">{t('common.loading')}</div>;
@@ -135,11 +128,11 @@ export const EnterpriseRollupTab: React.FC = () => {
       <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
           <div className="ps-conf-card-title">{t('enterpriseRollupTab.byJurisdictionTitle')}</div>
-          <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('qualityAssurance.common.export')}</button>
+          <CapabilityButton capability="qa:enterprise-rollup:export" context={qaScopeContext()} className="ps-conf-btn-secondary" onClick={handleExport}>{t('qualityAssurance.common.export')}</CapabilityButton>
         </div>
         {result.byJurisdiction.map(row => (
           <div key={row.jurisdiction} className="ps-conf-row">
-            <span>{JURISDICTION_LABELS[row.jurisdiction]}</span>
+            <span>{t(`jurisdictionNames.${row.jurisdiction}`)}</span>
             <span className="ps-conf-value">
               {t('enterpriseRollupTab.rowSummary', {
                 caseVolume: row.caseVolume,

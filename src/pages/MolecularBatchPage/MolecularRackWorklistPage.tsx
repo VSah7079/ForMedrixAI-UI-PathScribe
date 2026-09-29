@@ -8,7 +8,7 @@
 
 import React, { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../pathscribe.css';
 import { mockMolecularExtractionRackService } from '../../services/molecular/mockMolecularExtractionRackService';
 import type { MolecularExtractionRack } from '../../services/molecular/IMolecularExtractionRackService';

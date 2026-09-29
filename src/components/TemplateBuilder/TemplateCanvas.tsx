@@ -264,8 +264,8 @@ const NodeCard: React.FC<NodeCardProps> = ({
   return (
     <div
       ref={wrapRef}
-      // gridColumn is a per-node computed layout value (arbitrary 1–12 span) — stays inline.
-      style={{ gridColumn: `span ${colSpan}` }}
+      // Per-node column span (1–12), as a custom property (Batch 367).
+      style={{ '--tc-span': `span ${colSpan}` } as React.CSSProperties}
       className={`ps-tc-node-wrap${showGrid ? ' ps-tc-node-wrap--grid' : ''}`}
     >
       {/* ── Width label shown when grid is on ── */}
@@ -284,7 +284,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onClick={() => onSelect(node.id)}
-        style={{ ['--node-color' as string]: color }}
+        style={{ '--node-color': color } as React.CSSProperties}
         className={[
           'ps-tc-node-row',
           isSelected ? 'ps-tc-node-row--selected' : hovered ? 'ps-tc-node-row--hovered' : '',
@@ -358,7 +358,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
       <div
         onMouseDown={handleResizeMouseDown}
         title={t('templateCanvas.resizeTooltip')}
-        style={{ ['--node-color' as string]: color }}
+        style={{ '--node-color': color } as React.CSSProperties}
         className={`ps-tc-resize-handle${hovered || isSelected ? ' ps-tc-resize-handle--visible' : ''}`}
       >
         <div className={`ps-tc-resize-bar${isSelected ? ' ps-tc-resize-bar--selected' : ''}`} />
@@ -418,7 +418,7 @@ const NodeCard: React.FC<NodeCardProps> = ({
       {/* Children — 12-column grid for all other containers */}
       {isContainer && expanded && node.type !== 'column-layout' && (
         <div
-          style={{ ['--node-color' as string]: color }}
+          style={{ '--node-color': color } as React.CSSProperties}
           className="ps-tc-grid-children"
         >
           {/* Full-width drop zone at top */}
@@ -604,9 +604,9 @@ export const TemplateCanvas: React.FC<Props> = ({
                       />
                     ))}
                     {free > 0 && free < 12 && (
-                      // gridColumn span is a per-row computed layout value — stays inline.
+                      // Per-row free span, as a custom property (Batch 367).
                       <div
-                        style={{ gridColumn: `span ${free}` }}
+                        style={{ '--tc-span': `span ${free}` } as React.CSSProperties}
                         className={`ps-tc-free-slot${isDragging ? ' ps-tc-free-slot--dragging' : ''}`}
                         onDragOver={e => e.preventDefault()}
                         onDrop={e => { e.stopPropagation(); handleDrop(null, lastIdx + 1, e); }}

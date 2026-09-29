@@ -1,7 +1,10 @@
 // src/components/Config/System/TypeModal.tsx
 // Rewritten from scratch to avoid OXC/rolldown parse issues.
 // Zero template literals in style props. Zero inline hex-alpha strings.
-// All styling via CSS classes from pathscribe.css.
+// All styling via CSS classes from pathscribe.css. The two genuinely
+// per-instance values (a swatch's own colour, the live preview chip's
+// chosen colour) are passed only as the --swatch-color custom property,
+// consumed by real CSS rules — never a raw inline CSS declaration.
 //
 // i18n sweep (batch 57, swept together with its parent
 // ParticipationTypesSection.tsx): every on-screen label, placeholder, and
@@ -13,14 +16,19 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
-import type { ParticipationTypeRecord as ParticipationType, NewParticipationType } from '../../../services/participationTypes/IParticipationTypeService';
+import type { ParticipationTypeRecord as ParticipationType, NewParticipationType, AuthorityFlag } from '../../../services/participationTypes/IParticipationTypeService';
+import { AUTHORITY_FLAGS } from '../../../services/participationTypes/IParticipationTypeService';
+import type { ResolvedAuthorityFlag } from '../../../services/participationTypes/authorityProvenance';
+import {
+  buildFacilityAuthorityRows, toggleFacilityOverride, setFacilityOverrideFlag, initialJustifications,
+} from '../../../services/participationTypes/facilityAuthorityEditor';
 import { findDuplicate } from '../../../utils/validateUnique';
 import type { Facility } from '../../../services/facilities/IFacilityService';
+import type { Jurisdiction } from '../../../types/systemConfig';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
 type Draft = NewParticipationType;
-type AuthorityOverride = NonNullable<Draft['authorityOverrides']>[string];
 
 interface TypeModalProps {
   mode:     'add' | 'edit';
@@ -28,9 +36,20 @@ interface TypeModalProps {
   existingEntries: ParticipationType[];
   labs: Facility[];
   isBuiltIn: boolean;
-  onSave:   (draft: Draft) => void;
+  /** `justifications` — per facility id, the justification text the
+   *  admin entered for that facility's override in this session. The
+   *  parent passes it to saveParticipationTypeWithAudit()
+   *  (services/participationTypes/saveParticipationType.ts), which
+   *  stamps provenance and writes the audit trail. */
+  onSave:   (draft: Draft, justifications: Record<string, string>) => void;
   onClose:  () => void;
 }
+
+const FLAG_LABEL_KEYS: Record<AuthorityFlag, string> = {
+  canFinalize:         'participationTypesSection.modal.overrideFinalize',
+  requiresCountersign: 'participationTypesSection.modal.overrideCountersign',
+  canViewWholeCase:    'participationTypesSection.modal.overrideFullView',
+};
 
 // ── Capability row ────────────────────────────────────────────────────────────
 
@@ -67,7 +86,7 @@ const PRESET_COLORS = [
 // ── Main component ────────────────────────────────────────────────────────────
 
 const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs, isBuiltIn, onSave, onClose }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
 
   const [draft, setDraft] = useState<Draft>({
     label:                 type?.label                 ?? '',
@@ -82,45 +101,50 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
     active:                type?.active                ?? true,
     requiresNote:          type?.requiresNote          ?? false,
     authorityOverrides:    type?.authorityOverrides    ?? undefined,
+    // Carried so a Duplicate keeps the source's country scope and per-country
+    // authority (PS-73); an edit re-saves the same values it loaded.
+    icon:                  type?.icon,
+    jurisdictionProfiles:  type?.jurisdictionProfiles,
+    scopedJurisdictions:   type?.scopedJurisdictions,
   });
 
   const [error, setError] = useState('');
 
-  // Per-lab sign-out-authority overrides — real, per direct ruling that
-  // a rigid global bright line can't hold across jurisdictions (US
-  // CLIA/CAP vs. UK RCPath delegation vs. France/Germany/South Korea's
-  // personal-liability mandates). Toggling a lab "on" seeds it with
-  // this type's own current platform-default flags (so turning
-  // override on never silently changes behavior until the admin
-  // actually edits something), toggling it back off removes the lab's
-  // entry entirely — reverting cleanly to the platform default rather
-  // than leaving a stale, now-hidden override behind.
-  const overrideLabIds = Object.keys(draft.authorityOverrides ?? {});
+  // ── Facility-level sign-out authority — transparent, break-glass, audited ──
+  // Render-and-dispatch only (standing rule: no business logic in
+  // components). Which labs to show, what a new override seeds from,
+  // unsaved/pending-removal state, and each flag's value + source all
+  // come from services/participationTypes/facilityAuthorityEditor.ts;
+  // provenance stamping and the audit trail happen in the parent's save
+  // (services/participationTypes/saveParticipationType.ts).
+  const [justifications, setJustifications] = useState<Record<string, string>>(() => initialJustifications(type));
+  const authorityRows = buildFacilityAuthorityRows(type, draft, labs);
 
-  const setLabOverrideEnabled = (labId: string, enabled: boolean) => {
-    setDraft(d => {
-      const next = { ...(d.authorityOverrides ?? {}) };
-      if (enabled) {
-        next[labId] = {
-          canFinalize: d.canFinalize,
-          requiresCountersign: d.requiresCountersign,
-          canViewWholeCase: d.canViewWholeCase,
-        };
-      } else {
-        delete next[labId];
-      }
-      return { ...d, authorityOverrides: Object.keys(next).length > 0 ? next : undefined };
-    });
+  const setLabOverrideEnabled = (lab: Facility, enabled: boolean) =>
+    setDraft(d => ({ ...d, authorityOverrides: toggleFacilityOverride(type, d, lab, enabled) }));
+
+  const setLabOverrideFlag = (labId: string, flag: AuthorityFlag, value: boolean) =>
+    setDraft(d => ({ ...d, authorityOverrides: setFacilityOverrideFlag(d.authorityOverrides, labId, flag, value) }));
+
+  const jurisdictionName = (j: Jurisdiction) => t(`jurisdictionNames.${j}`);
+
+  const formatDate = (iso: string) => {
+    const d = new Date(iso);
+    return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString(i18n.language);
   };
 
-  const setLabOverrideFlag = (labId: string, key: keyof AuthorityOverride, value: boolean) => {
-    setDraft(d => ({
-      ...d,
-      authorityOverrides: {
-        ...(d.authorityOverrides ?? {}),
-        [labId]: { ...(d.authorityOverrides?.[labId] ?? {}), [key]: value },
-      },
-    }));
+  const sourceText = (r: ResolvedAuthorityFlag, unsaved: boolean): string => {
+    if (r.source === 'facility') {
+      if (unsaved) return t('participationTypesSection.modal.authority.sourceFacilityPending');
+      if (r.overriddenBy && r.overriddenAt) {
+        return t('participationTypesSection.modal.authority.sourceFacility', { name: r.overriddenBy.userName, date: formatDate(r.overriddenAt) });
+      }
+      return t('participationTypesSection.modal.authority.sourceFacilityLegacy');
+    }
+    if (r.source === 'jurisdiction' && r.jurisdiction) {
+      return t('participationTypesSection.modal.authority.sourceJurisdiction', { jurisdiction: jurisdictionName(r.jurisdiction) });
+    }
+    return t('participationTypesSection.modal.authority.sourcePlatform');
   };
 
   const handleSave = () => {
@@ -144,7 +168,7 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
     const abbrCollision = findDuplicate(existingEntries, { abbreviation: draft.abbreviation.trim() }, ['abbreviation'], excludeId);
     if (abbrCollision) { setError(t('participationTypesSection.modal.errorAbbrDuplicate', { abbr: abbrCollision.abbreviation, label: abbrCollision.label })); return; }
     setError('');
-    onSave(draft);
+    onSave(draft, justifications);
   };
 
   const cap = (key: keyof Draft, label: string, desc: string, disabled = false) => (
@@ -233,7 +257,7 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
                 <button
                   key={c}
                   className={draft.color === c ? 'ps-type-color-swatch ps-type-color-swatch--active' : 'ps-type-color-swatch'}
-                  style={{ background: c }}
+                  style={{ '--swatch-color': c } as React.CSSProperties}
                   onClick={() => setDraft(d => ({ ...d, color: c }))}
                   title={c}
                 />
@@ -247,7 +271,7 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
               />
             </div>
             <div className="ps-type-preview-row">
-              <span className="ps-type-preview-chip" style={{ background: draft.color, color: '#0f172a', opacity: 0.85 }}>
+              <span className="ps-type-preview-chip" style={{ '--swatch-color': draft.color } as React.CSSProperties}>
                 {draft.abbreviation || t('participationTypesSection.modal.previewFallback')}
               </span>
             </div>
@@ -265,47 +289,86 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
             </div>
           </div>
 
-          {/* Per-performing-lab sign-out authority overrides */}
-          {labs.length > 0 && (
+          {/* Per-facility sign-out authority — active rule + source of truth, break-glass override, audited */}
+          {authorityRows.length > 0 && (
             <div className="ps-sub-field">
               <label className="ps-sub-label">{t('participationTypesSection.modal.perLabLabel')}</label>
               <div className="ps-participationtypes__modal-hint">
                 {t('participationTypesSection.modal.perLabHint')}
               </div>
               <div className="ps-type-cap-list">
-                {labs.map(lab => {
-                  const enabled = overrideLabIds.includes(lab.id);
-                  const ov = draft.authorityOverrides?.[lab.id];
+                {authorityRows.map(({ facility: lab, enabled, pendingRemoval, unsaved, resolved, regulatoryNote }) => {
+                  const override = draft.authorityOverrides?.[lab.id];
+                  const justificationId = `ps-ptauth-justification-${lab.id}`;
                   return (
-                    <div key={lab.id} className="ps-sub-check-row ps-sub-check-row--unchecked ps-participationtypes__lab-row">
-                      <label className="ps-participationtypes__lab-row-label">
-                        <input
-                          type="checkbox"
-                          checked={enabled}
-                          onChange={e => setLabOverrideEnabled(lab.id, e.target.checked)}
-                          className="ps-type-cap-checkbox"
-                        />
+                    <div key={lab.id} className="ps-ptauth-lab" data-testid={`ptauth-lab-${lab.id}`}>
+                      <div className="ps-ptauth-lab__head">
                         <span className="ps-sub-check-label">{lab.name}</span>
-                      </label>
-                      {enabled && (
-                        <div className="ps-participationtypes__lab-overrides">
-                          <label className="ps-participationtypes__lab-override-checkbox">
-                            <input type="checkbox" checked={!!ov?.canFinalize}
-                              onChange={e => setLabOverrideFlag(lab.id, 'canFinalize', e.target.checked)} />
-                            {t('participationTypesSection.modal.overrideFinalize')}
-                          </label>
-                          <label className="ps-participationtypes__lab-override-checkbox">
-                            <input type="checkbox" checked={!!ov?.requiresCountersign}
-                              onChange={e => setLabOverrideFlag(lab.id, 'requiresCountersign', e.target.checked)} />
-                            {t('participationTypesSection.modal.overrideCountersign')}
-                          </label>
-                          <label className="ps-participationtypes__lab-override-checkbox">
-                            <input type="checkbox" checked={!!ov?.canViewWholeCase}
-                              onChange={e => setLabOverrideFlag(lab.id, 'canViewWholeCase', e.target.checked)} />
-                            {t('participationTypesSection.modal.overrideFullView')}
-                          </label>
+                        {lab.jurisdiction && <span className="ps-ptauth-lab__jurisdiction">{jurisdictionName(lab.jurisdiction)}</span>}
+                      </div>
+
+                      <div className="ps-ptauth-rules">
+                        {AUTHORITY_FLAGS.map(flag => {
+                          const r = resolved[flag];
+                          return (
+                            <div key={flag} className="ps-ptauth-rule">
+                              {enabled ? (
+                                <label className="ps-ptauth-rule__label">
+                                  <input
+                                    type="checkbox"
+                                    checked={!!override?.[flag]}
+                                    onChange={e => setLabOverrideFlag(lab.id, flag, e.target.checked)}
+                                  />
+                                  {t(FLAG_LABEL_KEYS[flag])}
+                                </label>
+                              ) : (
+                                <span className="ps-ptauth-rule__label">
+                                  {t('participationTypesSection.modal.authority.ruleWithValue', {
+                                    flag: t(FLAG_LABEL_KEYS[flag]),
+                                    value: r.value ? t('participationTypesSection.modal.authority.ruleYes') : t('participationTypesSection.modal.authority.ruleNo'),
+                                  })}
+                                </span>
+                              )}
+                              <span className={`ps-ptauth-source ps-ptauth-source--${r.source}`}>{sourceText(r, unsaved)}</span>
+                            </div>
+                          );
+                        })}
+                      </div>
+
+                      {regulatoryNote && (
+                        <div className="ps-ptauth-note">
+                          {t('participationTypesSection.modal.authority.regulatoryBasis', { note: regulatoryNote })}
                         </div>
                       )}
+
+                      {(enabled || pendingRemoval) && (
+                        <div className="ps-ptauth-justification">
+                          {pendingRemoval && (
+                            <div className="ps-ptauth-pending-removal">{t('participationTypesSection.modal.authority.pendingRemoval')}</div>
+                          )}
+                          <label className="ps-sub-label" htmlFor={justificationId}>{t('participationTypesSection.modal.authority.justificationLabel')}</label>
+                          <textarea
+                            id={justificationId}
+                            className="ps-sub-input ps-ptauth-justification__input"
+                            rows={2}
+                            value={justifications[lab.id] ?? ''}
+                            placeholder={t('participationTypesSection.modal.authority.justificationPlaceholder')}
+                            onChange={e => setJustifications(j => ({ ...j, [lab.id]: e.target.value }))}
+                          />
+                        </div>
+                      )}
+
+                      <div className="ps-ptauth-actions">
+                        {enabled ? (
+                          <button type="button" className="fm-btn-cancel ps-ptauth-btn" onClick={() => setLabOverrideEnabled(lab, false)}>
+                            {t('participationTypesSection.modal.authority.revertButton')}
+                          </button>
+                        ) : (
+                          <button type="button" className="fm-btn-apply ps-ptauth-btn" onClick={() => setLabOverrideEnabled(lab, true)}>
+                            {pendingRemoval ? t('participationTypesSection.modal.authority.keepButton') : t('participationTypesSection.modal.authority.overrideButton')}
+                          </button>
+                        )}
+                      </div>
                     </div>
                   );
                 })}

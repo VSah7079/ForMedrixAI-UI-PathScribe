@@ -22,6 +22,7 @@ import { compileCytologySynopticNarrative } from '@/services/cytology/compileCyt
 import { mockPathologyLexiconService } from '@/services/cytology/mockPathologyLexiconService';
 import type { SynopticField } from '@/types/cytology/SynopticTemplate';
 import type { PathologyLexiconEntry, PathologyLexiconLocale } from '@/types/cytology/PathologyLexicon';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
 
 export interface SynopticTranslationAcknowledgment {
   acknowledgedBy: string;
@@ -151,16 +152,16 @@ const CytologySynopticFormView: React.FC<CytologySynopticFormViewProps> = ({ ini
     const label = resolveSynopticFieldLabel(field, t);
     const isMissing = missingFieldIds.includes(field.id);
     const labelNode = (
-      <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: isMissing ? '#ef4444' : '#9ca3af', marginBottom: 4 }}>
+      <label className={`ps-cytosynform-label${isMissing ? ' ps-cytosynform-label--missing' : ''}`}>
         {label}{field.required && ' *'}
       </label>
     );
 
     if (field.type === 'dropdown') {
       return (
-        <div key={field.id} style={{ marginBottom: 12 }}>
+        <div key={field.id} className="ps-mb-12">
           {labelNode}
-          <select className="ps-conf-select" style={{ width: '100%' }} value={(answers[field.id] as string) ?? ''} onChange={e => setAnswer(field.id, e.target.value)}>
+          <select className="ps-conf-select ps-w-full" value={(answers[field.id] as string) ?? ''} onChange={e => setAnswer(field.id, e.target.value)}>
             <option value="">— {t('common.select')} —</option>
             {field.options?.map(opt => <option key={opt.id} value={opt.id}>{resolveSynopticOptionLabel(opt, t)}</option>)}
           </select>
@@ -170,10 +171,10 @@ const CytologySynopticFormView: React.FC<CytologySynopticFormViewProps> = ({ ini
     if (field.type === 'checkboxes') {
       const selected = (answers[field.id] as string[]) ?? [];
       return (
-        <div key={field.id} style={{ marginBottom: 12 }}>
+        <div key={field.id} className="ps-mb-12">
           {labelNode}
           {field.options?.map(opt => (
-            <label key={opt.id} style={{ display: 'flex', alignItems: 'center', gap: 6, fontSize: 12.5, color: '#d1d5db', marginBottom: 4 }}>
+            <label key={opt.id} className="ps-cytosynform-checkbox-label">
               <input type="checkbox" checked={selected.includes(opt.id)}
                 onChange={() => setAnswer(field.id, selected.includes(opt.id) ? selected.filter(id => id !== opt.id) : [...selected, opt.id])} />
               {resolveSynopticOptionLabel(opt, t)}
@@ -184,46 +185,46 @@ const CytologySynopticFormView: React.FC<CytologySynopticFormViewProps> = ({ ini
     }
     if (field.type === 'numeric') {
       return (
-        <div key={field.id} style={{ marginBottom: 12 }}>
+        <div key={field.id} className="ps-mb-12">
           {labelNode}
-          <input type="number" className="ps-conf-input" style={{ width: '100%' }} value={(answers[field.id] as string) ?? ''} onChange={e => setAnswer(field.id, e.target.value)} />
+          <input type="number" className="ps-conf-input ps-w-full" value={(answers[field.id] as string) ?? ''} onChange={e => setAnswer(field.id, e.target.value)} />
         </div>
       );
     }
     if (field.type === 'longtext') {
       return (
-        <div key={field.id} style={{ marginBottom: 12 }}>
+        <div key={field.id} className="ps-mb-12">
           {labelNode}
-          <textarea className="ps-conf-input" style={{ width: '100%', minHeight: 70 }} value={(answers[field.id] as string) ?? ''} onChange={e => setAnswer(field.id, e.target.value)} />
+          <SpellCheckedTextarea className="ps-conf-input ps-cytosynform-textarea" value={(answers[field.id] as string) ?? ''} onChange={e => setAnswer(field.id, e.target.value)} />
         </div>
       );
     }
     // 'text'
     return (
-      <div key={field.id} style={{ marginBottom: 12 }}>
+      <div key={field.id} className="ps-mb-12">
         {labelNode}
-        <input type="text" className="ps-conf-input" style={{ width: '100%' }} value={(answers[field.id] as string) ?? ''} onChange={e => setAnswer(field.id, e.target.value)} />
+        <input type="text" className="ps-conf-input ps-w-full" value={(answers[field.id] as string) ?? ''} onChange={e => setAnswer(field.id, e.target.value)} />
       </div>
     );
   };
 
   return (
     <div>
-      <div style={{ padding: '8px 10px', background: '#f59e0b18', border: '1px solid #f59e0b33', borderRadius: 8, marginBottom: 16, fontSize: 11.5, color: '#f59e0b' }}>
+      <div className="ps-cytosynform-preview-banner">
         {t('cytologyScreening.synopticDrawer.previewBanner')}
       </div>
 
-      <label style={{ display: 'block', fontSize: 11.5, fontWeight: 600, color: '#9ca3af', marginBottom: 4 }}>
+      <label className="ps-cytosynform-label">
         {t('cytologyScreening.synopticDrawer.selectTemplate')}
       </label>
-      <select className="ps-conf-select" style={{ width: '100%', marginBottom: 18 }} value={templateId ?? ''} onChange={e => { setTemplateId(e.target.value || undefined); setAnswers({}); setMissingFieldIds([]); }}>
+      <select className="ps-conf-select ps-cytosynform-template-select" value={templateId ?? ''} onChange={e => { setTemplateId(e.target.value || undefined); setAnswers({}); setMissingFieldIds([]); }}>
         <option value="">— {t('common.select')} —</option>
         {CYTOLOGY_SYNOPTIC_TEMPLATES.map(tmpl => <option key={tmpl.id} value={tmpl.id}>{tmpl.name}</option>)}
       </select>
 
       {template && template.sections.map(section => (
-        <div key={section.id} style={{ marginBottom: 18 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#e5e7eb', textTransform: 'uppercase', letterSpacing: 0.3, marginBottom: 10 }}>
+        <div key={section.id} className="ps-mb-18">
+          <div className="ps-cytosynform-section-title">
             {resolveSynopticSectionTitle(section, t)}
           </div>
           {section.fields.map(renderField)}
@@ -231,40 +232,40 @@ const CytologySynopticFormView: React.FC<CytologySynopticFormViewProps> = ({ ini
       ))}
 
       {missingFieldIds.length > 0 && (
-        <div style={{ padding: '8px 10px', background: '#ef444418', border: '1px solid #ef444433', borderRadius: 8, marginBottom: 14, fontSize: 12, color: '#ef4444' }}>
+        <div className="ps-cytosynform-error-banner">
           {t('cytologyScreening.synopticDrawer.validationError')}
         </div>
       )}
 
       {unvalidatedTermKeys.length > 0 && (
-        <div style={{ padding: '10px 12px', background: '#f59e0b18', border: '1px solid #f59e0b33', borderRadius: 8, marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#f59e0b', marginBottom: 6 }}>
+        <div className="ps-cytosynform-warn-banner">
+          <div className="ps-cytosynform-warn-title">
             {t('cytologyScreening.synopticDrawer.unvalidatedTermsTitle')}
           </div>
-          <div style={{ fontSize: 11.5, color: '#d1d5db', marginBottom: 8 }}>
+          <div className="ps-cytosynform-warn-text">
             {t('cytologyScreening.synopticDrawer.unvalidatedTermsExplanation')}
           </div>
-          <ul style={{ margin: '0 0 10px', paddingLeft: 18, fontSize: 11.5, color: '#fcd34d' }}>
+          <ul className="ps-cytosynform-term-list">
             {unvalidatedTermKeys.map(key => <li key={key}>{key}</li>)}
           </ul>
-          <label style={{ display: 'flex', alignItems: 'flex-start', gap: 8, fontSize: 12, color: '#e5e7eb', cursor: 'pointer' }}>
+          <label className="ps-cytosynform-ack-label">
             <input type="checkbox" checked={hasCurrentAcknowledgment}
               onChange={e => { setAcknowledgmentChecked(e.target.checked); setShowAcknowledgmentError(false); }}
-              style={{ marginTop: 2 }} />
+              className="ps-mt-2" />
             {t('cytologyScreening.synopticDrawer.acknowledgmentLabel')}
           </label>
           {showAcknowledgmentError && !hasCurrentAcknowledgment && (
-            <div style={{ fontSize: 11.5, color: '#ef4444', marginTop: 6 }}>{t('cytologyScreening.synopticDrawer.acknowledgmentRequiredError')}</div>
+            <div className="ps-cytosynform-ack-error">{t('cytologyScreening.synopticDrawer.acknowledgmentRequiredError')}</div>
           )}
         </div>
       )}
 
       {compiledNarrative.segments.length > 0 && (
-        <div style={{ padding: '10px 12px', background: '#1f293766', border: '1px solid #37415155', borderRadius: 8, marginBottom: 14 }}>
-          <div style={{ fontSize: 12, fontWeight: 700, color: '#9ca3af', marginBottom: 6 }}>
+        <div className="ps-cytosynform-narrative-banner">
+          <div className="ps-cytosynform-narrative-title">
             {t('cytologyScreening.synopticDrawer.generatedNarrativeTitle')}
           </div>
-          <div style={{ fontSize: 12.5, color: '#d1d5db', lineHeight: 1.5, marginBottom: 10 }}>
+          <div className="ps-cytosynform-narrative-text">
             {compiledNarrative.segments.map((seg, i) => {
               if (!seg.isUnvalidatedFallback) return <span key={i}>{seg.text}</span>;
               // Real, per direct guidance's own three requirements:
@@ -278,7 +279,7 @@ const CytologySynopticFormView: React.FC<CytologySynopticFormViewProps> = ({ ini
               // paths show the exact same real lexiconTermKey text.
               const tooltipText = t('cytologyScreening.synopticDrawer.unvalidatedSegmentTooltip').replace('{key}', seg.lexiconTermKey ?? '');
               return (
-                <span key={i} style={{ position: 'relative' }}>
+                <span key={i} className="ps-relative">
                   <mark
                     role="button"
                     tabIndex={0}
@@ -286,19 +287,12 @@ const CytologySynopticFormView: React.FC<CytologySynopticFormViewProps> = ({ ini
                     aria-label={tooltipText}
                     onClick={() => setExpandedSegmentIndex(expandedSegmentIndex === i ? null : i)}
                     onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setExpandedSegmentIndex(expandedSegmentIndex === i ? null : i); } }}
-                    style={{
-                      background: '#f59e0b2e', color: '#fcd34d', borderBottom: '1px dashed #f59e0b',
-                      padding: '0 2px', borderRadius: 2, cursor: 'pointer',
-                    }}
+                    className="ps-cytosynform-unvalidated-mark"
                   >
                     {seg.text}
                   </mark>
                   {expandedSegmentIndex === i && (
-                    <span style={{
-                      display: 'inline-block', marginLeft: 4, padding: '1px 6px', fontSize: 10.5,
-                      fontFamily: 'monospace', color: '#0a0a0a', background: '#fcd34d', borderRadius: 4,
-                      verticalAlign: 'middle',
-                    }}>
+                    <span className="ps-cytosynform-lexicon-badge">
                       {seg.lexiconTermKey}
                     </span>
                   )}
@@ -307,14 +301,14 @@ const CytologySynopticFormView: React.FC<CytologySynopticFormViewProps> = ({ ini
             })}
           </div>
           <button onClick={() => onInsertNarrative(compiledNarrative.rawText)}
-            style={{ padding: '6px 14px', fontSize: 12, fontWeight: 600, color: '#94a3b8', background: 'transparent', border: '1px solid #37415155', borderRadius: 6, cursor: 'pointer' }}>
+            className="ps-cytosynform-insert-btn">
             {t('cytologyScreening.synopticDrawer.insertIntoNotesBtn')}
           </button>
         </div>
       )}
 
       {template && (
-        <button onClick={handleSave} style={{ padding: '9px 20px', fontSize: 12.5, fontWeight: 700, color: '#0a0a0a', background: '#009E73', border: 'none', borderRadius: 8, cursor: 'pointer', width: '100%' }}>
+        <button onClick={handleSave} className="ps-cytosynform-save-btn">
           {t('cytologyScreening.synopticDrawer.saveBtn')}
         </button>
       )}

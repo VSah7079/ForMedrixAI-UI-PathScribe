@@ -21,12 +21,18 @@
  * i18n note: `existingCassetteId` is a real, user-assigned cassette
  * label (data), embedded via interpolation in otherwise-translated
  * strings (the edit-mode title, the dissolve-confirmation prompt).
+ *
+ * Batch 381 (PS-359): Save needs a cassette label and at least two
+ * specimens (Field Requirements, locked; reportPageChecks.biopsyArrayMissing),
+ * and can also be said ("save biopsy array", BIOPSY_ARRAY_SAVE).
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 import type { Specimen } from '@/types/case/Specimen';
+import { actionRegistryService, biopsyArrayMissing } from '@/services';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
 
 interface CreateBiopsyArrayModalProps {
   specimens: Specimen[];
@@ -46,6 +52,7 @@ const CreateBiopsyArrayModal: React.FC<CreateBiopsyArrayModalProps> = ({
   specimens, onSave, onClose, existingCassetteId, initialSelectedIds, onDissolve,
 }) => {
   const { t } = useTranslation();
+  const requirements = useFieldRequirements('report');
   const isEditMode = !!existingCassetteId;
   // Order IS the position — position 1 is whichever specimen was
   // selected first, etc. Deliberately no separate re-ordering UI for
@@ -62,7 +69,15 @@ const CreateBiopsyArrayModal: React.FC<CreateBiopsyArrayModalProps> = ({
     );
   };
 
-  const canSave = selectedIds.length >= 2 && cassetteLabel.trim().length > 0;
+  const canSave = biopsyArrayMissing(cassetteLabel, selectedIds.length, requirements).length === 0;
+  const save = () => { if (canSave) onSave(selectedIds, cassetteLabel.trim()); };
+
+  // Voice/keyboard "save biopsy array": the same Save, with the same check.
+  const saveRef = useRef(save);
+  saveRef.current = save;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'BIOPSY_ARRAY_SAVE') saveRef.current();
+  }), []);
 
   return (
     <div onClick={onClose} className="ps-biopsyarray-overlay">
@@ -160,7 +175,7 @@ const CreateBiopsyArrayModal: React.FC<CreateBiopsyArrayModalProps> = ({
           </button>
           <button
             disabled={!canSave}
-            onClick={() => canSave && onSave(selectedIds, cassetteLabel.trim())}
+            onClick={save}
             className={`ps-biopsyarray-save-btn${canSave ? ' ps-biopsyarray-save-btn--enabled' : ''}`}
           >
             {isEditMode ? t('createBiopsyArrayModal.saveChangesButton') : t('createBiopsyArrayModal.createTitle')}

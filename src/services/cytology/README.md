@@ -68,8 +68,10 @@ so a later phase can wire GYN screening results into the same
 abnormal-detection/sign-out-guardrail framework PS-105 already built,
 rather than inventing a second, parallel severity system. Left unset on
 ASC-US deliberately — genuinely ambiguous at this app's own three-level
-granularity, not a gap to guess at now. **Not consumed anywhere yet** —
-this phase only records the mapping decision.
+granularity, not a gap to guess at now. **Real, direct correction
+(PS-132, below): this WAS left unconsumed for a long time, but no
+longer is** — `resolveCytologyAbnormalSeverity.ts` now performs exactly
+the reduction this note anticipated.
 
 ## Phase 2 (Sep 2026) — the real specimen-level screening record
 
@@ -348,7 +350,7 @@ Direct guidance: "Let's do the actual sign out. I don't believe we have a define
 
 `resolveCanSignOutCytology.ts` — the real authorization decision, genuinely distinct from PS-163's own gate: a Pathologist can always sign out regardless of that gate's result (since a Pathologist signing IS the real pathologist review the gate exists to require); a Cytotechnologist only when the gate itself allows it for the Final Diagnosis review specifically.
 
-`CytologySignOutRecord` (`types/cytology/`) + `mockCytologySignOutRecordService.ts` — a real, immutable "always written" record per real sign-out, this module's own version of this app's established `ReportSnapshot` concept — genuinely simpler, carrying real structured content directly rather than a PDF blob reference; the real PDF-rendering/storage infrastructure `ReportSnapshot` assumes is separate, substantial work not built here.
+`CytologySignOutRecord` (`types/cytology/`) + `mockCytologySignOutRecordService.ts` — a real, immutable "always written" record per real sign-out, this module's own version of the app's release record (`ReportVersionRecord`; this used to cite `ReportSnapshot`, an unused design removed in Batch 366) — simpler, carrying structured content directly rather than a rendered PDF.
 
 **Real UI wiring** (`CytologyScreeningPage.tsx`): a real status/action bar shows "already signed" once signed, or a live Sign Out button otherwise — disabled with the specific real blocked reason shown when a Cytotechnologist can't sign independently. Signing creates the real sign-out record and transitions the case to `'finalized'`.
 
@@ -376,7 +378,13 @@ Cytology's own real dispatch infrastructure, mirroring the surgical pathway's es
 
 Real dispatch wired into `handleSignOut`: after a real sign-out record is created and the case finalized, the real result is enqueued, a real payload built (with a real, embedded PDF), dispatched, and marked sent or failed — mirroring `dispatchCaseInstances.ts`'s own real pattern exactly, not a parallel, divergent one.
 
+**Updated (PS-276, Sep 2026)**: `generateCytologyReportPdf.ts` now also draws a real accession-number barcode in its header and, via `generateCytologyReportPdfWithAttachments()`, closes a real determinism gap (jsPDF's own wall-clock timestamps and randomized trailer `/ID`) — see [services/documentRendering/README.md](../documentRendering/README.md) for the full account, including what PS-276 still leaves open (full PDF/A font embedding; the surgical-pathology `render_report` pipeline, out of this repo's reach).
+
+**Updated (PS-277, Sep 2026)**: `generateCytologyReportPdf.ts` gained a real, second-pass "Page X of Y" continuation header (never on page 1), a genuine per-line page-overflow fix (a real, pre-existing gap — a long paragraph mid-section could previously run off the page uncaught), "Keep With Next" for section headers, a real, optional facility-branding header block (`content.printBranding`), and — closing a separate, real, pre-existing gap found while building this — `addendumText` now actually renders, optionally forced onto its own dedicated page by a real, per-facility print policy resolved in `releaseCytologyAddendum.ts`. See [services/documentRendering/README.md](../documentRendering/README.md) for the full account, including this batch's own disclosed gaps (header logo image embedding; no admin screen yet for Department/Enterprise-level branding overrides).
+
 31 new tests across the gate resolver, the PDF generator, the payload builder, and the queue service. Full suite clean: 221/224 files, 2345/2354 tests, 0 failures.
+
+**Updated (PS-277 gap-closing, Sep 2026)**: the header-logo gap disclosed above is now closed. `generateCytologyReportPdf.ts` reserves a fixed, content-independent box in the header whenever `content.printBranding.headerLogoUrl` is set (never shifts with any dynamic content, same reasoning already used for the accession barcode), and exposes it back to callers via a real, optional `layoutOut` out-parameter — deliberately not a change to this function's own return type, so `CytologyScreeningPage.tsx`'s existing, plain, single-argument preview calls are completely unaffected. `generateCytologyReportPdfWithAttachments()` is the one real caller that uses it: it fetches the real logo bytes and draws them into that exact region on the existing page 1 via a new `services/documentRendering/embedCytologyHeaderLogo.ts` (pdf-lib, real "contain" scaling that never stretches or upscales past native size, DPI-checked against the real 300 DPI minimum exactly like `embedImageAssociationsIntoPdf.ts` already does for clinical images). A fetch failure leaves the reserved space blank and logs a real, honest warning — never a thrown error, never a placeholder page (a blank letterhead corner is a benign gap, unlike a missing clinical image). See [services/documentRendering/README.md](../documentRendering/README.md) for the full account, including the remaining PS-276/277 gaps this pass did not touch.
 
 ## Phase 21 (Sep 2026) — international roadmap, Phase 1 (US/CA): real HPV genotype capture and co-testing dual-result support
 
@@ -1287,10 +1295,301 @@ Real, per the ticket's own worked example ("Dynamic Preparation Rules... >20mL +
 
 Also **new stain catalog entry** (`services/stains/mockStainTypeService.ts`): `Diff-Quik / Wright-Giemsa` (`category: 'Cytology'`) — one of the ticket's three spec'd cytology "Stain Quick-Toggle" options (Pap Stain and H&E both already existed in the catalog).
 
+## Phase 80 (Sep 2026) — PS-132: Bethesda severity actually flagged, and confirming the QC-rescreening half was already done
+
+Direct guidance: implement PS-132 ("Cytology / Bethesda Screening + QC
+Rescreening Rules," part of PS-105's Core Abnormal Detection Engine).
+Real investigation first, as the ticket's own required first step —
+documented here rather than only in the delivered code, so this
+README stays the real, accurate record of what PS-132 actually needed
+versus what already existed.
+
+**Investigation findings**:
+
+1. **Is Bethesda classification a discrete field, or only ever free
+   text?** Discrete, confirmed directly: `CytologyReviewRecord.primaryInterpretationId`/
+   `additionalInterpretations` already reference real
+   `CytologyCategoryEntry` ids (this dictionary), the same discrete
+   data model `resolveCytologyReviewRequirement.ts` (Phase 2) already
+   reduces to a pathologist-review boolean. So PS-132's Bethesda
+   screening flag reuses that same discrete reference — never a new,
+   parallel free-text scan.
+2. **Bethesda severity flagging (ASC-US/HSIL/LSIL/malignant)**: the
+   real severity DATA already existed (`suggestedAbnormalSeverity`,
+   recorded on the categories back when this dictionary gained its
+   `AbnormalSeverity` link — see this file's own now-corrected note
+   above), but nothing actually consumed it — a real, confirmed gap,
+   not a misreading of already-working code.
+3. **QC rescreening (random + targeted)**: already fully built, and
+   already wired end-to-end — genuinely nothing left to do here.
+   Confirmed directly: `resolveCytologyRandomQcSelection.ts` (PS-157)
+   implements the real, independent negative/non-negative random-rate
+   algorithm; `resolveCytologyPendingMandatoryQc.ts` implements the
+   separate, real 100%-of-high-risk mandatory targeted QC queue (not
+   just a random rate set to 100 — a genuinely different, targeted
+   mechanism, cleared only by a real `qc_targeted_high_risk` review);
+   `CytologyQcSettingsSection.tsx` is the real, already-built 3-tier
+   (Enterprise/Facility/Staff) admin settings cascade; and
+   `CytologyScreeningPage.tsx`/`resolveCytologySignOutGate.ts` already
+   call all of it. This already satisfies the ticket's own explicit
+   ask ("reusing existing sampling precedent rather than a third
+   implementation") — building anything further here would have been
+   a genuinely redundant, unrequested fourth implementation of the
+   same concept.
+
+**What was actually built this phase** (the one real, confirmed gap
+from investigation item 2): **`resolveCytologyAbnormalSeverity.ts`**
+(+ `.test.ts`, 7 tests) — a small, pure function reducing a review's
+own selected interpretation/result category ids to the single
+highest-ranked `suggestedAbnormalSeverity` among them, or `undefined`
+when none carry one (never a fabricated worst-case default) — the
+direct cytology equivalent of `evaluateAbnormalTriggerRules.ts`'s own
+`highestSeverityMatch()` for PS-129's discrete synoptic triggers.
+Reuses that same file's severity ranking directly rather than a
+second, cytology-only copy: `ABNORMAL_SEVERITY_RANK` was pulled out of
+`evaluateAbnormalTriggerRules.ts`'s own private `SEVERITY_RANK` into
+`IAbnormalTriggerRuleService.ts` as the one, shared source of truth,
+with `evaluateAbnormalTriggerRules.ts` itself updated to use it too —
+so PS-129's and PS-132's severity reductions can never drift apart.
+
+Deliberately advisory only, matching PS-129/PS-131's own established
+"suggestion, never an automatic determination" posture: this function
+never itself gates sign-out — `resolveCytologySignOutGate.ts`'s own,
+separate `requiresPathologistReview` check is the real safety gate,
+unaffected and unchanged. This is scoped exactly to what PS-132 asked
+for — "this ticket only produces the flag/routing decision" — wiring
+the resulting severity into a worklist badge or the unified sign-out
+review is left for whichever future ticket actually needs it, the same
+way PS-129's own `toCriticalFindingFlag()` existed before its own
+UI wiring landed separately.
+
+Files added: `resolveCytologyAbnormalSeverity.ts`,
+`resolveCytologyAbnormalSeverity.test.ts`. Files changed:
+`services/abnormalDetection/IAbnormalTriggerRuleService.ts` (added
+`ABNORMAL_SEVERITY_RANK`), `services/abnormalDetection/evaluateAbnormalTriggerRules.ts`
+(now imports it instead of its own private copy).
+
+## Phase 81 (Sep 2026) — PS-276 §1.1.4 gap-closing: Web Worker offload for cytology PDF generation
+
+Real, per PS-276/277 gap-closing pass. `services/documentRendering/README.md`
+had disclosed this as a real, scoped-but-not-yet-built gap: `generateCytologyReportPdfWithAttachments()`'s
+own jsPDF/pdf-lib work is synchronous, CPU-bound, main-thread
+JavaScript, which could cause brief but real UI jank for a report with
+several large embedded images.
+
+**New**: `generateCytologyReportPdf.worker.ts` — the actual Web Worker
+entry point. Verified beforehand, not assumed, that this is safe to
+run off the main thread: this pipeline's jsPDF usage is pure vector/
+text/image drawing (never jsPDF's DOM-dependent `html()` canvas path),
+and pdf-lib (used by `embedCytologyHeaderLogo.ts`/
+`embedImageAssociationsIntoPdf.ts`) is itself environment-agnostic —
+Node, browser, and Worker are all real, documented, supported targets.
+A one-shot script: generates exactly one PDF per Worker instance, then
+its caller terminates it — deliberately not a persistent pool, since
+cytology PDF generation is an infrequent, one-at-a-time,
+sign-out-triggered operation, not a high-throughput batch job.
+
+**New**: `generateCytologyReportPdfInWorker.ts` — the one, real public
+entry point callers use in place of calling
+`generateCytologyReportPdfWithAttachments()` directly. Uses Vite's own
+documented worker-import convention (`new Worker(new URL(<module>,
+import.meta.url), { type: 'module' })`) so the worker bundles its own
+full dependency graph (this module, jsPDF, pdf-lib) rather than
+assuming those are reachable on some other global. Real, honest
+fallback, never a silent behavioral difference for a caller to account
+for: when `Worker` isn't a real, available global, or constructing one
+throws, generation runs synchronously on the main thread instead —
+same real bytes either way, the offload is purely a performance
+improvement.
+
+**Changed**: `generateCytologyReportPdfSnapshot.ts` now calls
+`generateCytologyReportPdfInWorker()` instead of
+`generateCytologyReportPdfWithAttachments()` directly — its own
+`{ pdfBase64?, generationError? }` contract to `dispatchPrintJob.ts` is
+completely unchanged, so nothing downstream needed to change.
+
+**Testing note**: this project has no real Worker-execution test
+harness (module Workers need a real bundler/browser runtime vitest
+doesn't provide). `generateCytologyReportPdfInWorker.test.ts` tests the
+real thing that's actually this function's own logic — the dispatch/
+message-passing/fallback/error-handling contract — against a fake,
+in-memory Worker double implementing just the
+`onmessage`/`onerror`/`postMessage`/`terminate` surface actually used.
+The real jsPDF/pdf-lib generation itself stays covered directly by the
+existing `generateCytologyReportPdf.test.ts`, unaffected by this
+change. `generateCytologyReportPdfSnapshot.test.ts` was updated to mock
+`generateCytologyReportPdfInWorker` in place of
+`generateCytologyReportPdfWithAttachments` — same three tests
+(round-trip, large-data chunking, thrown-failure-returns-honest-error),
+now exercising the real call chain.
+
+Files added: `generateCytologyReportPdf.worker.ts`,
+`generateCytologyReportPdfInWorker.ts`,
+`generateCytologyReportPdfInWorker.test.ts`. Files changed:
+`generateCytologyReportPdfSnapshot.ts`,
+`generateCytologyReportPdfSnapshot.test.ts`.
+
+Validation: `tsc --noEmit` clean; full suite 540/540 test files,
+4696/4696 tests passing.
+
+## Phase 82 (Sep 2026) — PS-276 §1.1.1 gap-closing: real, embedded font (Liberation Sans), closing the last material PDF/A blocker
+
+Real, per PS-276/277 gap-closing pass — the fifth and last of the
+originally-disclosed PS-276/277 gaps. `services/documentRendering/README.md`
+had disclosed this as the one, real, material blocker to a PDF/A
+embedded-fonts claim: jsPDF's default `'helvetica'` (and
+`'times'`/`'courier'`) are the 14 PDF standard fonts, which by the PDF
+spec itself are never embedded, no matter how jsPDF is configured —
+closing this required sourcing a genuinely separate, real, redistributable
+font program and embedding it via jsPDF's own font tooling, exactly as
+the original disclosure specified.
+
+**New**: `services/documentRendering/embeddedFonts/LiberationSans-Regular-normal.ts` /
+`LiberationSans-Bold-bold.ts` — the actual, real TrueType font program
+bytes (base64), sourced from the `@typopro/dtp-liberation` npm package
+and verified directly (not assumed) via a `fontTools` name-table read
+before use: family reads `TypoPRO Liberation Sans`, license record
+reads `Licensed under the SIL Open Font License, Version 1.1`. Chosen
+over Roboto/Noto specifically because Liberation Sans is a real,
+purpose-built, metrically-compatible replacement for Helvetica/Arial —
+this app's own existing print layout (character widths jsPDF's
+`splitTextToSize()` measures against) doesn't meaningfully shift from
+what it was built against while using jsPDF's non-embeddable
+`'helvetica'`. Full provenance/licensing/trade-off account in the new
+`embeddedFonts/LICENSE_NOTICE.md`.
+
+**New**: `services/documentRendering/registerEmbeddedPrintFont.ts` (+
+`.test.ts`, 4 tests) — registers both weights onto a real jsPDF doc via
+`addFileToVFS()`/`addFont()` (`WinAnsiEncoding`, since this pipeline's
+real content is plain Latin-1 clinical text with no need for
+Identity-H/CID machinery). Idempotent — safe to call more than once on
+the same doc. Verified directly, not just asserted: the test suite
+draws real text with the registered font, reads back the actual output
+PDF bytes, and asserts a real `/FontFile2` object is present — the
+literal, unambiguous proof of genuine embedding, since jsPDF only ever
+emits that object for a real, registered, non-standard font. A
+contrasting test confirms the old, `'helvetica'`-only baseline never
+produces one.
+
+**Changed**: `generateCytologyReportPdf.ts` now calls
+`registerEmbeddedPrintFont(doc)` once, immediately after constructing
+the doc, and its own `addWrappedText()` helper (the single place all
+of this report's real body text is drawn) now uses the embedded family
+instead of `'helvetica'`. `services/documentRendering/applyContinuationPageHeaders.ts`
+(the second, real pass that draws each continuation page's abbreviated
+header) was updated the same way — a genuinely complete swap: a
+partial one that left continuation-page headers on the old,
+non-embedded font would have been a real, easy-to-miss PDF/A gap on
+any multi-page report. `services/documentRendering/validatePrintLayoutGovernance.ts`'s
+`ALLOWED_PRINT_FONTS` gained `'LiberationSans'`; the original three
+base-14 entries stay on the allowlist (not currently used by any real
+caller after this change, but now clearly disclosed as non-embedded
+rather than silently implied to be PDF/A-safe).
+
+Files added: `registerEmbeddedPrintFont.ts`,
+`registerEmbeddedPrintFont.test.ts`,
+`embeddedFonts/LiberationSans-Regular-normal.ts`,
+`embeddedFonts/LiberationSans-Bold-bold.ts`,
+`embeddedFonts/LICENSE_NOTICE.md`. Files changed:
+`generateCytologyReportPdf.ts`, `applyContinuationPageHeaders.ts`,
+`applyContinuationPageHeaders.test.ts` (its own test docs now register
+the embedded font before calling the function under test, matching
+what the real caller always does), `validatePrintLayoutGovernance.ts`.
+
+Validation: `tsc --noEmit` clean, project-wide. Full suite: 541/541
+test files, 4700/4700 tests passing.
+
+## Phase 83 (Sep 2026) — Cytology Assisted Instrumentation: real, per-facility modality, closing a real, disclosed multi-facility gap
+
+Real, per direct follow-up, high priority given multi-facility support:
+"each performing facility could identify their own mode... is it
+possible that an individual system could have both types?"
+`ICytologyInstrumentationService.ts`'s own header had explicitly
+disclosed this as the real, deliberate scope of its "first increment"
+— "a single, real, global setting... not silently assumed sufficient
+for every real, multi-facility lab." This phase closes that gap.
+
+**New**: `IFacilityCytologyInstrumentationOverrideService.ts` /
+`mockFacilityCytologyInstrumentationOverrideService.ts` — a real Tier 2
+(facility-level override), same shape as this module's own established
+siblings for exactly this kind of cascade
+(`IFacilityCytologyNomenclatureOverrideService.ts`,
+`IFacilityCytologyWorkloadCapOverrideService.ts`,
+`IFacilityCytologyQcOverrideService.ts`): at most one override record
+per facility, keyed on `facilityId`, a real error (never a silent
+second record) on a duplicate `create()`. `ICytologyInstrumentationService.ts`
+itself is unchanged — it remains Tier 1, the Enterprise-wide default.
+
+**New**: `resolveEffectiveCytologyInstrumentationModality.ts` — the
+same real "facility override wins over the Enterprise default" merge
+`resolveEffectiveCytologyNomenclatureSettings.ts` already established,
+applied here. The real, direct consequence of moving from one global
+value to a real, independent per-facility record: a single system can
+now genuinely run BOTH modalities at once — a legacy facility
+overridden to `traditional_guided` while a different facility in the
+same system stays on (or is separately overridden to) `wsi` — answering
+both halves of the original question at once, since it's really one
+underlying fix.
+
+**Changed**: `pages/CytologyWorklistPage/CytologyScreeningPage.tsx` —
+the flat, one-time `mockCytologyInstrumentationService.get()` read is
+replaced with a real resolution keyed off THIS case's own performing
+facility (`caseData?.order?.facilityId`, the same real field every
+other facility-scoped cascade on this page already reads), re-run
+whenever that facility id changes. `components/Config/Cytology/CytologyInstrumentationSection.tsx`
+gained a real Tier 2 admin UI (add/list/remove a facility override),
+reusing the `.ps-cytqc__*` CSS class family directly rather than
+duplicating an identical, parallel set under a new name — same
+established "reuse this Cytology config family's own classes/i18n keys
+when the shape matches" precedent this file already used for its own
+`cytologyQcSettingsSection.enterprise.unsavedChange` reuse.
+
+**Also fixed**: `components/Config/System/DemoResetTab.tsx` — the new
+`facilityCytologyInstrumentationOverrides` storage key is now included
+in Full Reset's `SETTINGS_KEYS` (caught immediately by this app's own
+`DemoResetTab.coverage.test.ts`, which fails loudly on any real storage
+key the reset doesn't know about — exactly the real, fail-loud
+guardrail it exists for).
+
+Files added: `IFacilityCytologyInstrumentationOverrideService.ts`,
+`mockFacilityCytologyInstrumentationOverrideService.ts`,
+`resolveEffectiveCytologyInstrumentationModality.ts`,
+`facilityCytologyInstrumentationCascade.test.ts`,
+`components/Config/Cytology/CytologyInstrumentationSection.test.tsx`.
+Files changed: `pages/CytologyWorklistPage/CytologyScreeningPage.tsx`,
+`components/Config/Cytology/CytologyInstrumentationSection.tsx`,
+`components/Config/System/DemoResetTab.tsx`, all 5 locale files
+(`cytologyInstrumentationSection.subtitle` updated to describe the real
+2-tier cascade; new `cytologyInstrumentationSection.facility.title`/
+`emptyState` keys, mirroring `cytologyQcSettingsSection.facility`'s own
+established translations).
+
+Validation: `tsc --noEmit` clean, project-wide. Full suite: 543/543
+test files, 4714/4714 tests passing.
+
 ## Real, deliberate scope not yet built
 
 - **No UI trigger exists for either mechanism yet.** Both `releaseCytologyCorrection.ts` and `releaseCytologyAddendum.ts` are real, tested, and ready to be called, but there's no "Correct Diagnosis" or "Add Addendum" action in `CytologyScreeningPage.tsx` to call them. Given that page's own size, this was scoped as its own, separate follow-up rather than attempted in the same pass as the underlying mechanism.
 - Reaching a genuine, pathologist-level Cytology sign-out through browser automation proved hard this session (needs a real role handoff — Primary Screener review, then a separate pathologist Final Review) — confirmed the page and its forms work correctly with zero errors across multiple attempts, but the actual dispatch trigger itself was never exercised live. Relying on the layered, direct unit coverage across `dispatchCytologyCaseInstances.test.ts`, `generateCytologyReportPdfSnapshot.test.ts`, `releaseCytologyCorrection.test.ts`, `releaseCytologyAddendum.test.ts`, and `publishReportReleasedEvent.test.ts`'s own source-routing tests instead.
+
+## Signing authority on the pathologist track (Batch 332, PS-327)
+
+**`resolveCytologySignOutAuthority.ts`** (+ `.test.ts`, new, pure). Per Pete, Cytology applies per-lab and country signing authority to the **pathologist track only**.
+- **Cytotechnologist track: unchanged.** The CLIA credentialed-CT exception and the new-CT competency countersign behave exactly as before. No configured countersign types and no finalize check are added.
+- **Pathologist track** (everyone else who signs cytology): the same rules as Surgical Pathology and Autopsy.
+  - **Countersign:** the lab/country's configured countersign types, never including `cytotechnologist`.
+  - **Finalize:** a direct sign-out needs `canFinalizeCase`.
+  - **Behaviour change:** a Consultant or Second Opinion participant can no longer sign cytology unless the lab or country profile grants finalize authority.
+
+`CytologyScreeningPage.tsx` resolves the context through `services/auth/resolveFinalizeAuthorityContext.ts`, using the performing lab's country. It runs the countersign gate first, then shows the refusal reason if finalize is denied.
+
+**Checked in the browser:**
+- a non-admin Consultant was refused with the finalize reason, and the case stayed in progress;
+- the same user as Primary signed out.
+
+## Batch 366 (PS-68)
+
+Comments in `ICytologySignOutRecordService.ts` and `types/cytology/CytologySignOutRecord.ts` no longer point to the removed `ReportSnapshot` type.
 
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*

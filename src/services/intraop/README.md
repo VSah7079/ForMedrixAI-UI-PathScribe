@@ -14,6 +14,22 @@ Intraoperative Pre-Check queue — bench-side capture (frozen section, quick gro
 - **Real feature, per direct confirmation: "Let's wire in Facility and Location (Room) for Intraop."** `IntraoperativeEntry` gained `clientId`/`clientName`/`locationId`/`locationDisplay` — same pattern as `Case.order`'s own fields (`types/case/Case.ts`), cached display strings resolved once at `createSession` rather than looked up on every render. Both are optional: a session can genuinely be started before the facility/location is known (barcode-only identification with no ADT match is the normal path here, not an edge case — see `PatientMatchInfo`). Captured once per session alongside OR/surgeon, not per specimen, since every specimen under one session comes from the same OR. `IntraopQueuePage.tsx`'s capture form gained two new dropdowns (facility, then a facility-scoped location list — same reload-on-facility-change pattern as `AccessionPage.tsx`), and both display surfaces (the active-session banner, the Pending Match queue card) show the resolved names once set.
 - **New, real consumer (Sep 2026)**: `services/intraopDashboard/` — the RFP-APLIS-2026-GLOBAL Intraoperative/Frozen Section Dashboard reads this folder's own `IntraoperativeEntry`/`IntraopSpecimen` data directly (via `resolveActiveIntraopRequestsForLocations.ts`), filtering by the `locationId`/`arrivalTimestamp`/`frozenDiagnosisRenderedAt` fields already established above. That real-time, OR-facing dashboard is a genuinely separate module (its own README) — this folder's own real scope stays bench-side pre-check capture.
 
+## Live updates (Batch 342, PS-262)
+
+Every write in `mockIntraoperativeService.ts` announces itself (`announceIntraopChange`) to `services/liveUpdates/localLiveUpdateService.ts`, standing in for the API server, which will publish after each commit. The writes and the events they send:
+
+| Write | Event |
+|---|---|
+| `createSession` / demo seeding | `session.created` |
+| `addSpecimen` | `specimen.added` |
+| `addMilestone`, `addPreparationOutput`, `addDigitalAsset` | `specimen.progressed` |
+| `setFrozenSectionDiagnosis` | `diagnosis.rendered` |
+| `recordVerbalReport` | `verbal.reported` |
+| `dismissFromBoard` | `specimen.dismissed` |
+| `merge` | `session.merged` |
+
+Events carry ids only (session, specimen, location, facility), never patient data.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

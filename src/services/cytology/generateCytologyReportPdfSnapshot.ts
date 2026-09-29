@@ -14,16 +14,25 @@
 // SynopticReportPage.tsx's own generateReportPdfSnapshot already
 // returns for Surg Path, so Component B needs no changes at all to
 // accept this.
+//
+// Real, per PS-276 §1.1.4 gap-closing — this is the one, real
+// sign-out/dispatch-time caller of the CPU-bound generation pipeline,
+// so it's the one real place that gains the Web Worker offload
+// (generateCytologyReportPdfInWorker.ts): a report with several large
+// embedded images no longer has to block whatever UI flow triggered
+// sign-out while it renders. Same real { pdfBase64?, generationError? }
+// contract either way — the offload changes nothing this function's
+// own caller needs to know about.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { generateCytologyReportPdfWithAttachments } from './generateCytologyReportPdf';
+import { generateCytologyReportPdfInWorker } from './generateCytologyReportPdfInWorker';
 import type { CytologyReportContent } from '@/types/cytology/CytologyReportContent';
 
 export async function generateCytologyReportPdfSnapshot(
   content: CytologyReportContent,
 ): Promise<{ pdfBase64?: string; generationError?: string }> {
   try {
-    const bytes = await generateCytologyReportPdfWithAttachments(content);
+    const bytes = await generateCytologyReportPdfInWorker(content);
     // Real, deliberate chunked conversion — a naive
     // String.fromCharCode(...bytes) can exceed the JS engine's own
     // real call-stack argument limit on a large, real, multi-page PDF

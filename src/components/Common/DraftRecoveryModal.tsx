@@ -40,7 +40,7 @@ const DraftRecoveryModal: React.FC<DraftRecoveryModalProps> = ({ savedAt, onRest
 
   return (
     <div className="ps-overlay ps-overlay--draft-recovery">
-      <div className="ps-modal-dark ps-modal-dark--draft-recovery" style={{ width: hasComputedChanges ? 480 : 440 }}>
+      <div className={`ps-modal-dark ps-modal-dark--draft-recovery${hasComputedChanges ? ' ps-modal-dark--draft-recovery-wide' : ''}`}>
         <div className="ps-draftrecovery-icon-wrap">
           <svg width="36" height="36" viewBox="0 0 24 24" fill="none" stroke="#0891B2" strokeWidth="2">
             <path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"/>

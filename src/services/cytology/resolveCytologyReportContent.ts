@@ -16,6 +16,7 @@
 import type { CytologyReviewRecord } from '@/types/cytology/CytologyReviewRecord';
 import type { CytologyCategoryEntry } from './ICytologyCategoryService';
 import type { CytologyReportContent } from '@/types/cytology/CytologyReportContent';
+import type { ResolvedPrintBranding } from '@/types/config/FacilityBranding';
 
 function describe(id: string, categories: CytologyCategoryEntry[]): string {
   const c = categories.find(x => x.id === id);
@@ -78,6 +79,13 @@ export function resolveCytologyReportContent(
   screenedBy: { name: string } | undefined,
   signedBy: { name: string; isPathologist: boolean },
   signedAt: string,
+  /** Real, per PS-277 §1.2.2 — an optional, already-resolved trailing
+   *  group, same "pure assembly, no resolution of its own" posture as
+   *  this whole function's own header comment. The real caller
+   *  resolves these (services/facilities/resolveFacilityPrintBranding.ts)
+   *  and passes the result straight through; omitted entirely, this
+   *  function's own output is byte-identical to before this batch. */
+  printContext?: { printBranding?: ResolvedPrintBranding; componentSplitBillingType?: 'TC' | '26' | 'Global' },
 ): CytologyReportContent {
   return {
     patientName: patient.name,
@@ -112,5 +120,7 @@ export function resolveCytologyReportContent(
     screenedBy,
     signedBy,
     signedAt,
+    printBranding: printContext?.printBranding,
+    componentSplitBillingType: printContext?.componentSplitBillingType,
   };
 }

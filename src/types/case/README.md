@@ -17,11 +17,19 @@ The core case domain model — `Case`, `Specimen`, and every real type layered o
 - **`FppeAssignment.ts`** — Focused Professional Practice Evaluation (new-hire credentialing) tracking, generalized from the countersign mechanism. **Real fix, per direct guidance:** gained a required `facilityId` — had no facility association at all before, a genuine gap; every FPPE assignment is a real, specific person practicing at one real, specific performing lab, unlike a shared network-pool printer where "no single owner" is a valid state.
 - **`Patient.ts`** — patient demographics; medical-grade name schema (Prefix/Given/Family/Preferred/Suffix, not rigid First/Middle/Last).
 - **`ErasureCertificate.ts`** — deliberate, forward-looking scaffolding for a real GDPR Article 17 compliance feature. Zero current consumers on purpose — waiting on legal counsel sign-off before being wired to a real delete. Not dead code.
-- **`ReportSnapshot.ts`** — likely superseded by `types/reports/ReportVersionRecord.ts`, which covers materially the same concern (tracking original/corrected/addendum release events) with an overlapping field. Flagged, not deleted — circumstantial, not certain.
+- ~~`ReportSnapshot.ts`~~ — removed in Batch 366 (PS-68): nothing used it, and `types/reports/ReportVersionRecord.ts` is the release record the app uses. See that file's header for the two points carried forward for the API server.
 
 ## Notes
 
 - `RetentionHold` and `CaseHold` are the two real, deliberately-separate "hold" concepts in this app. Neither gates the other; a case can have an active instance of both simultaneously (e.g. a case on hold for a quality issue *and* separately under litigation retention).
+
+## `SynopticReportInstance.aiDraftSource` (Batch 322, PS-87)
+
+Optional. Set when an Assist-mode LIS poll created or last refreshed a draft synoptic report. It records which LIS milestone drove it (`gross_complete` / `micro_diagnosis_complete`), when, and the AI's reason and confidence for the template. It is absent on every report a person created. Used to tell an untouched AI draft (which a later milestone may revise) from a pathologist's own work (which is only ever changed through review). See `services/assistPolling/`.
+
+## `Case.spellingLocaleOverride` (Batch 338, PS-342)
+
+Optional. The spelling language chosen for this one case in the report screens (an id from `services/spellcheck/spellingLocales.ts`); null or absent means "use the default": the assigned pathologist's preference, else the ordering facility's. Saved by the report screens' spelling language control.
 
 ---
 *See [types/README.md](../README.md) for how this folder fits the whole types/ layer.*

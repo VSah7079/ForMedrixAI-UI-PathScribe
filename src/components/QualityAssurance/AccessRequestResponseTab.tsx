@@ -20,13 +20,14 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer } from 'recharts';
 import type { TooltipContentProps } from 'recharts';
 import { accessRequestService } from '@/services';
 import type { AccessRequest } from '@/types/access/AccessRequest';
 import { QaScopeSwitcher } from './QaScopeSwitcher';
-import { exportQaReportRows, scopeLabel, QaScope } from './qaReportUtils';
+import { exportQaReportRows, scopeLabel, QaScope, qaScopeContext } from './qaReportUtils';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
 
 const hoursBetween = (a: string, b: string) => (new Date(b).getTime() - new Date(a).getTime()) / 3600000;
 
@@ -126,7 +127,7 @@ export const AccessRequestResponseTab: React.FC = () => {
       'Turnaround Hours': r.resolvedAt ? hoursBetween(r.requestedAt, r.resolvedAt).toFixed(1) : '',
       'Resolved By': r.resolvedByUserName ?? '',
     }));
-    exportQaReportRows(rows, `access-request-response-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:access-request-response:export', rows, `access-request-response-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext(scope));
   };
 
   if (loading) return <div className="ps-conf-loading">{t('accessRequestResponseTab.loading')}</div>;
@@ -135,7 +136,7 @@ export const AccessRequestResponseTab: React.FC = () => {
     <div>
       <div className="ps-qa-tab-toolbar">
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={visibleClientIds} />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
+        <CapabilityButton capability="qa:access-request-response:export" context={qaScopeContext(scope)} className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</CapabilityButton>
       </div>
 
       <div className="ps-defic-trend-card">
@@ -198,7 +199,7 @@ export const AccessRequestResponseTab: React.FC = () => {
               <tr key={r.id} className={r.caseId ? 'ps-conf-tr-clickable' : undefined} onClick={r.caseId ? () => navigate(`/case/${r.caseId}/synoptic`) : undefined}>
                 <td className="ps-conf-td">{t(TYPE_LABEL_KEY[r.type])}</td>
                 <td className="ps-conf-td">{r.requestingUserName}</td>
-                <td className="ps-conf-td">{r.caseId ?? <span className="ps-conf-td--muted-italic">—</span>}</td>
+                <td className="ps-conf-td" data-phi="accession">{r.caseId ?? <span className="ps-conf-td--muted-italic">—</span>}</td>
                 <td className="ps-conf-td">{new Date(r.requestedAt).toLocaleString()}</td>
                 <td className="ps-conf-td">{hoursBetween(r.requestedAt, new Date().toISOString()).toFixed(1)}h</td>
               </tr>

@@ -23,6 +23,7 @@ import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityS
 import { getActivePerformingLabs } from '@/utils/performingLabs';
 import { mockPhysicianService }         from '@/services/physicians/mockPhysicianService';
 import { listTemplates as listSynopticProtocols } from '@/services/templates/templateService';
+import { LIFECYCLE_LABEL_KEY, type LifecycleState } from '@/components/Config/Protocols/protocolShared';
 import type { RoutingRule, RoutingRuleType } from '@/services/routingRules/IRoutingRuleService';
 import type { ReportTemplate }          from '@/types/reportPart';
 import type { Facility } from '@/services/facilities/IFacilityService';
@@ -59,6 +60,13 @@ const PASS_CORE_LABEL_KEY: Record<string, string> = {
   'gold-standard': 'routingRulesTab.pass.goldStandard',
 };
 
+/** A protocol's picker label: its name, plus its lifecycle state (translated)
+ *  when it isn't published. */
+const protocolOptionLabel = (p: { name: string; status: string }, t: (key: string, opts?: Record<string, unknown>) => string): string =>
+  p.status === 'published'
+    ? p.name
+    : t('routingRulesTab.protocolWithStatus', { name: p.name, status: t(LIFECYCLE_LABEL_KEY[p.status as LifecycleState] ?? 'protocolShared.lifecycle.draft') });
+
 const RuleModal: React.FC<{
   type:       RoutingRuleType;
   rule?:      RoutingRule;
@@ -81,7 +89,11 @@ const RuleModal: React.FC<{
     ? facilities.map(c => ({ id: c.id as string, name: `${c.name} (${c.assigningAuthority})` }))
     : type === 'physician'
     ? physicians.map(p => ({ id: p.id as string, name: `${p.lastName}, ${p.firstName} — ${p.specialty}` }))
-    : protocols.map(p => ({ id: p.id, name: `${p.name}${p.status !== 'published' ? ` (${p.status})` : ''}` }));
+    // An archived protocol can't be chosen for a new rule (Batch 317); a rule
+    // that already points at one still shows it, so the admin can see it.
+    : protocols
+        .filter(p => p.status !== 'archived' || p.id === entityId)
+        .map(p => ({ id: p.id, name: protocolOptionLabel(p, t) }));
 
   const selectedEntity   = entityList.find(e => e.id === entityId);
   const selectedTemplate = templates.find(tpl => tpl.id === templateId);
@@ -313,8 +325,8 @@ const TestPanel: React.FC<{
           <div className="ps-conf-label">{t('routingRulesTab.test.synopticTemplateIdLabel')}</div>
           <select className="ps-conf-select" aria-label={t('routingRulesTab.test.synopticTemplateIdLabel')} value={synopticId} onChange={e => setSynopticId(e.target.value)}>
             <option value="">{t('routingRulesTab.test.none')}</option>
-            {protocols.map(p => (
-              <option key={p.id} value={p.id}>{p.name}{p.status !== 'published' ? ` (${p.status})` : ''}</option>
+            {protocols.filter(p => p.status !== 'archived').map(p => (
+              <option key={p.id} value={p.id}>{protocolOptionLabel(p, t)}</option>
             ))}
           </select>
         </div>

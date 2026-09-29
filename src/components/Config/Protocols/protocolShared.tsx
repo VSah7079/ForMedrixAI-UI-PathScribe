@@ -28,6 +28,7 @@
 import React from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
+import type { TemplateApproval } from '../../../services/templates/templatePublishingRules';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,7 +37,12 @@ export type LifecycleState =
   | 'in_review'
   | 'needs_changes'
   | 'approved'
-  | 'published';
+  | 'published'
+  /** Retired from use (Batch 317, PS-73): not offered for new reports and
+   *  excluded from every status-filtered list. Restoring returns it to
+   *  'draft', so it is reviewed again before use. See
+   *  services/templates/protocolLifecycle.ts. */
+  | 'archived';
 
 export interface Protocol {
   id:           string;
@@ -54,6 +60,11 @@ export interface Protocol {
   reviewNote?:  string;
   reviewedBy?:  string;   // who requested changes or approved
   reviewedAt?:  string;   // ISO timestamp of last review action
+  /** New Version lineage: the published protocol this version replaces.
+   *  Publishing this one archives that one (templateService.publishTemplate). */
+  supersedesId?: string;
+  /** ISO timestamp, set when archived. */
+  archivedAt?:   string;
   /**
    * Whether this protocol's answers are diagnostic content destined for a
    * pathology report / cancer registry submission, as opposed to procedural
@@ -77,6 +88,14 @@ export interface Protocol {
    * specific entry.
    */
   group?: 'Surgical Pathology' | 'Non-GYN Cytology' | 'GYN Cytology' | 'Grossing';
+  // ── Review governance (PS-63, Batch 328; services/templates/templatePublishingRules.ts)
+  /** User ids of everyone who authored or edited this template. */
+  editorIds?:     string[];
+  /** Approvals in the current review round; cleared when it is edited,
+   *  resubmitted or sent back for changes. */
+  approvals?:     TemplateApproval[];
+  publishedById?: string;
+  publishedAt?:   string;
 }
 
 /**
@@ -453,31 +472,30 @@ export function useProtocols(
 
 
 
-export const LIFECYCLE_STYLES: Record<LifecycleState, { bg: string; color: string; border: string }> = {
-  draft:         { bg: 'rgba(100,116,139,0.15)', color: '#94a3b8', border: 'rgba(100,116,139,0.3)'  },
-  in_review:     { bg: 'rgba(245,158,11,0.15)',  color: '#fbbf24', border: 'rgba(245,158,11,0.3)'   },
-  needs_changes: { bg: 'rgba(239,68,68,0.15)',   color: '#f87171', border: 'rgba(239,68,68,0.3)'    },
-  approved:      { bg: 'rgba(16,185,129,0.15)',  color: '#10B981', border: 'rgba(16,185,129,0.3)'   },
-  published:     { bg: 'rgba(8,145,178,0.15)',   color: '#38bdf8', border: 'rgba(8,145,178,0.3)'    },
-};
+// Lifecycle colours live in pathscribe.css (.ps-lc-hue--<state>), not in
+// JS: each state sets --ps-hue and badges/steps/filter pills derive their
+// tints from it (Batch 317 replaced the LIFECYCLE_STYLES object, which was
+// painted through inline style props).
+export const lifecycleHueClass = (state: LifecycleState | 'all'): string => `ps-lc-hue--${state}`;
 
 // Translation keys for each persisted LifecycleState value — the value
 // itself stays the untranslated English enum used throughout the app;
 // only the label LifecycleBadge renders is translated.
-const LIFECYCLE_LABEL_KEY: Record<LifecycleState, string> = {
+export const LIFECYCLE_LABEL_KEY: Record<LifecycleState, string> = {
   draft:         'protocolShared.lifecycle.draft',
   in_review:     'protocolShared.lifecycle.inReview',
   needs_changes: 'protocolShared.lifecycle.needsChanges',
   approved:      'protocolShared.lifecycle.approved',
   published:     'protocolShared.lifecycle.published',
+  archived:      'protocolShared.lifecycle.archived',
 };
 
-export const SOURCE_STYLES: Record<string, { color: string; bg: string }> = {
-  CAP:        { color: '#60a5fa', bg: 'rgba(96,165,250,0.12)'  },
-  RCPath:     { color: '#a78bfa', bg: 'rgba(167,139,250,0.12)' },
-  ICCR:       { color: '#2dd4bf', bg: 'rgba(45,212,191,0.12)'  },
-  PathScribe: { color: '#34d399', bg: 'rgba(52,211,153,0.12)'  },
-  Custom:     { color: '#fbbf24', bg: 'rgba(251,191,36,0.12)'  },
+// Source badge colours: .ps-protocol-source--<source> in pathscribe.css.
+// Sources are a closed set (Protocol['source']); anything else shows as Custom.
+const SOURCE_CLASS_KEYS = new Set(['cap', 'rcpath', 'iccr', 'pathscribe', 'custom']);
+export const sourceBadgeClass = (source: string): string => {
+  const key = source.toLowerCase();
+  return `ps-protocol-source ps-protocol-source--${SOURCE_CLASS_KEYS.has(key) ? key : 'custom'}`;
 };
 
 export const CATEGORY_COLORS: Record<string, string> = {
@@ -491,34 +509,37 @@ export const CATEGORY_COLORS: Record<string, string> = {
   CYTOLOGY_NONGYN: '#fb923c',
 };
 
+/** A protocol category's colour, as the --ps-hue custom property (the one
+ *  genuinely per-instance colour here: categories are open-ended data). */
+export const categoryHueVar = (category: string): React.CSSProperties =>
+  ({ '--ps-hue': CATEGORY_COLORS[category] ?? '#64748b' } as React.CSSProperties);
+
 export const LIFECYCLE_ORDER: LifecycleState[] = ['draft', 'in_review', 'approved', 'published'];
 
 // ─── Shared micro-components ──────────────────────────────────────────────────
 
 export const LifecycleBadge: React.FC<{ state: LifecycleState }> = ({ state }) => {
   const { t } = useTranslation();
-  const s = LIFECYCLE_STYLES[state];
   const label = t(LIFECYCLE_LABEL_KEY[state]);
   return (
-    <span
-      className="ps-pshare-lifecycle-badge"
-      style={{ background: s.bg, color: s.color, border: `1px solid ${s.border}` }}
-    >
+    <span className={`ps-pshare-lifecycle-badge ${lifecycleHueClass(state)}`}>
       {label}
     </span>
   );
 };
 
+/** Coverage band thresholds (the colour for each band is in pathscribe.css). */
+export const coverageLevel = (pct: number): 'good' | 'fair' | 'poor' => (pct >= 85 ? 'good' : pct >= 65 ? 'fair' : 'poor');
+
 export const CoverageBar: React.FC<{ pct: number; label: string }> = ({ pct, label }) => {
-  const color = pct >= 85 ? '#10B981' : pct >= 65 ? '#fbbf24' : '#f87171';
   return (
-    <div className="ps-pshare-coverage">
+    <div className={`ps-pshare-coverage ps-pshare-coverage--${coverageLevel(pct)}`}>
       <div className="ps-pshare-coverage-head">
         <span className="ps-pshare-coverage-label">{label}</span>
-        <span className="ps-pshare-coverage-pct" style={{ color }}>{pct}%</span>
+        <span className="ps-pshare-coverage-pct">{pct}%</span>
       </div>
       <div className="ps-pshare-coverage-track">
-        <div className="ps-pshare-coverage-fill" style={{ width: `${pct}%`, background: color }} />
+        <div className="ps-pshare-coverage-fill" style={{ '--ps-pct': `${pct}%` } as React.CSSProperties} />
       </div>
     </div>
   );
@@ -601,7 +622,7 @@ export const UploadProtocolModal: React.FC<{
             onClick={() => document.getElementById('ps-upload-input')?.click()}
             className={`ps-pshare-dropzone${dragging ? ' ps-pshare-dropzone--dragging' : file ? ' ps-pshare-dropzone--filled' : ''}`}
           >
-            <input id="ps-upload-input" type="file" accept=".json,.xml,.xlsx" style={{ display: 'none' }} onChange={e => e.target.files?.[0] && setFile(e.target.files[0])} />
+            <input id="ps-upload-input" type="file" accept=".json,.xml,.xlsx" className="ps-pshare-hidden-file-input" onChange={e => e.target.files?.[0] && setFile(e.target.files[0])} />
             {file ? (
               <>
                 <div className="ps-pshare-dropzone-icon">✅</div>
@@ -719,7 +740,6 @@ export const BuildCustomiseModal: React.FC<{
                 </div>
               )}
               {filtered.map(p => {
-                const srcStyle = SOURCE_STYLES[p.source] ?? SOURCE_STYLES.Custom;
                 const selected = selectedTpl === p.id;
                 return (
                   <div
@@ -727,10 +747,10 @@ export const BuildCustomiseModal: React.FC<{
                     onClick={() => setSelectedTpl(selected ? null : p.id)}
                     className={`ps-pshare-template-row${selected ? ' ps-pshare-template-row--selected' : ''}`}
                   >
-                    <span className="ps-pshare-template-source" style={{ background: srcStyle.bg, color: srcStyle.color }}>{p.source}</span>
+                    <span className={`ps-pshare-template-source ${sourceBadgeClass(p.source)}`}>{p.source}</span>
                     <div className="ps-pshare-template-info">
                       <div className="ps-pshare-template-name" data-phi="name">{p.name}</div>
-                      <div className="ps-pshare-template-meta">{p.version} · {p.fields} fields</div>
+                      <div className="ps-pshare-template-meta">{t('protocolShared.buildModal.templateMeta', { version: p.version, count: p.fields })}</div>
                     </div>
                     {selected && <span className="ps-pshare-template-check">✓</span>}
                   </div>

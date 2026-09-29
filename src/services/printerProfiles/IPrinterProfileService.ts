@@ -67,6 +67,8 @@ export type PrinterVendor = 'ZEBRA_ZPL' | 'CITIZEN' | 'SATO' | 'LEICA_CEREBRO' |
  *    assumption: real research shows most target sites already have
  *    one of the above, and enterprise IT is real, actively resistant
  *    to installing a new, unproven vendor's own background daemon.
+ *    PathScribe's side (discovery, printing, job outcomes) is built in
+ *    utils/labels/pathscribeAgent/ (Batch 325); the agent program is not.
  *  - 'os_print_dialog': today's real, working default (the browser's
  *    own OS print-queue path) — kept deliberately, not as a stopgap:
  *    real research confirms OS-driver rasterization/margin-drift
@@ -111,6 +113,11 @@ export interface PrinterProfile {
    *  targetPrinter payload shape, not just describe its capabilities. */
   ipAddress?: string;
   port?: number;
+  /** Batch 346 (PS-52): the port the PathScribe Agent listens on at the
+   *  workstation, when IT has moved it off the standard 9100–9102.
+   *  PathScribe tries it first, then the standard ports. PathScribe Agent
+   *  printers only; empty means the standard ports. */
+  agentPort?: number;
   /**
    * Real, per direct guidance (Workstation & Hardware redesign):
    * which real performing-lab Facility this printer is physically
@@ -123,6 +130,11 @@ export interface PrinterProfile {
    * for "hasn't been set yet."
    */
   facilityId?: string;
+  /** Batch 359: the physical printer in the equipment register
+   *  (services/equipment/, kind 'label_printer') these settings are for.
+   *  Optional; the service refuses a link that isn't a register printer
+   *  (EQUIPMENT_LINK_INVALID). */
+  equipmentId?: string;
   active: boolean;
   createdAt: string;
   updatedAt: string;

@@ -1,6 +1,17 @@
 // @vitest-environment happy-dom
-import { describe, it, expect, beforeEach } from 'vitest';
-import { correctServiceCharge } from './correctServiceCharge';
+import { describe, it, expect, beforeEach, vi } from 'vitest';
+
+const { allowed, asked } = vi.hoisted(() => ({ allowed: { current: true }, asked: [] as Array<[string, unknown]> }));
+vi.mock('../authorization/defaultAuthorizationService', () => ({
+  authorizationService: {
+    enforce: vi.fn(async (capability: string, context: unknown) => {
+      asked.push([capability, context]);
+      return { capability, allowed: allowed.current, grantedBy: [], missingRequirements: [], context: {} };
+    }),
+  },
+}));
+
+import { correctServiceCharge, enforceAppliedCodeCorrection } from './correctServiceCharge';
 import { mockServiceChargeService } from './mockServiceChargeService';
 import type { ServiceChargeRecord } from '@/types/billing/ServiceChargeRecord';
 
@@ -13,6 +24,8 @@ const original: ServiceChargeRecord = {
 
 describe('correctServiceCharge - the real, shared orchestration extracted from UI code', () => {
   beforeEach(async () => {
+    allowed.current = true;
+    asked.length = 0;
     localStorage.clear();
     await mockServiceChargeService.saveCharge(original);
   });
@@ -48,5 +61,18 @@ describe('correctServiceCharge - the real, shared orchestration extracted from U
   it('returns a real, honest error (never throws) when the original charge cannot be found', async () => {
     const res = await correctServiceCharge('CASE-ORCH', 'chg-does-not-exist', '88305', 'user-1');
     expect(res.ok).toBe(false);
+  });
+
+  it('Batch 382: correcting an applied code needs billing:applied-code:correct for the case; without it the ledger is untouched', async () => {
+    const before = await mockServiceChargeService.getChargesForCase('CASE-ORCH');
+    allowed.current = false;
+    const res = await correctServiceCharge('CASE-ORCH', 'chg-orch-1', '88305', 'user-1');
+    expect(res).toMatchObject({ ok: false, notPermitted: true });
+    expect(asked).toEqual([['billing:applied-code:correct', { caseId: 'CASE-ORCH' }]]);
+    const after = await mockServiceChargeService.getChargesForCase('CASE-ORCH');
+    expect(after.ok && after.data.map(c => c.id)).toEqual(before.ok ? before.data.map(c => c.id) : null);
+    expect(await enforceAppliedCodeCorrection('CASE-ORCH')).toBe(false);
+    allowed.current = true;
+    expect(await enforceAppliedCodeCorrection('CASE-ORCH')).toBe(true);
   });
 });

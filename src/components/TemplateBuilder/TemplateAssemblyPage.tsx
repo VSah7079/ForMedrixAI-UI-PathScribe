@@ -13,25 +13,26 @@
 // ─────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
 import '../../pathscribe.css';
 import type { ReportTemplate, AssemblySlot, AssemblyRole, ReportPart, ReportPartStatus } from '../../types/reportPart';
 import {
   ASSEMBLY_ROLE_LABEL_KEY, ASSEMBLY_ROLE_ICONS, ROLE_DISPLAY_ORDER,
   VALID_ROLES_FOR_PART, validateAssembly,
 } from '../../types/reportPart';
-import { mockReportTemplateService } from '../../services/reportTemplates/mockReportTemplateService';
+import { reportTemplateService } from '@/services';
 import { TemplatePreviewPanel } from './TemplatePreviewPanel';
 import type { ReportTemplate as OldTemplate } from '../../types/template';
-import { mockReportPartService, onReportPartsChanged } from '../../services/reportParts/mockReportPartService';
+import { reportPartService, onReportPartsChanged } from '@/services';
 import type { LabelConfig } from '../../types/template';
 import { Label, TextInput, Toggle, Sel } from './TemplateInspector';
 import { getOrgDocumentStyleDefault, getOrgHeaderStyleDefault, getOrgFooterStyleDefault } from '../Config/System/documentStyleConfig';
 import { getActivePerformingLabs } from '../../utils/performingLabs';
 import type { Facility } from '../../services/facilities/IFacilityService';
+import { labelStyleVars } from '@/utils/labelStyleVars';
 
-const svc  = mockReportTemplateService;
-const pSvc = mockReportPartService;
+const svc  = reportTemplateService;
+const pSvc = reportPartService;
 
 // ── Page zone definitions (driven by ROLE_DISPLAY_ORDER) ───────
 const PAGE1_ROLES    = ROLE_DISPLAY_ORDER.filter(r => r === 'body' || r.endsWith('-p1'));
@@ -460,13 +461,7 @@ const DocumentStyleEditor: React.FC<{ style: LabelConfig; onChange: (s: LabelCon
 
     <div
       className="ps-tmpla-style-preview"
-      style={{
-        fontFamily: style.fontFamily || 'Arial',
-        fontSize: `${style.fontSize ?? 10}px`,
-        fontWeight: style.weight === 'bold' ? 700 : 400,
-        textDecoration: style.decoration === 'underline' ? 'underline' : 'none',
-        textTransform: style.transform === 'uppercase' ? 'uppercase' : style.transform === 'capitalize' ? 'capitalize' : 'none',
-      }}
+      style={labelStyleVars(style, 'preview')}
     >
       {t('templateAssemblyPage.stylePreviewText')}
     </div>
@@ -513,7 +508,7 @@ export const TemplateAssemblyPage: React.FC = () => {
 
   useEffect(() => {
     const loadPartsById = () => {
-      mockReportPartService.getAll().then(r => {
+      reportPartService.getAll().then(r => {
         if (r.ok) {
           const map: Record<string, ReportPart> = {};
           r.data.forEach((p: ReportPart) => { map[p.id] = p; });
@@ -713,7 +708,7 @@ export const TemplateAssemblyPage: React.FC = () => {
           <button onClick={async () => {
             if (!template) return;
             const slotsInOrder = template.assembly.filter(s => s.enabled);
-            const partResults = await Promise.all(slotsInOrder.map(s => mockReportPartService.getById(s.partId)));
+            const partResults = await Promise.all(slotsInOrder.map(s => reportPartService.getById(s.partId)));
             setResolvedParts(partResults.filter(r => r.ok).map(r => (r as { ok: true; data: ReportPart }).data));
             setPreviewOpen(true);
           }} className="ps-tmpla-btn ps-tmpla-btn--preview">

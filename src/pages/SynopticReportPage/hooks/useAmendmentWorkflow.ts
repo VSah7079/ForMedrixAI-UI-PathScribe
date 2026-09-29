@@ -51,11 +51,10 @@
 // from this hook, the same cross-hook pattern used throughout tonight.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useCallback } from 'react';
+import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { mockAuditService } from '@/services/auditlog/mockAuditService';
 import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
-import { userService } from '@/services';
+import { userService, auditService } from '@/services';
 import type { StaffUser } from '@/services/users/IUserService';
 import { sendEmail } from '@/services/communications/notificationService';
 import { amendmentService, reportVersionService } from '@/services';
@@ -76,7 +75,7 @@ interface UseAmendmentWorkflowParams {
   caseData: Case | null;
   setCaseData: React.Dispatch<React.SetStateAction<Case | null>>;
   signingUser: SigningUser;
-  showToast: (message: string) => void;
+  showToast: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
   activeReportInstanceId: string;
   knownVersionRef: MutableRefObject<number>;
   setConcurrencyConflict: SetConcurrencyConflict;
@@ -277,7 +276,7 @@ export function useAmendmentWorkflow({
     // first-time finalize.
     if (caseData?.reportingMode === 'assist' && activeInstance) {
       const { pdfBase64, generationError } = await generateReportPdfSnapshot();
-      if (generationError) showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }));
+      if (generationError) showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }), 'warning');
       await reportVersionService.create({
         caseId: caseData.id,
         mode: 'assist',
@@ -319,7 +318,7 @@ export function useAmendmentWorkflow({
         bodyHtml: `<p><strong>${count}</strong> finalized grossing report(s) on case <strong>${caseId}</strong> were detected as edited after finalization. The automatic correction <strong>${outcome}</strong> and has not been applied. This case may currently show finalized content that doesn't match what was actually signed out — please review directly.</p>`,
         metadata: { caseId, action: 'drift_correction_unresolved', outcome, organisationId: org.id },
       });
-      mockAuditService.logEvent({
+      auditService.logEvent({
         type: 'system',
         event: 'Drift Alert Sent To Admins',
         detail: `Notified ${adminEmails.length} admin(s) in organisation ${org.id} of unresolved drift correction (${outcome})`,
@@ -411,7 +410,7 @@ export function useAmendmentWorkflow({
         if (!microAiEnabled || !templateId) return {};
         try {
           const templateModule = await import('@/services/templates/templateService');
-          const { generateAiSuggestionsForReport } = await import('@/services/cases/mockCaseService');
+          const { generateAiSuggestionsForReport } = await import('@/services');
           const detail = await templateModule.getTemplate(templateId);
           const allFields = detail.template.sections.flatMap(s => s.fields);
           const suggestions = await generateAiSuggestionsForReport(caseData, templateId, allFields);
@@ -532,7 +531,7 @@ export function useAmendmentWorkflow({
       let newFieldSuggestions: Record<string, AiFieldSuggestion> = {};
       try {
         const templateModule = await import('@/services/templates/templateService');
-        const { generateGrossingFieldSuggestionsFromDictation } = await import('@/services/cases/mockCaseService');
+        const { generateGrossingFieldSuggestionsFromDictation } = await import('@/services');
         const detail = await templateModule.getTemplate(change.proposedTemplateId);
         const allFields = detail.template.sections.flatMap(s => s.fields);
         const targetReport = reports.find(g => matchesExisting(change, g));
@@ -752,8 +751,24 @@ export function useAmendmentWorkflow({
     openAmendmentDraft('amendment');
   }, [caseData, activeReportInstanceId, openAmendmentDraft, setAmendmentMode, setAmendmentText, setShowAmendmentModal]);
 
+  // Batch 380: a new draft opens as an amendment; when the pathologist
+  // switches the modal to Minor Amendment or Addendum, the draft's type
+  // follows. Before this, the draft stayed an amendment, so saving a minor
+  // amendment demanded a clinician notification and an addendum couldn't be
+  // released at all. Checked again at submit, below.
+  useEffect(() => {
+    if (!amendmentDraftId) return;
+    let cancelled = false;
+    void amendmentService.changeDraftType(amendmentDraftId, amendmentMode).then(res => {
+      if (!cancelled && res.ok) setAmendmentSequenceNumber(res.data.sequenceNumber);
+    });
+    return () => { cancelled = true; };
+  }, [amendmentDraftId, amendmentMode]);
+
   const handleAmendmentSubmit = useCallback(async (fields: { addendumTitle?: string; explanationOfChange?: string; clinicianName?: string; method?: NotificationMethod; notifiedAt?: string; reasonId: string }) => {
     if (!amendmentDraftId) return;
+    const typed = await amendmentService.changeDraftType(amendmentDraftId, amendmentMode);
+    if (!typed.ok) { setAmendmentSubmitError(t('useAmendmentWorkflow.errors.typeChangeRefused')); return; }
     const notification = fields.clinicianName && fields.method
       ? { clinicianName: fields.clinicianName, method: fields.method, notifiedAt: fields.notifiedAt ?? new Date().toISOString() }
       : undefined;

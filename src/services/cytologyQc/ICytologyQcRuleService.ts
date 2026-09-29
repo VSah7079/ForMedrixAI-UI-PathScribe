@@ -25,6 +25,9 @@ export interface ICytologyQcRuleService {
    *  for a small, targeted edit rather than rebuilding a similar
    *  rule from scratch. Real, deliberate: the copy starts inactive —
    *  never live, matching-real-cases, until an admin has actually
-   *  reviewed and explicitly reactivated it. */
-  duplicate(id: ID): Promise<ServiceResult<CytologyQcRule>>;
+   *  reviewed and explicitly reactivated it. `name` is the copy's display
+   *  name, supplied by the caller in the user's own language
+   *  (t('common.copyOfName')); this layer never invents an English marker
+   *  that would then be stored as data (PS-73). */
+  duplicate(id: ID, name: string): Promise<ServiceResult<CytologyQcRule>>;
 }

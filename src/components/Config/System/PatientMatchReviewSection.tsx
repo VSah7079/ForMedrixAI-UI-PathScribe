@@ -139,7 +139,7 @@ const PatientMatchReviewSection: React.FC = () => {
                   <div className="ps-patientmatch__record-name">
                     {record.lastName}, {record.firstName}
                   </div>
-                  <div className="ps-patientmatch__record-meta">
+                  <div className="ps-patientmatch__record-meta" data-phi="mrn">
                     {t('patientMatchReviewSection.mrnDob', { mrn: record.mrn, dob: new Date(record.dateOfBirth).toLocaleDateString() })}
                   </div>
                 </div>
@@ -165,7 +165,7 @@ const PatientMatchReviewSection: React.FC = () => {
                         <div key={candId} className="ps-patientmatch__candidate-row">
                           <div>
                             <div className="ps-patientmatch__candidate-name">{cand.lastName}, {cand.firstName}</div>
-                            <div className="ps-patientmatch__candidate-meta">{t('patientMatchReviewSection.mrnDob', { mrn: cand.mrn, dob: new Date(cand.dateOfBirth).toLocaleDateString() })}</div>
+                            <div className="ps-patientmatch__candidate-meta" data-phi="mrn">{t('patientMatchReviewSection.mrnDob', { mrn: cand.mrn, dob: new Date(cand.dateOfBirth).toLocaleDateString() })}</div>
                           </div>
                           <button
                             type="button"

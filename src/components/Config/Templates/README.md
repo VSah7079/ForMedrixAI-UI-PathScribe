@@ -61,6 +61,20 @@ non-trivial open bug (now fixed — see Notes).
   rather than something more explicit. Pre-existing, not introduced by
   this rewrite.
 
+## Batch 328 (PS-63): review rules and no inline CSS
+
+- **`TemplateRenderer.tsx` now waits for the service.** Approve, Publish, Needs Changes, Submit and Reset each wait for `transitionTemplate` before changing the page. Before, the page updated first and a service error was only logged.
+  - **A refusal** (no approver role, self-approval, too few approvals, SNOMED below 80%) is shown in the confirm box as translated text (`templateRenderer.governance.*`), and nothing changes.
+  - **Approval that needs more reviewers:** the page shows "Approval recorded (n of m)" and stays In Review.
+  - **Registry status wins:** the status from the registry now wins over the page's local `ps_state_<id>` copy.
+- **No inline CSS.** The per-state colours were an inline-style map; they are now `ps-tmplr-state--<state>` classes that set `--tmplr-bg/fg/border`, used by:
+  - the badge;
+  - the transition buttons (the disabled look is `:disabled`);
+  - the flow steps (`--current` / `--past`);
+  - the confirm button (`--destructive`).
+
+  Selected answer options use `ps-tmplr-option-label--selected`. Checked in the browser against the previous look.
+
 ---
 *See [components/Config/README.md](../README.md) for how this folder fits Config/.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master components/README.md or Config/README.md if this folder's overall PURPOSE changes.*

@@ -170,6 +170,36 @@ Real, per direct guidance ("Step 1 should be under System / Financial"): registe
 - **Phase 2 groundwork, real, per direct guidance ("is the data captured that a downstream fin application can manage this... the json object should contain all the elements that the engine will then recognize"):** checked directly before building anything further — `ServiceChargeRecord` (this app's real billing ledger) is purely code/RVU-based, with no dollar amount or fee schedule anywhere in this app. "Automated split-billing calculations (primary entitlement deduction + auto-invoicing secondary gap)" as literally described in the source spec's own Phase 2 would require real payer-specific reimbursement rates this app has no legitimate source for — declined to fabricate those, same posture as this file's own AMA/CPT-modifier and CMS Place-of-Service sections. Instead, built `buildFinancialClassPayload.ts` (+ `.test.ts`, 7 tests): a real outbound payload, same "surface the raw fact, never adjudicate" posture as `jsonWebhookBuilder.ts`'s own `ChargeCaptureEventPayload` ("PathScribe is not generating HL7 transactions, we are just sending json file to the interface engine. That is where the magic happens.") — resolves and hands a downstream financial engine every real fact it needs (the exact local scheme, its real outbound format, the resolved Master Payment Type's subscriber/guarantor/split-billing requirements, payer/policy details, secondary coverage if present) without PathScribe attempting any adjudication itself. Same real, deliberate PRE-INTEGRATION SCAFFOLDING posture as `jsonWebhookBuilder.ts`/`dftBuilder.ts` — nothing dispatches this yet.
 - **Real, confirmed gap found and fixed in the same pass**: `OutsidePatientFinancialData.paymentCategoryId` (Step 2's own original field) only captured the *master* payment category, not which *specific* `JurisdictionPaymentMapping` row applied — genuinely ambiguous the moment a country has more than one real local scheme mapping to the same master category (confirmed directly: today's 13 seed rows happen not to have a case of it, but nothing in the schema prevents it). Replaced with `primaryJurisdictionMappingId`/`secondaryJurisdictionMappingId` — the precise, unambiguous fact a downstream engine actually needs. `AccessionPage.tsx`'s own Payment Category picker now selects the specific scheme row directly, not a deduplicated master-category list; the Local ID Number label now derives from that specific selection too, correcting a related, minor imprecision in the original Step 2 label logic (it previously used "the first scheme found in this jurisdiction" as an approximation before a specific scheme was ever actually selectable).
 
+## Generic Code Engine (Batch 333, PS-89)
+
+- **[`codeEngine/`](./codeEngine/README.md)** (new) holds the pure rules: natural sunset, country matching, CSV column mapping, import planning, and job approve / reject / rollback.
+- **`mockCodeImportService.ts`** (+ `.test.ts`, new) stores the jobs and applies those rules.
+  - **Storage key:** `billing_code_import_jobs_v1`. It is kept out of Demo Reset with the rules it created.
+  - **Methods:** `importRows` (one PENDING_APPROVAL job), `approveJob` / `rejectJob` (four-eyes, the whole job), `rollbackJob`.
+- **`mockBillingRuleService.ts`:**
+  - **Natural-sunset fix:** `approveVersion` now uses natural sunset. The prior version stays ACTIVE until the new one starts. Before, it was RETIRED immediately, which left earlier dates of service unbillable after a future-dated approval.
+  - **Import-job rows:** a row created by an import job can't be approved or rejected on its own.
+  - **`getActiveRuleAt`** takes optional `{ country, vocabulary }`. The country comes from site → organisation when it isn't given, and vocabulary defaults to CPT.
+  - **Backfill:** rows are backfilled with `vocabulary: 'CPT'` / `country: 'US'` on load.
+  - **Shared access:** `loadBillingRuleVersions` / `persistBillingRuleVersions` are exported for the import service.
+- **`resolveBillingRuleAt.ts`** gains optional `{ country, vocabulary }` filters. The two-tier site resolution and the highest-version tie-break are unchanged, and with no options the behaviour is identical to before.
+- **`mockServiceChargeService.listRuleReferenceKeys()`** is new. It lists which rule versions charges used, so a rollback knows what to keep.
+- **Changed test:** `mockBillingRuleService.test.ts` now expects natural sunset instead of immediate retirement, plus a backfill test.
+
+## Code Import screens (Batch 334, PS-89)
+
+- **`mockCodeImportService.ts`:**
+  - **`previewImport`** is new: the import plan (rows that would import, rows refused and why) without saving anything.
+  - **Audit:** upload, approve, reject and rollback each write an audit entry (`codeEngine/importJobAudit.ts`). An optional `actorLabel` names the person in the log.
+  - **Refusal codes:** approve / reject / rollback failures now carry a `code`, which the screens translate.
+- **`services/index.ts`** now exports `codeImportService`, `billingRuleService`, `modifierDictionaryService`, `ncciEditService` and `rvuCodeMapService`, so screens don't import the mock files.
+- **New pure rules:** `codeEngine/pendingImportQueue.ts` and `codeEngine/importWizardRules.ts`. See [codeEngine/README.md](./codeEngine/README.md).
+- **Screens:** `components/Config/System/CodeImportSection.tsx` (new) and `PendingApprovalSection.tsx` (import jobs decided as a whole).
+
+## Batch 382
+
+- **`correctServiceCharge.ts`:** correcting an applied billing code needs `billing:applied-code:correct` for the case. `enforceAppliedCodeCorrection(caseId)` is the check; the report page asks it before changing the visible code (assist mode makes no charge but is still a billing change), and `correctServiceCharge` asks it again for every caller, the QA resolution included. A refusal returns `{ ok: false, notPermitted: true }` and leaves the ledger alone.
+
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*
 *When this folder's contents change meaningfully, update THIS file. Only touch the master services/README.md if this folder's overall PURPOSE changes.*

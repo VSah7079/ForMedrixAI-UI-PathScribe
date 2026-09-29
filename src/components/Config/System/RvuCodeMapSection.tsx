@@ -27,6 +27,7 @@ import { mockRvuCodeMapService } from '@/services/billing/mockRvuCodeMapService'
 import type { RvuTableVersion, BillingDictionaryEntry } from '@/services/billing/RvuTableVersion';
 import { parseRvuUploadRows, validateCodeLevel, inferLevelFromDescription, BILLING_TYPE_LABEL, type ParsedRvuUploadRow } from '@/services/billing/codeMapTable';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
+import { formatDateLong } from '@/utils/formatDate';
 
 // Real fix, per direct guidance's own follow-up on dictionary
 // licensing: this previously embedded what reads as real, verbatim
@@ -47,37 +48,31 @@ const TEMPLATE_EXAMPLE_ROWS = [
   { Code: '88307', Description: 'Code 88307 — Specimen Level', WorkRVU: 1.55 },
 ];
 
-function formatDate(iso: string): string {
-  const d = new Date(iso);
-  return isNaN(d.getTime()) ? iso : d.toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
-}
 
 // Real, per direct question: "is there a reason we do not have a way
 // to add a RVU code outside of using CSV files. Also, can't edit or
 // duplicate?" Confirmed directly — there wasn't a real architectural
 // reason; the service layer's own createVersion already accepts any
 // real entries array, the UI simply never exposed a single-entry path,
-// only the bulk CSV one. This modal is that real, single-entry path —
-// add, edit, or duplicate all route through it. Reuses the exact real
+// only the bulk CSV one. This modal is that real, single-entry path for
+// add and edit. Duplicate was removed (PS-73, confirmed by Pete): an RVU
+// row is a flat code → value mapping inside a versioned, approved table,
+// so Add is as quick. Policy: services/duplication/duplicatePolicy.ts. Reuses the exact real
 // ps-ms-overlay/ps-ms-modal pattern already proven throughout
 // BillingDictionarySection.tsx this same session, not a new one.
 interface EntryModalProps {
   seed?: BillingDictionaryEntry;
-  /** True when duplicating — seed's own values pre-fill the form, but
-   *  code/billingCode are cleared, since a real duplicate needs a
-   *  real, distinct code, not a silent overwrite of the original. */
-  isDuplicate?: boolean;
   onSave: (entry: BillingDictionaryEntry) => void;
   onClose: () => void;
   busy: boolean;
 }
 
-const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onClose, busy }) => {
+const EntryModal: React.FC<EntryModalProps> = ({ seed, onSave, onClose, busy }) => {
   const { t } = useTranslation();
-  const isEdit = !!seed && !isDuplicate;
-  const [code, setCode] = useState(isDuplicate ? '' : seed?.code ?? '');
+  const isEdit = !!seed;
+  const [code, setCode] = useState(seed?.code ?? '');
   const [description, setDescription] = useState(seed?.description ?? '');
-  const [billingCode, setBillingCode] = useState(isDuplicate ? '' : seed?.billingCode ?? '');
+  const [billingCode, setBillingCode] = useState(seed?.billingCode ?? '');
   const [level, setLevel] = useState<BillingDictionaryEntry['level']>(seed?.level ?? 'stain');
   const [billingType, setBillingType] = useState<BillingDictionaryEntry['billingType']>(seed?.billingType ?? 'Global');
   const [hcpcsCode, setHcpcsCode] = useState(seed?.hcpcsCode ?? '');
@@ -118,9 +113,7 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
         <div className="ps-ms-header">
           {isEdit
             ? t('rvuCodeMapSection.entryModal.headerEdit', { code: seed?.code })
-            : isDuplicate
-              ? t('rvuCodeMapSection.entryModal.headerDuplicate', { code: seed?.code })
-              : t('rvuCodeMapSection.entryModal.headerAdd')}
+            : t('rvuCodeMapSection.entryModal.headerAdd')}
         </div>
         <div className="ps-ms-body">
           <div className="ps-conf-form-row">
@@ -199,7 +192,7 @@ const EntryModal: React.FC<EntryModalProps> = ({ seed, isDuplicate, onSave, onCl
 };
 
 const RvuCodeMapSection: React.FC = () => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
   const [versions, setVersions]   = useState<RvuTableVersion[]>([]);
   const [loading, setLoading]     = useState(true);
   const [showOlder, setShowOlder] = useState(false);
@@ -223,12 +216,10 @@ const RvuCodeMapSection: React.FC = () => {
   const [uploadEffectiveDate, setUploadEffectiveDate] = useState(() => new Date().toISOString().slice(0, 10));
   const [uploadError, setUploadError] = useState<string | null>(null);
 
-  // Real, per direct question: single-entry add/edit/duplicate state —
-  // undefined entryModalState means the modal is closed; entry
-  // undefined within it means "Add"; isDuplicate distinguishes a real
-  // duplicate (code/billingCode cleared) from a real edit (code/
+  // Single-entry add/edit state — null means the modal is closed; entry
+  // undefined within it means "Add"; entry present means "Edit" (code/
   // billingCode locked, since those are this entry's real identity).
-  const [entryModalState, setEntryModalState] = useState<{ entry?: BillingDictionaryEntry; isDuplicate?: boolean } | null>(null);
+  const [entryModalState, setEntryModalState] = useState<{ entry?: BillingDictionaryEntry } | null>(null);
   const [entryBusy, setEntryBusy] = useState(false);
 
   const refresh = useCallback(() => {
@@ -254,13 +245,13 @@ const RvuCodeMapSection: React.FC = () => {
   const olderVersions = versions.filter(v => !v.isActive);
   const pendingCount = versions.filter(v => v.approvalStatus === 'PENDING_APPROVAL').length;
 
-  // ── Single-entry add / edit / duplicate ──────────────────────────────────
+  // ── Single-entry add / edit ──────────────────────────────────────────────
   // Real, per direct question — the same real createVersion the upload
   // flow already uses, just computing its entries array from a single
   // real change instead of a whole parsed CSV. isEdit real replaces
-  // the matching entry in place (by code); add/duplicate real appends.
+  // the matching entry in place (by code); add appends.
   const handleSaveEntry = async (entry: BillingDictionaryEntry) => {
-    const isEdit = !!entryModalState?.entry && !entryModalState?.isDuplicate;
+    const isEdit = !!entryModalState?.entry;
     const current = activeVersion?.entries ?? [];
     if (!isEdit && current.some(e => e.code === entry.code)) {
       setToast(t('rvuCodeMapSection.toast.codeExists', { code: entry.code }));
@@ -415,7 +406,7 @@ const RvuCodeMapSection: React.FC = () => {
               <span className="ps-rvu-active-eyebrow">{t('rvuCodeMapSection.activeVersion.eyebrow')}</span>
               <div className="ps-rvu-active-date">{activeVersion.label}</div>
             </div>
-            <div className="ps-rvu-muted-sm">{t('rvuCodeMapSection.activeVersion.effective', { date: formatDate(activeVersion.effectiveDate) })}</div>
+            <div className="ps-rvu-muted-sm">{t('rvuCodeMapSection.activeVersion.effective', { date: formatDateLong(activeVersion.effectiveDate, i18n.language) })}</div>
           </div>
           <div className="ps-conf-table-wrap ps-rvu-table-wrap--mt">
             <table className="ps-conf-table">
@@ -434,7 +425,6 @@ const RvuCodeMapSection: React.FC = () => {
                     <td className="ps-conf-td">
                       <div className="ps-conf-row-actions">
                         <button className="ps-conf-btn-row" onClick={() => setEntryModalState({ entry: e })}>{t('common.edit')}</button>
-                        <button className="ps-conf-btn-row" onClick={() => setEntryModalState({ entry: e, isDuplicate: true })}>{t('common.duplicate')}</button>
                       </div>
                     </td>
                   </tr>
@@ -462,7 +452,7 @@ const RvuCodeMapSection: React.FC = () => {
                   <div>
                     <div className="ps-rvu-older-row-label">{v.label}</div>
                     <div className="ps-rvu-muted-sm">
-                      {t('rvuCodeMapSection.olderVersions.effectiveCodes', { date: formatDate(v.effectiveDate), count: v.entries.length })}
+                      {t('rvuCodeMapSection.olderVersions.effectiveCodes', { date: formatDateLong(v.effectiveDate, i18n.language), count: v.entries.length })}
                       {v.sourceFileName && <> · {t('rvuCodeMapSection.olderVersions.fromFile', { fileName: v.sourceFileName })}</>}
                     </div>
                   </div>
@@ -531,7 +521,6 @@ const RvuCodeMapSection: React.FC = () => {
       {entryModalState && (
         <EntryModal
           seed={entryModalState.entry}
-          isDuplicate={entryModalState.isDuplicate}
           busy={entryBusy}
           onSave={handleSaveEntry}
           onClose={() => setEntryModalState(null)}

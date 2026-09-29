@@ -104,13 +104,13 @@ const NonGynCytologyCategoriesSection: React.FC = () => {
         <button className="ps-conf-btn-secondary" onClick={() => setModal({ mode: 'add' })}>{t('cytologyCategoriesSection.addCategoryButton')}</button>
       </div>
 
-      <div style={{ display: 'flex', gap: 8, marginBottom: 12 }}>
+      <div className="ps-flex-row-gap-8 ps-mb-12">
         {(Object.keys(SYSTEM_LABEL_KEY) as NonGynCytologySystem[]).map(s => (
           <button key={s} className={system === s ? 'ps-conf-btn-primary' : 'ps-conf-btn-secondary'} onClick={() => setSystem(s)}>{t(SYSTEM_LABEL_KEY[s])}</button>
         ))}
       </div>
 
-      <label className="ps-conf-toggle-label-row" style={{ marginBottom: 12 }}>
+      <label className="ps-conf-toggle-label-row ps-mb-12">
         <input type="checkbox" checked={showInactive} onChange={e => setShowInactive(e.target.checked)} className="ps-conf-radio-input" />
         <span className="ps-conf-option-text">{t('common.showInactive')}</span>
       </label>
@@ -120,7 +120,7 @@ const NonGynCytologyCategoriesSection: React.FC = () => {
           <div key={e.id} className="ps-conf-row">
             <span className="ps-conf-value">
               {e.categoryNumber}. {e.label}{e.abbreviation ? ` (${e.abbreviation})` : ''}
-              <span style={{ marginLeft: 8, fontSize: 12, color: 'var(--ps-conf-text-3, #94a3b8)' }}>
+              <span className="ps-cytqc-priority-inline">
                 {[
                   e.riskOfMalignancyPercent !== undefined ? t('nonGynCytologyCategoriesSection.romLabel', { percent: e.riskOfMalignancyPercent }) : '',
                   !e.active ? t('common.inactive') : '',

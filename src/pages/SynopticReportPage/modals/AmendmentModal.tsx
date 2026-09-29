@@ -19,20 +19,35 @@
 // parent patches those onto the live instance's answers and builds the
 // FieldLineageEntry records before the existing unlock/captureFields
 // flow proceeds unchanged.
+//
+// Batch 380 (PS-359): what Save/Release needs comes from the organisation's
+// Field Requirements (report page, "Amendments, corrections and addenda").
+// Locked, as before: the reason, the explanation or addendum text, an
+// addendum's title, and for an amendment the clinician notified and how.
+// Switchable: clinician notification for corrections and for addenda; when
+// required, the notification section shows for that type too. The check is
+// services/fieldRequirements/reportPageChecks.ts. Save can also be said
+// ("save amendment", "release addendum", REVISION_SAVE).
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState, useMemo, useEffect } from 'react';
+import React, { useState, useMemo, useEffect, useRef } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import type { TFunction } from 'i18next';
 import '../../../pathscribe.css';
 import type { NotificationMethod } from '@/types/reports/AmendmentRecord';
-import { physicianService } from '@/services';
+import {
+  physicianService, reasonDictionaryService, actionRegistryService,
+  revisionMissingFields, revisionNotificationShown, reportFieldRequired,
+} from '@/services';
 import type { Physician } from '@/services/physicians/IPhysicianService';
-import { mockReasonDictionaryService } from '@/services/reasons/mockReasonDictionaryService';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
+import { formatList } from '@/utils/formatList';
+import { formatDateTime } from '@/utils/formatDate';
 import type { ReasonDictionaryEntry, ReasonDictionaryCategory } from '@/types/reasons/ReasonDictionaryEntry';
 import { useSystemConfig } from '@/contexts/SystemConfigContext';
 import { getFacilityDateTimeParts } from '@/utils/facilityTime';
 import { initials, avatarColorClass, contactRowsFor } from '@/utils/physicianDisplay';
 import { formatOrdinal } from '@/utils/formatOrdinal';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
 // NOTE: verify this import path resolves in your build — your last tsc
 // output showed src/index.ts failing on a physician service import one
 // directory level different from this. If physicianService isn't found,
@@ -110,7 +125,6 @@ const formatValue = (value: unknown, t: TFunction): string => {
   return String(value);
 };
 
-const formatDateTime = (iso?: string) => iso ? new Date(iso).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : '';
 
 // i18n note: version-history ordinal labels ("1st Amended", "2nd
 // Amended"...) need a real per-locale ordinal form, not just a
@@ -126,13 +140,14 @@ const versionLabel = (versionNumber: number, total: number, t: TFunction, lang: 
   return t('amendmentModal.version.amended', { ordinal: ord });
 };
 const AmendmentModal: React.FC<AmendmentModalProps> = ({
-  show, amendmentMode, amendmentText, activeSynopticTitle, sequenceNumber, amendedByName = 'Unknown User',
+  show, amendmentMode, amendmentText, activeSynopticTitle, sequenceNumber, amendedByName,
   versionHistory = [], onModeChange, onTextChange, onClose, onSubmit,
   onFieldOverridesConfirmed = () => {}, submitError, resuming,
   orderingPhysicianName,
 }) => {
   const { t, i18n } = useTranslation();
   const { config } = useSystemConfig();
+  const requirements = useFieldRequirements('report');
   const [addendumTitle, setAddendumTitle] = useState('');
   const [reasonId, setReasonId] = useState('');
   const [reasonOptions, setReasonOptions] = useState<ReasonDictionaryEntry[]>([]);
@@ -150,7 +165,7 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
     const category: ReasonDictionaryCategory =
       amendmentMode === 'amendment' ? 'AMENDMENT' : amendmentMode === 'correction' ? 'CORRECTION' : 'ADDENDUM';
     let cancelled = false;
-    mockReasonDictionaryService.getAll(category).then(res => {
+    reasonDictionaryService.getAll(category).then(res => {
       if (cancelled) return;
       if (res.ok) setReasonOptions(res.data.filter(r => r.status === 'Active'));
     });
@@ -211,16 +226,18 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
     return () => { cancelled = true; };
   }, [clinicianName]);
 
-  // FR feedback #3 — default to now instead of blank.
+  // FR feedback #3 — default to now instead of blank (wherever the
+  // notification section shows, Batch 380).
+  const notificationShown = revisionNotificationShown(amendmentMode, requirements);
   React.useEffect(() => {
-    if (show && amendmentMode === 'amendment' && !notifiedAt) {
+    if (show && notificationShown && !notifiedAt) {
       const now = new Date();
       const pad = (n: number) => String(n).padStart(2, '0');
       const { year, month, day, hour, minute } = getFacilityDateTimeParts(now, config.facilityTimezone);
       setNotifiedAt(`${year}-${pad(month + 1)}-${pad(day)}T${pad(hour)}:${pad(minute)}`);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [show, amendmentMode]);
+  }, [show, notificationShown]);
 
   const hasDeltaHistory = versionHistory.length >= 2 && !resuming;
   const [step, setStep] = useState<'delta' | 'edit'>(hasDeltaHistory ? 'delta' : 'edit');
@@ -259,6 +276,29 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
     }).sort();
   }, [versionHistory, hasDeltaHistory, mostRecent]);
 
+  const missing = revisionMissingFields(amendmentMode, { reasonId, text: amendmentText, addendumTitle, clinicianName, method }, requirements);
+  const canSubmit = missing.length === 0;
+
+  const handleSubmit = () => {
+    if (!canSubmit) return;
+    onSubmit({
+      addendumTitle: amendmentMode === 'addendum' ? addendumTitle : undefined,
+      explanationOfChange: amendmentMode !== 'addendum' ? amendmentText : undefined,
+      clinicianName: notificationShown ? clinicianName : undefined,
+      method: notificationShown && method ? method : undefined,
+      notifiedAt: notificationShown ? (notifiedAt || new Date().toISOString()) : undefined,
+      reasonId,
+    });
+  };
+
+  // Voice/keyboard "save amendment" / "release addendum": the same Save,
+  // with the same check, once the editing step is showing.
+  const submitRef = useRef<() => void>(() => {});
+  submitRef.current = () => { if (show && step === 'edit') handleSubmit(); };
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'REVISION_SAVE') submitRef.current();
+  }), []);
+
   if (!show) return null;
 
   const isAmendment = amendmentMode === 'amendment';
@@ -268,12 +308,6 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
   // notification requirement differs between them. Addendum stays its
   // own single-stage release. See AMENDMENT_STATUS_REDESIGN_BRIEF.md.
   const isUnlockFlow = isAmendment || isCorrection;
-
-  const canSubmit = isAmendment
-    ? amendmentText.trim().length > 0 && clinicianName.trim().length > 0 && !!method && reasonId !== ''
-    : isCorrection
-    ? amendmentText.trim().length > 0 && reasonId !== ''
-    : amendmentText.trim().length > 0 && addendumTitle.trim().length > 0 && reasonId !== '';
 
   const headerLabel = isAmendment ? t('amendmentModal.header.amendedReport') : isCorrection ? t('amendmentModal.header.correctedReport') : t('amendmentModal.header.addendumNumbered', { number: sequenceNumber });
 
@@ -291,16 +325,8 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
     setStep('edit');
   };
 
-  const handleSubmit = () => {
-    onSubmit({
-      addendumTitle: !isUnlockFlow ? addendumTitle : undefined,
-      explanationOfChange: isUnlockFlow ? amendmentText : undefined,
-      clinicianName: isAmendment ? clinicianName : undefined,
-      method: isAmendment && method ? method : undefined,
-      notifiedAt: isAmendment ? (notifiedAt || new Date().toISOString()) : undefined,
-      reasonId,
-    });
-  };
+  const required = (id: string) => reportFieldRequired(requirements, id);
+  const notificationRequired = required(isAmendment ? 'amendmentNotification' : isCorrection ? 'correctionNotification' : 'addendumNotification');
 
   return (
     <div data-capture-hide="true" className="ps-overlay">
@@ -308,7 +334,11 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
 
         {isUnlockFlow && (
           <div className="ps-amendment-target-banner">
-            {isAmendment ? t('amendmentModal.banner.amending') : t('amendmentModal.banner.correcting')}: <strong>{activeSynopticTitle}</strong>
+            <Trans
+              i18nKey={isAmendment ? 'amendmentModal.banner.amendingTarget' : 'amendmentModal.banner.correctingTarget'}
+              values={{ title: activeSynopticTitle }}
+              components={{ strong: <strong /> }}
+            />
           </div>
         )}
 
@@ -334,7 +364,7 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
                   {versionHistory.map(v => (
                     <th key={v.versionNumber} className={v.versionNumber === mostRecent.versionNumber ? 'ps-amendment-delta-col--default' : undefined}>
                       {versionLabel(v.versionNumber, total, t, i18n.language)}
-                      <div className="ps-amendment-delta-col-meta">{formatDateTime(v.releasedAt)} — {v.createdBy.userName}</div>
+                      <div className="ps-amendment-delta-col-meta">{t('amendmentModal.delta.versionMeta', { when: formatDateTime(v.releasedAt, i18n.language), by: v.createdBy.userName })}</div>
                     </th>
                   ))}
                 </tr>
@@ -402,8 +432,8 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
             {/* Amendment Summary Box — FR-19 */}
             {isUnlockFlow && (
               <div className="ps-amendment-summary-box">
-                <div className="ps-amendment-summary-row"><span className="ps-amendment-summary-label">{isAmendment ? t('amendmentModal.summary.amendedBy') : t('amendmentModal.summary.correctedBy')}</span> {amendedByName}</div>
-                <div className="ps-amendment-summary-row"><span className="ps-amendment-summary-label">{t('amendmentModal.summary.timestamp')}</span> {formatDateTime(new Date().toISOString())}</div>
+                <div className="ps-amendment-summary-row"><span className="ps-amendment-summary-label">{isAmendment ? t('amendmentModal.summary.amendedBy') : t('amendmentModal.summary.correctedBy')}</span> {amendedByName || t('amendmentModal.summary.unknownUser')}</div>
+                <div className="ps-amendment-summary-row"><span className="ps-amendment-summary-label">{t('amendmentModal.summary.timestamp')}</span> {formatDateTime(new Date().toISOString(), i18n.language)}</div>
               </div>
             )}
 
@@ -430,7 +460,7 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
               {isAmendment
                 ? t('amendmentModal.description.amendment')
                 : isCorrection
-                ? t('amendmentModal.description.correction')
+                ? t(notificationShown ? 'amendmentModal.description.correctionWithNotification' : 'amendmentModal.description.correction')
                 : t('amendmentModal.description.addendum')
               }{' '}
               <Trans
@@ -442,7 +472,7 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
 
             {!isUnlockFlow && (
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">{t('amendmentModal.form.addendumTitleLabel')} <span className="ps-conf-required">*</span></label>
+                <label className="ps-conf-label">{t('amendmentModal.form.addendumTitleLabel')} {required('addendumTitle') && <span className="ps-conf-required">*</span>}</label>
                 <input className="ps-conf-input" value={addendumTitle} onChange={e => setAddendumTitle(e.target.value)}
                   placeholder={t('amendmentModal.form.addendumTitlePlaceholder')} />
               </div>
@@ -450,7 +480,7 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
 
             <div className="ps-conf-form-field">
               <label className="ps-conf-label" htmlFor="amendment-reason-select">
-                {t('amendmentModal.form.reasonLabel')} <span className="ps-conf-required">*</span>
+                {t('amendmentModal.form.reasonLabel')} {required('revisionReason') && <span className="ps-conf-required">*</span>}
               </label>
               <select
                 id="amendment-reason-select"
@@ -458,12 +488,12 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
                 value={reasonId}
                 onChange={e => setReasonId(e.target.value)}
               >
-                <option value="">— {t('common.select')} —</option>
+                <option value="">{t('amendmentModal.form.reasonSelectPlaceholder')}</option>
                 {reasonOptions.map(r => <option key={r.id} value={r.id}>{r.name}</option>)}
               </select>
             </div>
 
-            <textarea
+            <SpellCheckedTextarea
               autoFocus
               value={amendmentText}
               onChange={e => onTextChange(e.target.value)}
@@ -478,11 +508,11 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
               className="ps-amendment-textarea"
             />
 
-            {isAmendment && (
+            {notificationShown && (
               <div className="ps-intraop-action-block ps-amendment-notification-block">
                 <label className="ps-conf-label ps-amendment-notification-label">{t('amendmentModal.notification.logLabel')}</label>
                 <div className="ps-conf-form-field ps-amendment-physician-picker">
-                  <label className="ps-conf-label">{t('amendmentModal.notification.clinicianNotifiedLabel')}</label>
+                  <label className="ps-conf-label">{t('amendmentModal.notification.clinicianNotifiedLabel')} {notificationRequired && <span className="ps-conf-required">*</span>}</label>
                   <input
                     className="ps-amendment-physician-search"
                     value={clinicianName || physicianQuery}
@@ -555,7 +585,7 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
                   )}
                 </div>
                 <div className="ps-conf-form-field">
-                  <label className="ps-conf-label" htmlFor="amendment-notify-method">{t('amendmentModal.notification.methodLabel')}</label>
+                  <label className="ps-conf-label" htmlFor="amendment-notify-method">{t('amendmentModal.notification.methodLabel')} {notificationRequired && <span className="ps-conf-required">*</span>}</label>
                   <select id="amendment-notify-method" className="ps-conf-select" value={method} onChange={e => setMethod(e.target.value as NotificationMethod | '')}>
                     <option value="">{t('amendmentModal.notification.methodSelectPlaceholder')}</option>
                     {(Object.keys(NOTIFICATION_METHOD_LABEL_KEY) as NotificationMethod[]).map(m => (
@@ -567,10 +597,15 @@ const AmendmentModal: React.FC<AmendmentModalProps> = ({
                   <label className="ps-conf-label">{t('amendmentModal.notification.dateTimeLabel')}</label>
                   <input className="ps-input-dark" type="datetime-local" value={notifiedAt} onChange={e => setNotifiedAt(e.target.value)} />
                 </div>
-                <p className="ps-intraop-gate-note">{t('amendmentModal.notification.gateNote')}</p>
+                <p className="ps-intraop-gate-note">{isAmendment ? t('amendmentModal.notification.gateNote') : t('amendmentModal.notification.organisationRequiresNote')}</p>
               </div>
             )}
 
+            {missing.length > 0 && (
+              <p className="ps-field-still-required" role="status">
+                {t('fieldRequirements.stillRequired', { fields: formatList(missing.map(id => t(`fieldRequirements.fields.report.${id}`)), i18n.language) })}
+              </p>
+            )}
             {submitError && <p className="ps-intraop-gate-note ps-amendment-error-text">{submitError}</p>}
 
             <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch">

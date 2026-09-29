@@ -1,11 +1,28 @@
 import React, { useState, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import { VOICE_PROFILES, type VoiceProfileId } from '../../../constants/voiceProfiles';
+import { SPELLING_LOCALE_ORDER, SPELLING_LOCALES } from '@/services/spellcheck/spellingLocales';
 import '../../../pathscribe.css';
 import RoleDictionary, { Role, DEFAULT_ROLES } from './RoleDictionary';
 import FppeAssignmentsSection from '../System/FppeAssignmentsSection';
 import CytotechCompetencyAssignmentsSection from '../System/CytotechCompetencyAssignmentsSection';
-import { userService, subspecialtyService, roleService, Subspecialty } from '../../../services';
+import { userService, subspecialtyService, roleService, auditService, authorizationService, facilityService, Subspecialty } from '../../../services';
+import { saveStaffMember } from '@/services/staff/staffAdministration';
+import { useCapabilities } from '@/hooks/useCapabilities';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { LinkedSignInAccounts } from './LinkedSignInAccounts';
+import { useAuth } from '../../../contexts/AuthContext';
+import type { ProviderCredential } from '@/types/staff/ProviderCredential';
+import { JURISDICTION_LABELS, type Jurisdiction } from '@/types/systemConfig';
+import { KNOWN_CREDENTIAL_TYPES } from '@/services/staff/resolveNormalizedCredentialCapabilities';
+import {
+  blankProviderCredential, normalizeProviderCredentials, validateProviderCredentials,
+  type ProviderCredentialError,
+} from '@/services/staff/providerCredentialRules';
+
+/** Jurisdiction codes for the credential editor; names come from
+ *  t('jurisdictionNames.<code>'), never the English-only labels. */
+const JURISDICTION_CODES = Object.keys(JURISDICTION_LABELS) as Jurisdiction[];
 import { ServiceResult } from '../../../services/types';
 import { Dropdown } from '@/components/Common/Dropdown';
 
@@ -40,6 +57,8 @@ export interface StaffUser {
   signatureUrl?: string;
   status: 'Active' | 'Inactive';
   voiceProfile?: string | null;
+  /** PS-342 (Batch 338): kept in sync by hand with IUserService.ts's StaffUser. */
+  spellingLocale?: string | null;
   canViewPediatric?: boolean;
   canViewOrchestration?: boolean;
   /** Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
@@ -50,6 +69,11 @@ export interface StaffUser {
    *  (not introduced here); this field has to be kept in sync by
    *  hand across both until that's consolidated. */
   quickAuthPin?: string;
+  /** Batch 331: kept in sync by hand with IUserService.ts's StaffUser
+   *  (see the note above). */
+  providerCredentials?: ProviderCredential[];
+  /** PS-356 (Batch 370): facility assignment; empty = all. Kept in sync by hand. */
+  facilityIds?: string[];
 }
 
 function initials(u: StaffUser) {
@@ -114,7 +138,7 @@ type Draft = {
   firstName: string; middleName: string; lastName: string; credentials: string;
   email: string; roles: string[]; npi: string; gmcNumber: string; license: string;
   phone: string; signatureUrl: string; active: boolean;
-  voiceProfile: string; canViewPediatric: boolean; canViewOrchestration: boolean;
+  voiceProfile: string; spellingLocale: string; canViewPediatric: boolean; canViewOrchestration: boolean;
   /** Real, per direct design brief on the RFP-APLIS-2026-GLOBAL
    *  Intraoperative/Frozen Section Dashboard's own Quick Auth flow —
    *  only meaningful for a real 'Or Staff' user; see
@@ -131,13 +155,19 @@ type Draft = {
    *  removeUser in the parent's handleSave, after the real user id is
    *  known (needed for 'add' mode, where no id exists until save). */
   subspecialtyIds: string[];
+  /** Batch 331 (PS-327): jurisdiction-scoped credentials and appointments
+   *  (e.g. a forensic medical-examiner appointment). */
+  providerCredentials: ProviderCredential[];
+  /** PS-356: the facilities this person works for; empty = all. */
+  facilityIds: string[];
 };
 
 const emptyDraft: Draft = {
   firstName: '', middleName: '', lastName: '', credentials: '', email: '',
   roles: [], npi: '', gmcNumber: '', license: '', phone: '',
-  signatureUrl: '', active: true, voiceProfile: '', canViewPediatric: false,
+  signatureUrl: '', active: true, voiceProfile: '', spellingLocale: '', canViewPediatric: false,
   canViewOrchestration: false, subspecialtyIds: [], quickAuthPin: '',
+  providerCredentials: [], facilityIds: [],
 };
 
 interface StaffModalProps {
@@ -145,12 +175,20 @@ interface StaffModalProps {
   user?: StaffUser;
   roles: Role[];
   subspecialties: Subspecialty[];
-  onSave: (draft: Draft) => void;
+  facilities: { id: string; name: string }[];
+  /** Resolves with a locale key to show when the save was refused, or null. */
+  onSave: (draft: Draft) => Promise<string | null>;
   onClose: () => void;
 }
 
-const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialties, onSave, onClose }) => {
+const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialties, facilities, onSave, onClose }) => {
   const { t } = useTranslation();
+  // PS-356: roles, facilities, access flags and credentials need
+  // config:staff-access:assign; without it they show read-only. The save
+  // service checks again.
+  const caps = useCapabilities();
+  const canAssign = caps.has('config:staff-access:assign');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [draft, setDraft] = useState<Draft>(
     user ? {
       firstName: user.firstName, middleName: (user as any).middleName || '',
@@ -158,14 +196,23 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
       email: user.email, roles: [...user.roles], npi: user.npi,
       gmcNumber: user.gmcNumber || '', license: user.license, phone: user.phone,
       signatureUrl: user.signatureUrl || '',
-      active: user.status === 'Active', voiceProfile: user.voiceProfile || '',
+      active: user.status === 'Active', voiceProfile: user.voiceProfile || '', spellingLocale: user.spellingLocale || '',
       canViewPediatric: user.canViewPediatric ?? false,
       canViewOrchestration: (user as any).canViewOrchestration ?? false,
       subspecialtyIds: subspecialties.filter(s => s.userIds.includes(user.id)).map(s => s.id),
       quickAuthPin: user.quickAuthPin || '',
+      providerCredentials: (user.providerCredentials ?? []).map(c => ({ ...c })),
+      facilityIds: [...(user.facilityIds ?? [])],
     } : emptyDraft
   );
   const [errors, setErrors] = useState<Partial<Record<keyof Draft, string>>>({});
+  const [credentialErrors, setCredentialErrors] = useState<Record<number, ProviderCredentialError[]>>({});
+  const setCredential = (i: number, patch: Partial<ProviderCredential>) => {
+    setDraft(prev => ({ ...prev, providerCredentials: prev.providerCredentials.map((c, j) => (j === i ? { ...c, ...patch } : c)) }));
+    setCredentialErrors(prev => { const next = { ...prev }; delete next[i]; return next; });
+  };
+  const credentialTypeOptions = (current: string) =>
+    current && !KNOWN_CREDENTIAL_TYPES.includes(current) ? [...KNOWN_CREDENTIAL_TYPES, current] : KNOWN_CREDENTIAL_TYPES;
 
   const set = (k: keyof Draft, v: any) => {
     setDraft(prev => ({ ...prev, [k]: v }));
@@ -181,10 +228,11 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
     return e;
   };
 
-  const handleSave = () => {
+  const handleSave = async () => {
     const e = validate();
-    if (Object.keys(e).length > 0) { setErrors(e); return; }
-    onSave(draft);
+    const ce = validateProviderCredentials(draft.providerCredentials);
+    if (Object.keys(e).length > 0 || Object.keys(ce).length > 0) { setErrors(e); setCredentialErrors(ce); return; }
+    setSaveError(await onSave(draft));
   };
 
   return (
@@ -235,21 +283,25 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
                     const color   = roleObj?.color ?? '#8AB4F8';
                     return (
                       <span key={rName} className="ps-st-role-chip"
-                        style={{ background: `${color}22`, color, border: `1px solid ${color}44` }}>
+                        style={{ '--ps-hue': color } as React.CSSProperties}>
                         {rName}
-                        <span className="ps-st-role-chip-x" style={{ color }}
-                          onClick={() => set('roles', draft.roles.filter(x => x !== rName))}>×</span>
+                        {canAssign && <span className="ps-st-role-chip-x"
+                          onClick={() => set('roles', draft.roles.filter(x => x !== rName))}>×</span>}
                       </span>
                     );
                   })}
                 </div>
               )}
-              <Dropdown
-                placeholder={t('staffTab.modal.rolePlaceholder')}
-                options={roles.filter(r => r.name !== 'Physician' && !draft.roles.includes(r.name)).map(r => ({ value: r.name, label: r.name }))}
-                emptyText={t('staffTab.modal.roleEmptyText')}
-                onSelect={val => { if (val && !draft.roles.includes(val)) set('roles', [...draft.roles, val]); }}
-              />
+              {canAssign ? (
+                <Dropdown
+                  placeholder={t('staffTab.modal.rolePlaceholder')}
+                  options={roles.filter(r => r.name !== 'Physician' && r.assignable !== false && !draft.roles.includes(r.name)).map(r => ({ value: r.name, label: r.name }))}
+                  emptyText={t('staffTab.modal.roleEmptyText')}
+                  onSelect={val => { if (val && !draft.roles.includes(val)) set('roles', [...draft.roles, val]); }}
+                />
+              ) : (
+                <span className="ps-conf-hint">{t('staffTab.access.readOnly')}</span>
+              )}
               {errors.roles && <span className="ps-st-error">{errors.roles}</span>}
             </div>
           </div>
@@ -323,10 +375,49 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
             </div>
           </div>
 
+          {/* Row 6b: Spelling language (PS-342) */}
+          <div className="ps-conf-form-row">
+            <div className="ps-conf-form-field">
+              <label className="ps-conf-label" htmlFor="staff-spelling-locale">{t('staffTab.modal.spellingLocaleLabel')}</label>
+              <select id="staff-spelling-locale" value={draft.spellingLocale} onChange={e => set('spellingLocale', e.target.value)} className="ps-conf-select">
+                <option value="">{t('staffTab.modal.spellingLocaleDefault')}</option>
+                {SPELLING_LOCALE_ORDER.filter(l => SPELLING_LOCALES[l].available).map(l => (
+                  <option key={l} value={l}>{t(`spellCheck.locales.${l}`)}</option>
+                ))}
+              </select>
+              <span className="ps-conf-hint">{t('staffTab.modal.spellingLocaleHint')}</span>
+            </div>
+          </div>
+
+          {/* PS-356: facility assignment. Narrows where this person's
+              capabilities apply; empty means every facility. */}
+          <div className="ps-conf-form-field">
+            <label className="ps-conf-label">{t('staffTab.access.facilitiesLabel')}</label>
+            <div className="ps-st-role-chips">
+              {draft.facilityIds.length === 0 && <span className="ps-st-role-chip ps-st-role-chip--subspecialty">{t('staffTab.access.allFacilities')}</span>}
+              {draft.facilityIds.map(id => (
+                <span key={id} className="ps-st-role-chip ps-st-role-chip--subspecialty">
+                  {facilities.find(f => f.id === id)?.name ?? id}
+                  {canAssign && <span className="ps-st-role-chip-x ps-st-role-chip-x--subspecialty"
+                    onClick={() => set('facilityIds', draft.facilityIds.filter(x => x !== id))}>×</span>}
+                </span>
+              ))}
+            </div>
+            {canAssign && (
+              <Dropdown
+                placeholder={t('staffTab.access.facilityPlaceholder')}
+                options={facilities.filter(f => !draft.facilityIds.includes(f.id)).map(f => ({ value: f.id, label: f.name }))}
+                emptyText={t('staffTab.access.facilityEmptyText')}
+                onSelect={val => { if (val && !draft.facilityIds.includes(val)) set('facilityIds', [...draft.facilityIds, val]); }}
+              />
+            )}
+            <span className="ps-conf-hint">{t('staffTab.access.facilitiesHint')}</span>
+          </div>
+
           {/* Row 7: Pediatric Access */}
           <div className={`ps-st-peds-row ${draft.canViewPediatric ? 'ps-st-peds-row--on' : 'ps-st-peds-row--off'}`}>
             <label className="ps-st-peds-label">
-              <input type="checkbox" checked={draft.canViewPediatric}
+              <input type="checkbox" checked={draft.canViewPediatric} disabled={!canAssign}
                 onChange={e => setDraft(d => ({ ...d, canViewPediatric: e.target.checked }))}
                 className="ps-st-peds-checkbox" />
               <div>
@@ -361,7 +452,7 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
               despite the name) rather than introducing new CSS rules. */}
           <div className={`ps-st-peds-row ${draft.canViewOrchestration ? 'ps-st-peds-row--on' : 'ps-st-peds-row--off'}`}>
             <label className="ps-st-peds-label">
-              <input type="checkbox" checked={draft.canViewOrchestration}
+              <input type="checkbox" checked={draft.canViewOrchestration} disabled={!canAssign}
                 onChange={e => setDraft(d => ({ ...d, canViewOrchestration: e.target.checked }))}
                 className="ps-st-peds-checkbox" />
               <div>
@@ -374,6 +465,62 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
               </div>
             </label>
           </div>
+
+          {/* Batch 331 (PS-327): jurisdictional credentials and
+              appointments. Rules and audit detail:
+              services/staff/providerCredentialRules.ts. */}
+          <fieldset className="ps-conf-form-field ps-st-cred ps-st-access-fieldset" disabled={!canAssign}>
+            <label className="ps-conf-label">{t('staffTab.providerCredentials.label')}</label>
+            <p className="ps-st-cred-desc">{t('staffTab.providerCredentials.description')}</p>
+            {draft.providerCredentials.length === 0 && (
+              <p className="ps-st-cred-empty">{t('staffTab.providerCredentials.empty')}</p>
+            )}
+            {draft.providerCredentials.map((c, i) => (
+              <div key={i} className="ps-st-cred-row">
+                <div className="ps-st-cred-grid">
+                  <select aria-label={t('staffTab.providerCredentials.typeLabel')} className="ps-conf-input" value={c.type}
+                    onChange={e => setCredential(i, { type: e.target.value })}>
+                    <option value="">{t('staffTab.providerCredentials.typePlaceholder')}</option>
+                    {credentialTypeOptions(c.type).map(ct => (
+                      <option key={ct} value={ct}>{t(`staffTab.providerCredentials.types.${ct}`, { defaultValue: ct })}</option>
+                    ))}
+                  </select>
+                  <input aria-label={t('staffTab.providerCredentials.issuingBodyLabel')} className="ps-conf-input" value={c.issuingBody}
+                    placeholder={t('staffTab.providerCredentials.issuingBodyPlaceholder')}
+                    onChange={e => setCredential(i, { issuingBody: e.target.value })} />
+                  <select aria-label={t('staffTab.providerCredentials.jurisdictionLabel')} className="ps-conf-input" value={c.jurisdiction}
+                    onChange={e => setCredential(i, { jurisdiction: e.target.value as Jurisdiction })}>
+                    <option value="">{t('staffTab.providerCredentials.jurisdictionPlaceholder')}</option>
+                    {JURISDICTION_CODES.map(j => <option key={j} value={j}>{t(`jurisdictionNames.${j}`)}</option>)}
+                  </select>
+                  <label className="ps-st-cred-date">
+                    <span>{t('staffTab.providerCredentials.effectiveLabel')}</span>
+                    <input type="date" className="ps-conf-input" value={c.effectiveDate}
+                      onChange={e => setCredential(i, { effectiveDate: e.target.value })} />
+                  </label>
+                  <label className="ps-st-cred-date">
+                    <span>{t('staffTab.providerCredentials.expiryLabel')}</span>
+                    <input type="date" className="ps-conf-input" value={c.expirationDate ?? ''}
+                      onChange={e => setCredential(i, { expirationDate: e.target.value || undefined })} />
+                  </label>
+                  <button type="button" className="ps-st-cred-remove" aria-label={t('staffTab.providerCredentials.remove')}
+                    onClick={() => { setDraft(prev => ({ ...prev, providerCredentials: prev.providerCredentials.filter((_, j) => j !== i) })); setCredentialErrors({}); }}>
+                    ×
+                  </button>
+                </div>
+                {credentialErrors[i]?.length ? (
+                  <span className="ps-st-error">{credentialErrors[i].map(code => t(`staffTab.providerCredentials.errors.${code}`)).join(' ')}</span>
+                ) : null}
+              </div>
+            ))}
+            <button type="button" className="ps-conf-btn-secondary ps-st-cred-add"
+              onClick={() => setDraft(prev => ({ ...prev, providerCredentials: [...prev.providerCredentials, blankProviderCredential()] }))}>
+              {t('staffTab.providerCredentials.add')}
+            </button>
+          </fieldset>
+
+          {/* Batch 345: linked single-sign-on accounts (edit only). */}
+          {mode === 'edit' && user?.id && <LinkedSignInAccounts staffId={user.id} />}
 
           {/* Row 8: Status | Signature */}
           <div className="ps-conf-form-row">
@@ -390,10 +537,11 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
         </div>
 
         <div className="ps-conf-modal-footer">
+          {saveError && <span className="ps-st-error ps-st-save-error" role="alert">{t(saveError)}</span>}
           <button className="ps-conf-btn-secondary" onClick={onClose}>{t('common.cancel')}</button>
-          <button className="ps-conf-btn-primary" onClick={handleSave}>
+          <CapabilityButton capability="config:staff:edit" className="ps-conf-btn-primary" onClick={() => { void handleSave(); }}>
             {mode === 'add' ? t('staffTab.modal.addStaffMember') : t('staffTab.modal.saveChanges')}
-          </button>
+          </CapabilityButton>
         </div>
       </div>
     </div>
@@ -404,14 +552,17 @@ const StaffModal: React.FC<StaffModalProps> = ({ mode, user, roles, subspecialti
 
 const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
   const { t } = useTranslation();
+  const { user: adminUser } = useAuth();
   const [subspecialties, setSubspecialties] = useState<Subspecialty[]>([]);
   const [users,      setUsers]     = useState<StaffUser[]>([]);
   const [loading,    setLoading]   = useState(true);
   const [search,     setSearch]    = useState('');
   const [roleFilter, setRoleFilter] = useState('All');
   const [modal,      setModal]     = useState<{ mode: 'add' | 'edit'; user?: StaffUser } | null>(null);
+  const [facilities, setFacilities] = useState<{ id: string; name: string }[]>([]);
 
   React.useEffect(() => {
+    facilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.map(f => ({ id: f.id, name: f.name }))); });
     userService.getAll().then((res: ServiceResult<StaffUser[]>) => {
       if ('ok' in res && res.ok) setUsers(res.data || []);
       else if ('error' in res) console.error(res.error);
@@ -445,7 +596,11 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
     return matchesSearch && (roleFilter === 'All' || u.roles.includes(roleFilter));
   });
 
-  const handleSave = async (draft: Draft) => {
+  // PS-356: the save goes through services/staff/staffAdministration.ts,
+  // which checks config:staff:edit (and config:staff-access:assign when
+  // roles, facilities, access flags or credentials change) and writes the
+  // audit entries. Resolves with a locale key when refused.
+  const handleSave = async (draft: Draft): Promise<string | null> => {
     const payload = {
       firstName: draft.firstName, lastName: draft.lastName, credentials: draft.credentials,
       email: draft.email, roles: draft.roles, npi: draft.npi, gmcNumber: draft.gmcNumber,
@@ -454,24 +609,20 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
       signatureUrl: draft.signatureUrl,
       status: (draft.active ? 'Active' : 'Inactive') as 'Active' | 'Inactive',
       voiceProfile: draft.voiceProfile === '' ? undefined : (draft.voiceProfile as VoiceProfileId),
+      spellingLocale: draft.spellingLocale === '' ? null : draft.spellingLocale,
       quickAuthPin: draft.quickAuthPin === '' ? undefined : draft.quickAuthPin,
+      providerCredentials: normalizeProviderCredentials(draft.providerCredentials),
+      facilityIds: draft.facilityIds,
     };
-    let savedUserId: string | undefined;
-    if (modal?.mode === 'add') {
-      const res = await userService.add(payload);
-      if (res.ok) { setUsers(prev => [...prev, res.data]); savedUserId = res.data.id; }
-    } else if (modal?.user) {
-      const res = await userService.update(modal.user.id, payload);
-      if (res.ok) { setUsers(prev => prev.map(u => u.id === res.data.id ? res.data : u)); savedUserId = res.data.id; }
-    }
+    const deps = { userService, authorization: authorizationService, auditService, actorName: adminUser?.name ?? 'Unknown User' };
+    const res = modal?.mode === 'edit' && modal.user
+      ? await saveStaffMember({ mode: 'edit', before: modal.user as any, draft: payload as any }, deps)
+      : await saveStaffMember({ mode: 'add', draft: payload as any }, deps);
+    if (res.ok === false) return res.reason === 'notPermitted' ? 'staffTab.access.notPermitted' : 'staffTab.access.saveFailed';
+    const saved = res.user as unknown as StaffUser;
+    setUsers(prev => (prev.some(u => u.id === saved.id) ? prev.map(u => (u.id === saved.id ? saved : u)) : [...prev, saved]));
+    const savedUserId: string | undefined = saved.id;
 
-    // Real fix, per direct confirmation: replaces the old free-text
-    // Department field. The real relationship lives on
-    // Subspecialty.userIds, not on StaffUser — diff the modal's
-    // selection against the user's actual, current membership and
-    // apply only the real changes. Runs after the user record is
-    // saved above, since 'add' mode has no real id to assign against
-    // until that point.
     if (savedUserId) {
       const currentIds = subspecialties.filter(s => s.userIds.includes(savedUserId!)).map(s => s.id);
       const toAdd = draft.subspecialtyIds.filter(id => !currentIds.includes(id));
@@ -487,6 +638,7 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
     }
 
     setModal(null);
+    return null;
   };
 
   const renderStaffRow = (u: StaffUser) => {
@@ -523,7 +675,7 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
               const color   = roleObj?.color ?? '#8AB4F8';
               return (
                 <span key={r} className="ps-st-role-badge"
-                  style={{ color, background: `${color}22`, border: `1px solid ${color}44` }}>
+                  style={{ '--ps-hue': color } as React.CSSProperties}>
                   {r}
                 </span>
               );
@@ -608,7 +760,7 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
           <h2 className="ps-st-title">{t('staffTab.list.pageTitle')}</h2>
           <p className="ps-st-subtitle">{t('staffTab.list.pageSubtitle')}</p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>{t('staffTab.list.addStaffButton')}</button>
+        <CapabilityButton capability="config:staff-access:assign" className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>{t('staffTab.list.addStaffButton')}</CapabilityButton>
       </div>
 
       <div data-capture-hide="true" className="ps-st-filter-bar">
@@ -627,7 +779,7 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
         <div key={role.id} data-capture-hide="true" className="ps-st-role-group">
           <div className="ps-st-role-group-header">
             <span className="ps-st-role-badge"
-              style={{ color: role.color, background: `${role.color}22`, border: `1px solid ${role.color}44` }}>
+              style={{ '--ps-hue': role.color } as React.CSSProperties}>
               {role.name}
             </span>
             <span className="ps-st-role-group-count">{members.length}</span>
@@ -674,7 +826,7 @@ const StaffMembers: React.FC<{ roles: Role[] }> = ({ roles }) => {
         <div className="ps-st-table-wrap"><p className="ps-st-subtitle ps-st-empty-hint">{t('staffTab.list.noStaffMatch')}</p></div>
       )}
 
-      {modal && <StaffModal mode={modal.mode} user={modal.user} roles={roles} subspecialties={subspecialties} onSave={handleSave} onClose={() => setModal(null)} />}
+      {modal && <StaffModal mode={modal.mode} user={modal.user} roles={roles} subspecialties={subspecialties} facilities={facilities} onSave={handleSave} onClose={() => setModal(null)} />}
     </div>
   );
 };
@@ -704,7 +856,6 @@ const StaffTab: React.FC = () => {
       if (res.ok) {
         const mapped = res.data.map(r => ({
           ...r,
-          canViewPediatric:     (r as any).canViewPediatric ?? false,
           participationTypeIds: r.participationTypeIds ?? [],
         })) as Role[];
         setRoles(mapped);

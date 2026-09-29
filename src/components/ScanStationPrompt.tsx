@@ -26,11 +26,11 @@
 
 import { useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useAuth } from '@/contexts/AuthContext';
 import { useEffectiveScanStation } from '@/hooks/useEffectiveScanStation';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
-import { mockWorkstationGroupService } from '@/services/workstationGroups/mockWorkstationGroupService';
+import { resolveStationBenchRoute } from '@/services/workstationGroups/resolveStationBenchRoute';
 import type { ScanStation } from '@/services/scanStations/IScanStationService';
 
 export function ScanStationPrompt() {
@@ -78,13 +78,14 @@ export function ScanStationPrompt() {
     if (!selected) { markPrompted(); return; }
     setStationId(selected);
     markPrompted();
-    mockScanStationService.getById(selected).then(stationRes => {
-      if (!stationRes.ok || !stationRes.data.workstationGroupId) return;
-      mockWorkstationGroupService.getById(stationRes.data.workstationGroupId).then(groupRes => {
-        if (groupRes.ok && groupRes.data.status === 'Active' && groupRes.data.dedicatedPageRoute) {
-          navigate(groupRes.data.dedicatedPageRoute);
-        }
-      });
+    // Real fix, found by this app's own inline-CSS/business-logic
+    // sweep: delegates to resolveStationBenchRoute.ts's shared
+    // station → WorkstationGroup → Active-gated route resolution —
+    // the same real chain NavBarScanStation.tsx's own "Go to Bench"
+    // button uses — instead of a second, independently-maintained
+    // copy of the same gating rule.
+    resolveStationBenchRoute(selected).then(route => {
+      if (route) navigate(route);
     });
   };
 

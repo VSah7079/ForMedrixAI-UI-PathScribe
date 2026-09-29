@@ -165,7 +165,7 @@ const SlideGridPanel: React.FC<SlideGridPanelProps> = ({
                   {stain.printStatus === 'Printed' && (
                     reprintPromptFor === stain.id ? (
                       <select
-                        className="ps-microtomy-field-select" style={{ width: 120 }}
+                        className="ps-microtomy-field-select ps-microtomy-field--w120"
                         onChange={e => { if (e.target.value) { onReprint(stain.id, e.target.value as any); setReprintPromptFor(null); } }}
                         defaultValue=""
                       >
@@ -211,9 +211,9 @@ const SlideGridPanel: React.FC<SlideGridPanelProps> = ({
         <input
           type="text" placeholder={t('microtomyWorkstation.slideGrid.searchStains') ?? ''} value={query}
           onChange={e => setQuery(e.target.value)}
-          className="ps-microtomy-field-input" style={{ width: 140 }}
+          className="ps-microtomy-field-input ps-microtomy-field--w140"
         />
-        <select className="ps-microtomy-field-select" style={{ width: 200 }} value={selectedStainId} onChange={e => setSelectedStainId(e.target.value)}>
+        <select className="ps-microtomy-field-select ps-microtomy-field--w200" value={selectedStainId} onChange={e => setSelectedStainId(e.target.value)}>
           <option value="">{t('microtomyWorkstation.slideGrid.selectStain')}</option>
           {availableStains.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>

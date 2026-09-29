@@ -48,5 +48,25 @@
   by grepping for the real function before assuming it existed, not by
   a failed build.
 
+**Batch 349 (PS-101):** the header search popup showed raw status codes (`pending-review`) in near-invisible grey. Every case status now has a translated label (`caseSearchBar.status.*`) on a readable pill. The flag chips' inline colour styles became a `--ps-hue` custom property read by `.ps-casebar-dropdown__flag-chip`. Found and not fixed: the popup reads `case.flags`, but cases store flags as `caseFlags`, so flag chips never appear.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`CaseSearchBar.tsx`: the search box, the not-found and LIS-fetch messages, the results header and the matched-value hint are tagged (they show the typed or found accession).
+
+
+## Batch 364 (PS-349, PS-350): support references
+
+`CaseSearchBar.tsx`: typing a support reference (`SR-…`, any case, dashes optional) opens the case it names, or the Audit Log lookup for other kinds. The lookup is audited.
+
+## Batch 367 (PS-74): no inline CSS
+
+`ReassignCasePatientPanel.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`ReassignCasePatientPanel.tsx` takes `patientIndexService` from `@/services`, and is off the deployment baseline.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

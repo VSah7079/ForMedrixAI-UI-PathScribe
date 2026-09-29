@@ -17,6 +17,11 @@ export interface StaffUser {
    * If undefined/null, the system falls back to the Global Facility Profile.
    */
   voiceProfile?: VoiceProfileId | null;
+  /** PS-342 (Batch 338): the spelling language this pathologist prefers
+   *  (a SpellingLocale code). Inherited by cases assigned to them, ahead
+   *  of the facility default; a case's own choice still wins. Null or
+   *  absent: use the facility default. */
+  spellingLocale?: string | null;
   /** Professional credentials suffix (e.g. MD, FCAP, MBChB, FRCPath) */
   credentials?: string;
   /** Real, per direct guidance's own explicit design — sign-out
@@ -99,6 +104,16 @@ export interface StaffUser {
    * access control than actually exists.
    */
   organisationId?: string;
+  /**
+   * PS-356 (Batch 370): the facilities (services/facilities/, the same ids
+   * as a case's facilityId and a QA client scope) this person works for.
+   * Empty or absent: all facilities. It narrows where their capabilities
+   * apply (services/authorization/evaluateCapability.ts); it doesn't grant
+   * anything and doesn't change which cases they can open (that is the
+   * organisation boundary above). Per Pete, scope lives here, on the
+   * assignment, not on the role.
+   */
+  facilityIds?: string[];
   /** GMC number for UK users */
   gmcNumber?: string;
   /** Middle name or initial */
@@ -114,6 +129,13 @@ export interface StaffUser {
    * always wins over whichever user happens to log in there).
    */
   defaultScanStationId?: string;
+  /**
+   * PS-60 (Batch 343): the SSO accounts this person signs in with, one per
+   * provider (issuer + permanent account id). Set at first sign-in when
+   * linking by email is allowed, or by an administrator. Sign-in matches on
+   * this, never on email alone (services/auth/externalIdentity.ts).
+   */
+  externalIdentities?: import('../auth/externalIdentity').ExternalIdentityLink[];
 }
 
 export interface IUserService {

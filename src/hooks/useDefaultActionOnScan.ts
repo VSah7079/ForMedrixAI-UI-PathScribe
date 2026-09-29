@@ -29,7 +29,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { useEffectiveScanStation } from './useEffectiveScanStation';
 import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
 import { mockWorkstationGroupService } from '@/services/workstationGroups/mockWorkstationGroupService';

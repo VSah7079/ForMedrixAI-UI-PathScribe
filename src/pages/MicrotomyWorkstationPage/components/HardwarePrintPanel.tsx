@@ -47,7 +47,7 @@ const HardwarePrintPanel: React.FC<HardwarePrintPanelProps> = ({
 
   return (
     <div>
-      <div className="ps-microtomy-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-microtomy-panel ps-mb-14">
         <p className="ps-microtomy-panel-title">{t('microtomyWorkstation.hardware.printMode')}</p>
         <div className="ps-microtomy-mode-switcher">
           <button type="button" className={`ps-microtomy-mode-btn${printMode === 'on_demand' ? ' ps-microtomy-mode-btn--active' : ''}`} onClick={() => onSetPrintMode('on_demand')}>
@@ -59,7 +59,7 @@ const HardwarePrintPanel: React.FC<HardwarePrintPanelProps> = ({
         </div>
 
         {printMode === 'on_demand' ? (
-          <div style={{ marginTop: 12 }}>
+          <div className="ps-mt-12">
             {nextStain ? (
               <>
                 <div className="ps-microtomy-context-field">
@@ -75,7 +75,7 @@ const HardwarePrintPanel: React.FC<HardwarePrintPanelProps> = ({
             )}
           </div>
         ) : (
-          <div style={{ marginTop: 12 }}>
+          <div className="ps-mt-12">
             <div className="ps-microtomy-context-field">{t('microtomyWorkstation.hardware.selectedCount', { count: batchSelectedCount })}</div>
             <button type="button" className="ps-btn-primary" disabled={batchSelectedCount === 0} onClick={onPrintBatch}>
               🖨️ {t('microtomyWorkstation.hardware.printBatch')}
@@ -84,7 +84,7 @@ const HardwarePrintPanel: React.FC<HardwarePrintPanelProps> = ({
         )}
       </div>
 
-      <div className="ps-microtomy-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-microtomy-panel ps-mb-14">
         <p className="ps-microtomy-panel-title">{t('microtomyWorkstation.hardware.deviceStatus')}</p>
         <div className="ps-microtomy-hardware-card">
           <span>{printer ? `${printer.printerId} (${printer.model})` : t('microtomyWorkstation.hardware.noPrinter')}</span>
@@ -99,7 +99,7 @@ const HardwarePrintPanel: React.FC<HardwarePrintPanelProps> = ({
         <p className="ps-microtomy-panel-title">{t('microtomyWorkstation.hardware.labelPreview')}</p>
         {previewStain ? (
           <>
-            <div className="ps-microtomy-label-preview" style={{ aspectRatio: `${labelLayout.faceWidthMm} / ${labelLayout.faceHeightMm}` }}>
+            <div className="ps-microtomy-label-preview" style={{ '--label-aspect': `${labelLayout.faceWidthMm} / ${labelLayout.faceHeightMm}` } as React.CSSProperties}>
               <div className="ps-microtomy-label-preview-barcode">
                 {/* Real, deliberate: a schematic module grid, not a real
                     decodable barcode — a genuine 1:1 DataMatrix render
@@ -108,7 +108,7 @@ const HardwarePrintPanel: React.FC<HardwarePrintPanelProps> = ({
                     name, purely so the illustration doesn't flicker on
                     every re-render. */}
                 {Array.from({ length: 36 }).map((_, i) => (
-                  <span key={i} style={{ opacity: (previewStain.stainName.charCodeAt(i % previewStain.stainName.length) + i) % 3 === 0 ? 0.15 : 1 }} />
+                  <span key={i} className={(previewStain.stainName.charCodeAt(i % previewStain.stainName.length) + i) % 3 === 0 ? 'ps-microtomy-label-module--dim' : undefined} />
                 ))}
               </div>
               <div className="ps-microtomy-label-preview-text">

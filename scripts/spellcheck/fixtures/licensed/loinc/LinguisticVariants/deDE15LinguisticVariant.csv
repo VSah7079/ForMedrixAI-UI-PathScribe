@@ -1,0 +1,3 @@
+"LOINC_NUM","COMPONENT","PROPERTY","TIME_ASPCT","SYSTEM","SCALE_TYP","METHOD_TYP","CLASS","SHORTNAME","LONG_COMMON_NAME","LinguisticVariantDisplayName"
+"90001-1","Cholangiokarzinom-Subtyp","Typ","Zeitpunkt","Gewebe","Nom","","PATH","","","Cholangiokarzinom-Subtyp im Gewebe"
+"90003-7","Thrombopoetin","Massenkonz.","Zeitpunkt","Serum","Qn","","CHEM","","","Thrombopoetin"

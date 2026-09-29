@@ -28,7 +28,7 @@ import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { fetchEngraverDevices } from '@/services/engravers/fetchEngraverDevices';
 import type { EngraverDevice } from '@/services/engravers/fetchEngraverDevices';
 import type { EngraverStatus, SupplyWarning, SupplyWarningCode } from '@/types/events/EngraverStatusEventPayload';
-import { mockCassetteColorService } from '@/services/cassetteColors/mockCassetteColorService';
+import { cassetteColorService } from '@/services';
 
 const POLL_INTERVAL_MS = 30_000;
 
@@ -77,14 +77,14 @@ const EngraverMonitorPage: React.FC = () => {
 
   const [devices, setDevices] = useState<EngraverDevice[]>([]);
   const [loading, setLoading] = useState(true);
-  // Real key -> real displayName lookup (mockCassetteColorService.ts's
+  // Real key -> real displayName lookup (cassetteColorService.ts's
   // own real dictionary) — resolved once on mount, same "rarely
   // changes, not worth refetching on every poll tick" reasoning as any
   // other real, admin-editable dictionary in this app.
   const [colorNames, setColorNames] = useState<Record<string, string>>({});
 
   useEffect(() => {
-    mockCassetteColorService.getAll().then(res => {
+    cassetteColorService.getAll().then(res => {
       if (res.ok) setColorNames(Object.fromEntries(res.data.map(c => [c.key, c.displayName])));
     });
   }, []);
@@ -120,11 +120,9 @@ const EngraverMonitorPage: React.FC = () => {
 
           <div className="ps-engraver-status-summary">
             {(['online', 'engraving', 'warning', 'fault', 'offline'] as EngraverStatus[]).map(status => (
-              <div key={status} className="ps-engraver-status-tile" style={{
-                background: `${STATUS_COLOR[status]}14`, border: `1px solid ${STATUS_COLOR[status]}2e`,
-              }}>
+              <div key={status} className="ps-engraver-status-tile" style={{ '--ps-hue': STATUS_COLOR[status] } as React.CSSProperties}>
                 <div className="ps-engraver-status-tile-label">{t(STATUS_LABEL_KEY[status])}</div>
-                <div className="ps-engraver-status-tile-count" style={{ color: STATUS_COLOR[status] }}>{counts[status]}</div>
+                <div className="ps-engraver-status-tile-count">{counts[status]}</div>
               </div>
             ))}
           </div>
@@ -143,18 +141,14 @@ const EngraverMonitorPage: React.FC = () => {
           ) : (
             <div className="ps-engraver-device-grid">
               {devices.map(device => (
-                <div key={device.deviceId} className="ps-engraver-device-card" style={{
-                  borderLeft: `3px solid ${STATUS_COLOR[device.status]}`,
-                }}>
+                <div key={device.deviceId} className="ps-engraver-device-card" style={{ '--ps-hue': STATUS_COLOR[device.status] } as React.CSSProperties}>
                   <div className="ps-engraver-device-card-header">
                     <div>
                       <div className="ps-engraver-device-name">{device.deviceName ?? device.deviceId}</div>
                       <div className="ps-engraver-device-id">{device.deviceId}</div>
                       {device.locationLabel && <div className="ps-engraver-device-id">{device.locationLabel}</div>}
                     </div>
-                    <span className="ps-batch-row-status" style={{
-                      background: `${STATUS_COLOR[device.status]}22`, color: STATUS_COLOR[device.status],
-                    }}>
+                    <span className="ps-batch-row-status ps-batch-row-status--hued">
                       {t(STATUS_LABEL_KEY[device.status])}
                     </span>
                   </div>

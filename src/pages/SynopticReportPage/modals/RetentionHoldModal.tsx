@@ -30,13 +30,26 @@
 // the literal-English source of truth for the type itself and isn't
 // modified. `accession`/`activeHold.note`/`.setByUserName`/
 // `h.releaseNote`/`.releasedByUserName` are all real case/hold data.
+//
+// Batch 381 (PS-359): placing and releasing go through
+// services/cases/caseHolds.ts, which checks the note (Field Requirements,
+// locked), the capability (case:retention-hold:place / :release, seeded to
+// every role that could do this before) and the case's current holds, then
+// saves and audits. The buttons can also be said ("place hold" /
+// "release hold", HOLD_PLACE / HOLD_RELEASE).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
 import { caseRouter } from '@/services/cases/CaseRouter';
+import { authorizationService, auditService, actionRegistryService } from '@/services';
+import { placeHold, releaseHold } from '@/services/cases/caseHolds';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { formatDateTime } from '@/utils/formatDate';
 import type { RetentionHold, RetentionHoldReason } from '@/types/case/RetentionHold';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
 
 const REASON_LABEL_KEY: Record<RetentionHoldReason, string> = {
   patient_requested_retention: 'retentionHoldModal.reason.patientRequestedRetention',
@@ -51,19 +64,17 @@ interface RetentionHoldModalProps {
   retentionHolds: RetentionHold[];
   currentUserId: string;
   currentUserName: string;
-  onUpdated: (retentionHolds: RetentionHold[]) => void;
+  onUpdated: (retentionHolds: RetentionHold[], version?: number) => void;
   onClose: () => void;
 }
 
-function formatTimestamp(iso: string): string {
-  try { return new Date(iso).toLocaleString(undefined, { dateStyle: 'medium', timeStyle: 'short' }); }
-  catch { return iso; }
-}
 
 export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
   caseId, accession, retentionHolds, currentUserId, currentUserName, onUpdated, onClose,
 }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const requirements = useFieldRequirements('report');
+  const formatTimestamp = (iso: string) => formatDateTime(iso, i18n.language);
   const activeHold = retentionHolds.find(h => h.active);
   const pastHolds = retentionHolds.filter(h => !h.active).sort((a, b) => b.setAt.localeCompare(a.setAt));
 
@@ -72,35 +83,42 @@ export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
   const [releaseNote, setReleaseNote] = useState('');
   const [busy, setBusy] = useState(false);
 
-  const placeHold = async () => {
-    if (!note.trim()) return;
+  const [refusal, setRefusal] = useState<string | null>(null);
+  const deps = {
+    authorization: authorizationService,
+    getCase: (id: string) => caseRouter.getCase(id),
+    updateCase: (id: string, patch: Parameters<typeof caseRouter.updateCase>[1], version?: number) => caseRouter.updateCase(id, patch, version),
+    audit: auditService.logEvent.bind(auditService),
+  };
+  const actor = { id: currentUserId, name: currentUserName };
+
+  const onPlace = async () => {
+    if (busy || !note.trim()) return;
     setBusy(true);
-    const newHold: RetentionHold = {
-      id: `hold-${Date.now()}`,
-      reason, note: note.trim(),
-      setAt: new Date().toISOString(),
-      setByUserId: currentUserId, setByUserName: currentUserName,
-      active: true,
-    };
-    const updated = [...retentionHolds, newHold];
-    await caseRouter.updateCase(caseId, { retentionHolds: updated });
+    const r = await placeHold('retention', caseId, { reason, note }, actor, requirements, deps);
     setBusy(false);
-    onUpdated(updated);
+    if (r.ok === false) { setRefusal(r.reason); return; }
+    setRefusal(null);
+    onUpdated(r.holds, r.version);
   };
 
-  const releaseHold = async () => {
-    if (!activeHold || !releaseNote.trim()) return;
+  const onRelease = async () => {
+    if (busy || !activeHold || !releaseNote.trim()) return;
     setBusy(true);
-    const updated = retentionHolds.map(h => h.id === activeHold.id ? {
-      ...h, active: false,
-      releasedAt: new Date().toISOString(),
-      releasedByUserId: currentUserId, releasedByUserName: currentUserName,
-      releaseNote: releaseNote.trim(),
-    } : h);
-    await caseRouter.updateCase(caseId, { retentionHolds: updated });
+    const r = await releaseHold('retention', caseId, { releaseNote }, actor, requirements, deps);
     setBusy(false);
-    onUpdated(updated);
+    if (r.ok === false) { setRefusal(r.reason); return; }
+    setRefusal(null);
+    onUpdated(r.holds, r.version);
   };
+
+  // Voice/keyboard "place hold" / "release hold": the same buttons, with the same checks.
+  const actRef = useRef<(actionId: string) => void>(() => {});
+  actRef.current = (actionId: string) => {
+    if (actionId === 'HOLD_PLACE' && !activeHold) void onPlace();
+    if (actionId === 'HOLD_RELEASE' && activeHold) void onRelease();
+  };
+  useEffect(() => actionRegistryService.onAction((actionId: string) => actRef.current(actionId)), []);
 
   return (
     <div className="ps-ms-overlay">
@@ -128,7 +146,7 @@ export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
               </div>
               <div className="ps-conf-form-field">
                 <label className="ps-conf-label">{t('retentionHoldModal.releaseNoteLabel')}</label>
-                <textarea
+                <SpellCheckedTextarea
                   className="ps-conf-input ps-conf-textarea"
                   value={releaseNote}
                   onChange={e => setReleaseNote(e.target.value)}
@@ -149,7 +167,7 @@ export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
               </div>
               <div className="ps-conf-form-field">
                 <label className="ps-conf-label">{t('retentionHoldModal.noteLabel')}</label>
-                <textarea
+                <SpellCheckedTextarea
                   className="ps-conf-input ps-conf-textarea"
                   value={note}
                   onChange={e => setNote(e.target.value)}
@@ -158,6 +176,8 @@ export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
               </div>
             </>
           )}
+
+          {refusal && <p className="ps-field-still-required" role="alert">{t(`holdRefusals.${refusal}`)}</p>}
 
           {pastHolds.length > 0 && (
             <>
@@ -179,13 +199,13 @@ export const RetentionHoldModal: React.FC<RetentionHoldModalProps> = ({
         <div className="ps-ms-footer">
           <button className="ps-btn-secondary" onClick={onClose} disabled={busy}>{t('common.close')}</button>
           {activeHold ? (
-            <button className="ps-ms-btn-apply" onClick={releaseHold} disabled={busy || !releaseNote.trim()}>
+            <CapabilityButton capability="case:retention-hold:release" context={{ caseId }} className="ps-ms-btn-apply" onClick={() => { void onRelease(); }} disabled={busy || !releaseNote.trim()}>
               {t('retentionHoldModal.releaseHoldButton')}
-            </button>
+            </CapabilityButton>
           ) : (
-            <button className="ps-ms-btn-apply" onClick={placeHold} disabled={busy || !note.trim()}>
+            <CapabilityButton capability="case:retention-hold:place" context={{ caseId }} className="ps-ms-btn-apply" onClick={() => { void onPlace(); }} disabled={busy || !note.trim()}>
               {t('retentionHoldModal.placeHoldButton')}
-            </button>
+            </CapabilityButton>
           )}
         </div>
       </div>

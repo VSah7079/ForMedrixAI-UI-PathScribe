@@ -182,7 +182,7 @@ const SurgicalQaWorklistPage: React.FC = () => {
       <div className="ps-qcqueue-list">
         {rows.map((row, i) => (
           <div key={`${row.kind}-${row.caseId}-${row.specimenId}-${i}`} className="ps-qcqueue-row">
-            <div className="ps-qcqueue-row-patient">
+            <div className="ps-qcqueue-row-patient" data-phi="true">
               {resolvePatientFullDisplayName(row.caseData.patient) ?? row.caseData.id}
               <span className="ps-qcqueue-row-accession" data-phi="accession">{row.caseData.accession?.accessionNumber}</span>
             </div>

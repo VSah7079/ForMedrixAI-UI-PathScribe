@@ -357,3 +357,130 @@ export function computeWeeklyDaily(
   }
   return days;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Quality Flags (top-3, per-pathologist)
+//
+// Real fix, found by this app's own inline-CSS/business-logic sweep:
+// ContributionDashboardPage.tsx's "Quality Flags" widget — real, unresolved
+// deficiencies and high/medium-severity Frozen/Final discordances for the
+// CURRENT pathologist, scored and sliced to the top 3 — used to be computed
+// directly inline in a useEffect, with no backing resolver and no tests,
+// unlike this same directory's sibling QA pages (CytologyQcQueuePage.tsx,
+// SurgicalQaWorklistPage.tsx), which already delegate equivalent logic to
+// resolve*.ts functions.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export type QualityFlagSeverity = 'low' | 'medium' | 'high';
+
+export interface QualityFlagCandidate {
+  id: string;
+  kind: 'deficiency' | 'discordance';
+  caseId: string;
+  value: string;
+  /** Undefined only reaches here for a discordant activity record with
+   *  no severity captured — real, per QaActivityRecord.ts's own doc,
+   *  severity is only ever absent when outcome !== 'discordant', so a
+   *  discordant record with no severity shouldn't occur in practice;
+   *  preserved as a possibility here rather than silently defaulted,
+   *  matching this widget's pre-existing behavior exactly. */
+  severity: QualityFlagSeverity | undefined;
+}
+
+export interface DeficiencyForQualityFlags {
+  id: string;
+  caseId: string;
+  status: 'open' | 'pending-verification' | 'closed';
+  deficiencyTypeId: string;
+  specimenLabel?: string;
+  verificationDueDate?: string;
+  reopenCount?: number;
+  raisedAt: string;
+}
+
+export interface DiscordanceRecordForQualityFlags {
+  id: string;
+  caseId: string;
+  activityTypeId: string;
+  outcome: string;
+  severity?: QualityFlagSeverity;
+  caseType: string;
+  recordedBy?: { userId: string };
+  recordedAt: string;
+}
+
+export interface CaseForQualityFlagsScoping {
+  id: string;
+  order?: { assignedTo?: string };
+}
+
+/** Real, deliberate severity derivation — SpecimenDeficiency has no real
+ *  `severity` field anywhere (checked directly), so this is derived from
+ *  real, existing signals rather than invented: overdue
+ *  pending-verification, or anything reopened at least once, reads as
+ *  high; a fresh open item as medium; anything else shown (non-overdue
+ *  pending-verification) as low. */
+function deficiencySeverity(d: DeficiencyForQualityFlags, now: number): QualityFlagSeverity {
+  const isOverdue = !!d.verificationDueDate && new Date(d.verificationDueDate).getTime() < now;
+  if (isOverdue || (d.reopenCount ?? 0) > 0) return 'high';
+  if (d.status === 'open') return 'medium';
+  return 'low';
+}
+
+/**
+ * The real "top 3 Quality Flags for this pathologist" selection: open/
+ * pending-verification deficiencies on the pathologist's OWN cases (cross-
+ * referenced via each case's real `order.assignedTo`, never
+ * SpecimenDeficiency.raisedBy — often a tech/accessioner flagging the
+ * issue, not the case's owning pathologist, the wrong signal for "is this
+ * MY quality issue"), plus this pathologist's own high/medium-severity
+ * Frozen/Final discordances (low-severity, Tier-1-no-clinical-impact
+ * discordances deliberately excluded — not the kind of thing that belongs
+ * in a short, urgent flag list). Both pools are scored (overdue/reopened
+ * deficiencies and high-severity discordances score highest), merged,
+ * sorted by score then recency, and sliced to the top `limit` (default 3).
+ */
+export function computeTopQualityFlags(
+  deficiencies: DeficiencyForQualityFlags[],
+  deficiencyTypeNameById: Record<string, string>,
+  discordanceRecords: DiscordanceRecordForQualityFlags[],
+  frozenFinalActivityTypeId: string,
+  cases: CaseForQualityFlagsScoping[],
+  userId: string,
+  limit = 3,
+  now: number = Date.now(),
+): QualityFlagCandidate[] {
+  const myCaseIds = new Set(cases.filter(c => c.order?.assignedTo === userId).map(c => c.id));
+
+  const deficiencyFlags = deficiencies
+    .filter(d => d.status !== 'closed' && myCaseIds.has(d.caseId))
+    .map(d => {
+      const severity = deficiencySeverity(d, now);
+      return {
+        id: d.id,
+        kind: 'deficiency' as const,
+        caseId: d.caseId,
+        value: `${deficiencyTypeNameById[d.deficiencyTypeId] ?? d.deficiencyTypeId}${d.specimenLabel ? ` — Specimen ${d.specimenLabel}` : ' — case-level'}`,
+        severity,
+        sortKey: d.raisedAt,
+        score: severity === 'high' ? 2 : severity === 'medium' ? 1 : 0,
+      };
+    });
+
+  const discordanceFlags = discordanceRecords
+    .filter(d => d.activityTypeId === frozenFinalActivityTypeId && d.outcome === 'discordant' && d.severity !== 'low' && d.recordedBy?.userId === userId)
+    .map(d => ({
+      id: d.id,
+      kind: 'discordance' as const,
+      caseId: d.caseId,
+      value: `Frozen/Final discordance — ${d.caseType}`,
+      severity: d.severity,
+      sortKey: d.recordedAt,
+      score: d.severity === 'high' ? 2 : 1,
+    }));
+
+  return [...deficiencyFlags, ...discordanceFlags]
+    .sort((a, b) => b.score - a.score || b.sortKey.localeCompare(a.sortKey))
+    .slice(0, limit)
+    .map(({ sortKey: _sortKey, score: _score, ...flag }) => flag);
+}

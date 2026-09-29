@@ -27,7 +27,9 @@
 import React, { useState, useEffect } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
 import '../../../pathscribe.css';
-import { mockGoverningBodyService } from '@/services/governingBodies/mockGoverningBodyService';
+import { governingBodyService, authorizationService } from '@/services';
+import { saveGoverningBodies } from '@/services/governingBodies/governingBodyAdministration';
+import { useCapabilities } from '@/hooks/useCapabilities';
 import type { GoverningBody, RetentionPolicyVersion } from '@/services/governingBodies/IGoverningBodyService';
 import type { RetainableMaterialType } from '@/services/retentionPolicy/RetentionPolicy';
 import { MATERIAL_TYPE_LABEL, formatRetentionPeriod } from '@/services/retentionPolicy/RetentionPolicy';
@@ -506,8 +508,12 @@ const BodyRow: React.FC<{
 
 // ── Main ──────────────────────────────────────────────────────────────────────
 
-const GoverningBodiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperAdmin = false }) => {
+// Batch 371: editing is for ForMedrixAI platform support only
+// (platform:governing-bodies:manage, held only by Superadmin). Everyone
+// else sees the settings read-only; the save service checks again.
+const GoverningBodiesSection: React.FC = () => {
   const { t } = useTranslation();
+  const isSuperAdmin = useCapabilities().has('platform:governing-bodies:manage');
   const [bodies,     setBodies]     = useState<GoverningBody[]>([]);
   const [showAdd,    setShowAdd]    = useState(false);
   const [editTarget, setEditTarget] = useState<GoverningBody | null>(null);
@@ -520,7 +526,7 @@ const GoverningBodiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperA
   // separate, duplicated DEFAULT_BODIES constant — see this file's
   // own header for why that's gone now).
   useEffect(() => {
-    mockGoverningBodyService.getAll().then(setBodies).catch(() => {});
+    governingBodyService.getAll().then(setBodies).catch(() => {});
   }, []);
 
   const updateBody = (id: string, patch: Partial<GoverningBody>) => { setBodies(p => p.map(b => b.id === id ? { ...b, ...patch } : b)); setHasChanges(true); };
@@ -539,7 +545,8 @@ const GoverningBodiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperA
   const handleSave = async () => {
     setSaveError(null);
     try {
-      await mockGoverningBodyService.saveAll(bodies);
+      const res = await saveGoverningBodies(bodies, { authorization: authorizationService, service: governingBodyService });
+      if (res.ok === false) { setSaveError(t('governingBodiesSection.superAdminRequired')); return; }
       setHasChanges(false);
     } catch (e) {
       setSaveError(e instanceof Error ? e.message : t('governingBodiesSection.saveFailedDefault'));

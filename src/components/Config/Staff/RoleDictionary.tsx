@@ -1,23 +1,32 @@
 // src/components/Config/Staff/RoleDictionary.tsx
-// Two-panel layout: category groups left, permissions/facilities/cheat-sheet right
+// Two-panel layout: category groups left, capabilities/commands/participation/cheat-sheet right
+// PS-356 (Batch 370): saving goes through services/roles/roleAdministration.ts
+// (config:roles:manage). The role-level Pediatric Access switch and Facility
+// Access tab are gone: they were never enforced. Pediatric and orchestration
+// access, and facility scope, are set on the staff record.
 
 import React, { useState, useEffect, useMemo } from 'react';
 import { useTranslation, Trans } from 'react-i18next';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
+import { saveRole } from '@/services/roles/roleAdministration';
 import '../../../pathscribe.css';
 import {
   ACTION_GROUPS, DEFAULT_ROLE_PERMISSIONS,
   ActionId, PermissionSet,
 } from '../../../constants/systemActions';
-import { mockActionRegistryService } from '../../../services/actionRegistry/mockActionRegistryService';
-import { mockParticipationTypeService } from '../../../services/participationTypes/mockParticipationTypeService';
 import type { ParticipationTypeRecord } from '../../../services/participationTypes/IParticipationTypeService';
-import { roleService, auditService, facilityService } from '../../../services';
+import { roleService, auditService, authorizationService, actionRegistryService, participationTypeService, ALL_CAPABILITY_KEYS } from '../../../services';
+import { isPlatformOnly } from '@/services/authorization/capabilityCatalog';
+import { useAuth } from '../../../contexts/AuthContext';
+import { duplicateRole } from '@/services/duplication/duplicateEntities';
+import { TriCheckbox, DivCheckbox, type TriState } from './roleDictionaryControls';
+import { RoleCapabilitiesTab } from './RoleCapabilitiesTab';
 
 // i18n note (batch 118): DEFAULT_ROLES' own name/description strings
 // are persisted seed data (written to roleService on first load, same
 // as protocolShared.tsx's PROTOCOL_REGISTRY), and ACTION_GROUPS'
 // title/label/description fields (and everything sourced from
-// mockActionRegistryService — action label/description/shortcut/
+// actionRegistryService — action label/description/shortcut/
 // voiceTriggers/internalKey/id/requiredRole) are configured/catalog
 // data imported from outside this file, not chrome authored here —
 // both stay untranslated, same posture as VOICE_PROFILES in batch 117.
@@ -42,11 +51,14 @@ export interface Role {
   description: string;
   color: string;
   caseAccess: boolean;
-  canViewPediatric: boolean;
   configAccess: boolean;
   permissions: PermissionSet;
+  /** PS-355: catalog capabilities (services/authorization/). Enforced. */
+  capabilities?: string[];
+  seededCapabilities?: string[];
+  /** false: can't be given to staff (Superadmin). */
+  assignable?: boolean;
   builtIn: boolean;
-  facilityIds?: string[];
   participationTypeIds: string[];
 }
 
@@ -58,24 +70,15 @@ const DEFAULT_PARTICIPATION: Record<string, string[]> = {
 };
 
 export const DEFAULT_ROLES: Role[] = [
-  { id: 'pathologist', name: 'Pathologist', description: 'Licensed pathologist with full clinical case access and sign-out authority.',   color: '#8AB4F8', caseAccess: true,  configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Pathologist'], canViewPediatric: false, builtIn: true, participationTypeIds: DEFAULT_PARTICIPATION['pathologist'] },
-  { id: 'resident',    name: 'Resident',    description: 'Pathology resident with case access and co-sign capability.',                    color: '#81C995', caseAccess: true,  configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Resident'],    canViewPediatric: false, builtIn: true, participationTypeIds: DEFAULT_PARTICIPATION['resident']    },
-  { id: 'admin',       name: 'Admin',       description: 'System administrator with configuration access but no clinical case access.',    color: '#FDD663', caseAccess: false, configAccess: true,  permissions: DEFAULT_ROLE_PERMISSIONS['Admin'],        canViewPediatric: false, builtIn: true, participationTypeIds: []                                    },
-  { id: 'physician',   name: 'Physician',   description: 'External ordering physician. Directory only — no app access.',                   color: '#C084FC', caseAccess: false, configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Physician'],    canViewPediatric: false, builtIn: true, participationTypeIds: []                                    },
+  { id: 'pathologist', name: 'Pathologist', description: 'Licensed pathologist with full clinical case access and sign-out authority.',   color: '#8AB4F8', caseAccess: true,  configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Pathologist'], builtIn: true, participationTypeIds: DEFAULT_PARTICIPATION['pathologist'] },
+  { id: 'resident',    name: 'Resident',    description: 'Pathology resident with case access and co-sign capability.',                    color: '#81C995', caseAccess: true,  configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Resident'],    builtIn: true, participationTypeIds: DEFAULT_PARTICIPATION['resident']    },
+  { id: 'admin',       name: 'Admin',       description: 'System administrator with configuration access but no clinical case access.',    color: '#FDD663', caseAccess: false, configAccess: true,  permissions: DEFAULT_ROLE_PERMISSIONS['Admin'],        builtIn: true, participationTypeIds: []                                    },
+  { id: 'physician',   name: 'Physician',   description: 'External ordering physician. Directory only — no app access.',                   color: '#C084FC', caseAccess: false, configAccess: false, permissions: DEFAULT_ROLE_PERMISSIONS['Physician'],    builtIn: true, participationTypeIds: []                                    },
 ];
 
-// Real fix: this used to be a hardcoded, fictional list of 5 facilities
-// (client_hosp_001..004, client_lab_001) completely disconnected from
-// PathScribe's real, live facility roster (services/clients/). A real,
-// meaningful bug: this tab exists to restrict which real hospital
-// facilities a role can access - with a fake list, an admin could never
-// actually restrict a role to a genuinely real client, and the
-// facilityId stored would match nothing real in the live system. See
-// the real, live fetch below (facilities state + effect).
 
 // ─── Helpers ──────────────────────────────────────────────────────────────────
 
-type TriState = 'all' | 'some' | 'none';
 
 function groupTriState(groupIds: ActionId[], permissions: PermissionSet): TriState {
   const granted = groupIds.filter(id => permissions[id]).length;
@@ -84,36 +87,22 @@ function groupTriState(groupIds: ActionId[], permissions: PermissionSet): TriSta
   return 'some';
 }
 
-// ─── TriCheckbox ──────────────────────────────────────────────────────────────
+/** The only per-instance values that cross into markup are custom properties:
+ *  a role's own colour (--ps-hue) and a bar's fill percentage (--rd-pct).
+ *  Tints and borders are derived in pathscribe.css with color-mix(). */
+/** Batch 371: capabilities a hospital role can hold (platform ones excluded). */
+const HOSPITAL_CAPABILITY_COUNT = ALL_CAPABILITY_KEYS.filter(k => !isPlatformOnly(k)).length;
 
-const TriCheckbox: React.FC<{ state: TriState; onClick: (e: React.MouseEvent) => void; size?: number }> = ({ state, onClick, size = 16 }) => (
-  <div
-    onClick={onClick}
-    className={`ps-rd-cb ps-rd-tri-${state}`}
-    style={{ width: size, height: size }}
-  >
-    {state === 'all'  && <span className="ps-rd-tri-check" style={{ fontSize: size * 0.6 }}>✓</span>}
-    {state === 'some' && <span className="ps-rd-tri-dash"  style={{ fontSize: size * 0.75 }}>—</span>}
-  </div>
-);
-
-// ─── DivCheckbox (div-based custom checkbox for interactive lists) ─────────────
-
-const DivCheckbox: React.FC<{ checked: boolean; size?: number; variant?: 'blue' | 'green' }> = ({ checked, size = 18, variant = 'blue' }) => (
-  <div
-    className={`ps-rd-cb ${checked ? (variant === 'green' ? 'ps-rd-cb--on-green' : 'ps-rd-cb--on-blue') : 'ps-rd-cb--off'}`}
-    style={{ width: size, height: size }}
-  >
-    {checked && <span className="ps-rd-tri-check" style={{ fontSize: size * 0.55 }}>✓</span>}
-  </div>
-);
+const hueVar = (color: string) => ({ '--ps-hue': color } as React.CSSProperties);
+const pctVar = (pct: number, color?: string) => ({ '--rd-pct': `${pct}%`, ...(color ? { '--ps-hue': color } : {}) } as React.CSSProperties);
 
 // ─── RoleModal ────────────────────────────────────────────────────────────────
 
 const RoleModal: React.FC<{
   mode: 'add' | 'edit';
   role?: Role;
-  onSave: (draft: Omit<Role, 'id'>) => void;
+  /** Resolves with a locale key to show when the save was refused, or null. */
+  onSave: (draft: Omit<Role, 'id'>) => Promise<string | null>;
   onClose: () => void;
 }> = ({ mode, role, onSave, onClose }) => {
   const { t } = useTranslation();
@@ -122,15 +111,21 @@ const RoleModal: React.FC<{
     description:          role?.description ?? '',
     color:                role?.color ?? '#8AB4F8',
     caseAccess:           role?.caseAccess ?? false,
-    canViewPediatric:     (role as any)?.canViewPediatric ?? false,
     configAccess:         role?.configAccess ?? false,
     permissions:          role?.permissions ?? {},
+    capabilities:         role?.capabilities ?? [],
     builtIn:              role?.builtIn ?? false,
-    facilityIds:          role?.facilityIds ?? [],
     participationTypeIds: role?.participationTypeIds ?? [],
   });
+  // Batch 371 (Pete): a hospital has no control over Superadmin. A role
+  // staff can't be given (Superadmin) opens read-only: nothing here changes
+  // it, and the role service refuses a save as well.
+  const readOnly = mode === 'edit' && role?.assignable === false;
+  const edit = (fn: React.SetStateAction<Omit<Role, 'id'>>) => { if (!readOnly) setDraft(fn); };
 
-  const [activeTab,       setActiveTab]       = useState<'permissions' | 'facilities' | 'participation' | 'cheatsheet'>('permissions');
+  // PS-355: Capabilities (enforced) open first; Commands are voice/keyboard.
+  const [activeTab,       setActiveTab]       = useState<'capabilities' | 'permissions' | 'participation' | 'cheatsheet'>('capabilities');
+  const [saveError, setSaveError] = useState<string | null>(null);
   const [selectedGroupId, setSelectedGroupId] = useState<string>(ACTION_GROUPS[0].id);
   const [search,          setSearch]          = useState('');
   const [cheatSearch,     setCheatSearch]     = useState('');
@@ -139,18 +134,10 @@ const RoleModal: React.FC<{
   // same one CaseTeamModal actually uses.
   const [participationTypes, setParticipationTypes] = useState<ParticipationTypeRecord[]>([]);
   useEffect(() => {
-    mockParticipationTypeService.getActive().then(res => { if (res.ok) setParticipationTypes(res.data); });
+    participationTypeService.getActive().then(res => { if (res.ok) setParticipationTypes(res.data); });
   }, []);
 
-  // Real fix: same "disconnected local list" bug pattern already fixed
-  // for participationTypes above, found in the same component - the
-  // real, live client roster, not a hardcoded, fictional one.
-  const [facilities, setFacilities] = useState<{ id: string; name: string }[]>([]);
-  useEffect(() => {
-    facilityService.getAll().then(res => { if (res.ok) setFacilities(res.data); });
-  }, []);
 
-  const allFacilities  = !draft.facilityIds || draft.facilityIds.length === 0;
   const selectedGroup  = ACTION_GROUPS.find(g => g.id === selectedGroupId) ?? ACTION_GROUPS[0];
   const groupIds       = selectedGroup.actions.map(a => a.id);
   const groupState     = groupTriState(groupIds, draft.permissions);
@@ -164,10 +151,10 @@ const RoleModal: React.FC<{
     : selectedGroup.actions;
 
   // Real, per direct follow-up ("Make the cheat sheet also show real
-  // voice triggers/shortcuts from mockActionRegistryService" / "should
+  // voice triggers/shortcuts from actionRegistryService" / "should
   // focus on worklist and synoptic report page commands"): this used
   // to source purely from ACTION_GROUPS — a completely separate
-  // catalog from mockActionRegistryService's own real, live voice/
+  // catalog from actionRegistryService's own real, live voice/
   // keyboard dispatch data (confirmed directly: different id scheme,
   // no voiceTriggers field at all on ACTION_GROUPS items, and only a
   // small fraction of ACTION_GROUPS entries even have a matching real
@@ -189,7 +176,7 @@ const RoleModal: React.FC<{
       permissionIdByInternalKey[a.internalKey] = a.id;
     }));
 
-    const all = mockActionRegistryService.getActions()
+    const all = actionRegistryService.getActions()
       .filter(a => a.category === 'WORKLIST' || a.category === 'SYNOPTIC')
       .map(a => ({
         ...a,
@@ -213,23 +200,17 @@ const RoleModal: React.FC<{
     const newVal = groupState !== 'all';
     const next = { ...draft.permissions };
     groupIds.forEach(id => { next[id] = newVal; });
-    setDraft(d => ({ ...d, permissions: next }));
+    edit(d => ({ ...d, permissions: next }));
   };
 
   const toggleAction = (id: ActionId) =>
-    setDraft(d => ({ ...d, permissions: { ...d.permissions, [id]: !d.permissions[id] } }));
+    edit(d => ({ ...d, permissions: { ...d.permissions, [id]: !d.permissions[id] } }));
 
-  const toggleFacility = (facilityId: string) => {
-    const current = draft.facilityIds ?? [];
-    const next = current.includes(facilityId)
-      ? current.filter(c => c !== facilityId)
-      : [...current, facilityId];
-    setDraft(d => ({ ...d, facilityIds: next }));
-  };
 
+  const capCount = draft.capabilities?.length ?? 0;
   const TABS = [
+    { id: 'capabilities',  label: t('roleDictionary.tabs.capabilities', { count: capCount }) },
     { id: 'permissions',   label: t('roleDictionary.tabs.permissions', { count: permCount }) },
-    { id: 'facilities',    label: t('roleDictionary.tabs.facilityAccess', { value: allFacilities ? t('roleDictionary.tabs.allFacilitiesValue') : (draft.facilityIds?.length ?? 0) }) },
     { id: 'participation', label: t('roleDictionary.tabs.caseParticipation', { count: draft.participationTypeIds?.length ?? 0 }) },
     { id: 'cheatsheet',    label: t('roleDictionary.tabs.actionReference') },
   ] as const;
@@ -245,18 +226,20 @@ const RoleModal: React.FC<{
             <div className="ps-rd-modal-name-row">
               <input
                 value={draft.name}
-                onChange={e => setDraft(d => ({ ...d, name: e.target.value }))}
+                onChange={e => edit(d => ({ ...d, name: e.target.value }))}
                 placeholder={t('roleDictionary.modal.roleNamePlaceholder')}
                 className="ps-conf-input ps-rd-modal-name-input"
+                readOnly={readOnly}
               />
               <input
                 type="color"
                 value={draft.color}
-                onChange={e => setDraft(d => ({ ...d, color: e.target.value }))}
+                onChange={e => edit(d => ({ ...d, color: e.target.value }))}
                 className="ps-rd-color-picker"
+                disabled={readOnly}
                 title={t('roleDictionary.modal.badgeColorTitle')}
               />
-              <span className="ps-rd-role-badge" style={{ background: draft.color + '22', color: draft.color, border: `1px solid ${draft.color}44` }}>
+              <span className="ps-rd-role-badge" style={hueVar(draft.color)}>
                 {draft.name || t('roleDictionary.modal.previewFallback')}
               </span>
               <span className="ps-rd-perm-badge">{t('roleDictionary.modal.actionsGranted', { granted: permCount, total: totalActions })}</span>
@@ -265,31 +248,28 @@ const RoleModal: React.FC<{
           <button onClick={onClose} className="ps-rd-close-btn">×</button>
         </div>
 
+        {readOnly && <div className="ps-rd-platform-banner" role="note">{t('roleDictionary.platformRole.banner')}</div>}
+
         {/* Description + access toggles */}
         <div className="ps-rd-desc-row">
           <input
             value={draft.description}
-            onChange={e => setDraft(d => ({ ...d, description: e.target.value }))}
+            onChange={e => edit(d => ({ ...d, description: e.target.value }))}
             placeholder={t('roleDictionary.modal.roleDescriptionPlaceholder')}
             className="ps-conf-input ps-rd-desc-input"
+            readOnly={readOnly}
           />
           <label className="ps-rd-access-label">
             <input type="checkbox" checked={draft.caseAccess}
-              onChange={e => setDraft(d => ({ ...d, caseAccess: e.target.checked }))}
-              className="ps-rd-checkbox" />
+              onChange={e => edit(d => ({ ...d, caseAccess: e.target.checked }))}
+              className="ps-rd-checkbox" disabled={readOnly} />
             <span>{t('roleDictionary.modal.caseAccess')}</span>
           </label>
           <label className="ps-rd-access-label">
             <input type="checkbox" checked={draft.configAccess}
-              onChange={e => setDraft(d => ({ ...d, configAccess: e.target.checked }))}
-              className="ps-rd-checkbox" />
+              onChange={e => edit(d => ({ ...d, configAccess: e.target.checked }))}
+              className="ps-rd-checkbox" disabled={readOnly} />
             <span>{t('roleDictionary.modal.configAccess')}</span>
-          </label>
-          <label className="ps-rd-access-label">
-            <input type="checkbox" checked={(draft as any).canViewPediatric ?? false}
-              onChange={e => setDraft(d => ({ ...d, canViewPediatric: e.target.checked } as any))}
-              className="ps-rd-checkbox ps-rd-checkbox--peds" />
-            <span>{t('roleDictionary.modal.pediatricAccess')}</span>
           </label>
         </div>
 
@@ -306,7 +286,17 @@ const RoleModal: React.FC<{
         {/* Body */}
         <div className="ps-rd-body">
 
-          {/* ── PERMISSIONS TAB ── */}
+          {/* ── CAPABILITIES TAB (PS-355) ── */}
+          {activeTab === 'capabilities' && (
+            <RoleCapabilitiesTab
+              granted={draft.capabilities ?? []}
+              onChange={next => edit(d => ({ ...d, capabilities: next }))}
+              readOnly={readOnly}
+              includePlatform={readOnly}
+            />
+          )}
+
+          {/* ── COMMANDS TAB (voice/keyboard; not access control) ── */}
           {activeTab === 'permissions' && (
             <>
               {/* Left — category list */}
@@ -327,7 +317,7 @@ const RoleModal: React.FC<{
                       </span>
                       <div className="ps-rd-cat-bar-bg">
                         <div className={`ps-rd-cat-bar-fill ps-rd-cat-bar-fill--${ts === 'none' ? 'some' : ts}`}
-                          style={{ width: `${Math.round(granted / gIds.length * 100)}%` }} />
+                          style={pctVar(Math.round(granted / gIds.length * 100))} />
                       </div>
                     </div>
                   );
@@ -336,6 +326,7 @@ const RoleModal: React.FC<{
 
               {/* Right — action list */}
               <div className="ps-rd-action-panel">
+                <p className="ps-rd-cap-intro">{t('roleDictionary.permissions.commandsNote')}</p>
                 <div className="ps-rd-action-header">
                   <TriCheckbox state={groupState} onClick={toggleGroupAll} size={18} />
                   <span className="ps-rd-action-group-title">{selectedGroup.title}</span>
@@ -374,51 +365,11 @@ const RoleModal: React.FC<{
             </>
           )}
 
-          {/* ── CLIENT ACCESS TAB ── */}
-          {activeTab === 'facilities' && (
-            <div className="ps-rd-clients-tab">
-              <p className="ps-rd-clients-intro">
-                <Trans i18nKey="roleDictionary.facilities.intro" components={{ strong: <strong /> }} />
-              </p>
-              <div onClick={() => setDraft(d => ({ ...d, facilityIds: allFacilities ? (facilities[0] ? [facilities[0].id] : []) : [] }))}
-                className={`ps-rd-all-clients-row ${allFacilities ? 'ps-rd-all-clients-row--on' : 'ps-rd-all-clients-row--off'}`}>
-                <DivCheckbox checked={allFacilities} size={20} variant="green" />
-                <div>
-                  <div className={`ps-rd-all-clients-label ${allFacilities ? 'ps-rd-all-clients-label--on' : 'ps-rd-all-clients-label--off'}`}>{t('roleDictionary.facilities.allFacilities')}</div>
-                  <div className="ps-rd-all-clients-sub">{t('roleDictionary.facilities.allFacilitiesSub')}</div>
-                </div>
-              </div>
-              {!allFacilities && (
-                <div>
-                  <div className="ps-rd-clients-section-label">{t('roleDictionary.facilities.selectSpecific')}</div>
-                  {facilities.map(facility => {
-                    const selected = (draft.facilityIds ?? []).includes(facility.id);
-                    return (
-                      <div key={facility.id} onClick={() => toggleFacility(facility.id)}
-                        className={`ps-rd-client-item ${selected ? 'ps-rd-client-item--on' : 'ps-rd-client-item--off'}`}>
-                        <DivCheckbox checked={selected} size={18} />
-                        <div>
-                          <div className={`ps-rd-client-name ${selected ? 'ps-rd-client-name--on' : 'ps-rd-client-name--off'}`}>{facility.name}</div>
-                          <div className="ps-rd-client-id">{facility.id}</div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-              {!allFacilities && (draft.facilityIds ?? []).length === 0 && (
-                <div className="ps-rd-no-clients-warn">
-                  ⚠ {t('roleDictionary.facilities.noneSelectedWarn')}
-                </div>
-              )}
-            </div>
-          )}
-
           {/* ── CASE PARTICIPATION TAB ── */}
           {activeTab === 'participation' && (() => {
             const allTypes   = participationTypes;
             const selectedIds = draft.participationTypeIds ?? [];
-            const toggle = (id: string) => setDraft(d => ({
+            const toggle = (id: string) => edit(d => ({
               ...d,
               participationTypeIds: selectedIds.includes(id)
                 ? selectedIds.filter(x => x !== id)
@@ -454,7 +405,7 @@ const RoleModal: React.FC<{
                           className={`ps-rd-part-item ${selected ? 'ps-rd-part-item--on' : 'ps-rd-part-item--off'}`}>
                           <DivCheckbox checked={selected} size={18} />
                           <div className="ps-rd-part-abbr-pad">
-                            <span className="ps-rd-role-badge ps-rd-part-abbr-badge" style={{ background: pt.color + '22', color: pt.color, border: `1px solid ${pt.color}44` }}>
+                            <span className="ps-rd-role-badge ps-rd-part-abbr-badge" style={hueVar(pt.color)}>
                               {pt.abbreviation}
                             </span>
                           </div>
@@ -463,11 +414,7 @@ const RoleModal: React.FC<{
                             {pt.description && <div className="ps-rd-part-desc">{pt.description}</div>}
                             <div className="ps-rd-part-attrs">
                               {attrs.map(attr => (
-                                <span key={attr.label} className="ps-rd-part-attr" style={{
-                                  background: attr.value ? attr.onColor + '18' : 'rgba(255,255,255,0.04)',
-                                  color:      attr.value ? attr.onColor : '#4b5563',
-                                  border:     `1px solid ${attr.value ? attr.onColor + '33' : 'rgba(255,255,255,0.06)'}`,
-                                }}>
+                                <span key={attr.label} className={`ps-rd-part-attr ps-rd-part-attr--${attr.value ? 'on' : 'off'}`} style={attr.value ? hueVar(attr.onColor) : undefined}>
                                   {attr.value ? '✓' : '—'} {attr.label}
                                 </span>
                               ))}
@@ -493,7 +440,7 @@ const RoleModal: React.FC<{
                   placeholder={t('roleDictionary.cheatsheet.searchPlaceholder')}
                   className="ps-conf-input" />
                 <div className="ps-rd-cheat-count">
-                  {t('roleDictionary.cheatsheet.shownCount', { shown: cheatActions.length, total: mockActionRegistryService.getActions().filter(a => a.category === 'WORKLIST' || a.category === 'SYNOPTIC').length })}
+                  {t('roleDictionary.cheatsheet.shownCount', { shown: cheatActions.length, total: actionRegistryService.getActions().filter(a => a.category === 'WORKLIST' || a.category === 'SYNOPTIC').length })}
                 </div>
               </div>
               <div className="ps-rd-cheat-list">
@@ -551,13 +498,16 @@ const RoleModal: React.FC<{
         {/* Footer */}
         <div className="fm-footer">
           <span className="ps-rd-footer-meta">
-            {t('roleDictionary.footer.permissionsSummary', { count: permCount, facilities: allFacilities ? t('roleDictionary.footer.allFacilitiesShort') : t('roleDictionary.footer.facilityCount', { count: (draft.facilityIds ?? []).length }) })}
+            {t('roleDictionary.footer.permissionsSummary', { capabilities: capCount, count: permCount })}
           </span>
           <div className="ps-flex-row-gap-8">
-            <button className="fm-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
-            <button className={`fm-btn-apply ${!draft.name.trim() ? 'ps-rd-btn-apply--invalid' : ''}`} onClick={() => { if (!draft.name.trim()) return; onSave(draft); }}>
-              {mode === 'add' ? t('roleDictionary.modal.addRole') : t('roleDictionary.modal.saveChanges')}
-            </button>
+            <button className="fm-btn-cancel" onClick={onClose}>{readOnly ? t('common.close') : t('common.cancel')}</button>
+            {saveError && <span className="ps-st-error" role="alert">{t(saveError)}</span>}
+            {!readOnly && (
+              <CapabilityButton capability="config:roles:manage" className={`fm-btn-apply ${!draft.name.trim() ? 'ps-rd-btn-apply--invalid' : ''}`} onClick={() => { if (!draft.name.trim()) return; void onSave(draft).then(setSaveError); }}>
+                {mode === 'add' ? t('roleDictionary.modal.addRole') : t('roleDictionary.modal.saveChanges')}
+              </CapabilityButton>
+            )}
           </div>
         </div>
       </div>
@@ -569,6 +519,7 @@ const RoleModal: React.FC<{
 
 const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({ onRolesChange }) => {
   const { t } = useTranslation();
+  const { user } = useAuth();
   const [roles,   setRoles]   = useState<Role[]>(DEFAULT_ROLES);
   const [loading, setLoading] = useState(true);
   const [search,  setSearch]  = useState('');
@@ -579,7 +530,6 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
       if (res.ok) {
         const mapped = res.data.map(r => ({
           ...r,
-          canViewPediatric:     (r as any).canViewPediatric ?? false,
           participationTypeIds: r.participationTypeIds ?? [],
         })) as Role[];
         setRoles(mapped); onRolesChange?.(mapped);
@@ -597,49 +547,30 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
   const totalActions = ACTION_GROUPS.reduce((n, g) => n + g.actions.length, 0);
   const permCount    = (r: Role) => Object.values(r.permissions).filter(Boolean).length;
 
-  const handleSave = async (draft: Omit<Role, 'id'>) => {
-    if (modal?.mode === 'add') {
-      // canViewOrchestration defaults to false here too — same
-      // documented "must be explicitly granted by an administrator"
-      // intent as the seed roles; the create form doesn't collect
-      // this yet.
-      const res = await roleService.add({ ...draft, builtIn: false, canViewOrchestration: false });
-      if (res.ok) {
-        const next = [...roles, res.data as Role];
-        setRoles(next); onRolesChange?.(next);
-      }
-    } else if (modal?.role) {
-      const res = await roleService.update(modal.role.id, draft);
-      if (res.ok) {
-        const next = roles.map(r => r.id === res.data.id ? res.data as unknown as Role : r);
-        setRoles(next); onRolesChange?.(next);
-        const prevPed = (modal.role as any)?.canViewPediatric ?? false;
-        const newPed  = (draft as any)?.canViewPediatric ?? false;
-        if (prevPed !== newPed) {
-          auditService.logEvent({
-            type: 'system',
-            event: newPed ? 'Pediatric Access Granted' : 'Pediatric Access Revoked',
-            detail: `Pediatric Access ${newPed ? 'enabled' : 'disabled'} on role "${draft.name}" by administrator.`,
-            user: 'System Admin', caseId: null, confidence: null,
-          }).catch(() => {});
-        }
-      }
-    }
+  // PS-356: the save is checked (config:roles:manage), validated and
+  // audited by services/authorization/roleAdministration.ts. Resolves with
+  // a locale key when refused; the modal stays open to show it.
+  const handleSave = async (draft: Omit<Role, 'id'>): Promise<string | null> => {
+    const deps = { roleService, authorization: authorizationService, auditService, actorName: user?.name ?? 'unknown' };
+    const res = modal?.mode === 'edit' && modal.role
+      ? await saveRole({ mode: 'edit', id: modal.role.id, draft: draft as any }, deps)
+      : await saveRole({ mode: 'add', draft: draft as any }, deps);
+    if (res.ok === false) return `roleDictionary.saveErrors.${res.reason}`;
+    const saved = res.role as unknown as Role;
+    const next = roles.some(r => r.id === saved.id) ? roles.map(r => (r.id === saved.id ? saved : r)) : [...roles, saved];
+    setRoles(next); onRolesChange?.(next);
     setModal(null);
+    return null;
   };
 
-  // Real, per direct guidance: reuses the exact same 'add' flow/modal
-  // as a genuinely new role, pre-filled with the source role's full
-  // configuration (permissions, facility access, case participation,
-  // color) — same "duplicate, then review before saving" pattern
-  // already established for Container Types/Physicians/Case Routing
-  // rules elsewhere in this app, rather than an instant, unreviewed
-  // clone. builtIn is deliberately forced false regardless of the
-  // source's own value — duplicating Pathologist/Resident/Admin/
-  // Physician must always produce a genuine custom role, never a
-  // second role silently claiming built-in status.
+  // Reuses the same 'add' flow/modal as a new role, pre-filled with the
+  // source role's full configuration (capabilities, commands, case
+  // participation, color): "duplicate, then review before saving", never an
+  // instant clone. services/duplication/duplicateEntities.ts → duplicateRole
+  // forces builtIn false (a copy of Pathologist/Resident/Admin is always a
+  // custom role) and marks the name in the user's language (PS-73).
   const handleDuplicate = (role: Role) => {
-    setModal({ mode: 'add', role: { ...role, name: `${role.name} (Copy)`, builtIn: false } });
+    setModal({ mode: 'add', role: duplicateRole(role, name => t('common.copyOfName', { name })) });
   };
 
   if (loading) return <div className="ps-rd-loading">{t('roleDictionary.list.loading')}</div>;
@@ -649,8 +580,7 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
     t('roleDictionary.list.headers.description'),
     t('roleDictionary.list.headers.caseAccess'),
     t('roleDictionary.list.headers.configAccess'),
-    t('roleDictionary.list.headers.pediatricAccess'),
-    t('roleDictionary.list.headers.facilities'),
+    t('roleDictionary.list.headers.capabilities'),
     t('roleDictionary.list.headers.permissions'),
     '',
   ];
@@ -662,7 +592,7 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
           <h2 className="ps-rd-title">{t('roleDictionary.list.pageTitle')}</h2>
           <p className="ps-rd-subtitle">{t('roleDictionary.list.pageSubtitle')}</p>
         </div>
-        <button className="ps-section-add-btn" onClick={() => setModal({ mode: 'add' })}>{t('roleDictionary.list.addRoleButton')}</button>
+        <CapabilityButton capability="config:roles:manage" className="ps-section-add-btn" onClick={() => setModal({ mode: 'add' })}>{t('roleDictionary.list.addRoleButton')}</CapabilityButton>
       </div>
 
       <input type="text" placeholder={t('roleDictionary.list.searchPlaceholder')} value={search}
@@ -679,16 +609,15 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
           </thead>
           <tbody>
             {filtered.map(role => {
-              const allFacilities = !role.facilityIds || role.facilityIds.length === 0;
               const pct        = Math.round(permCount(role) / totalActions * 100);
               return (
                 <tr key={role.id} className="ps-rd-tr">
                   <td className="ps-rd-td">
                     <div className="ps-rd-role-cell">
-                      <span className="ps-rd-role-badge" style={{ background: role.color + '22', color: role.color, border: '1px solid ' + role.color + '44' }}>
+                      <span className="ps-rd-role-badge" style={hueVar(role.color)}>
                         {role.name}
                       </span>
-                      {role.builtIn && <span className="ps-rd-builtin">{t('roleDictionary.list.builtIn')}</span>}
+                      {role.builtIn && <span className="ps-rd-builtin">{t(role.assignable === false ? 'roleDictionary.list.platformManaged' : 'roleDictionary.list.builtIn')}</span>}
                     </div>
                   </td>
                   <td className="ps-rd-td ps-rd-td--desc">
@@ -705,27 +634,22 @@ const RoleDictionary: React.FC<{ onRolesChange?: (roles: Role[]) => void }> = ({
                     </span>
                   </td>
                   <td className="ps-rd-td">
-                    <span className={`ps-rd-access ${(role as any).canViewPediatric ? 'ps-rd-access--peds-yes' : 'ps-rd-access--no'}`}>
-                      {(role as any).canViewPediatric ? `✓ ${t('common.yes')}` : `— ${t('common.no')}`}
-                    </span>
-                  </td>
-                  <td className="ps-rd-td">
-                    <span className={`ps-rd-clients ${allFacilities ? 'ps-rd-clients--all' : 'ps-rd-clients--some'}`}>
-                      {allFacilities ? `🌐 ${t('roleDictionary.list.allFacilitiesShort')}` : t('roleDictionary.list.facilityCount', { count: role.facilityIds?.length ?? 0 })}
-                    </span>
+                    <span className="ps-rd-perm-count" data-capability-count={role.capabilities?.length ?? 0}>{role.capabilities?.length ?? 0}/{role.assignable === false ? ALL_CAPABILITY_KEYS.length : HOSPITAL_CAPABILITY_COUNT}</span>
                   </td>
                   <td className="ps-rd-td">
                     <div className="ps-rd-perm-wrap">
                       <div className="ps-rd-perm-bar-bg">
-                        <div className="ps-rd-perm-bar-fill" style={{ width: `${pct}%`, background: role.color }} />
+                        <div className="ps-rd-perm-bar-fill" style={pctVar(pct, role.color)} />
                       </div>
                       <span className="ps-rd-perm-count">{permCount(role)}/{totalActions}</span>
                     </div>
                   </td>
                   <td className="ps-rd-td">
                     <div className="ps-rd-row-actions">
-                      <button className="ps-rd-edit-btn" onClick={() => setModal({ mode: 'edit', role })}>{t('common.edit')}</button>
-                      <button className="ps-rd-edit-btn" onClick={() => handleDuplicate(role)}>{t('roleDictionary.list.duplicate')}</button>
+                      <button className="ps-rd-edit-btn" onClick={() => setModal({ mode: 'edit', role })}>{role.assignable === false ? t('roleDictionary.list.view') : t('common.edit')}</button>
+                      {role.assignable !== false && (
+                        <CapabilityButton capability="config:roles:manage" className="ps-rd-edit-btn" onClick={() => handleDuplicate(role)}>{t('roleDictionary.list.duplicate')}</CapabilityButton>
+                      )}
                     </div>
                   </td>
                 </tr>

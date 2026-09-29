@@ -40,6 +40,117 @@ every other jurisdiction here).
 - **`locales/{en,fr,de,nl,ko}.json`** — the real translation files.
 - **`components/NavBar/LanguageSwitcher.tsx`** — the real, working
   switcher, wired into the main nav bar.
+- **`localeParity.test.ts`** (Sep 2026) — project-wide enforcement; see
+  below.
+
+## Setup, conventions, and enforcement (Sep 2026)
+
+The standing rules for every change are in the repo-root
+[`CLAUDE.md`](../../CLAUDE.md). This section is the i18n detail.
+
+### Current coverage
+As of Batch 316, every key in `en.json` (10,000+) exists and is
+non-empty in `fr`, `de`, `nl`, and `ko`, with matching placeholders and
+markup. Until then nothing checked parity, and 45 keys had drifted to
+English only: the critical-alert reference page, the audit log's
+Critical Alerts tab, and the physician SMS-carrier fields. French,
+German, Dutch, and Korean users silently saw English for all of them.
+Those keys are now translated.
+
+"Covered" means every key that exists is translated. It does **not**
+mean every screen routes its text through `t()`. Older screens that
+were never converted still render hard-coded English; per the
+standing rules, they get converted when they're next edited.
+
+### Regional variant: Belgian Dutch (Batch 362)
+`nl-BE.json` holds only the strings Belgian users word differently; every
+other key falls back to `nl`, then English (`fallbackLng` in `config.ts`,
+`REGIONAL_VARIANTS`). The differences covered: aanmelden/afmelden rather
+than inloggen/uitloggen, familienaam rather than achternaam, gsm for a
+mobile phone, and Belgian address order. Dates and numbers come from the
+`nl-BE` locale, so a date reads 27/09/2026 (the Netherlands: 27-09-2026).
+Dutch spelling is the same in both countries (Taalunie), so the spell
+checker's Dutch dictionary serves both.
+
+When adding a key, don't copy it into `nl-BE.json`. The parity test
+fails if a Dutch string uses a Netherlands-only word (inlog/uitlog,
+achternaam) without a Belgian version, or if a Belgian entry just
+repeats the Dutch.
+
+### Regional variant: Belgian French (Batch 365, PS-347)
+`fr-BE.json` works the same way, falling back to `fr`, then English. It
+holds Belgian address order ("Rue de l'Église 12, 5000 Namur") and "GSM"
+for a mobile phone. Dates and numbers match France (27/09/2026). The
+parity test fails if a French string writes soixante-dix or
+quatre-vingt-dix without a Belgian version (Belgium says septante,
+nonante); none does today. The language menu names both French variants.
+
+### Enforcement — `localeParity.test.ts` (runs in `npm test`)
+The test checks every key in every locale file, with **no exception
+list**:
+1. Every English key exists in fr/de/nl/ko. A locale may have extra
+   keys only as plural-form variants of an English key.
+2. No empty values, with one allowed pattern: a `…Prefix`/`…Suffix`
+   pair may leave one side empty when its partner carries the text.
+   Korean puts the verb last, so "Click [+] to…" lives entirely in the
+   Suffix key.
+3. Every `{{placeholder}}` in English appears in every language.
+4. Every `<tag>` in English appears in every language, so `<Trans>`
+   components keep working.
+5. Keys are sorted at every level.
+6. `SUPPORTED_LANGUAGES` in `config.ts` matches the locale files.
+
+The test was mutation-tested before relying on it: restoring the old
+French file, dropping a placeholder, and stripping a `<strong>` each
+make it fail.
+
+`services/participationTypes/standingRules.guard.test.ts` adds a
+source-level check for specific high-stakes screens: every `t()` key
+they use exists, and they never render the English-only
+`JURISDICTION_LABELS`. Copy that pattern when a screen deserves it.
+
+`services/duplication/duplicatePolicy.guard.test.ts` (Batch 317) fails
+the build if any source file stores an English copy marker (`"(Copy)"`,
+`"Copy of …"`). A duplicated record's name is data, so it must come from
+`t('common.copyOfName', { name })` in the user's language.
+
+### Adding or changing a string
+1. Use `t('namespace.key')` (or `<Trans i18nKey=…>` for inline markup)
+   in the component. Put no text or punctuation around it in JSX: if
+   the pieces need joining, add a template key such as
+   `"{{flag}}: {{value}}"` (French typography needs
+   `"{{flag}} : {{value}}"`).
+2. Add the key to **all five** locale files in the same change, keeping
+   keys sorted.
+3. Run `npm test`; `localeParity.test.ts` catches anything missed.
+
+### Conventions
+- **Namespaces** are camelCase, one per screen or component
+  (`participationTypesSection.modal.authority.*`); shared words live in
+  `common.*`.
+- **Plurals** use i18next v26 suffixes (`key_one`, `key_other`); Korean
+  only needs `_other`, but it must still have every English key.
+- **Jurisdiction names** use `t('jurisdictionNames.<code>')` (13 codes,
+  all five languages; NHS/HSC/HSE stay as proper nouns). Never render
+  the English-only `JURISDICTION_LABELS` constant in UI. Five older
+  screens still do and should be converted when next edited:
+  `GoverningBodiesSection`, `FacilityTable`,
+  `AccessionPage`, `EnterpriseRollupTab`, `InspectionModeTab`. The last
+  two also use it in CSV exports, where English may be intended.
+- **Data is not chrome.** Stored or admin-entered values (type labels,
+  facility names, codes, seeded regional role titles) are never
+  translated at the data layer; only their display may go through a
+  lookup key.
+- **Audit-log `detail` text stays literal English.** Audit records are
+  compliance artifacts, not UI.
+- **Dates and numbers** are formatted with the active locale
+  (`toLocaleDateString(i18n.language)`), or with `JURISDICTION_LOCALE`
+  for jurisdiction-specific formats.
+- **Quality**: fr/de/nl/ko follow standard professional laboratory
+  terminology and the terms already established in each file (French
+  "DPI", German "Patientenakte", Dutch "EPD" for EHR; "dossier"/"Fall"
+  for case). Korean clinical wording should get native-speaker review
+  before clinical use.
 
 ## Real, honest scope — and the rule that closes the gap over time
 
@@ -19059,6 +19170,7878 @@ conversion pass across the codebase has no more identified candidates
 from either scan. Future work would come from either a fresh, broader
 re-scan (a different string pattern than what's been checked so far)
 or new features/files added to the app going forward.
+
+## Batch 246 — Inline-CSS cleanup sweep begins; CytologyScreeningPage.tsx (part 1)
+
+A new sweep phase, separate from the i18n conversion above: the
+original per-file checklist also called for removing inline CSS
+(using an existing class or adding a new one, following the file's
+own naming convention) and extracting embedded business logic. Direct
+inspection found that earlier batches applied this inconsistently —
+some files got a real, thorough CSS-classification pass (e.g. batch
+112's SynopticEditor.tsx), but plenty of static `style={{}}` survived
+in files that were otherwise fully converted, because the checks that
+drove batches 234-245 were i18n-pattern scans, not inline-style scans.
+
+### Scope
+
+A dedicated static/mixed-inline-style scan across every non-test
+`.tsx` file found 697 `style={{}}` blocks: 175 are genuinely dynamic
+(a computed color, a data-driven percentage, a ternary) and correctly
+stay inline; 445 are fully static and 77 are mixed (some static
+properties alongside dynamic ones) — all real candidates for a class.
+Concentrated in 48 files; the top 5 account for ~64% of the total.
+Same largest-file-first process as the i18n sweep: convert static/
+mixed blocks to classes per the file's own convention (or a new
+`ps-<file>-*` family where none exists yet), leave genuinely dynamic
+values inline, validate, log here.
+
+Business-logic extraction was audited per file as it's visited too
+(the other half of the original checklist) rather than run as its own
+separate scan — most files already delegate real domain logic to
+`resolve*` services (this app's own established convention), so this
+task is a per-file check for exceptions to that pattern, not a
+standalone grep.
+
+### CytologyScreeningPage.tsx (part 1 of N — largest offender, 157 blocks)
+
+At 2,997 lines this is the single largest static-inline-style file in
+the app (151 weighted blocks) and will span more than one batch.
+Business-logic audit: already thoroughly delegated to `resolve*`
+services throughout (dozens of imports — reviewer-role resolution,
+sign-out gates, workload capacity, QC selection, translation
+validation, etc.) — nothing found in this part of the file that
+belongs in a service and isn't already there.
+
+CSS converted so far (45 of 157 blocks):
+- The shared `SingleSearchSelect`/`MultiSearchSelect` components (the
+  searchable pick-list pattern used for Specimen Adequacy/Primary
+  Interpretation/Additional Interpretations/Recommendations) — new
+  `ps-cytosearch-*` family. The dropdown-item hover state was
+  previously done via `onMouseEnter`/`onMouseLeave` inline JS directly
+  mutating `style.background` — replaced with a plain `:hover` rule,
+  removing the redundant handlers as dead code rather than just
+  relocating the style.
+- `fieldLabel`'s two style objects — new `ps-cytoscreen-field-label`/
+  `-hint` classes.
+- The loading/empty/assist-mode-blocked states and their "Back to
+  Worklist" buttons — new `ps-cytoscreen-loading`(`--constrained`)/
+  `-empty-state-actions`/`-back-to-worklist-btn` classes.
+- The page shell, header row, and the 10-button action toolbar — new
+  `ps-cytoscreen-main`/`-back-link`/`-header-row`/`-case-title`/
+  `-patient-line`/`-toolbar` classes, plus a shared
+  `ps-cytoscreen-tag-btn` base class with 7 color modifiers
+  (`--sky`/`--teal`/`--cyan`/`--slate`/`--pink`/`--amber`/`--violet`)
+  for the toolbar buttons — these are fixed per-action colors, not
+  data-driven, so modifier classes fit better than inline custom
+  properties (the latter is reserved for genuinely per-instance
+  dynamic values elsewhere in this sweep).
+- The LMP date input.
+
+112 non-dynamic blocks remain in this file (the specimen-adequacy/
+interpretation cards, workload-status panel, HPV panel, patient
+history panel, and more, further down the same `return`). Continuing
+in the next batch.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+- No dedicated test file exercises this component's rendered output,
+  so no test assertions needed updating for the class-name changes.
+
+## Batch 247 — CytologyScreeningPage.tsx (part 2 of 2 — complete)
+
+Finished converting the remaining 112 static/mixed inline styles left
+after batch 246 (the search-select components, field labels, and
+header/toolbar). This closes out the largest single offender in the
+inline-CSS sweep: 0 non-dynamic `style={{}}` blocks remain in this
+file (down from 157).
+
+### CSS converted
+
+- The two retrospective/histology-correlation banner cards, including
+  their form rows and action buttons — new `ps-cytoscreen-banner*`
+  family. The "Complete Review" button's enabled/disabled coloring
+  (previously a ternary background+cursor pair) became two modifier
+  classes (`--active`/`--inactive`) rather than staying inline, since
+  the state is a plain boolean, not real per-instance data.
+- The sign-out status row/button — `ps-cytoscreen-signout-*`, same
+  boolean-modifier-class treatment for the ready/blocked states.
+- The two-column layout and every card in the left column (role, review
+  mode, workload-status banner, mandatory QC, HPV co-testing, patient
+  history, 5-year lookback) — new `ps-cytoscreen-card`/`-workload-*`/
+  `-qc-*`/`-hpv-*`/`-history-*`/`-lookback-*` families. The workload
+  banner's exceeded/approaching coloring and the HPV card's positive-
+  result border both use the same boolean-modifier-class pattern.
+- The review-history list items and their CT-eligible/path-required
+  badges — new `ps-cytoscreen-review-*` family.
+- The full CISOE-A form (6-axis matrix, adequacy select, notes,
+  error/warning/reflex-suggestion banners) and the standard Bethesda
+  review form (general categorization, the three search-selects,
+  notes, save/peer-review actions) — new `ps-cytoscreen-form-*`/
+  `-cisoe-*`/`-inline-banner-*`/`-save-btn`/`-peer-review-btn`
+  families. Reused this app's own existing `ps-mb-14`/`ps-mb-16`/
+  `ps-w-full` utilities for plain width/margin values instead of
+  adding redundant single-purpose classes.
+- The AI Screening Concordance confirmation modal — new
+  `ps-cytoscreen-concordance-*` family.
+
+### Business-logic audit (whole file)
+
+Confirmed across the full 2,997 lines, not just the part read for
+batch 246: every real domain computation (reviewer-role resolution,
+sign-out gating, workload capacity, QC selection, translation
+validation, histology correlation, 5-year lookback, CISOE-A scoring/
+validation/reflex suggestions) is already delegated to a `resolve*`
+service — dozens of imports at the top of the file. Nothing found
+that belongs in a service and was sitting in the component instead.
+The component itself is orchestration and rendering only, exactly as
+this app's own established convention calls for.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+  No dedicated test file exists for this component's rendered output.
+
+### Progress estimate
+
+CytologyScreeningPage.tsx complete (157 → 0 blocks). Continuing
+largest-file-first: `CytologyWorklistPage.tsx` (50.5 weighted) next,
+then `SynopticEditor.tsx` (45), `ProductivityTab.tsx` (32.5),
+`CytologySynopticFormView.tsx` (31.5), and the remaining 43 smaller
+files.
+
+## Batch 248 — CytologyWorklistPage.tsx (complete)
+
+Converted all 58 static/mixed inline styles in this file (669 lines) —
+previously had zero `ps-*` classes of its own, fully inline-styled.
+0 non-dynamic `style={{}}` blocks remain.
+
+### CSS converted
+
+- Page header, domain switcher (GYN/Non-GYN), and organ-site filter
+  chips — new `ps-cytoworklist-main`/`-title`/`-subtitle`/
+  `-domain-switch`/`-domain-btn`/`-organsite-row`/`-pill` families,
+  each with `--active`/`--inactive` modifier classes for their plain
+  boolean selected-state coloring.
+- The primary 3-tile GYN/Non-GYN row and the QA/Compliance tile row —
+  new `ps-cytoworklist-tiles`/`-tile`/`-qa-tiles`/`-qa-tile` families.
+  Each tile's background/text/shadow colors come from a per-tile data
+  array (`GYN_TILES`/`NON_GYN_TILES`/`QA_COMPLIANCE_TILES`), so those
+  colors stay genuinely dynamic — set via `--cwl-tile-bg`/
+  `-tile-color`/`-tile-shadow` CSS custom properties passed inline
+  only when a tile is active, consumed by the `--active` modifier
+  class. The small `tile.color`/fallback-gray text colors on the
+  count/label lines are likewise data-driven and correctly remain as
+  the file's only 4 remaining inline `style={{}}` blocks.
+- The loading state — `ps-cytoworklist-empty`.
+- All four list-rendering sections (hpv_triage, recall_needed,
+  scans_completed, and the main assigned/pool/qc/csms_qa/etc. list) —
+  a single shared `ps-cytoworklist-list`/`-row`/`-row-main`/
+  `-row-title`/`-row-subtitle`/`-row-actions`/`-action-btn`/`-badge`
+  vocabulary reused across all four, since they're the same visual
+  row pattern with different badges/actions:
+  - `-row--last` replaces the per-row `i < length - 1 ? border : none`
+    ternary with a modifier applied only to the final row.
+  - `-row--clickable`/`-row--static` cover the two different
+    clickability shapes in this file: scans_completed rows are
+    unconditionally clickable, while the main list's rows are
+    conditionally clickable (`activeTab !== 'pool'`) — a ternary
+    between the two modifier classes, not a fixed choice.
+  - `-badge--red-strong`/`--green`/`--red`/`--sky`/`--gray-action`/
+    `--amber`/`--cyan` cover the recall-needed badge, the
+    scans-completed badge, the QC badge, the CSMS badge (plus its
+    "Manage Flags" button, styled as a badge-shaped button), the AI
+    slide-triage badge (2-state: review-recommended/not), the
+    AI-flagged-FOV badge, and the final-diagnosis badge (2-state:
+    recorded/awaiting) — every one of these was a fixed pair or small
+    fixed set of colors keyed off a boolean or enum, not per-instance
+    data, so modifier classes fit rather than custom properties.
+  - `-action-btn`/`--claim` cover the pool Pass/Claim buttons; the
+    existing `--violet` modifier (added in batch 248 alongside the
+    base class) covers the hpv_triage Record Positive button.
+
+### Business-logic audit
+
+Read the full `load()` callback and both `handleClaim`/`handlePass`/
+`handleRecordHpvResult` handlers. All real domain computation is
+already delegated to `resolve*` services (worklist/triage/recall/
+scans-completed/QC-pool/retrospective-review/post-sign-out-peer-review/
+histology-correlation/decant-pending/ROSE-active membership) or to
+existing service functions (`claimPoolCase`/`acceptPoolCase`/
+`passPoolCase`/`processInboundHpvResultEvent`) — nothing in this file
+belongs in a service and isn't already there.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+  No dedicated test file exercises this component's rendered output.
+
+### Progress estimate
+
+CytologyWorklistPage.tsx complete (58 → 4, all 4 remaining genuinely
+dynamic). Continuing largest-file-first: `SynopticEditor.tsx` (45
+weighted) next, then `ProductivityTab.tsx` (32.5),
+`CytologySynopticFormView.tsx` (31.5), and the remaining 43 smaller
+files.
+
+## Batch 249 — SynopticEditor.tsx (complete)
+
+Converted all 47 static/mixed inline styles (43 static + 4 mixed) in
+this 994-line file. Unlike the two files above, this one already had
+an extensive `ps-syned-*` class family from an earlier batch (112),
+so this pass filled the gaps that family didn't cover, reusing its
+existing naming conventions rather than starting a new one. 19
+genuinely dynamic blocks (per-field-type colors from the `FIELD_TYPES`
+data array, live theme-object references like `T.border`/`T.muted`,
+computed coverage percentages) correctly remain inline.
+
+### CSS converted
+
+- Small single-property spacing/sizing values reused this app's own
+  general-purpose utilities (`ps-flex-1`, `ps-mb-8`/`-10`/`-14`,
+  `ps-mt-6`) or added new ones of the same kind where none existed
+  yet: `ps-mb-4`, `ps-mb-0`, `ps-fs-13`, `ps-fs-14`, and a compound
+  `ps-flex-1-minw-0` (the common "flexible + truncatable" text-column
+  pattern already established under other names in earlier batches).
+- Compound/contextual blocks got new `ps-syned-*` classes matching
+  the file's existing naming: `-type-badge-wrap`, `-coded-dots`
+  (+`--snomed`/`--icd` modifiers on the existing `-coded-dot` base),
+  `-field-row`, `-field-type-wrap`, `-coding-row`, `-options-header`,
+  `-condition-spacer`, `-condition-fields-row`, `-version-wrap`,
+  `-coverage-bar-header`.
+- Two boolean-driven fade/collapse blocks (the preview modal's
+  per-section and per-field visibility transitions, each previously a
+  6-property ternary-per-property inline style keyed off one boolean)
+  became a shared base class plus `--visible`/`--hidden` modifier
+  pair — `ps-syned-preview-section` and `ps-syned-preview-field-row`
+  — the same boolean-modifier-class pattern used throughout this
+  sweep, rather than a custom property for what is not per-instance
+  data.
+- The condition-toggle row's conditional margin became
+  `ps-syned-condition-toggle-row`/`--expanded`, and the two fixed
+  amber (`#fbbf24`) condition-picker label colors became a
+  `ps-syned-label--amber` modifier on the existing `ps-syned-label`
+  base class.
+- The preview modal's remaining static blocks — the field-label wrap,
+  the required-field asterisk color, the coding-badge row, the
+  radio/checkbox column layout and their shared teal accent-color
+  (`ps-syned-preview-choice-input`), and the numeric/longtext input
+  width/resize overrides — got `ps-syned-preview-*` classes/modifiers
+  built on the existing `ps-syned-preview-input`/`-choice-label`
+  bases.
+- Two `ps-overlay` z-index overrides (submit-confirm and
+  discard-confirm modals, both 9500) share one new
+  `ps-overlay--syned-confirm` modifier, matching this app's own
+  established per-usage `ps-overlay--<name>` pattern.
+- One inline `style={{ fontWeight: 700 }}` on the submit-confirm
+  button was outright redundant — `ps-conf-btn-teal-accent` already
+  sets `font-weight: 700` in its base rule — so it was simply removed
+  rather than converted, a real simplification bundled with the sweep.
+
+### Business-logic audit
+
+Read the full file. `isVisible()` (the visibility-condition evaluator)
+is already a standalone exported pure function, not embedded in a
+component — exactly the extraction this checklist item asks for, and
+it already has its own dedicated test file
+(`SynopticEditor.test.ts`). Everything else is template-editing UI
+state (drag-reordering, expand/collapse, form fields) with no further
+domain logic to pull out.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged),
+  including the existing `SynopticEditor.test.ts`.
+
+### Progress estimate
+
+SynopticEditor.tsx complete (47 → 0 non-dynamic blocks; 19 genuinely
+dynamic blocks remain, unchanged). Continuing largest-file-first:
+`ProductivityTab.tsx` (32.5 weighted) next, then
+`CytologySynopticFormView.tsx` (31.5), and the remaining 43 smaller
+files.
+
+## Batch 250 — ProductivityTab.tsx (complete)
+
+This file needed a different approach than every other file in this
+sweep so far: its own header already carries a batch-33 comment (from
+the original i18n sweep) explaining that it deliberately styles
+everything from the shared, static `pathscribeTheme` token object
+rather than `pathscribe.css` classes, since duplicating fixed theme
+colors into CSS would just be the same value in two places for no
+benefit. That reasoning is sound for the theme-token values — verified
+directly that `pathscribeTheme` is a plain, hardcoded-hex constant
+object (not a runtime-swappable dark/light theme), so every
+`theme.colors.*`/`theme.gradients.*` reference really is already a
+single, centralized source of truth.
+
+But roughly half of this file's 51 inline blocks (18 fully static + 29
+mixed) weren't theme values at all — they were plain per-instance
+layout constants (padding, margin, flex/grid, font-size) sitting
+alongside the theme colors, which is exactly what this sweep targets
+regardless of file. So this batch split the difference: every static
+layout property moved into a new `ps-prodtab-*` class family; every
+`theme.colors.*`/`theme.gradients.*` value (and the one genuinely
+per-instance computed value, a bar-fill percentage) stayed exactly as
+it was, inline. Added an update to the file's own batch-33 comment
+explaining this split so a future pass doesn't have to re-derive it.
+4 already-fully-dynamic blocks (pure theme-color ternaries) were
+untouched, as were the file's two style-helper functions
+(`btn()`/`toggle()`) — already a deduplicated, reusable abstraction
+over per-state theme colors, not per-instance inline repetition, so
+outside this sweep's target.
+
+### CSS converted
+
+- `Card`/`SectionTitle`/`Tooltip` shared helpers — `ps-prodtab-card`,
+  `-section-title`/`-section-sub`, `-tooltip`/`-tooltip-month`.
+- The bar chart — `-barchart-row`, `-bar-col`, `-bar-labels-row`,
+  `-bar-label`, `-bars-row`, `-bar-rect`, `-bar-month-label`. The
+  `metric === "combined" ? "45%" : "70%"` width ternary (present on
+  four separate elements) became a shared `-metric-width--combined`/
+  `--single` modifier pair; the hover-opacity ternary became
+  `-bar-rect--hovered`/`--idle` — the same boolean-modifier-class
+  pattern used throughout this sweep, applied here to booleans/enums
+  that happen to sit next to theme colors rather than instead of them.
+- The RVU tile — `-rvu-header`/`-title`/`-total`/`-delta`/`-subtitle`/
+  `-warning`/`-right`/`-caption`/`-avg`/`-unit`.
+- Peer comparison — `-peer-loading` (reused across all three loading/
+  empty/disabled states, including the one in the main component),
+  `-peer-rows`/`-row-header`/`-row-value`, and the shared progress-bar
+  `-bar-track`/`-bar-fill` (also reused by the peer bars).
+- Page layout — `-main`, `-grid-2col`, `-chart-header`/
+  `-chart-nav-group`/`-daterange-group`, `-legend-row`/`-swatch`/
+  `-label`, `-ytd-header`/`-toggle-group`, `-checkbox`, `-export-row`/
+  `-export-btn`.
+
+### Business-logic audit
+
+Confirmed all real computation (monthly case counts, RVU summary,
+monthly RVU breakdown, peer RVU stats, peer-comparison eligibility) is
+already delegated to `./productivityCalculations.ts` — the component
+itself only merges those results into view data and does UI-only date-
+range slicing. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+  No dedicated test file exercises this component's rendered output.
+
+### Progress estimate
+
+ProductivityTab.tsx complete (47 non-theme blocks converted; all
+theme-token and per-instance-computed values correctly remain
+inline). Continuing largest-file-first:
+`CytologySynopticFormView.tsx` (31.5 weighted) next, then the
+remaining 42 smaller files.
+
+## Batch 251 — CytologySynopticFormView.tsx (complete)
+
+Converted all 32 inline styles in this 325-line file (31 fully static
++ 1 mixed) — previously had zero `ps-*` classes of its own (only
+reused the shared `ps-conf-input`/`ps-conf-select` form-control
+classes). 0 blocks remain; this file had no genuinely dynamic styling
+at all.
+
+### CSS converted
+
+New `ps-cytosynform-*` family: `-label`(+`--missing` modifier for the
+one boolean-driven color, replacing a `isMissing ? '#ef4444' :
+'#9ca3af'` ternary), `-checkbox-label`, `-textarea`,
+`-preview-banner`, `-template-select`, `-section-title`,
+`-error-banner`, `-warn-banner`/`-warn-title`/`-warn-text`,
+`-term-list`, `-ack-label`/`-ack-error`, `-narrative-banner`/
+`-narrative-title`/`-narrative-text`, `-unvalidated-mark`,
+`-lexicon-badge`, `-insert-btn`, `-save-btn`. The five identical
+`marginBottom: 12` field-wrapper styles and the three identical
+`width: '100%'` input styles reused this app's own existing
+`ps-mb-12`/`ps-w-full` utilities rather than adding duplicates; added
+`ps-mb-18`, `ps-mt-2`, and `ps-relative` as three new general
+utilities of the same kind, for values this app didn't have yet.
+
+### Business-logic audit
+
+Confirmed all real domain logic — field-label/section-title/option-
+label resolution, answer validation, unvalidated-translation-term
+detection, translation-acknowledgment staleness, and narrative
+compilation — is already delegated to dedicated service functions
+(`resolveSynopticFieldLabel`, `resolveSynopticAnswersValidation`,
+`resolveUnvalidatedTermKeysInAnswers`,
+`resolveTranslationAcknowledgmentIsCurrent`,
+`compileCytologySynopticNarrative`), exactly as the file's own header
+comment states this component is deliberately designed. Nothing found
+needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+  No dedicated test file exercises this component's rendered output.
+
+### Progress estimate
+
+CytologySynopticFormView.tsx complete (32 → 0). This closes out the
+top 5 files (64% of the sweep's original 697-block total). Continuing
+through the remaining 42 smaller files, largest-first.
+
+## Batch 252 — WorklistTable.tsx (complete)
+
+Converted all 15 static inline styles in this 2,253-line file. Unlike
+every file above, this one already has its own established class
+convention — a plain `wl-` prefix (not `ps-`), already used
+throughout for dozens of classes (`wl-thead`, `wl-status-dot`,
+`wl-card-divider`, etc.). Followed that existing convention rather
+than starting a new `ps-worklisttable-*` family. 4 genuinely dynamic
+blocks (per-row status-palette colors, CSS custom properties for
+status/badge theming, and a computed table height) correctly remain
+inline.
+
+### CSS converted
+
+- All 14 `<colgroup><col style={{ width: ... }} /></colgroup>` column-
+  width definitions — each already had its own explanatory inline
+  comment naming the column (case id, patient, mrn, sex, dob,
+  accession, physician, specimens, digital readiness, dp ai triage,
+  flags, staff, status dot, urgent dot), so each became its own
+  semantically-named `wl-col-*` class (`-dot`, `-case-id`, `-patient`,
+  `-mrn`, `-sex`, `-dob`, `-accession`, `-physician`, `-specimens`,
+  `-digital-readiness`, `-dp-triage`, `-flags`, `-staff`, `-status`)
+  rather than generic width utilities, matching this file's own
+  practice of clear, purpose-named classes over anonymous ones.
+  `width` on `<col>` is standard, well-supported CSS (this is the
+  normal way to drive `table-layout: fixed` column widths), so this
+  is a straight behavior-preserving swap.
+- One `style={{ padding: 0 }}` override on a `.wl-card-divider` — a
+  matching `.wl-card-divider--flush { padding: 0; }` modifier already
+  existed in `pathscribe.css` from earlier work, just never wired up
+  to this particular divider; used the existing modifier instead of
+  adding a duplicate.
+- One `style={{ height: '1px' }}` scroll-mirror spacer — new
+  `wl-mirror-bar-spacer` class.
+
+### Business-logic audit
+
+Confirmed this file already delegates its real domain logic — digital-
+readiness/DP-triage badge resolution, pediatric/orchestration access
+control, organisation lookups — to dedicated service/resolver imports
+(`resolveWorklistDpBadges`, `caseAccessControl`, `organisationService`,
+etc.). Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+  No dedicated test file exercises this component's rendered output.
+
+### Progress estimate
+
+WorklistTable.tsx complete (15 → 0 non-dynamic blocks; 4 genuinely
+dynamic blocks remain, unchanged). Continuing largest-file-first:
+`CytologyRoseView.tsx` (15 weighted) next, then `PathScribeEditor.tsx`
+(14), `WorklistPage.tsx` (12), and 39 more smaller files.
+
+## Batch 253 — CytologyRoseView.tsx (complete)
+
+Converted all 15 inline styles in this small (101-line) file — all
+fully static, no dynamic values at all. New `ps-roseview-*` family:
+`-section-title` (reused for both section headers, which shared one
+identical style), `-eval-card`/`-eval-meta`/`-eval-pass` (prior-
+evaluations list), `-location-select`, `-pass-card`/`-pass-title`/
+`-pass-select`/`-pass-textarea`, `-actions-row`, `-save-btn`. Two
+blocks turned out to be exact duplicates of classes already added in
+batch 251 for a sibling cytology-drawer component
+(`ps-cytosynform-label` for the muted form-field label, and
+`ps-cytosynform-insert-btn` for the transparent secondary button) —
+reused those directly rather than adding near-identical duplicates.
+
+### Business-logic audit
+
+This component is pure local form state (draft ROSE passes) with no
+domain computation of its own — `onRecordEvaluation` is a callback
+prop the parent supplies. Nothing to extract.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+  No dedicated test file exercises this component's rendered output.
+
+### Progress estimate
+
+CytologyRoseView.tsx complete (15 → 0). Continuing largest-file-first:
+`PathScribeEditor.tsx` (14 weighted) next, then `WorklistPage.tsx`
+(12), and 39 more smaller files.
+
+## Batch 254 — PathScribeEditor.tsx (complete)
+
+Converted 17 of this 1,070-line file's inline styles (11 static + 6
+mixed out of an original 24 non-dynamic-only blocks; one additional
+mixed block — the outer editor-wrapper div — had been missed by this
+sweep's scanning script the first time through and was caught and
+fixed in the same batch once full-file re-verification turned up a
+leftover `style={{}}` that should have been split). This file already
+has its own established `pse-` class prefix (not `ps-`), used
+throughout for dozens of existing classes — followed that convention
+for everything new here too.
+
+Like `ProductivityTab.tsx` in batch 250, this file mixes real
+per-instance layout constants with theme-token references — but
+verified this file's `theme` is a genuinely different case: it comes
+from `useEditorTheme()`/`EditorThemeContext`, a real
+React-context-driven light/dark editor theme the user can toggle live
+(`DARK_THEME`/`LIGHT_THEME`, switchable via a toolbar button), not a
+fixed constant object. So every `theme.*` reference here is correctly
+dynamic and stays inline — this isn't optional the way
+`pathscribeTheme` duplication was; baking these into fixed CSS classes
+would break the live theme switch.
+
+### CSS converted
+
+- `TBtn` (the shared toolbar-button component, used by ~30 buttons) —
+  new `pse-tbtn` base class for its static layout properties; its
+  `minWidth`/`background`/`color`/`cursor` stay inline since they
+  genuinely vary per instance (an optional `width` prop, `isActive`,
+  `disabled`, and the live theme).
+- `Divider` — new `pse-divider` class (theme-driven `background` stays
+  inline).
+- The toolbar's outer row, font-family select, and font-size select —
+  new `pse-toolbar`/`-font-select`/`-size-select` classes for their
+  static padding/sizing/typography, theme-driven border/color/
+  background left inline.
+- 8 identical `position: relative` dropdown-anchor wrapper divs
+  (color picker, spacing/shading/border pickers, table picker, find/
+  replace, tab-width menu) — one shared `pse-toolbar-anchor` class.
+- The outer editor-wrapper div's static `display`/`flexDirection`/
+  `borderRadius` — new `pse-editor-wrap` class (theme-driven `border`/
+  `background` stay inline).
+- The editor-body scroll container's static `flex`/`overflowY`/
+  `borderRadius` — new `pse-editor-body` class (the `minHeight` prop
+  stays inline, since it's a real per-usage prop with no fixed
+  default across the app's ~10+ call sites).
+- The three delete-column/row/table icon badges (`position: absolute`
+  red overlay on an `<X>` icon) were attempted as a `pse-toolbar-
+  delete-badge` class, but this app's own custom `<X>` icon component
+  (`src/components/Icons/Icons.tsx`) only accepts a `style` prop, not
+  `className` — `tsc` caught this immediately. Reverted those three to
+  inline `style`, matching this sweep's own "technically required"
+  carve-out, and removed the now-unused CSS rule rather than leaving
+  dead CSS behind.
+
+### Business-logic audit
+
+This is a generic, reusable rich-text-editor wrapper (TipTap-based)
+with no domain-specific business logic of its own — its logic is
+editor-command orchestration (bold/italic/tables/macros/etc.), which
+is the component's actual job, not something to extract into a
+service. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean (after the icon-`className` revert above).
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+  No dedicated test file exercises this component's rendered output.
+
+### Progress estimate
+
+PathScribeEditor.tsx complete (17 non-dynamic blocks converted; all
+theme-token, per-instance-prop, and icon-component-constrained values
+correctly remain inline). Continuing largest-file-first:
+`WorklistPage.tsx` (12 weighted) next, then 38 more smaller files.
+
+## Batch 255 — WorklistPage.tsx (partial — root layout shell intentionally deferred)
+
+This file carries its own explicit prior note (found right on the
+outermost wrapper div): a full inline-style-to-CSS-class conversion
+for this page is separate, larger, pre-existing work tracked
+elsewhere as PS-74, and was deliberately left out of an earlier pass.
+That's a different situation from batch 250's `ProductivityTab.tsx`
+(a technical-merit judgment call about theme-value duplication) — this
+is an explicit scoping/ticket boundary set by someone already working
+this page, so this batch respects it rather than overriding it:
+
+- **Left untouched** (5 blocks): the outermost viewport-sizing wrapper
+  (`position`/`width`/`height`/`fontFamily`/`display`/`flexDirection`,
+  the exact properties the comment names), and its three immediate
+  layout-shell descendants (the `main` and two wrapping `div`s) plus
+  the header's own `marginBottom`/`flexShrink` — all part of the same
+  nested root-layout structure PS-74 covers.
+- **Converted** (everything else): the smaller, self-contained pieces
+  with no bearing on that root layout — the filter-tiles row wrapper,
+  the physician-filter chip and its clear button, the physician
+  voice-prompt banner and its text/close button, and the table-
+  wrapper's `position: relative`. New
+  `ps-wl-filter-row`, `-physician-chip`(+`-clear`), `-voice-prompt`
+  (+`-text`/`-close`) classes, plus a `ps-table-scroll-wrap--relative`
+  modifier (that base class is shared with `AuditLogPage.tsx`, so a
+  modifier was used rather than changing the shared rule's own
+  behavior). The existing (already-classed) filter-strip's inline
+  style was folded directly into its own `.ps-wl-filter-strip` CSS
+  rule instead of an inline style, since every property on it was
+  already fully static.
+
+All the file's genuinely dynamic blocks (the LIS/Outreach/filter mode
+tiles' `--tile-*`/`--badge-*` CSS custom properties, driven by
+per-tile data and active/urgent/pool state) were already using this
+pattern from earlier work and are untouched.
+
+### Business-logic audit
+
+Confirmed this file already delegates its real domain logic — case
+routing, pediatric/orchestration access, facility/specimen resolution,
+amendment/flag services — to dedicated service/resolver imports.
+Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+  No dedicated test file exercises this component's rendered output.
+
+### Progress estimate
+
+WorklistPage.tsx: all self-contained non-dynamic blocks converted; the
+root-layout shell (5 blocks) intentionally left for PS-74, consistent
+with this file's own existing note. Continuing largest-file-first
+through the remaining 38 smaller files.
+
+## Batch 256 — EmbeddingCenterPanel.tsx (complete)
+
+Small, clean file: all 9 inline-style blocks were fully static
+single-property spacing/sizing values sitting on elements that already
+carried one of this file's own pre-existing `ps-embedding-*` classes
+(from earlier, unrelated work) — no new component-specific class family
+was needed, just attaching a modifier or a shared spacing utility
+alongside each existing class name.
+
+### CSS converted
+
+- Three `ps-embedding-panel` instances' `marginBottom: 14` → existing
+  `ps-mb-14` utility (a fourth panel instance had no inline style to
+  begin with).
+- `ps-embedding-field-input`'s `maxWidth: 90` → new
+  `ps-embedding-field-input--narrow` modifier.
+- `ps-embedding-context-field`'s `marginTop: 8` → existing `ps-mt-8`.
+- `ps-embedding-panel-title`'s `marginTop: 14` → existing `ps-mt-14`.
+- `ps-embedding-field-label`'s `marginTop: 10` → new `ps-mt-10`
+  (added to the existing generic `ps-mt-N` utility family).
+- `ps-embedding-checkbox-label`'s `marginBottom: 4` → existing
+  `ps-mb-4`.
+- `ps-btn-secondary`'s `marginTop: 6` → new `ps-mt-6` (also added to
+  the generic utility family, alongside `ps-mt-10`).
+
+### Business-logic audit
+
+All of this component's real logic lives in five typed callback props
+(`onToggleAlertFlag`, `onConfirmPieceCount`, `onFlagDiscrepancy`,
+`onSetMoldAndOrientation`, `onGroupSplitBlocks`) supplied by its
+parent — the component itself only wires local UI state (the pending
+group-picker selection, the orientation-text draft) to those
+callbacks. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+EmbeddingCenterPanel.tsx complete (9 → 0 inline styles, all static).
+Continuing largest-file-first through the remaining smaller files,
+starting with `CytologyMaterialView.tsx` next.
+
+## Batch 257 — CytologyMaterialView.tsx (complete)
+
+Small presentational file, no pre-existing `ps-*` class family of its
+own. All 8 inline-style blocks were fully static (specimen label,
+empty-decants message, decant card, decant header row, decant label,
+and the two add-decant buttons). New `ps-cytmaterial-*` family:
+`-specimen-label`, `-no-decants`, `-decant-card`, `-decant-header`,
+`-decant-label`, `-add-btn`, `-add-btn--primary`. The add-buttons row's
+`display: flex; gap: 8; marginTop: 8` reused the existing
+`ps-flex-row-gap-8` + `ps-mt-8` utilities rather than adding a new
+rule.
+
+### Business-logic audit
+
+This component is purely presentational — it renders decant cards and
+delegates every state change to its two callback props
+(`onAddDecant`, `onUpdateStains`), and reuses the shared
+`StainMultiSelect` component (from `BlockStainEditorModal.tsx`)
+directly rather than any local reimplementation. Nothing found needing
+extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+CytologyMaterialView.tsx complete (8 → 0 inline styles, all static).
+Continuing largest-file-first through the remaining smaller files,
+starting with `SynopticReportPage.tsx` next.
+
+## Batch 258 — SynopticReportPage.tsx (complete)
+
+This is a large (5,641-line) orchestration page, but had only 7
+inline-style blocks in total, 1 of them genuinely dynamic (the portaled
+dev-tools menu's `top`/`left`, computed live from the trigger button's
+own bounding rect — correctly left inline). Two of the remaining six
+turned out to be partly-redundant overrides on shared classes, caught
+by reading each target class's own CSS before touching the JSX:
+
+- `ps-defic-review-banner`'s inline `marginBottom: 12` exactly
+  duplicated a `margin-bottom: 12px` the class itself already sets —
+  dropped entirely, keeping only the real override (`borderColor:
+  'rgba(96,165,250,0.4)'`, different from the class's own default
+  border color) as a new `ps-defic-review-banner--blue` modifier.
+- `ps-modal-dark-footer`'s inline `gap: 8` duplicated the class's own
+  `gap: 8px` — dropped, keeping only the real override
+  (`flexDirection: 'column'`) — which this codebase already has a
+  ready-made modifier for (`ps-modal-dark-footer--stretch-stacked`,
+  already used combined with `--stretch` exactly this way in
+  `LogoutWarningModal.tsx`), so no new CSS was needed for this one.
+
+The rest: `ps-conf-form-field`'s `maxWidth: 420` → new
+`ps-conf-form-field--narrow` modifier; the narrative-tools button row's
+`display/justifyContent/gap/padding` → new `ps-syn-right-panel-toolrow`
+(following this file's own `ps-syn-*` prefix); and three separate
+`ps-btn-ghost-dark`/conditional buttons sharing the exact same
+`fontSize: 11, padding: '4px 10px'` → one new shared
+`ps-syn-toolbtn-sm` modifier, applied alongside each button's own base
+class (including the one whose base class is chosen conditionally
+between `ps-btn-primary`/`ps-btn-ghost-dark`).
+
+### Business-logic audit
+
+Sampled several of this page's dozens of `handle*` orchestration
+functions (billing-code approve/reject/override, sign-out, specimen
+save, etc.) — all of them delegate real logic to dedicated
+resolvers/services (`isCaseSignedOutForBilling`,
+`requestPostSignoutConfirmation`, `findCaseBlock`,
+`recordChargeTransaction`, `auditService.logEvent`, and similar), with
+this component itself holding only orchestration state and UI wiring.
+Consistent with every other page-level orchestrator seen so far in
+this sweep (`WorklistPage.tsx`, `CytologyWorklistPage.tsx`). Nothing
+found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+SynopticReportPage.tsx complete (6 of 7 blocks converted; the 1
+genuinely dynamic dev-tools-menu position stays inline). Continuing
+largest-file-first through the remaining smaller files, starting with
+`CytologyQcRulesSection.tsx` next.
+
+## Batch 259 — CytologyQcRulesSection.tsx (complete)
+
+Small admin-form file (a QC-rule builder modal + its list section), all
+6 inline-style blocks fully static. All reused existing shared
+utilities except one: the toggle row's `marginTop: 10` → `ps-mt-10`;
+three identical sampling-input `marginTop: 8` → `ps-mt-8`; the
+show-inactive toggle row's `marginBottom: 12` → `ps-mb-12`. The one new
+class needed was for the rule-list row's inline priority/tier meta text
+(`marginLeft: 8, fontSize: 12, color: 'var(--ps-conf-text-3, #94a3b8)'`)
+— a file-specific `ps-cytqc-priority-inline` class (the CSS custom
+property reference itself is a static value here, not a per-instance
+dynamic binding, so it converts cleanly).
+
+### Business-logic audit
+
+This file's own header comment already documents the intended design
+("no business logic in the UI... every real decision lives in
+resolveQcRuleDraftValidation.ts") and the code matches it: the modal's
+`handleSave` delegates all draft validation to
+`resolveQcRuleDraftValidation`, and every mutation
+(add/update/deactivate/reactivate/duplicate) goes through
+`mockCytologyQcRuleService`. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+CytologyQcRulesSection.tsx complete (6 → 0 inline styles, all static).
+Continuing largest-file-first through the remaining smaller files,
+starting with `FacilityTable.tsx` next.
+
+## Batch 260 — FacilityTable.tsx (complete)
+
+All 6 inline styles were `<colgroup><col style={{ width: ... }}/></colgroup>`
+column-width definitions, the same pattern already converted for
+`WorklistTable.tsx` in batch 252. This file already uses its own
+`fct-` prefix throughout — new `fct-col-facility`/`-roles`/`-contact`/
+`-tat`/`-status`/`-actions` classes, named for what each column shows
+rather than by position.
+
+### Business-logic audit
+
+All real mutations (`onEdit`, `onToggleActive`, `onVerify`) are
+delegated callback props from the parent. The local `filtered` memo
+(search text + status/role filter matching) is ordinary presentational
+list-filtering, not domain business logic — consistent with every
+other worklist/table component's local search-filter state seen
+throughout this sweep. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+FacilityTable.tsx complete (6 → 0 inline styles, all static). Continuing
+largest-file-first through the remaining smaller files, starting with
+`ScanCenterPanel.tsx` next.
+
+## Batch 261 — ScanCenterPanel.tsx (complete)
+
+All 6 inline styles were single-property spacing overrides
+(`marginBottom: 14`, `marginTop: 4`, three `marginTop: 10`s, and
+`marginTop: 6`) on elements already carrying one of this file's own
+`ps-slidedist-*` classes. Every one of them matched an existing generic
+utility exactly (`ps-mb-14`, `ps-mt-4`, `ps-mt-10`, `ps-mt-6`) — no new
+CSS needed at all, just attaching the right utility class alongside
+each element's existing class name.
+
+### Business-logic audit
+
+This panel's own real logic — slot-chip styling by exception/
+destination state, and the exception-reason-to-i18n-key mapping — is
+already factored into its own local pure helper functions
+(`slotClass`, `exceptionKey`), and every state-changing action
+(`onSelect`, `onFlagException`, `onResolveException`,
+`onRequestReprint`) is a callback prop delegated to the parent hook
+(`useSlideDistributionStation`). Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+ScanCenterPanel.tsx complete (6 → 0 inline styles, all static, zero new
+CSS rules needed). Continuing largest-file-first through the remaining
+smaller files, starting with `CassettePrintPanel.tsx` next.
+
+## Batch 262 — CassettePrintPanel.tsx (complete)
+
+5 fully-static blocks + 2 mixed. Notable find: this file's own
+`ps-embedding-label-preview` className had never actually had a
+matching CSS rule — every one of its visual properties (border,
+border-radius, padding, flex layout, gap) was coming entirely from the
+inline `style` block, with only `aspectRatio` genuinely needing to stay
+dynamic (computed from `labelLayout.faceWidthMm`/`faceHeightMm`). Gave
+the class its real definition (everything but `aspectRatio`) rather
+than adding a separate modifier, since the bare class had never had
+content of its own.
+
+The two `marginBottom: 14` device-status/reprint panels and the
+reprint-count `marginTop: 8` reused the existing `ps-mb-14`/`ps-mt-8`
+utilities. The schematic barcode-module preview split into a static
+`ps-embedding-cassette-module-row` wrapper, a static
+`ps-embedding-cassette-module-dot` base (only the per-dot computed
+`opacity` stays inline), and a static `ps-embedding-cassette-label-text`
+for the caption.
+
+### Business-logic audit
+
+Matches this file's own header comment, which explicitly reuses
+`HardwarePrintPanel.tsx`'s "device status derived only from what's
+actually knowable client-side" posture: `hardwareStatus` is a simple,
+already-minimal local derivation from props, and the mandatory-reason
+reprint flow is owned by the parent page — this panel only calls
+`onRequestReprint`. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+CassettePrintPanel.tsx complete (7 → 2 inline styles; the remaining 2
+are genuinely dynamic: aspect ratio from label-layout dimensions, and
+per-dot computed opacity). Continuing largest-file-first through the
+remaining smaller files, starting with `FlagManagerModal.tsx` next.
+
+## Batch 263 — FlagManagerModal.tsx (complete)
+
+5 of 6 inline-style blocks were fully static; the severity-dot's
+`background: sevColor(sev)` is genuinely dynamic (a computed per-
+severity color) and stays inline. Two identical `flexShrink: 0` SVG
+icons → new shared `fm-icon--shrink`; the flag icon's
+`flexShrink: 0, color: '#ef4444'` → new `fm-icon-flag` (plain `<svg>`
+elements accept `className` fine, unlike this app's custom icon
+components hit in earlier batches). Two `zIndex: 9500` overlay
+overrides needed real modifier classes rather than touching the shared
+base rules — `fm-overlay` (this file's own class) already defaults to
+`z-index: 9000`, and `ps-overlay` is shared across dozens of other
+files — so added `fm-overlay--scope-dialog` and
+`ps-overlay--flag-discard-warn`, following the exact
+`.ps-overlay--<name> { z-index: NNNN; }` modifier convention already
+used a dozen+ times elsewhere in this file (`.ps-overlay--proto-change`,
+`.ps-overlay--syned-confirm`, etc.).
+
+### Business-logic audit
+
+This modal holds real local draft-state logic of its own — applying/
+removing flags against an in-memory case copy, a scope dialog for
+cross-specimen removal, and an ID-set diff (`isDraftDirty`) against the
+original snapshot — but every actual persistence call goes through
+`onApplyFlags`/`onRemoveFlag` callback props (`handleSave`), never a
+direct write. This is legitimate modal-draft UI state, not
+un-extracted domain logic — the same shape as other modals' local
+drafts seen elsewhere in this sweep (e.g. `SynopticEditor.tsx`).
+Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+FlagManagerModal.tsx complete (5 of 6 blocks converted; the severity-
+color dot stays dynamic). Continuing largest-file-first through the
+remaining smaller files, starting with `BiopsyArrayDiagram.tsx` next.
+
+## Batch 264 — BiopsyArrayDiagram.tsx (complete)
+
+All 5 inline-style blocks were fully static. No pre-existing class
+family of its own, so established a new `ps-biopsyarray-*` family:
+`-wrap` (the outer flex row), `-svg` (the `flex-shrink: 0` on the SVG
+root — plain `<svg>`/`<g>` elements accept `className` natively, unlike
+this app's custom icon components hit in earlier batches),
+`-cell-group` (the clickable `cursor: pointer` on each per-position
+`<g>`), `-legend` (the legend text block), and `-legend-bold` (the
+bold/highlighted span passed into `<Trans>`'s `components` prop). The
+per-cell/per-position SVG coordinates (`x`/`y`/`width`/`height` on
+`<rect>`/`<text>`) are real geometry props, not `style={{}}` blocks, so
+they were outside this sweep's scope and untouched.
+
+### Business-logic audit
+
+The file's own real logic — `columnsFor` (grid-shape sizing) and
+`positionToCoreCoordinate` (row-major coordinate labeling) — is already
+factored into standalone, exported, well-documented pure functions
+(the file's header comment explicitly describes their design intent
+and the constraint that they must stay in lockstep with a sibling
+Array Mapper feature). Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+BiopsyArrayDiagram.tsx complete (5 → 0 inline styles, all static).
+Continuing largest-file-first through the remaining smaller files,
+starting with `CriticalFindingsModal.tsx` next.
+
+## Batch 265 — CriticalFindingsModal.tsx (complete)
+
+All 5 inline-style blocks fully static, and every single one had an
+exact-match reusable class already sitting in `pathscribe.css`: the
+urgent-banner's `borderColor: 'rgba(248,113,113,0.4)'` and its label's
+`color: '#f87171'` are precisely `.ps-intraop-note--danger` /
+`.ps-intraop-note-label--danger` (added for a different file, a
+danger-state pair on the shared `.ps-intraop-note*` family); the two
+`marginBottom`/`marginTop` overrides matched existing `ps-mb-16`/
+`ps-mb-10`/`ps-mt-16` utilities exactly; and the read-back checkbox
+label's `display: flex; alignItems: center; gap: 8` matched the
+existing `ps-flex-row-gap-8` utility exactly, needing only one small
+new addition — a `ps-conf-label--clickable { cursor: pointer; }`
+modifier for the one property with no existing match.
+
+### Business-logic audit
+
+Matches the file's own header comment: real detection lives in
+`detectCriticalFindings.ts`, this modal only renders the flagged
+findings and defers to `onRecord`/`onAcknowledge` callback props for
+any actual action; `canRecord` is simple form-validity derivation.
+Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+CriticalFindingsModal.tsx complete (5 → 0 inline styles, all static,
+only one small new CSS rule needed). Continuing largest-file-first
+through the remaining smaller files, starting with
+`FppeTrackingTab.tsx` next.
+
+## Batch 266 — FppeTrackingTab.tsx (complete, plus a real audit finding)
+
+7 inline-style blocks: 2 repeated static banner overrides
+(`marginTop: 20, marginBottom: 8` and a `fontWeight: 600` span, each
+used twice for the active/completed section banners) reused existing
+`ps-mt-20`/`ps-mb-8` utilities plus one new generic `ps-fw-600`
+utility; the other 3 were boolean/threshold-driven ternaries
+(the overdue-tile border/value color, and the per-row "hit 100%"
+highlight) converted to new conditional modifier classes
+`ps-qa-tile--overdue`, `ps-qa-tile-value--overdue`,
+`ps-conf-td--overdue`.
+
+### Business-logic audit — real finding, not extracted this batch
+
+This file's own `progressPercent()` re-implements the exact same
+`case_count`/`duration_days`/hybrid three-way branch over
+`FppeAssignment.endCondition` (including the same `daysSince`
+calculation) that `FppeAssignmentsSection.tsx` (the admin-config
+counterpart this file's own header comment already calls out as "same
+real FPPE assignment concept, admin vs. tracking views") independently
+computes in its own `endConditionLabel()`. Two files maintaining the
+same threshold-branching logic separately is exactly the kind of gap
+this sweep's business-logic audit is meant to surface — but one
+computes a percentage and the other a label string, so consolidating
+them needs a deliberate shared shape (not just moving one function),
+and neither component has a dedicated test file to catch a subtle
+regression from that consolidation. Flagging this here rather than
+attempting the extraction inline in a CSS-focused batch — noted so a
+follow-up pass can pull the shared `daysSince`/end-condition math into
+one place (likely alongside `src/services/cases/`) with real test
+coverage.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+FppeTrackingTab.tsx's CSS conversion complete (7 → 0 inline styles).
+Continuing largest-file-first through the remaining smaller files,
+starting with `TemplateInspector.tsx` next.
+
+## Batch 267 — TemplateInspector.tsx (complete)
+
+Large (899-line) file, but only 5 inline-style blocks: 4 fully static,
+1 genuinely dynamic (a shared `<textarea>` sub-component's `height`
+prop — a real per-usage value with a `72` default, correctly left
+inline). This file already uses its own `ps-tinsp-*` prefix
+extensively. Two `minWidth: 80`/`minWidth: 60` overrides on the
+expression-builder's `ps-tinsp-col` inputs → new `ps-tinsp-col--w80`/
+`--w60` modifiers; the two remaining `marginTop: 4`/`marginTop: 8`
+overrides reused the existing `ps-mt-4`/`ps-mt-8` utilities.
+
+### Business-logic audit
+
+This is a pure right-panel property editor for the Template Builder
+(18 node types' full property forms, per its own header comment) —
+every field wires directly to an `onChange(config)` callback with no
+embedded validation, resolver, or service calls anywhere in the file
+(confirmed by search: no `validate`/`resolve`/`Service.` references at
+all). Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+TemplateInspector.tsx complete (4 of 5 blocks converted; the shared
+textarea's `height` prop stays dynamic). Continuing largest-file-first
+through the remaining smaller files, starting with
+`FacilityEditorModal.tsx` next.
+
+## Batch 268 — FacilityEditorModal.tsx (complete)
+
+Large (1,235-line) modal, only 4 inline-style blocks, all fully
+static. The overlay's `zIndex: 9000` needed a real modifier (not a
+match for the existing `.ps-overlay--confirm`/`.ps-overlay--copilot-
+report`, which are the same value but semantically scoped to different
+dialogs) — new `ps-overlay--facility-editor`. The two flex-row
+wrappers (the custom-contact-suffix row, the credential-configured
+checkbox row) → new `cem-suffix-custom-row`/`cem-credential-row`
+(following this file's own `cem-` prefix). The "use list instead" link
+button's `whiteSpace/textDecoration/color` → new `cem-btn-text--link`
+modifier alongside its existing `cem-btn-text` base class.
+
+### Business-logic audit
+
+The local `validate()` is ordinary required-field/format checking
+scoped to this form's own fields (name, assigning authority, email
+format, conditional endpoint/sending-facility-ID requirements) — not a
+reusable domain rule. Every real domain action delegates elsewhere:
+`handleAddLocation`/`handleVerifyLocation`/`handleToggleLocationActive`
+all call `locationService`, `handleSubmit` calls the `onSave` callback
+prop, and AI-model eligibility is already externalized
+(`getEligibleModelIdsForClient`, imported from `resolveClientAiModel`).
+Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+FacilityEditorModal.tsx complete (4 → 0 inline styles, all static).
+Continuing largest-file-first through the remaining smaller files,
+starting with `HardwarePrintPanel.tsx` next.
+
+## Batch 269 — HardwarePrintPanel.tsx (complete)
+
+4 fully-static single-property spacing blocks (two `marginBottom: 14`,
+two `marginTop: 12`) all matched existing `ps-mb-14`/`ps-mt-12`
+utilities exactly — no new CSS needed. The 2 genuinely dynamic blocks
+(the label preview's `aspectRatio`, computed from
+`labelLayout.faceWidthMm`/`faceHeightMm`, and the per-module barcode
+dot's computed `opacity`) correctly stay inline — this is the same
+schematic-barcode-preview pattern already reused verbatim in
+`CassettePrintPanel.tsx` (batch 262), which explicitly credits this
+file as its source.
+
+### Business-logic audit
+
+Matches this file's own header comment (which `CassettePrintPanel.tsx`
+later reused verbatim): `hardwareStatus` is derived only from what's
+actually knowable client-side (configured/active printer, most recent
+dispatch outcome), never a fabricated telemetry guess. Every real
+action (`onSetPrintMode`, `onPrintNext`, `onPrintBatch`) is a callback
+prop delegated to the parent. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+HardwarePrintPanel.tsx complete (4 of 6 blocks converted; the aspect
+ratio and per-dot opacity stay dynamic, zero new CSS rules needed).
+Continuing largest-file-first through the remaining smaller files,
+starting with `TemplateRenderer.tsx` next.
+
+## Batch 270 — TemplateRenderer.tsx (complete)
+
+3 of 9 inline-style blocks were fully static; the other 6 are
+genuinely dynamic (per-lifecycle-state colors from a local
+`LIFECYCLE_STYLES` map, per-`isAllowed`/`isCurrent`/`isPast`/`checked`/
+`destructive` conditional styling on transition buttons, flow-step
+badges, radio/checkbox options, and the confirm button) and correctly
+stay inline. The modal shell's `width: 440` matched an existing
+`.ps-modal-dark--narrow { width: min(440px, 90vw); }` exactly (and
+picks up a small viewport-clamp improvement the plain inline value
+didn't have); the reset-confirmation's highlighted `<strong>` word and
+the leave-warning's dimmed paragraph text got two small new modifiers,
+`ps-tmplr-modal-msg-highlight`/`ps-tmplr-modal-msg--dim`.
+
+### Business-logic audit
+
+Every state-changing handler (`handleSingleChange`, `handleMultiChange`,
+`handleTextChange`, `handleTransitionConfirm`, `handleReset`) delegates
+real persistence and audit-logging to `persistAnswers`/`persistState`/
+`transitionTemplate`/`auditOnly`/`auditAndNotify`. One real, minor
+finding: the `ALLOWED_TRANSITIONS` lifecycle state machine (which
+target states each state may transition to) is a local module-level
+constant in this component rather than a shared/tested module — but
+it's the single, non-duplicated source of truth for these transitions
+(nothing else in the codebase defines it independently, unlike the
+`FppeTrackingTab.tsx` case in batch 266), so this is a mild
+testability observation rather than an urgent duplication gap; not
+extracted this batch.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+TemplateRenderer.tsx complete (3 of 9 blocks converted; the 6
+state-driven style blocks correctly stay dynamic). Continuing
+largest-file-first through the remaining smaller files, starting with
+`NonGynCytologyCategoriesSection.tsx` next.
+
+## Batch 271 — NonGynCytologyCategoriesSection.tsx (complete)
+
+3 fully-static blocks, all reused existing classes with zero new CSS.
+The system-switcher row's `display: flex; gap: 8; marginBottom: 12` →
+existing `ps-flex-row-gap-8 ps-mb-12`; the show-inactive toggle's
+`marginBottom: 12` → `ps-mb-12`; and the row's inline
+risk-of-malignancy/inactive meta text
+(`marginLeft: 8, fontSize: 12, color: 'var(--ps-conf-text-3,
+#94a3b8)'`) was an exact match for `ps-cytqc-priority-inline`, added
+for `CytologyQcRulesSection.tsx` in batch 259 for the identical
+pattern — reused directly rather than duplicated.
+
+### Business-logic audit
+
+Standard admin CRUD pattern already seen throughout this sweep's
+`Config/` section files: every mutation
+(`handleSave`/`toggleActive`) delegates to
+`mockNonGynCytologyCategoryService`. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+NonGynCytologyCategoriesSection.tsx complete (3 → 0 inline styles, all
+static, zero new CSS rules needed). This closes out the last file from
+the original weighted-queue's explicitly-enumerated batch of files;
+continuing largest-file-first through the remaining smaller,
+previously-unenumerated files in the sweep.
+
+## Batch 272 — BatchManagementPage.tsx (complete)
+
+**Note on process**: this batch surfaced a real bug in this sweep's
+own scratch classifier script (a fresh one written this session,
+distinct from the earlier-documented block-skipping issue) — it
+mishandled the `style={{...} as React.CSSProperties}` cast pattern
+(a single object literal plus a TypeScript type assertion, not the
+plain double-brace `style={{ ... }}` literal the script assumed),
+corrupting where it thought each block ended and silently merging in
+trailing `as React.CSSPropertie[s]` text as if it were a real property.
+Caught by reading the file directly rather than trusting the script's
+static/mixed/dynamic counts, consistent with this sweep's standing
+mitigation for classifier issues — reinforcing why the final
+line-by-line Grep check (and reading real file content before editing)
+is the actual source of truth, not any scanning tool's tally.
+
+Once read directly, this file's 22 style blocks broke down very
+differently than the buggy scan suggested: this page has 5
+`ps-wl-filter-tile` instances (reusing the shared WorklistPage tile
+component's own CSS-custom-property-driven styling), but only 1 of
+them (the per-processing-node stage tile) is genuinely data-driven —
+the other 4 (Disposal, Disposal Report, Pending Load, Engraver
+Monitor) are fixed navigation shortcuts with a permanently-constant
+brand color each. Converted those 16 blocks (4 tiles × 4 sub-elements)
+into real CSS rules that set the same `--tile-*` custom properties as
+fixed values (`ps-batch-tile--disposal`/`-disposal-report`/
+`-pending-load`/`-engraver-monitor` for the wrapper, a shared
+`ps-batch-tile-label--muted` for the identical `#8899aa` label color
+all four share, and one `ps-batch-tile-count--<name>` class per tile
+reused for both its count and sublabel elements, since both read the
+same `--tile-count-color`) — rather than inlining the same fixed value
+on every render. Also found and removed a genuinely dead inline
+override: `'--tile-sublabel-opacity': 0` was set explicitly in all 5
+sublabel elements (including the genuinely dynamic one), but
+`.ps-wl-filter-tile__sublabel`'s own CSS already reads it as
+`opacity: var(--tile-sublabel-opacity, 0)` — a default of `0` — so the
+explicit `0` everywhere was pure redundancy, deleted rather than
+converted. The per-node tile's 4 blocks and the two
+`STATUS_COLOR[b.status]`-driven row-status badges remain genuinely
+dynamic and stay inline.
+
+### Business-logic audit
+
+`handleLookup` and the batch list both delegate to `batchService`/
+`hardwareContainerRegistryService`. Nothing found needing extraction.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+BatchManagementPage.tsx complete (16 of 22 blocks converted or removed
+as redundant; 6 correctly stay dynamic). With the two highest-weight
+files remaining in the queue (`WorklistPage.tsx`'s deliberately-
+deferred PS-74 root layout, and `PathScribeEditor.tsx`'s icon-
+component-constrained badges) both already fully resolved in earlier
+batches, continuing through the remaining smaller files next, starting
+with the tied `GrossImagingVendorDictionarySection.tsx`/
+`ImageManagementSystemVendorDictionarySection.tsx`/
+`SlideGridPanel.tsx`.
+
+## Batch 273 — three small files (complete)
+
+Three files tied at the same weight, all fully static, batched
+together:
+
+- **GrossImagingVendorDictionarySection.tsx** (3 blocks) — the
+  familiar admin-CRUD spacing/inline-meta pattern already seen in
+  batches 259/271: `marginTop: 10` → `ps-mt-10`, `marginBottom: 12` →
+  `ps-mb-12`, and the inline priority/tier meta span → the existing
+  `ps-cytqc-priority-inline` (reused directly, matching the exact
+  same pattern for the third time now). Business logic already
+  delegated to `mockGrossImagingVendorService`.
+- **ImageManagementSystemVendorDictionarySection.tsx** (3 blocks) —
+  same pattern: `marginTop: 4` → `ps-mt-4`, `marginBottom: 12` →
+  `ps-mb-12`, inline meta span → `ps-cytqc-priority-inline`. Business
+  logic delegated to `mockImageManagementSystemVendorService`.
+- **SlideGridPanel.tsx** (3 blocks) — three `width` overrides (120,
+  140, 200) on the shared `ps-microtomy-field-input`/`-field-select`
+  classes (whose own base rule sets `width: 100%`) → new
+  `ps-microtomy-field--w120`/`--w140`/`--w200` modifiers. Business
+  logic: purely a props-driven presentational panel — every action
+  (`onPrintOne`, `onReprint`, `onAddLevel`, `onOpenComments`,
+  `onRemove`) is a callback prop; local state is just the
+  search/category-tab UI filter.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+All three files complete (9 → 0 inline styles total, all static).
+Continuing largest-file-first through the remaining smaller files,
+starting with the tied `DisplayProfilesSection.tsx`/
+`DestinationControlPanel.tsx`/`MicrotomyWorkstationPage.tsx`/
+`CytologyPanel.tsx` next.
+
+## Batch 274 — four tied small files (complete)
+
+Four files tied at the same weight, all fully static (2 blocks each,
+8 total):
+
+- **DisplayProfilesSection.tsx** — `marginBottom: 12` on the
+  show-inactive toggle row → `ps-mb-12`; the inline profile-meta span
+  (`marginLeft: 8, fontSize: 12, color: var(--ps-conf-text-3,
+  #94a3b8)`) → the existing `ps-cytqc-priority-inline` (exact match,
+  reused for the fourth time). Business logic delegated to
+  `mockDisplayProfileService`.
+- **DestinationControlPanel.tsx** — `marginBottom: 14` on the panel
+  wrapper → `ps-mb-14`; `marginTop: 8` on the feedback banner →
+  `ps-mt-8`. Business logic: pure UI orchestration, both assign
+  actions (`onAssignPhysical`/`onAssignScanner`) are callback props.
+- **MicrotomyWorkstationPage.tsx** — `marginLeft: 'auto'` on the
+  "scan next" button → new generic `ps-ml-auto` utility (no existing
+  generic margin-left-auto utility was found; several file-scoped
+  ones existed but none reusable here); `marginBottom: 14` on the
+  block-context panel → `ps-mb-14`. Business logic: all state and
+  actions (`clearWorkItem`, `handleSetAlertFlags`, etc.) come from
+  the dedicated `useMicrotomyWorkstation()` hook.
+- **CytologyPanel.tsx** — `marginBottom: 14` on the panel wrapper →
+  `ps-mb-14`; `marginTop: 8` on the accept-suggestion button →
+  `ps-mt-8`. Business logic already fully delegated to the imported
+  `computeCytologyPrepSuggestions` service function, matching the
+  file's own header-comment scope note.
+
+New CSS: only one truly new rule this batch, `.ps-ml-auto { margin-left: auto; }`,
+added to the generic-utility cluster alongside `.ps-mr-8`. Everything
+else reused existing exact-match utilities.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+All four files complete (8 → 0 inline styles total, all static).
+Continuing largest-file-first through the remaining weight-1.0 group
+next (`SpeechConfigTab.tsx`, `ModelStoreModal.tsx`,
+`protocolShared.tsx`, `VoiceSection.tsx`, `CaseSearchBar.tsx`,
+`QualityAssurancePage.tsx`, `SlideDistributionStationPage.tsx`,
+`EmbeddingStationPage.tsx`, `CommentDrawer.tsx`), after a quick check
+of two not-yet-scanned weight-2.0 candidates
+(`QualityComplianceHubPage.tsx`, `PathologyWorkspacePage.tsx`).
+
+## Batch 275 — QualityComplianceHubPage.tsx / PathologyWorkspacePage.tsx (complete)
+
+Two near-identical second-level "hub" pages (both explicitly, per
+their own header comments, reusing Home.tsx's `.ps-home-cards-grid`/
+`.ps-home-card` visual language for a sub-tile grid). Each had 4
+`style={{}}` blocks; 2 of 4 converted in each:
+
+- The two-column header row (`display: flex, justifyContent:
+  'space-between', alignItems: 'flex-start', flexWrap: 'wrap', gap:
+  16`) — identical in both files, and not covered by Home.tsx's own
+  plain `.ps-home-header` (Home.tsx's header is a single-line title +
+  ticker, no split layout) — became a new modifier,
+  `.ps-home-header--split`, added right after the base
+  `.ps-home-header` rule.
+- The subtitle's `marginTop: 4` → existing `ps-mt-4` (exact match) in
+  both files.
+- Left inline (genuinely dynamic, same established pattern as every
+  other `--card-accent`/`--card-image` custom-property block
+  throughout this sweep): the per-tile `--card-accent`/
+  `--card-accent-dim` (from `tile.color`, a different hex per card)
+  and the per-tile `--card-image` (from `tile.image`, a different
+  URL per card).
+
+Business logic: both pages are pure navigation hubs — local state is
+only `hoveredCard`/`isLoaded` UI state, and the only action is
+`navigate(tile.route)`. No delegation gap to note.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+Both weight-2.0 files complete. That closes out the entire weight-2.0
+tier (6 files: DisplayProfilesSection.tsx, DestinationControlPanel.tsx,
+MicrotomyWorkstationPage.tsx, CytologyPanel.tsx — batch 274 — plus
+these two). Continuing next into the weight-1.0 group
+(`SpeechConfigTab.tsx`, `ModelStoreModal.tsx`, `protocolShared.tsx`,
+`VoiceSection.tsx`, `CaseSearchBar.tsx`, `QualityAssurancePage.tsx`,
+`SlideDistributionStationPage.tsx`, `EmbeddingStationPage.tsx`,
+`CommentDrawer.tsx`).
+
+## Batch 276 — nine tied weight-1.0 files (complete)
+
+The full weight-1.0 tier, batched together. Ten `style={{}}` blocks
+found across nine files; nine converted, one net-new CSS rule needed
+per file at most (several needed zero):
+
+- **QualityAssurancePage.tsx** — of its 4 filter-tile blocks, only
+  the standalone "Failed Dispatches" tile (outside the `tiles.map()`
+  loop, a fixed read-only shortcut into Configuration's Outbound
+  Charge DLQ, not one of the tab-switching pillar tiles) uses fixed
+  colors. New `.ps-qa-dlq-tile` / `.ps-qa-dlq-tile-count` (reusing
+  the existing `.ps-batch-tile-label--muted` for the label, same
+  reuse discipline as batch 272/274). The other 8 blocks (the
+  `tiles.map()` loop's per-tab active/inactive tiles) stay inline —
+  genuinely dynamic, same `ps-wl-filter-tile` component already
+  established as intentionally dynamic elsewhere. Business logic:
+  confirmed delegated to `specimenDeficiencyService`,
+  `managementReviewService`, `mockBillingDeficiencyService`,
+  `mockOutboundChargeQueueService`, `mockCaseService`,
+  `mockReasonDictionaryService`.
+- **SpeechConfigTab.tsx** — only its file-input's `display: none`
+  was static (the rest — listening pulse, active/inactive dot,
+  editing-row highlight, hover-to-delete color — are all genuinely
+  state-driven). New `.sct-file-input-hidden` (file's own `sct-`
+  prefix). Business logic delegated to `macroService`
+  (getMacros/addMacro/updateMacro/deleteMacro/bulkImport).
+- **ModelStoreModal.tsx** — `zIndex: 9600` on the overlay → new
+  `.ps-overlay--model-store`, following this codebase's established
+  `.ps-overlay--<name> { z-index: NNNN; }` convention. Business logic
+  delegated to `mockModelStoreService`.
+- **protocolShared.tsx** — of 5 blocks, only the upload dropzone's
+  hidden file input was static (`LifecycleBadge`'s badge colors,
+  `CoverageBar`'s percent-driven color/width, and the template
+  row's per-source badge color are all genuinely data-driven). New
+  `.ps-pshare-hidden-file-input` (file's own `ps-pshare-` prefix).
+- **VoiceSection.tsx** — the toggle's hidden native checkbox
+  (`display: none`) → `.config-toggle-wrap input { display: none; }`
+  (confirmed via search this is the only usage of
+  `.config-toggle-wrap` in the codebase, so scoped here rather than
+  claimed as a shared precedent). Business logic delegates to
+  `updateConfig`.
+- **CaseSearchBar.tsx** — of 2 blocks, only the loading spinner's
+  `animation: spin 0.8s linear infinite` was static (the per-flag
+  chip color stays inline, genuinely per-flag data). New
+  `.ps-search-icon-spin`, reusing the pre-existing `spin` keyframe
+  (already defined for `.ps-ph-spinner-circle`). Business logic
+  delegated to `mockOnDemandCaseFetchService`.
+- **SlideDistributionStationPage.tsx** — `marginBottom: 16` → existing
+  `ps-mb-16` (exact match, zero new CSS).
+- **EmbeddingStationPage.tsx** — `marginLeft: 'auto'` on the "scan
+  next" button → the `ps-ml-auto` utility introduced in batch 274
+  (same context-bar pattern as MicrotomyWorkstationPage.tsx).
+- **MicrotomyWorkstationPage/components/CommentDrawer.tsx** —
+  `marginTop: 8` → existing `ps-mt-8` (exact match). (Its sibling,
+  `EmbeddingStationPage/components/CommentDrawer.tsx`, had zero
+  inline styles — already clean.)
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+Entire weight-1.0 tier complete. Continuing next into the weight-0.5
+group (`TypeModal.tsx`, `QualityTab.tsx`, `PatientIdStatusDot.tsx`,
+`ReportPreviewRenderer.tsx`), then deciding how to handle the large
+remaining tail of weight-0.0 files (fully-dynamic-styles-only —
+no further CSS conversion work, but still worth a quick
+business-logic-only look per this sweep's dual mandate).
+
+## Batch 277 — weight-0.5 tier: four files (complete)
+
+All four had genuinely mixed blocks (a first for this specific
+"static + dynamic in the same object" shape since the earlier
+classifier-bug investigation) — each split cleanly along the
+established heuristic:
+
+- **QualityTab.tsx** — `RefLineLabel`'s `<text>` halo styling
+  (`paintOrder`, `stroke`, `strokeWidth`, `strokeLinejoin`) turned out
+  to be fully static (only `fill`/`x`/`y`/`textAnchor` vary, and those
+  are plain SVG attributes, not part of the `style` object) → new
+  `.ps-tat-refline-label`, following this file's own `ps-tat-*`
+  prefix. The other 7 blocks in the file (summary-tile
+  `--tile-color`, TAT-trend pill/legend/tooltip `--accent` and
+  `background`/`color`/`border`, and the two percent-driven bar
+  widths) are all genuinely per-metric/per-client data and stay
+  inline.
+- **TypeModal.tsx** — of 2 blocks, the preview chip's `background:
+  draft.color, color: '#0f172a', opacity: 0.85` was mixed: `color`
+  and `opacity` are fixed regardless of the chosen color, so folded
+  directly into `.ps-type-preview-chip`'s existing base rule;
+  `background: draft.color` stays inline. The preset-swatch button's
+  `background: c` stays inline (genuinely per-swatch).
+- **PatientIdStatusDot.tsx** — mixed: `display`, `borderRadius`,
+  `flexShrink`, `cursor` are fixed for every dot → new
+  `.ps-patient-id-status-dot-shape`; `width`/`height` (from the
+  `size` prop) and `background`/`boxShadow` (from
+  `computePatientIdStatus`'s result) stay inline. Caught and fixed a
+  duplicate-`className`-attribute slip immediately via a re-read
+  right after the edit (same discipline as batch 272's
+  `BatchManagementPage.tsx` catch) before it ever reached validation.
+  Business logic: confirmed, per the file's own header comment, that
+  "all real logic lives in `computePatientIdStatus()`" — this
+  component is presentational only.
+- **ReportPreviewRenderer.tsx** — mixed: `display: 'grid'` is fixed
+  for every column-layout template node → new `.rp-cols { display:
+  grid; }`; `gridTemplateColumns` (from `node.numColumns`) and `gap`
+  (from `node.columnGap`) are genuinely per-template and stay inline.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate
+
+Entire weight-0.5 tier complete. This closes out every file the
+classifier ranked at weight ≥ 0.5. What remains is the long tail of
+weight-0.0 files — pages/components whose only `style={{}}` blocks
+are fully dynamic, so no further CSS-conversion work applies to them.
+Given this sweep's dual mandate (inline-CSS *and* business-logic),
+the next step is deciding how much of that weight-0.0 tail still
+merits a business-logic-only pass, rather than assuming "no CSS work"
+means "nothing left to check."
+
+## Batch 278 — CytologyQaTab.tsx (complete) — full weighted queue now clear
+
+A corrected, full re-run of the scratch classifier (fixing the
+`as React.CSSProperties`-cast boundary bug documented in batch 272's
+notes, this time properly finding the object literal's own closing
+brace instead of blindly stripping 2 characters) surfaced one file
+this sweep hadn't reached yet: **CytologyQaTab.tsx**, weight 0.5 (1
+mixed block among its `ps-wl-filter-tile` report-switcher tiles).
+
+Same exact redundant-override pattern already found and fixed twice
+before (`SynopticReportPage.tsx` batch 258,
+`BatchManagementPage.tsx` batch 272): the sublabel div renders only a
+non-breaking space (no real sublabel text ever), and
+`.ps-wl-filter-tile__sublabel`'s own CSS already defaults
+`opacity: var(--tile-sublabel-opacity, 0)` — so the explicit
+`'--tile-sublabel-opacity': 0` inline override was pure dead code.
+Deleted outright (no new CSS needed), leaving only the genuinely
+dynamic `'--tile-count-color': tile.color`.
+
+Business logic: confirmed, this file delegates every one of its nine
+cytology QA reports to a dedicated `resolveCytology*Report.ts` module
+(`resolveCytologyQaAggregateReport`,
+`resolveCytologyCtStatisticalComparisonReport`,
+`resolveCytologyAscusHpvReflexReport`, and six more) — no findings.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 499/499 test files, 4329/4329 tests passing (unchanged).
+
+### Progress estimate — queue status
+
+With this fix, a corrected full re-scan confirms **zero files remain
+with any static or mixed `style={{}}` block** anywhere in `src/`. The
+weighted queue that drove batches 1–278 (i18n batches, then this
+inline-CSS/business-logic sweep) is now fully exhausted: every file
+containing any inline `style={{}}` usage has been read directly,
+classified by hand where the tooling was suspect, converted where it
+was safe to convert, and audited for un-extracted business logic.
+
+What remains in the codebase (86 files, per the corrected scan) is
+exclusively genuinely-dynamic inline styling — per-item colors,
+computed percentages/positions, per-instance CSS custom properties —
+which is correctly left inline under this sweep's own standing rule,
+plus the two long-documented, deliberately-untouched exceptions
+(`WorklistPage.tsx`'s PS-74-deferred root layout blocks,
+`PathScribeEditor.tsx`'s icon-`className`-constrained blocks).
+
+## Batch 279 — full-codebase business-logic sweep (audit only, no edits)
+
+With the inline-CSS side of the sweep fully exhausted (batch 278), this
+batch is the front end's business-logic sweep proper: a read-only
+audit of all ~330 page/component `.tsx` files (everywhere the earlier
+CSS-driven queue never had reason to visit), split across seven
+parallel audits by directory, each checking whether domain
+logic — calculations, eligibility rules, state machines, matching
+predicates — is properly delegated to `src/services/**` or a
+dedicated hook, or is instead embedded/duplicated in the UI layer.
+NO CODE WAS CHANGED in this batch — findings only, consistent with
+this sweep's standing rule of documenting real gaps rather than
+performing untested refactors.
+
+The codebase is, as expected from every prior batch, overwhelmingly
+well-factored. Fifteen real gaps were found, ranked by consequence:
+
+### High severity (real clinical/workflow correctness risk)
+
+1. **Patient age computed three different ways.**
+   `pages/ReportPreview/ReportPreviewRenderer.tsx`'s `computeAge()`
+   re-implements age-from-DOB inline, even though
+   `services/cytology/resolveAgeFromDateOfBirth.ts` exists
+   specifically to be the one reusable implementation (its own header
+   says it was extracted to avoid "a second, potentially-divergent
+   way") — and a third copy already lives in
+   `services/cases/caseFilterUtils.ts`. Patient age prints directly on
+   the pathology report.
+2. **Grossing-release "triage resolved" gate implemented three times.**
+   `pages/WorklistPage/PendingGrossingTriageTile.tsx`'s
+   `isTriagePending()` is the tested, canonical predicate, but
+   `pages/SynopticReportPage/components/GrossingReleasePanel.tsx`
+   (`triageResolved`) and
+   `pages/SynopticReportPage/hooks/useSpecimenBlockManagement.ts`
+   (`handleReleaseGrossingBlocks`, its own comment calling it "the
+   real, enforced backstop") both reimplement the same condition
+   independently instead of importing it.
+3. **Staff → eligible case-role mapping implemented three times.**
+   `pages/SynopticReportPage/modals/CaseTeamModal.tsx` has two
+   internal copies (`StaffCard` and `getDragEligibility`) of
+   `roles.filter(...).flatMap(...)`, and
+   `services/cases/resolveClaimParticipationType.ts` has a third —
+   despite that service's own header comment explicitly saying it
+   reuses "the EXACT same mapping `CaseTeamModal.tsx`'s own
+   `getDragEligibility` already uses" and must "never [be] a second,
+   independently-maintained eligibility rule." This determines who can
+   hold Attending/finalize authority on a case.
+4. **A visibility rule ("is this section shown?") diverges between the
+   editor and the live report.**
+   `components/Config/Protocols/SynopticEditor.tsx`'s `isVisible()` is
+   canonical (correctly reused by
+   `services/autopsy/resolveAutopsyGrossingRequiredFields.ts`), but
+   `pages/SynopticReportPage/components/RightSynopticPanel.tsx` has an
+   independent copy that's missing `answerIds` multi-value support.
+   That copy is called 20+ times by `useSignOutWorkflow.ts` (section
+   visibility, jump-to-next-required, AI-suggestion filtering,
+   progress %) and a live `in_review` template
+   (`autopsy_gross_examination.json`) already uses `answerIds` in
+   several conditions — meaning the editor and the actual report can
+   disagree about whether a field is required, today.
+5. **Supervision-assignment progress logic now duplicated a *third*
+   time.** `components/Config/System/CytotechCompetencyAssignmentsSection.tsx`'s
+   `progressLabel()` independently re-derives the same
+   `case_count`/`duration_days`/combined branching and `daysSince`
+   math as `FppeAssignmentsSection.tsx`'s `endConditionLabel()` (batch
+   266's already-documented finding) and `FppeTrackingTab.tsx`'s
+   `progressPercent()` — both operate on the same
+   `QaSupervisionAssignment`-family type, so this is a real, growing
+   gap, not a coincidence.
+
+### Medium severity
+
+6. **AI/rule confidence-tier thresholds are inconsistent.**
+   `AiReviewModal.tsx` (high≥85/medium≥60), `ProtocolChangeModal.tsx`
+   (green≥85/yellow≥70), and `Synoptic/Codes/AddCodeModal.tsx`
+   (binary at 85) each classify "how confident is this AI suggestion"
+   with different cutoffs — the same 70%-confidence suggestion reads
+   as "medium" in one modal and "good" in another.
+7. **`GROSSING_TEMPLATES` reference-data constant tripled** across
+   `DepartmentsSection.tsx`, `GrossingRouteOverridesSection.tsx`, and
+   `SpecimenCategoriesSection.tsx` — each file's own comments already
+   acknowledge the others exist uncombined.
+8. **Slide "level" labeling (`levelLabelFor`) byte-for-byte duplicated**
+   between `MicrotomyWorkstationPage/hooks/useMicrotomyWorkstation.ts`
+   and `SlideDistributionStationPage/hooks/useSlideDistributionStation.ts`.
+9. **Turnaround-hours math (`hoursBetween`) duplicated three times**
+   in `QualityAssurance/{AccessRequestResponseTab,
+   CountersignTurnaroundTab, IntraopLinkageTab}.tsx` — notable because
+   all three already share a `qaReportUtils` module built for exactly
+   this kind of consolidation, but the hours formula itself never
+   made it in.
+10. **`TATConfigSection.tsx`'s `findConflict()`** (the multi-field TAT
+    uniqueness rule) is un-extracted, inconsistent with this same
+    file's own precedent of extracting its resolution-hierarchy logic
+    after an earlier drift bug, and with sibling
+    `ScanStationsSection.tsx`'s equivalent validation living in
+    `services/scanStations/validateScanStationDraft.ts`.
+11. **`CaseSearchBar.tsx`'s `lookupCases()`** embeds a non-trivial,
+    untested tiered match-scoring + accession-token-parsing algorithm
+    with no service module or test coverage.
+12. **`SubspecialtiesSection.tsx`'s catch-all-pool invariant**
+    (at-most-one-catch-all-per-scope) is enforced only inline in the
+    UI, while two separate services already depend on that invariant
+    holding.
+
+### Low severity
+
+13. **Section-count estimate formula** (`Math.max(1,
+    Math.round(p.fields / 7))`) duplicated between
+    `ActiveProtocolsSection.tsx` and `AllProtocolsSection.tsx`, both
+    of which already import shared helpers from `protocolShared.tsx`
+    — an easy consolidation.
+14. **Code/description search predicate tripled**: `CptCodeSearchPicker.tsx`
+    and `CodeSearchModal.tsx` each reimplement the same
+    `code.includes(q) || description.includes(q)` filter that already
+    exists as `searchCpt()` in
+    `services/terminologySearch/codeSearchService.ts`.
+15. **Orphaned dead-code duplicate**: `Config/System/PatientMatchReviewSection.tsx`
+    duplicates the live `QualityAssurance/PatientMatchReviewSection.tsx`
+    and is confirmed (via repo-wide import search) unused — self
+    -documented as leftover from a relocation. Not a live risk, but
+    worth deleting.
+
+Everything else audited — the large majority of the ~330 files —
+confirmed clean: proper delegation to `resolve*`/`*Service.ts`
+modules or dedicated hooks, with local component logic limited to
+ordinary UI state (search text, toggles, drafts, pagination) that
+doesn't belong in a service.
+
+### Next step
+
+These are findings, not fixes — per this sweep's standing discipline,
+nothing here was changed without discussion, especially since several
+(1, 2, 3, 4) touch clinical-report accuracy, specimen-release gating,
+and case-team authority. Awaiting direction on which to fix now vs.
+track for later.
+
+## Batch 279 — business-logic sweep, phase 1: full front-end audit (complete)
+
+With the inline-CSS queue fully exhausted (batch 278), this phase
+audited the front end for un-delegated or duplicated business logic —
+the second half of the sweep's original mandate. Ten parallel
+read-only audits covered essentially the entire front end (~340
+`.tsx` files across `src/pages/` and `src/components/`), each
+checking whether local component logic is properly delegated to
+`resolve*`/`mock*Service`/`compute*` modules or hooks, per this
+codebase's own established convention, versus reimplemented or left
+untested inline.
+
+**Result: the codebase is, as expected from every prior batch, overwhelmingly
+well-factored** — roughly 320 of ~340 files reviewed were confirmed
+clean on first pass. Fourteen files surfaced real findings. Three of
+those were confirmed, live correctness bugs with a clear, safe fix
+already available in the codebase (an existing, already-tested
+"real" implementation the buggy copy should have been calling all
+along) — fixed and validated in this batch. The rest are documented
+below for deliberate follow-up, since fixing them means either a
+design decision or writing new logic/tests from scratch — not a
+mechanical sync.
+
+### Fixed this batch (3 real bugs, 5 files changed)
+
+1. **Synoptic field visibility drift — `RightSynopticPanel.tsx`**
+   (clinical documentation-completeness risk). This file's own header
+   comment already stated its `isVisible()` was exported specifically
+   so `useSignOutWorkflow.ts`'s Microscopic finalize gate would never
+   maintain "a second copy" that could "silently drift." It had
+   already drifted: `SynopticEditor.tsx`'s own `isVisible()` (the
+   real source of truth, per PS-272) supports multi-value `answerIds`
+   OR-conditions; this file's copy never got that update. Every
+   consumer — this file's own required-field checks, unanswered-field
+   counts, and section-progress percentages, plus the sign-out
+   finalize gate itself — silently treated an `answerIds`-conditioned
+   field as invisible unless the answer matched the condition's
+   single legacy `answerId` (kept as only the first of the OR'd
+   values for backward compatibility). A real autopsy template field
+   conditioned on "linear OR depressed/comminuted skull fracture"
+   would only be recognized as required for the first of those two
+   answers — a case could be signed out with a genuinely-required
+   field left blank. **Fix**: `RightSynopticPanel.tsx` now imports and
+   re-exports `SynopticEditor.tsx`'s `isVisible()` instead of shadowing
+   it, exactly matching its own header comment's stated intent. This
+   fix is backed by `SynopticEditor.test.ts`'s existing, thorough
+   `answerIds` test coverage — not new, unverified logic.
+2. **Compliance disposal queue/report location bug — `computeDisposalQueue.ts`
+   / `computeDisposalReport.ts`** (retention/compliance risk).
+   `MaterialTreePanel.tsx`'s own `mostRecentLocation()` header comment
+   already documents this exact bug class and its fix: "a real event
+   arriving out of chronological order (a late-arriving inbound
+   message, a backfilled correction) should never silently look like
+   the current location just because it happened to append last" —
+   and sorts by `at` accordingly. `MaterialTrackingHistoryModal.tsx`
+   independently carries the same correct, sorted version (its own
+   comment says it's "the same real helper MaterialTreePanel.tsx's
+   own badges already use — reused, not re-implemented" — stated
+   intent, not actually shared code). But the two retention-policy
+   modules that drive the *compliance-facing* disposal queue and
+   disposal report still had the original naive `history[history.length
+   - 1]` — meaning the queue/report could show a stale location for
+   retained material whenever its location history contains a
+   backfilled or out-of-order event, while the tree view and tracking
+   history modal would correctly show its real current location.
+   **Fix**: both functions now sort by `at`, matching the already-proven
+   pattern. No dedicated unit test previously existed for this
+   ordering behavior in either module (a real gap — flagged as a
+   follow-up below) — validated via a full suite run showing no
+   regressions.
+3. **Template preview/production rendering drift — `TemplatePreviewPanel.tsx`**
+   (preview-vs-production risk). Its local `evalCond()` (for the
+   Template Builder's `showWhen` preview) supported `==`, `!=`,
+   `notEmpty`, `isEmpty`, `contains`, `>`, `<` — but silently
+   defaulted to "always true" for `>=`/`<=`, which the *real* report
+   renderer (`ReportPreviewRenderer.tsx`'s `evalClause`/
+   `evalCondition`) already supports. A template author testing a
+   `>=`/`<=` condition in the builder's preview would see it evaluate
+   differently than the real, signed-out report. **Fix**: exported
+   `evalClause`/`evalCondition` from `ReportPreviewRenderer.tsx` and
+   had `TemplatePreviewPanel.tsx` delegate to the real implementation
+   instead of its own drifted copy. Left `interpolate`/`resolveExpr`
+   (the two files' separate `{{path}}`-substitution helpers) as a
+   documented, NOT-consolidated duplication below — their behavior
+   differs in more than one place (regex permissiveness, object-value
+   fallback), so merging them needs closer verification against real
+   template content rather than a same-day sync.
+
+All three fixes validated: `tsc --noEmit` clean, CSS re-parsed with
+PostCSS clean (no CSS touched this batch, checked for regression
+safety anyway), full suite 499/499 files / 4329/4329 tests passing.
+
+### Documented, not fixed (needs a design decision, new tests, or both)
+
+Ranked roughly by real-world consequence:
+
+1. **`DriftCorrectionTab.tsx`** — the "unresolved post-finalization
+   drift" correlation rule (matching a deferred/failed drift event to
+   a later same-case auto-correction) is written directly in the
+   component, with no backing service and no tests. A subtle bug here
+   could hide a finalized report that still contains an uncorrected
+   post-signout diagnostic edit. Patient-safety-relevant; needs a
+   dedicated service + test suite, not a quick inline patch.
+2. **`ValidationStudiesSection.tsx`**'s `gradeResult()` — computes an
+   AI validation study's PASS/CONDITIONAL PASS/FURTHER REVIEW grade,
+   persisted as `Study.finalGrade` and later used by
+   `resolveClientAiModel.ts`/`resolveVoiceAiModel.ts` to gate whether
+   an AI model is eligible for production use at a client. No service
+   backing, no tests, for logic with real regulatory/production
+   consequences.
+3. **`CaseTeamModal.tsx`** — the "which participation types can this
+   staff member's roles fill" eligibility mapping is written inline
+   three separate times in this one file, plus a fourth, independent
+   copy in `services/cases/resolveClaimParticipationType.ts` — whose
+   own header comment already says it must be "the EXACT same...
+   mapping CaseTeamModal.tsx's own getDragEligibility already uses...
+   never a second, independently-maintained eligibility rule." All
+   four currently agree, but nothing enforces that. A real
+   consolidation candidate.
+4. **`PendingGrossingTriageTile.tsx`**'s `isTriagePending()` — a
+   third independent reimplementation of "is specimen triage
+   resolved," alongside `GrossingReleasePanel.tsx`'s copy and the real
+   enforcement gate in `useSpecimenBlockManagement.ts`. All three
+   currently agree (verified: no shared resolver exists anywhere in
+   `src/services`/`src/utils`), so this is a drift risk, not an active
+   bug — but any future rule change is likely to hit the real gate and
+   miss this display tile.
+5. **`FppeTrackingTab.tsx`**'s `progressPercent()` — already flagged
+   in batch 266 as duplicating `FppeAssignmentsSection.tsx`'s
+   `endConditionLabel()`; this pass found it's actually a *third*
+   independent copy of the same FPPE end-condition rule, alongside
+   `mockFppeAssignmentService.ts`'s own `endConditionMet()`/
+   `completionReason()` (which is the one that actually auto-transitions
+   assignments to `completed`). Escalating from "two copies" to
+   "three, one of which is the real enforcement logic."
+6. **`ContributionDashboardPage.tsx`**'s Quality Flags widget —
+   derives severity/priority and sorts/slices to top 3, inline in a
+   `useEffect`, with no backing resolver or tests — unlike sibling QA
+   pages (`CytologyQcQueuePage.tsx`, `SurgicalQaWorklistPage.tsx`)
+   audited in this same pass, which delegate equivalent logic to
+   `resolve*.ts` functions.
+7. **`OrSuiteDashboardPage.tsx`**'s `DismissConfirmationModal` —
+   computes dwell-time/TAT math inline from raw timestamps before
+   logging, even though this same file already documents extracting
+   equivalent elapsed-time logic to `resolveOrBoardRowDisplayState.ts`/
+   `resolveIntraopTatStatus.ts` "per direct guidance (no business
+   logic in the UI unless compulsory)" — this one calculation was
+   missed.
+8. **`Config/Actions/ActionsTab.tsx`** — keyboard-shortcut collision
+   detection and the multi-rule CSV bulk-import pipeline (duplicate-ID
+   checks, blocked-field-change rules, in-file and global shortcut
+   collision detection) are substantial, untested business rules
+   embedded entirely in the component.
+9. **`Contribution/AIContributionTab.tsx`** — the one tab in this
+   directory with no matching `*Calculations.ts` module (unlike
+   Productivity/Mentor/Quality, each with one, tested). Its time-bucketed
+   trend aggregation and confidence/period-scaling math live inline
+   with zero test coverage, breaking the directory's own established
+   pattern.
+10. **`AppShell.tsx`**'s `relTime()` — reimplements most of
+    `utils/formatDate.ts`'s `formatRelative()`, but deliberately (and
+    correctly, for a messaging inbox) shows the actual time-of-day for
+    same-day messages rather than `formatRelative()`'s generic
+    "Today" — so this is NOT a simple swap to the shared utility. The
+    real gap is narrower: it lacks `formatRelative()`'s >365-day
+    fallback to a full dated string, so a message over a year old
+    renders with no year (ambiguous). Needs a scoped addition, not a
+    wholesale replacement — left undone pending that distinction being
+    checked against how the inbox is actually used.
+11. **`ScanStationPrompt.tsx`** vs **`NavBarScanStation.tsx`** — both
+    independently compute the same station → workstation-group →
+    Active-gated dedicated-page route. Currently consistent; flagged
+    as a plausible drift risk, not a confirmed bug.
+
+### Minor observations (no action needed)
+
+- **`BillingDictionarySection.tsx`** resolves a "current" billing-code
+  version for admin display (ACTIVE status, else highest version
+  number) differently from `resolveBillingRuleAt.ts`'s date-of-service-aware
+  resolution used for actual billing — confirmed intentional (a
+  different purpose: "latest version, whatever its status" for an
+  admin list, vs. date-specific active-rule resolution for billing),
+  and the row's own status is shown alongside so admins aren't misled.
+- **`contributionDashboardCalculations.ts`** is a well-tested,
+  properly separated calculation module — its only oddity is living in
+  `src/pages/` rather than `src/services/`, a location nit, not a
+  logic problem.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 499/499 test files, 4329/4329 tests passing.
+
+### Next steps
+
+The 11 documented-not-fixed items above are candidates for a phase 2
+pass, each requiring either a design decision (what should the
+correct rule actually be, e.g. `ContributionDashboardPage`'s priority
+scoring) or new test-backed extraction work (`DriftCorrectionTab.tsx`,
+`ValidationStudiesSection.tsx`, `ActionsTab.tsx`,
+`AIContributionTab.tsx`) rather than a same-day mechanical sync like
+the three fixed above.
+
+## Batch 280 — business-logic sweep, phase 2: first three consolidations (complete)
+
+Wrapping up 3 of the 11 items batch 279 documented as needing a real
+consolidation rather than a same-day sync — the ones with a clear,
+already-identified canonical implementation to converge on. (Items 1,
+2, 6-11 from that list remain open; a design decision or new
+from-scratch tests are needed for those, not a mechanical merge.)
+
+### Fixed this batch (3 consolidations, 8 files changed/added)
+
+1. **`CaseTeamModal.tsx` eligibility duplication (batch 279, item 3)**.
+   The "which participation types can this staff member's roles fill"
+   mapping was written inline three separate times in
+   `CaseTeamModal.tsx` (the `StaffCard` component, the `relevantTypeIds`
+   memo, and `getDragEligibility`), plus a fourth, independent copy in
+   `resolveClaimParticipationType.ts` that all four were supposed to
+   match by convention alone. **Fix**: extracted the shared
+   `staffUserRoles + roles[] → eligible participationTypeIds` mapping
+   into a new exported `resolveEligibleParticipationTypeIds()` in
+   `resolveClaimParticipationType.ts`, and had `resolveClaimParticipationType()`
+   itself call it instead of inlining the same two lines. All three
+   `CaseTeamModal.tsx` call sites now call the shared function instead
+   of recomputing it. Existing `resolveClaimParticipationType.test.ts`
+   coverage still applies unchanged since the extraction preserves
+   `resolveClaimParticipationType()`'s exact behavior.
+2. **`PendingGrossingTriageTile.tsx`'s `isTriagePending()` duplication
+   (batch 279, item 4)**. `GrossingReleasePanel.tsx` had its own
+   inline `!isTriagePending(triage)`-equivalent copy, and the real
+   release-blocking gate in `useSpecimenBlockManagement.ts` had a
+   third, independent reimplementation
+   (`triage && !triage.overrideReason && !triage.checklistItems.every(...)`)
+   — all three agreed by coincidence, not by shared code. **Fix**: both
+   `GrossingReleasePanel.tsx` and the real gate in
+   `useSpecimenBlockManagement.ts` now import and call the existing,
+   already-tested canonical `isTriagePending()` from
+   `PendingGrossingTriageTile.tsx` directly, rather than each
+   maintaining its own copy of the same rule. `PendingGrossingTriageTile.test.ts`'s
+   existing coverage of `isTriagePending()` now backs all three
+   consumers.
+3. **`FppeTrackingTab.tsx`'s `progressPercent()` duplication (batch
+   279, item 5)**. The FPPE end-condition threshold math (case-count /
+   duration-days / "either, whichever is hit first") was computed
+   three separate times: `mockFppeAssignmentService.ts`'s
+   `endConditionMet()`/`completionReason()` (the real enforcement
+   logic that auto-transitions an assignment to `completed`),
+   `FppeAssignmentsSection.tsx`'s `endConditionLabel()` (admin display
+   text), and `FppeTrackingTab.tsx`'s `progressPercent()` (tracking-tab
+   progress bar / overdue highlight). All three agreed, but nothing
+   enforced that. **Fix**: extracted the shared threshold math into a
+   new module, `services/cases/fppeEndCondition.ts`, exporting
+   `computeFppeProgress()` (returns `daysSinceStart`,
+   `byCasesFraction`, `byDurationFraction`, the applicable `fraction`,
+   and `met`). All three original call sites now delegate to it:
+   `mockFppeAssignmentService.ts`'s `endConditionMet()` returns
+   `computeFppeProgress(a).met` directly; its `completionReason()`
+   keeps its original tie-breaking behavior exactly (case-count
+   preferred whenever it crossed 1, matching the pre-existing
+   behavior for the case where both thresholds are crossed
+   simultaneously) but now derives the fraction it checks from the
+   shared function; `FppeAssignmentsSection.tsx`'s `endConditionLabel()`
+   and `FppeTrackingTab.tsx`'s `progressPercent()` both now compute
+   their displayed values from `computeFppeProgress()` instead of
+   re-deriving `daysSinceStart`/fractions themselves. No prior test
+   coverage existed for this threshold math in any of the three
+   original locations — added `fppeEndCondition.test.ts`, covering
+   case-count-only, duration-only, and "either" conditions (including
+   both directions of "which threshold gets there first" and the
+   simultaneous-threshold edge case), plus `daysSinceStart`'s
+   real-elapsed-time behavior.
+
+Files changed: `services/cases/resolveClaimParticipationType.ts`,
+`pages/SynopticReportPage/modals/CaseTeamModal.tsx`,
+`pages/SynopticReportPage/components/GrossingReleasePanel.tsx`,
+`pages/SynopticReportPage/hooks/useSpecimenBlockManagement.ts`.
+Files added: `services/cases/fppeEndCondition.ts`,
+`services/cases/fppeEndCondition.test.ts`. Files changed to consume
+the new module: `services/cases/mockFppeAssignmentService.ts`,
+`components/Config/System/FppeAssignmentsSection.tsx`,
+`components/QualityAssurance/FppeTrackingTab.tsx`.
+
+### Still open (8 of the original 11 — batch 279's items 1, 2, 6-11)
+
+Unchanged from batch 279's list: `DriftCorrectionTab.tsx`'s drift-
+correlation rule, `ValidationStudiesSection.tsx`'s `gradeResult()`,
+`ContributionDashboardPage.tsx`'s Quality Flags widget,
+`OrSuiteDashboardPage.tsx`'s dismissal TAT calc,
+`Config/Actions/ActionsTab.tsx`'s shortcut-collision + CSV-import
+logic, `Contribution/AIContributionTab.tsx`'s trend/breakdown
+calculations, `AppShell.tsx`'s `relTime()` >365-day fallback gap, and
+`ScanStationPrompt.tsx` vs `NavBarScanStation.tsx`'s route
+duplication. Each still needs either a design decision or new
+from-scratch tests, not a mechanical sync to an existing canonical
+implementation.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 500/500 test files, 4333/4333 tests passing (the 4 new
+  `fppeEndCondition.test.ts` tests on top of batch 279's 4329).
+
+## Batch 281 — business-logic sweep, phase 2 continued: item 4 of 8 (complete)
+
+Consolidates 1 more of the 8 items still open after batch 280 — the
+one with, again, a clear existing gating rule both sides already
+agreed on (batch 279's item 11).
+
+### Fixed this batch (1 consolidation, 4 files changed/added)
+
+**`ScanStationPrompt.tsx` vs `NavBarScanStation.tsx` route duplication
+(batch 279, item 11)**. Both independently computed the same station
+→ WorkstationGroup → Active-gated `dedicatedPageRoute` chain: the
+one-time login prompt's `handleConfirm` re-fetched the station and its
+group from scratch to decide where to navigate after a tech's first
+pick; the always-on NavBar quick-switch computed the same gate inline
+from a group it had already fetched for other reasons (pushing
+`functionalArea`/action-group state into the Action Registry). Both
+agreed — "only a real route on an Active group is ever navigated to"
+— but as two separately maintained copies of the same rule.
+
+**Fix**: extracted the shared gate into a new module,
+`services/workstationGroups/resolveStationBenchRoute.ts`, as two
+exports: `resolveBenchRouteForGroup(groupRes)` — the pure Active-status
++ real-route gate, taking an already-fetched group result directly (so
+a caller that already has the group in hand for other purposes, like
+`NavBarScanStation.tsx`, never has to re-fetch it) — and
+`resolveStationBenchRoute(stationId)` — the full station → group →
+route chain, for a caller that doesn't have the group yet, like
+`ScanStationPrompt.tsx`. `NavBarScanStation.tsx`'s existing effect now
+calls `resolveBenchRouteForGroup(groupRes)` instead of inlining the
+ternary (no behavior change, no extra fetch); `ScanStationPrompt.tsx`'s
+`handleConfirm` now calls `resolveStationBenchRoute(selected)` instead
+of its own two-step `.then()` chain.
+
+No prior test coverage existed for this gating rule anywhere — added
+`resolveStationBenchRoute.test.ts`, covering the pure gate directly
+(Active-with-route, Inactive-with-route, Active-with-no-route, a
+failed group fetch, and no group result at all) and the full chain via
+the real mock services (a real Active group with a route resolves it;
+deactivating the group after assignment resolves to undefined even
+though the station's own assignment is unchanged; a station with no
+group, and a genuinely nonexistent station, both resolve to
+undefined). Following this codebase's own established convention for
+a service test with no DOM dependency (`computeDisposalReport.test.ts`,
+`specimenDisposal.test.ts`), the test installs an in-memory
+`localStorage` polyfill on `globalThis` before dynamically importing
+the mock services, since vitest's default (non-jsdom) environment
+has no real `localStorage` global for the mock services' own
+persistence layer to read/write — without it, every write silently
+no-ops (caught by `mockStorage.ts`'s own defensive try/catch) and
+every read falls back to seed data, which is exactly the failure mode
+hit and fixed while writing this batch's first draft of the test
+before the polyfill was added.
+
+Files changed: `components/ScanStationPrompt.tsx`,
+`components/NavBar/NavBarScanStation.tsx`. Files added:
+`services/workstationGroups/resolveStationBenchRoute.ts`,
+`services/workstationGroups/resolveStationBenchRoute.test.ts`.
+
+### Still open (7 of the original 11)
+
+`DriftCorrectionTab.tsx`'s drift-correlation rule,
+`ValidationStudiesSection.tsx`'s `gradeResult()`,
+`ContributionDashboardPage.tsx`'s Quality Flags widget,
+`OrSuiteDashboardPage.tsx`'s dismissal TAT calc,
+`Config/Actions/ActionsTab.tsx`'s shortcut-collision + CSV-import
+logic, `Contribution/AIContributionTab.tsx`'s trend/breakdown
+calculations, and `AppShell.tsx`'s `relTime()` >365-day fallback gap.
+Each still needs either a design decision or new from-scratch tests,
+not a mechanical sync to an existing canonical implementation.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 501/501 test files, 4342/4342 tests passing (the 9 new
+  `resolveStationBenchRoute.test.ts` tests on top of batch 280's 4333).
+
+## Batch 282 — business-logic sweep, phase 2 continued: item 10 of 11 (complete)
+
+Closes 1 more of the 7 items still open after batch 281 — the one
+whose real gap batch 279 had already scoped precisely (batch 279's
+item 10), rather than one needing a fresh design decision.
+
+### Fixed this batch (1 scoped addition, 2 files changed/added)
+
+**`AppShell.tsx`'s `relTime()` — missing >365-day fallback (batch 279,
+item 10)**. As batch 279 documented, `relTime()` deliberately
+reimplements most of `utils/formatDate.ts`'s `formatRelative()` rather
+than delegating to it wholesale: for a messaging inbox, today's
+messages genuinely need their real time-of-day (e.g. "2:45 PM"), not
+`formatRelative()`'s generic "Today" — so a straight swap to the
+shared utility would have been a real regression, not a fix. The
+actual, narrower gap: `relTime()` had no equivalent of
+`formatRelative()`'s own >365-day fallback to a full, year-bearing
+date, so a message over a year old rendered as e.g. "Sep 12" with no
+year at all — genuinely ambiguous once a mailbox holds messages
+spanning more than one year.
+
+**Fix**: added a `diffDays < 365` bucket boundary and, past it,
+delegate to `formatDate.ts`'s own `formatDate()` — the same real
+fallback `formatRelative()` itself already uses — rather than hand-
+rolling a second, independent "how to show a full date" copy. Every
+earlier bucket (same-day time-of-day, "Yesterday", short weekday name,
+month/day with no year) is untouched.
+
+No prior test coverage existed for `relTime()` at all (it was a
+private, unexported helper), which is exactly how this one gap went
+unnoticed. Exported it (matching this sweep's own established
+precedent — `RightSynopticPanel.tsx`'s `isVisible`,
+`ReportPreviewRenderer.tsx`'s `evalClause`/`evalCondition` were
+exported the same way for the same reason) and added
+`AppShell/relTime.test.ts`, covering the full real bucket ladder —
+same-day, yesterday, 2–6 days, 7–364 days, and the new 365+ day
+fallback — for both a `Date` and an ISO-string input, so a future
+change to an earlier bucket can't silently regress while touching a
+later one. Importing `AppShell.tsx` on its own (even just for this one
+pure helper) transitively loads several mock services (e.g.
+`mockUserService.ts`) that read/write `localStorage` unconditionally
+at module-load time for their own version-gated re-seeding — real,
+pre-existing behavior outside this fix's scope — so the test installs
+the same in-memory `localStorage` polyfill this sweep's own
+`resolveStationBenchRoute.test.ts` (batch 281) and this codebase's
+`computeDisposalReport.test.ts` already use under vitest's default
+(non-DOM) environment.
+
+Files changed: `components/AppShell/AppShell.tsx` (added the
+>365-day branch; exported `relTime`). Files added:
+`components/AppShell/relTime.test.ts`.
+
+### Still open (6 of the original 11)
+
+`DriftCorrectionTab.tsx`'s drift-correlation rule,
+`ValidationStudiesSection.tsx`'s `gradeResult()`,
+`ContributionDashboardPage.tsx`'s Quality Flags widget,
+`OrSuiteDashboardPage.tsx`'s dismissal TAT calc,
+`Config/Actions/ActionsTab.tsx`'s shortcut-collision + CSV-import
+logic, and `Contribution/AIContributionTab.tsx`'s trend/breakdown
+calculations. Each needs a real design decision or new from-scratch
+tests, not a mechanical sync to an existing canonical implementation.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 502/502 test files, 4348/4348 tests passing (the 6 new
+  `relTime.test.ts` tests on top of batch 281's 4342).
+
+## Batch 283 — business-logic sweep, phase 2 continued: item 1 of 11 (complete)
+
+Closes the highest-consequence item still open after batch 282 —
+batch 279's item 1, flagged patient-safety-relevant.
+
+### Fixed this batch (1 extraction + tests, 3 files changed/added)
+
+**`DriftCorrectionTab.tsx`'s unresolved-drift correlation rule (batch
+279, item 1)**. The tab's "still needs review" actionable list —
+which post-finalization drift corrections are Deferred/Failed with no
+later, same-case Auto-Corrected retry — was computed directly inline
+in the component, with no backing service and no tests. As batch 279
+flagged: a subtle bug here could hide a finalized report that still
+contains an uncorrected post-signout diagnostic edit (or, the other
+direction, wrongly flag an already-resolved case as still needing
+review) — genuinely patient-safety-relevant, and the least testable
+place for that logic to live untested.
+
+**Fix**: extracted the correlation rule into
+`services/auditlog/resolveUnresolvedDriftCorrections.ts`, exporting
+`resolveUnresolvedDriftCorrections(logs)` (the real rule: a
+Deferred/Failed entry counts as unresolved unless a LATER,
+same-`caseId` Auto-Corrected entry exists, compared by the audit
+log's own string-comparable `timestamp` — never assuming array
+order reflects real time) and the `DRIFT_EVENTS` event-name tuple
+that both this function and `DriftCorrectionTab.tsx`'s own event-label
+mapping key off. `DriftCorrectionTab.tsx` now computes `unresolved`
+as `resolveUnresolvedDriftCorrections(scoped)` directly, removing its
+own local `deferred`/`failed` variables and the inline
+`correctedCaseIdsAfter` closure entirely — same real behavior, now
+backed by tests.
+
+Added `resolveUnresolvedDriftCorrections.test.ts` — no prior test
+coverage existed for this rule anywhere. Covers: a Deferred/Failed
+entry alone (unresolved); one followed by a later same-case
+correction (resolved, excluded); a correction that happened BEFORE
+the failure it would need to retry (does NOT resolve it — the
+correlation is directional); a later correction for a DIFFERENT case
+(does not cross-resolve); a bare Detected event never appearing on
+its own; an entry with no `caseId` never surfacing; newest-first
+sort order; a case with multiple retry attempts where only one
+actually has a later correction (only that one resolves); and the
+empty-input case.
+
+Files changed: `components/QualityAssurance/DriftCorrectionTab.tsx`.
+Files added: `services/auditlog/resolveUnresolvedDriftCorrections.ts`,
+`services/auditlog/resolveUnresolvedDriftCorrections.test.ts`.
+
+### Still open (5 of the original 11)
+
+`ValidationStudiesSection.tsx`'s `gradeResult()`,
+`ContributionDashboardPage.tsx`'s Quality Flags widget,
+`OrSuiteDashboardPage.tsx`'s dismissal TAT calc,
+`Config/Actions/ActionsTab.tsx`'s shortcut-collision + CSV-import
+logic, and `Contribution/AIContributionTab.tsx`'s trend/breakdown
+calculations. Each needs a real design decision or new from-scratch
+tests, not a mechanical sync to an existing canonical implementation.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 503/503 test files, 4358/4358 tests passing (the 10 new
+  `resolveUnresolvedDriftCorrections.test.ts` tests on top of batch
+  282's 4348).
+
+## Batch 284 — business-logic sweep, phase 2 continued: item 2 of 11 (complete)
+
+Closes the second-highest-consequence item still open after batch
+283 — batch 279's item 2, flagged regulatory-relevant.
+
+### Fixed this batch (1 extraction + tests, 3 files changed/added)
+
+**`ValidationStudiesSection.tsx`'s `gradeResult()` (batch 279, item
+2)**. This local, unexported function computes a validation study's
+PASS / CONDITIONAL PASS / FURTHER REVIEW grade from its parallel-run
+acceptance rate and edit-ratio numbers against the study's own
+targets. It had no backing service and no tests, even though its
+output is persisted exactly once (the first time a report is
+generated) as `ValidationStudy.finalGrade` — and
+`resolveClientAiModel.ts`/`resolveVoiceAiModel.ts` both gate whether
+an AI model is eligible for production use at a client specifically
+on `finalGrade === 'PASS'`. A grading bug here could silently let an
+AI model into, or keep it out of, production use it shouldn't have.
+
+**Fix**: extracted the rule, unchanged, into
+`services/validationStudies/computeValidationStudyGrade.ts`, exporting
+`computeValidationStudyGrade()` and a `ValidationStudyGrade` /
+`ValidationStudyGradeResult` type pair matching
+`IValidationStudyService.ts`'s own `finalGrade` union exactly.
+`ValidationStudiesSection.tsx`'s report-generation flow now calls it
+directly; the persist call site's redundant
+`grade.grade as 'PASS' | 'CONDITIONAL PASS' | 'FURTHER REVIEW'` cast
+was also removable, since `grade.grade` is now properly typed as that
+same union at the source rather than widened to `string` and cast
+back. `buildReportHtml()`'s own `grade` parameter (typed structurally
+as `{ grade: string; color: string; description: string }`) needed no
+change — the extracted type is a structural subtype.
+
+Added `computeValidationStudyGrade.test.ts` — no prior test coverage
+existed for this rule anywhere. Covers all three grades, the PASS/
+CONDITIONAL PASS boundary conditions (acceptance rate exactly at
+target, edit ratio exactly at its ceiling, acceptance rate exactly at
+the 85%-of-target partial-credit line), and that a low edit ratio
+alone can't rescue a FURTHER REVIEW grade when acceptance rate itself
+is well below the partial-credit bar.
+
+Files changed: `components/ValidationStudies/ValidationStudiesSection.tsx`.
+Files added:
+`services/validationStudies/computeValidationStudyGrade.ts`,
+`services/validationStudies/computeValidationStudyGrade.test.ts`.
+
+### Still open (4 of the original 11)
+
+`ContributionDashboardPage.tsx`'s Quality Flags widget,
+`OrSuiteDashboardPage.tsx`'s dismissal TAT calc,
+`Config/Actions/ActionsTab.tsx`'s shortcut-collision + CSV-import
+logic, and `Contribution/AIContributionTab.tsx`'s trend/breakdown
+calculations. Each needs a real design decision or new from-scratch
+tests, not a mechanical sync to an existing canonical implementation.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 504/504 test files, 4366/4366 tests passing (the 8 new
+  `computeValidationStudyGrade.test.ts` tests on top of batch 283's
+  4358).
+
+## Batch 285 — business-logic sweep, phase 2 continued: item 6 of 11 (complete)
+
+Closes 1 more of the 4 items still open after batch 284 — batch
+279's item 6.
+
+### Fixed this batch (1 extraction + tests, 2 files changed)
+
+**`ContributionDashboardPage.tsx`'s Quality Flags widget (batch 279,
+item 6)**. The widget's real selection logic — which open/pending-
+verification deficiencies and high/medium-severity Frozen/Final
+discordances belong in the pathologist's own top-3 "needs attention"
+list — was computed directly inline in a `useEffect`: severity
+derivation (overdue or reopened → high, a fresh open item → medium,
+otherwise low), per-pathologist scoping (cross-referencing each
+deficiency's `caseId` against the case's own `order.assignedTo`, never
+`SpecimenDeficiency.raisedBy`), low-severity discordance exclusion,
+scoring, and the top-3 sort/slice — all untested, unlike this same
+directory's sibling QA pages (`CytologyQcQueuePage.tsx`,
+`SurgicalQaWorklistPage.tsx`), which already delegate equivalent logic
+to `resolve*.ts` functions.
+
+**Fix**: extracted the full selection rule into
+`contributionDashboardCalculations.ts` — this dashboard's own existing
+sibling calculations module, matching its established `compute*`
+naming convention rather than introducing a new location — as
+`computeTopQualityFlags()`, returning plain `QualityFlagCandidate[]`
+data (no React `onClick`, which stays a thin mapping step in the
+component). `ContributionDashboardPage.tsx`'s effect now just fetches
+the real data and maps each candidate to its real navigation target
+(the deficiencies queue vs. a case's synoptic view) — the one
+genuinely React-specific piece left in the component. One pre-existing,
+deliberately-preserved edge case: a discordant `QaActivityRecord` with
+no `severity` set passes the `!== 'low'` filter (since `undefined !==
+'low'`) and keeps its `severity` as `undefined` rather than being
+defaulted — unreachable in practice per `QaActivityRecord.ts`'s own
+documentation (severity is only ever absent when `outcome !==
+'discordant'`), preserved exactly rather than "fixed" as an
+out-of-scope behavior change.
+
+Added 16 new tests to `contributionDashboardCalculations.test.ts` (no
+prior coverage existed for this logic anywhere) — covering
+per-pathologist scoping for both deficiencies and discordances, every
+severity bucket (overdue, reopened, open, non-overdue
+pending-verification), the case-level vs. specimen-label value text
+(including an unknown-type-id fallback), discordance activity-type/
+outcome/severity filtering, sort order (score then recency), the
+top-N slice, and a combined deficiency+discordance ranked list.
+
+Files changed: `pages/ContributionDashboardPage.tsx`,
+`pages/contributionDashboardCalculations.ts` (added
+`computeTopQualityFlags()` and its types) and
+`pages/contributionDashboardCalculations.test.ts` (new tests).
+
+### Still open (3 of the original 11)
+
+`OrSuiteDashboardPage.tsx`'s dismissal TAT calc, `Config/Actions/
+ActionsTab.tsx`'s shortcut-collision + CSV-import logic, and
+`Contribution/AIContributionTab.tsx`'s trend/breakdown calculations.
+Each needs a real design decision or new from-scratch tests, not a
+mechanical sync to an existing canonical implementation.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 504/504 test files, 4382/4382 tests passing (the 16 new
+  `computeTopQualityFlags` tests on top of batch 284's 4366).
+
+## Batch 286 — business-logic sweep, phase 2 continued: item 7 of 11 (complete)
+
+Closes 1 more of the 3 items still open after batch 285 — batch
+279's item 7.
+
+### Fixed this batch (1 extraction + tests, 3 files changed/added)
+
+**`OrSuiteDashboardPage.tsx`'s `DismissConfirmationModal` dwell-time/
+TAT calc (batch 279, item 7)**. The modal computed dwell-time-on-board
+(sign-off → dismissal) and total turnaround (arrival → sign-off)
+inline from raw timestamps right before logging the dismissal event to
+the OR event log — even though this same file already documents
+extracting equivalent elapsed-time logic to
+`resolveOrBoardRowDisplayState.ts`/`resolveIntraopTatStatus.ts` "per
+direct guidance (no business logic in the UI unless compulsory)". This
+one calculation was missed.
+
+**Fix**: extracted it into
+`services/intraopDashboard/resolveDismissalTatMetrics.ts`, matching
+this directory's own established `resolve*.ts` convention (pure, no
+React, no service calls) alongside its siblings. `resolveDismissalTatMetrics()`
+takes the request and an optional `dismissedAtMs` (defaulting to the
+real current time — a deliberate, one-shot `Date.now()` at the moment
+of a real staff action, unlike the row-display clock's shared
+render-loop tick) and returns `{ dwellTimeOnBoardSeconds,
+totalTurnaroundMinutes }`, both `undefined` when the case is dismissed
+with no sign-off ever recorded — same behavior as before, now backed
+by tests. `DismissConfirmationModal`'s `confirmDismiss` now calls it
+directly instead of the two inline ternaries.
+
+Added `resolveDismissalTatMetrics.test.ts` — no prior test coverage
+existed for this calculation anywhere. Covers the real dwell/
+turnaround computation, the no-sign-off-recorded case (both metrics
+undefined), dwell time never going negative, the real-current-time
+default, and rounding to the nearest whole unit for both figures.
+
+Files changed: `pages/OrSuiteDashboardPage.tsx`. Files added:
+`services/intraopDashboard/resolveDismissalTatMetrics.ts`,
+`services/intraopDashboard/resolveDismissalTatMetrics.test.ts`.
+
+### Still open (2 of the original 11)
+
+`Config/Actions/ActionsTab.tsx`'s shortcut-collision + CSV-import
+logic, and `Contribution/AIContributionTab.tsx`'s trend/breakdown
+calculations. Each needs new from-scratch tests for substantial,
+previously-untested logic, not a mechanical sync to an existing
+canonical implementation.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 505/505 test files, 4387/4387 tests passing (the 5 new
+  `resolveDismissalTatMetrics.test.ts` tests on top of batch 285's
+  4382).
+
+## Batch 287 — business-logic sweep, phase 2 continued: item 8 of 11 (complete)
+
+Closes 1 more of the 2 items still open after batch 286 — batch
+279's item 8, the more substantial of the two remaining extractions.
+
+### Fixed this batch (2 extractions + tests, 3 files changed/added)
+
+**`Config/Actions/ActionsTab.tsx`'s shortcut-collision detection and
+CSV bulk-import pipeline (batch 279, item 8)**. Both were substantial,
+untested business rules embedded entirely in the component:
+
+1. **Single-shortcut collision detection + alternate suggestion**
+   (used by the Edit modal's live keyboard-combo recorder) —
+   case-insensitive collision matching against every other action
+   (never self-conflicting with the action being edited), and, on a
+   real conflict, proposing the first of `Alt+Shift+<base>`,
+   `Ctrl+<base>`, `Ctrl+Shift+<base>` that isn't itself already taken.
+   Extracted, unchanged, into
+   `services/actionRegistry/resolveShortcutConflict.ts` as
+   `resolveShortcutConflict()` and `suggestAlternateShortcut()`.
+2. **Bulk CSV import** — per-row validation (unknown id, duplicate id
+   within the file, blocked Label/Category edits, blocked edits to a
+   disabled action — a real gap this same file's own history already
+   found and fixed once, since bulk import was a second, separate path
+   to `updateAction()` that didn't originally share the table's own
+   disabled-row edit protection), in-file and global shortcut collision
+   detection, and real change-vs-no-op detection. Extracted into
+   `services/actionRegistry/parseActionRegistryImportCsv.ts` as a pure
+   `parseActionRegistryImportCsv(content, actions)` function that
+   performs NO side effects (no service calls) — it returns a
+   structured per-row outcome (`ActionImportRowOutcome`, e.g.
+   `{ kind: 'shortcut-reserved', line, shortcut, label }`) plus the
+   real updates to apply, rather than a translated string, since the
+   pure parsing/deciding logic shouldn't need to know about i18n.
+   `ActionsTab.tsx`'s own `describeOutcome()` now maps each structured
+   outcome to the exact same user-facing text this pipeline showed
+   before extraction; `handleFileUpload` itself shrank to reading the
+   file, calling the pure function, applying its `updates`, and
+   showing the summary — the real business rules moved out entirely.
+
+Added `resolveShortcutConflict.test.ts` (11 tests: blank/self/real
+conflicts, case-insensitivity, and the full three-candidate suggestion
+fallback chain including modifier-prefix stripping) and
+`parseActionRegistryImportCsv.test.ts` (14 tests: real updates vs.
+no-change, set-based trigger-change comparison, unknown/duplicate ids,
+blocked Label/Category and disabled-action edits, in-file and global
+shortcut collisions, comment/header/malformed-row skipping, and
+trigger parsing) — no prior test coverage existed for either piece of
+logic anywhere.
+
+Files changed:
+`components/Config/Actions/ActionsTab.tsx`. Files added:
+`services/actionRegistry/resolveShortcutConflict.ts`,
+`services/actionRegistry/resolveShortcutConflict.test.ts`,
+`services/actionRegistry/parseActionRegistryImportCsv.ts`,
+`services/actionRegistry/parseActionRegistryImportCsv.test.ts`.
+
+### Still open (1 of the original 11)
+
+`Contribution/AIContributionTab.tsx`'s trend/breakdown calculations —
+the one tab in its directory with no matching `*Calculations.ts`
+module, unlike its siblings. Needs new from-scratch tests for
+substantial, previously-untested logic.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 507/507 test files, 4412/4412 tests passing (the 25 new
+  tests across both new files, on top of batch 286's 4387).
+
+## Batch 288 — business-logic sweep, phase 2 complete: item 8 of 11 (final item)
+
+Closes the last of the 11 items opened in batch 279 — all 11
+originally-documented findings from that audit are now fixed.
+
+### Fixed this batch (1 extraction + tests, 3 files changed/added)
+
+**`Contribution/AIContributionTab.tsx`'s trend/breakdown calculations
+(batch 279, item 8, second half)**. This was the one tab in
+`components/Contribution/` with no matching `*Calculations.ts`
+module — unlike its siblings (`productivityCalculations.ts`,
+`qualityCalculations.ts`, `caseMixCalculations.ts`,
+`tatCalculations.ts`, each already tested). Its time-bucketed trend
+aggregation and confidence/period-scaling math lived inline with zero
+test coverage. Extracted, unchanged, into the new
+`components/Contribution/aiContributionCalculations.ts`:
+
+- `computeAiAcceptanceSummary()` — per-user confirmed/overridden
+  counts and average AI confidence, excluding `'missed'` entries from
+  both the total and the confidence average (never a fabricated 0).
+- `buildAcceptanceTrend()` — real, time-bucketed acceptance-rate
+  trend built from actual `AiFeedbackEntry` timestamps (a bucket with
+  no real entries shows an honest 0, never an interpolated guess);
+  shared by both the always-12-bucket YTD baseline and the
+  currently-selected period's own trend.
+- `averageRate()` — the shared average-of-trend-points helper used
+  for both the YTD baseline average and the selected period's own
+  average.
+- `computePeriodFraction()` / `scaleForPeriod()` /
+  `scaleForPeriodWithFloor()` / `scaleBreakdownForPeriod()` /
+  `scaleComparisonForPeriod()` — the real period-scaling math (30d/90d
+  scale against however many real months have actually elapsed this
+  year so far; YTD is always the unscaled 1.0), split into a
+  no-floor variant (for total-case/assisted counts, where an honest
+  zero is valid) and a floored-at-1 variant (for per-row
+  breakdown/comparison counts, where a scaled-to-zero row would
+  otherwise misleadingly read as "no real activity at all" for a
+  category that does have sparse real activity) — same technique
+  `qualityCalculations.ts` already uses for its own period scaling.
+- `deriveOverriddenCases()` — the pathologist's own recent
+  AI-suggestion overrides, preserving the original
+  slice-first-6/no-independent-resort order and the raw-caseId
+  fallback when no display label is available.
+- `deriveBreakdownFromSpecimens()` / `humanizeSubspecialtyId()` — the
+  live breakdown-by-subspecialty, derived from the real Specimen
+  Dictionary (active entries only), with an illustrative mock
+  rate/volume per subspecialty and a humanized fallback label for any
+  subspecialty not in the seeded list, so a newly-added subspecialty
+  never silently disappears from the breakdown.
+
+`AIContributionTab.tsx` itself now imports all of the above instead of
+defining them inline; its own local `BreakdownRow`/`OverriddenCase`/
+`CaseComparison`/`MonthlyPoint` types, `SUBSPECIALTY_LABELS`,
+`MOCK_RATE_BY_SUBSPECIALTY`, `CASES_PER_SPECIMEN_TYPE`,
+`humanizeSubspecialtyId`, `deriveBreakdownFromSpecimens`, and
+`buildRealTrend` were all removed in favor of the extracted module.
+
+Added `aiContributionCalculations.test.ts` (32 tests covering all nine
+exported functions: acceptance-summary counting/averaging/null-safety,
+per-bucket trend correctness including out-of-window and empty-bucket
+cases, trend averaging and rounding, all three date-range scaling
+fractions, floored-vs-unfloored scaling, breakdown/comparison row
+scaling, overridden-case ordering/slicing/label-fallback/array-value
+joining/day-count math, and subspecialty grouping/sorting/fallback
+labeling) — no prior test coverage existed for any of this logic.
+
+Files changed: `components/Contribution/AIContributionTab.tsx`. Files
+added: `components/Contribution/aiContributionCalculations.ts`,
+`components/Contribution/aiContributionCalculations.test.ts`.
+
+### Still open
+
+None — all 11 items from batch 279's original audit are now fixed.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 508/508 test files, 4444/4444 tests passing (the 32 new
+  tests, on top of batch 287's 4412).
+
+## Batch 289 — PS-328: Cytology Categories admin screen no longer offers the unread "PALGA CISOE-A" dictionary entry
+
+A fresh, standalone ticket (not part of the batch 279 sweep, which
+closed with batch 288) — filed directly against
+`CytologyCategoriesSection.tsx` (Admin › Configuration › Cytology &
+Cervical Screening).
+
+### The gap
+
+The nomenclature-system selector on this admin dictionary screen
+listed "PALGA CISOE-A (Netherlands)" alongside Bethesda, BSCC/RCPath,
+München III, and SFCC, with full CRUD ("+ Add Category",
+Edit/Deactivate) available for it — same as every real,
+dictionary-backed system.
+
+Confirmed directly against `CytologyScreeningPage.tsx` (the real
+Dutch cytologist resulting screen, PS-183): the real CISOE-A workflow
+never reads this dictionary at all. It's a genuinely separate,
+hardcoded 6-axis scoring form (Composition/Inflammation/Squamous/
+Other-Endometrium/Endocervical/Adequacy), validated by
+`resolveCisoeAValidation` and mapped to Bethesda via
+`resolveCisoeAToBethesda`/`resolveCisoeAAdequacyToBethesda` for
+downstream compatibility — confirmed permanent and by design, not a
+temporary gap: `services/cytology/README.md`'s own Phase 30 note
+already documented `'palga_cisoea'` as existing "purely as the real,
+effective-settings signal... not a tag on any real
+`CytologyCategoryEntry` row," and `CytologyScreeningPage.tsx`'s own
+comments confirm it "carries zero real dictionary rows... by design."
+So any category an admin added under "PALGA CISOE-A" in this screen
+did nothing — misleading, not a capability gap. Confirmed zero
+`palga_cisoea`-tagged rows exist in `mockCytologyCategoryService.ts`'s
+seed data, and nothing else references any.
+
+This is a different situation from SFCC, already handled correctly in
+the same file: SFCC is a real, derived view over Bethesda's own
+entries (French text substituted in), so hiding its CRUD and banking
+on Bethesda's own data makes sense. PALGA CISOE-A has no relationship
+to this dictionary at all, in either direction, ever — a stronger case
+for removing the option outright rather than keeping it with SFCC's
+restricted-CRUD treatment.
+
+### Fix (1 file changed, 1 test file added)
+
+Removed `'palga_cisoea'` from `CytologyCategoriesSection.tsx`'s own
+`NOMENCLATURE_SYSTEMS` selector array entirely. Updated the array's
+own comment, which previously lumped `sfcc`/`palga_cisoea` together as
+"real, separate, still-open gaps with zero entries today" — accurate
+for `sfcc` at the time it was written, never accurate for
+`palga_cisoea`, which was always structurally excluded from this
+dictionary by design.
+
+**Explicitly unaffected** (out of scope per the ticket, and verified
+before touching anything): the `CytologyNomenclatureSystem` type
+itself (`ICytologyCategoryService.ts`) keeps `'palga_cisoea'` as a
+member — it's a real, legitimate value used elsewhere as the
+facility-level reporting-system signal
+(`CytologyNomenclatureSettingsSection.tsx`'s own Enterprise/Facility
+cascade, registry dispatch, sign-out gating). The real CISOE-A scoring
+workflow itself, and `resolveCisoeAToBethesda`/
+`resolveCisoeAAdequacyToBethesda`, are untouched.
+
+Added `CytologyCategoriesSection.test.tsx` (2 tests, `happy-dom`
+environment — same established pattern as
+`ConfigSearchBar.test.tsx`/`ExternalConsultAccessModal.test.tsx` for
+component-level coverage): confirms "PALGA CISOE-A (Netherlands)" no
+longer appears as a selectable option, and that the four real,
+dictionary-backed systems (Bethesda, BSCC/RCPath, München III, SFCC)
+are unaffected. No prior test coverage existed for this component at
+all.
+
+Files changed: `components/Config/System/CytologyCategoriesSection.tsx`.
+Files added: `components/Config/System/CytologyCategoriesSection.test.tsx`.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 509/509 test files, 4446/4446 tests passing (the 2 new
+  tests, on top of batch 288's 4444).
+
+## Batch 290 — PS-132: Cytology/Bethesda abnormal-severity flagging (QC rescreening already fully built)
+
+Ticket: "Abnormal Detection: Cytology / Bethesda Screening + QC
+Rescreening Rules," part of PS-105's Core Abnormal Detection Engine
+(sibling to PS-129 discrete triggers, PS-131 AI narrative detection).
+Full investigation + design writeup lives in
+`services/cytology/README.md`'s new Phase 80 — this entry summarizes
+the delta actually shipped.
+
+### Investigation (required by the ticket as its own first step)
+
+- **Bethesda classification is already discrete**, never free text —
+  `CytologyReviewRecord` already references real `CytologyCategoryEntry`
+  ids, the same discrete model `resolveCytologyReviewRequirement.ts`
+  already reduces to a review-required boolean.
+- **Bethesda severity flagging (item 2) had a real, confirmed gap**:
+  each category already carries a real `suggestedAbnormalSeverity`
+  (`'Abnormal' | 'Critical' | 'Malignant'`), but this module's own
+  README already flagged it as "not consumed anywhere yet" — confirmed
+  still true. This is the one piece of new logic this batch adds.
+- **QC rescreening (item 3 — random + targeted) needed no new code at
+  all** — already fully built and wired: `resolveCytologyRandomQcSelection.ts`
+  (PS-157, independent negative/non-negative random rates),
+  `resolveCytologyPendingMandatoryQc.ts` (100%-of-high-risk mandatory
+  targeted QC queue), and `CytologyQcSettingsSection.tsx` (the real
+  3-tier Enterprise/Facility/Staff admin cascade). Building anything
+  further here would have been a redundant fourth implementation of
+  sampling the ticket itself explicitly asked to avoid.
+
+### Fixed this batch (1 new resolver + tests, 2 files changed for a shared-constant cleanup)
+
+**New: `services/cytology/resolveCytologyAbnormalSeverity.ts`** (+
+`.test.ts`, 7 tests) — pure function reducing a review's selected
+Bethesda category ids to the single highest-ranked
+`suggestedAbnormalSeverity` among them (or `undefined` when none carry
+one — never a fabricated worst case, and ASC-US's own deliberately-unset
+severity is preserved as genuinely unconfigured, not guessed at). The
+direct cytology counterpart of `evaluateAbnormalTriggerRules.ts`'s own
+`highestSeverityMatch()` for PS-129. Deliberately advisory only — it
+never itself gates sign-out; `resolveCytologySignOutGate.ts`'s own,
+separate `requiresPathologistReview` check is unaffected and unchanged.
+Wiring the resulting severity into a worklist badge or the unified
+sign-out review is left for whichever future ticket needs it — this
+ticket's own scope is "the flag/routing decision" only, not the
+guardrail UI.
+
+**Cleanup alongside it**: `evaluateAbnormalTriggerRules.ts`'s own
+private `SEVERITY_RANK` constant was pulled out into
+`IAbnormalTriggerRuleService.ts` as an exported `ABNORMAL_SEVERITY_RANK`
+— the new cytology resolver needed the identical ranking, and keeping
+two private copies risked them drifting apart. `evaluateAbnormalTriggerRules.ts`
+now imports the shared constant instead of defining its own; its own
+existing 12 tests still pass unchanged (behavior identical, source of
+truth consolidated).
+
+Files added: `services/cytology/resolveCytologyAbnormalSeverity.ts`,
+`services/cytology/resolveCytologyAbnormalSeverity.test.ts`. Files
+changed: `services/abnormalDetection/IAbnormalTriggerRuleService.ts`,
+`services/abnormalDetection/evaluateAbnormalTriggerRules.ts`,
+`services/cytology/README.md` (Phase 80 + a corrected, now-resolved
+"not consumed anywhere yet" note).
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS re-parsed with PostCSS directly: clean (no CSS changed this batch).
+- Full suite: 510/510 test files, 4453/4453 tests passing (the 7 new
+  tests, on top of batch 289's 4446).
+
+## Batch 291 — PS-136: Critical Value Alerting — zero-PHI SMS/secure-email redesign + internal audit viewer
+
+### What this batch is
+
+PS-136's own automated critical-alert dispatch pipeline
+(`dispatchCriticalAlerts.ts`, `resolveCriticalAlertChannels.ts`,
+`alertChannels/`) was already fully built and tested going into this
+batch (see Batch 288's own `services/clinical/README.md` correction).
+This batch is a follow-up redesign of the sms/secure_email transport
+specifically, per a direct engineering brief: standard telecom SMS
+carriers and standard transactional email relays generally will not
+sign a HIPAA BAA, so those two channels' message bodies must never
+carry PHI or clinical detail. The real, intended production
+architecture: a fixed, generic, non-PHI template plus an opaque
+reference link, resolved by the receiving physician authenticating via
+their OWN EHR's SSO/SMART-on-FHIR launch — never a PathScribe-hosted
+login, which doesn't exist anywhere in this app (confirmed by direct
+search of `services/auth/` and `IPhysicianService.ts` before building
+this). Also closes a real, separate, honest gap found while scoping
+this work: no UI existed anywhere to view the automated dispatch
+system's own audit trail — direct guidance's own "Add the Viewer to
+the Audit Module" ask.
+
+### New this batch
+
+- **`services/clinical/ICriticalAlertReferenceTokenService.ts` /
+  `mockCriticalAlertReferenceTokenService.ts`** (+ tests) — the opaque
+  reference token behind the sms/secure_email "tap to view" link.
+  Modeled directly on `services/consultAccess/IConsultTokenService.ts`'s
+  established "opaque bearer token, explicitly disclosed as not real
+  security" pattern — same caveat, for the identical underlying reason.
+  A dedicated, purpose-specific type rather than reusing `ConsultToken`:
+  a consult-access grant and a critical-alert reference notification are
+  semantically different concepts, even sharing the same underlying
+  "opaque bearer token" shape.
+- **`services/clinical/computeCriticalAlertReferenceTokenExpiry.ts`** (+
+  tests) — a flat 168h (7-day) expiry window, deliberately simpler than
+  `computeDefaultConsultTokenExpiry.ts`'s own 24h/72h-weekend logic:
+  this link is a real, additive courtesy on top of the mandatory human
+  verbal-notification call this app already requires, never its
+  substitute, so its expiry doesn't need to track clinical urgency.
+- **`pages/CriticalAlertReferencePage/CriticalAlertReferencePage.tsx`**
+  (+ tests, + README) — the new public route (`/critical-alert/:token`,
+  registered in `App.tsx` before `<ProtectedRoute>`). A direct, deliberate
+  answer to `App.tsx`'s own pre-existing `/consult/:token` route warning
+  ("do not treat this route as a precedent for any other unauthenticated
+  PHI-bearing page without the same explicit caveat"): it never renders
+  `findingTerm`/`findingSeverity`/`sourceQuote`, since it has no real
+  authentication to gate that content with — only
+  `accessionNumber`/`physicianName`/link status, plus a disclosed-
+  simulation banner matching `ExternalConsultViewPage.tsx`'s own. New
+  `.ps-critalert-*` CSS class family (standalone dark shell, same
+  posture as `.ps-extconsult-*`).
+- **`pages/CriticalAlertAuditSection.tsx`** — new **Audit Page >
+  Critical Alerts** tab (`AuditLogPage.tsx`), the internal, authenticated
+  home for the "Complete Audit Trail" ask: joins each
+  `CriticalAlertDispatchRecord` to its own reference token's real
+  access/acknowledgement history. Same "simple, standalone,
+  self-contained" pattern as `OutboundDlqSection.tsx` (the "financial"
+  tab's own sibling), not the "quality" tab's `QaGroup`-normalized table.
+  New `.ps-critaudit-*` CSS classes (reuses the normal `.ps-conf-*`
+  table chrome — this lives inside the app's own normal chrome, unlike
+  the public reference page's standalone shell).
+- New `criticalAlertReferencePage.*` and `criticalAlertsAudit.*` i18n
+  namespaces (English only, per this app's established `fallbackLng:
+  'en'` policy for new UI text), plus an `auditLog.tabs.criticalAlerts`
+  key.
+
+### Changed this batch
+
+- **`sendSmsAlert.ts` / `sendSecureEmailAlert.ts`** — message bodies
+  rebuilt from a fixed, generic, non-PHI template plus the new opaque
+  reference link, replacing the earlier versions that included
+  `findingTerm`/`findingSeverity` directly. `ehr_push` (`pushEhrInboxAlert.ts`)
+  is deliberately unchanged — it already routes through the receiving
+  institution's own interface-engine/EHR trust boundary, never a public
+  link.
+- **`types/clinical/CriticalAlertDispatch.ts`** — `CriticalAlertPayload`
+  gained an optional `referenceUrl`, undefined for `ehr_push`.
+- **`dispatchCriticalAlerts.ts`** — `DispatchCriticalAlertsInput` now
+  requires `accessionNumber` (the only case-identifying value the public
+  reference page ever displays); pre-generates the dispatch record's own
+  id so a reference token can honestly link back to it from the moment
+  it's issued, before that record exists in storage; issues one shared
+  reference token per dispatch (not one per channel) when sms or
+  secure_email applies.
+- **`ICriticalAlertDispatchService.ts` / `mockCriticalAlertDispatchService.ts`** —
+  `record()` now accepts an optional caller-supplied `id`; both gained a
+  real `getAll()` for the new internal audit viewer.
+- **`useSignOutWorkflow.ts`** — its `dispatchCriticalAlerts()` call site
+  now passes `accessionNumber`.
+- **`services/index.ts`** — new `criticalAlertReferenceTokenService`
+  barrel export, same pattern as `consultTokenService`.
+- **`services/clinical/README.md`** — new note documenting this
+  redesign, and **`pages/README.md`** — new
+  `CriticalAlertReferencePage/` row.
+
+### Validation
+
+- `tsc --noEmit`: clean. (One real, project-wide TS-config finding along
+  the way, documented inline in
+  `mockCriticalAlertReferenceTokenService.test.ts`: with this project's
+  `strictNullChecks: false`, `if (!res.ok)` does not narrow a
+  boolean-discriminated `ServiceResult` union into its failure branch —
+  `res.ok === false` does. No other test file in this codebase narrows
+  into a failure branch that way, which is why this hadn't surfaced
+  before.)
+- CSS re-parsed with PostCSS directly: clean.
+- Full suite: 514/514 test files, 4482/4482 tests passing.
+
+## Batch 292 — PS-136: post-GA interface-engine cutover candidate for sms/secure_email/ehr_push (deliberately not wired in)
+
+### What this batch is
+
+Direct follow-up to Batch 291's zero-PHI redesign, prompted by two
+questions: "Can this be implemented in a cloud environment without
+software patches?" (no — the real vendor call doesn't exist yet, and
+this app's dispatch logic is entirely client-side) and "Can the
+interface engine be used for any post GA modification to fully
+implement this feature?" (yes — the same real, generic outbound HTTP
+transport six other transaction types already use). Then: "Can you
+build the patch and keep it separate in the repo?"
+
+This batch builds that patch as a genuinely separate, inactive module —
+`services/clinical/postGaAlertChannels/` — rather than editing the live
+`alertChannels/` stubs in place. `dispatchCriticalAlerts.ts` is
+untouched; nothing about current dispatch behavior changes until someone
+deliberately swaps three imports (documented in the new folder's own
+README).
+
+### New this batch
+
+- **`services/clinical/postGaAlertChannels/`** (new folder) —
+  `sendSmsAlertViaInterfaceEngine.ts`, `sendSecureEmailAlertViaInterfaceEngine.ts`,
+  `pushEhrInboxAlertViaInterfaceEngine.ts` (+ `postGaAlertChannels.test.ts`,
+  8 tests, `dispatchInterfaceMessage` mocked — no real network call) +
+  README. Each mirrors its live `alertChannels/` sibling's exact
+  payload/template logic (sms/secure_email reuse the live files' own
+  zero-PHI template builders, now exported for this reuse; `ehr_push`
+  deliberately keeps real clinical detail, same as its live
+  counterpart) but dispatches via `dispatchInterfaceMessage.ts` instead
+  of a local `console.info` stub.
+- The new folder's own README also captures real research into the
+  actual customer-side delivery mechanisms this connects to once
+  activated: SMTP relay or OAuth (Graph/Gmail API) for secure_email;
+  email-to-SMS carrier gateways (e.g. `{number}@vtext.com`) or
+  interface-engine offloading (Mirth/Cloverleaf/Corepoint) for sms;
+  the interface engine's own EHR inbox-task ingestion for ehr_push.
+  Real, honest gap flagged there: the email-to-SMS gateway option needs
+  a per-physician carrier field that doesn't exist in this app's data
+  model today (`Physician` has `smsCapablePhone`, no carrier). None of
+  that customer-routing logic is buildable from this repo — it belongs
+  in the separate `receive_interface_message` Firebase Functions
+  backend, keyed off tenant/customer configuration.
+
+### Changed this batch
+
+- **`services/interfaceDispatch/dispatchInterfaceMessage.ts`** —
+  `InterfaceTransactionType` gained `'CRITICAL_ALERT'` (additive only;
+  no existing transaction type or call site affected).
+- **`types/clinical/CriticalAlertDispatch.ts`** —
+  `AlertChannelDispatchOutcome.method` widened from the literal `'stub'`
+  to `'stub' | 'interface_engine'`, with a doc comment on the honest
+  distinction: `'interface_engine'` confirms PathScribe's own outbound
+  message reached the real receiving endpoint, never that the physician
+  actually received it.
+- **`alertChannels/sendSmsAlert.ts` / `sendSecureEmailAlert.ts`** — their
+  existing `buildSmsBody()`/`buildEmailBody()` helpers are now exported
+  (behavior unchanged) so the new post-GA module reuses the identical
+  zero-PHI template rather than a second, driftable copy.
+- **`services/clinical/README.md`** — new note on the `postGaAlertChannels/`
+  folder's existence and inactive status.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS unchanged this batch.
+- Full suite: 515/515 test files, 4490/4490 tests passing (8 new tests
+  in this batch's own suite, on top of Batch 291's 4482).
+
+## Batch 293 — PS-136: closes the carrier data-model gap Batch 292 flagged (email-to-SMS gateway option)
+
+### What this batch is
+
+Direct follow-up to Batch 292's own flagged gap: "The carrier gap is a
+data-model problem inside this app... address it." This batch fixes
+that gap in this app's own data model and UI — a physician's mobile
+carrier is now a real, recordable fact, not a limitation to note in a
+README. It does not touch anything in the separate
+`receive_interface_message` backend (out of this repo's scope, tracked
+separately in Jira).
+
+### New this batch
+
+- **`services/physicians/resolveEmailToSmsGatewayAddress.ts`** (new
+  file, + `resolveEmailToSmsGatewayAddress.test.ts`, 9 tests) — pure,
+  honest resolver: given a phone number and a carrier, returns the real
+  `{10digits}@{carrier gateway domain}` address (e.g.
+  `5551234567@vtext.com`), or `undefined` whenever the real data to
+  build one isn't there (no phone, no carrier, or a non-US/malformed
+  number) — never a fabricated guess. Carries `SMS_CARRIER_GATEWAY_DOMAIN`,
+  the curated `verizon`/`att`/`tmobile`/`uscellular` gateway-domain map
+  (`'other'` uses whatever domain the physician record itself supplies).
+
+### Changed this batch
+
+- **`services/physicians/IPhysicianService.ts`** — new exported
+  `SmsCarrierId` type (`'verizon' | 'att' | 'tmobile' | 'uscellular' | 'other'`)
+  and two new optional `Physician` fields: `smsCarrier?: SmsCarrierId`,
+  `smsCarrierOtherDomain?: string` (used only when `smsCarrier ===
+  'other'`). Both additive; every existing `Physician` value remains
+  valid with neither set.
+- **`components/Config/System/PhysiciansSection.tsx`** — `PhysicianModal`
+  gained a carrier `<select>` (right after the existing SMS-capable-mobile
+  field) plus a conditional "other carrier domain" `<input>` shown only
+  when `'other'` is selected. `emptyDraft` extended to match.
+- **`i18n/locales/en.json`** — 9 new keys under `physiciansSection.modal.*`
+  for the new carrier field's label, options, and the "other domain"
+  input's label/placeholder.
+- **`types/clinical/CriticalAlertDispatch.ts`** — `CriticalAlertRecipient`
+  gained `smsCarrier?`/`smsCarrierOtherDomain?`, threaded through purely
+  for the post-GA module's benefit — no bearing on
+  `resolveCriticalAlertChannels.ts`'s own availability rules.
+- **`services/clinical/dispatchCriticalAlerts.ts`** — `toRecipient()`
+  now passes the physician's `smsCarrier`/`smsCarrierOtherDomain`
+  through unchanged onto the resolved recipient.
+- **`services/clinical/postGaAlertChannels/sendSmsAlertViaInterfaceEngine.ts`** —
+  now resolves and carries `carrier`/`emailToSmsGatewayAddress` on the
+  `CRITICAL_ALERT` envelope, via the new resolver. Still not wired into
+  `dispatchCriticalAlerts.ts` — this changes nothing about live dispatch
+  behavior.
+- **`services/clinical/postGaAlertChannels/postGaAlertChannels.test.ts`** —
+  3 new tests asserting the envelope's `carrier`/`emailToSmsGatewayAddress`
+  fields: resolved for a curated carrier, resolved for `'other'` via its
+  domain override, and honestly `undefined` when no carrier is on file.
+- **`services/clinical/postGaAlertChannels/README.md`** and
+  **`services/clinical/README.md`** — both updated to mark this gap
+  closed on this app's side, and to spell out the real, remaining
+  scope boundary: PathScribe now computes and offers a real gateway
+  address, but a backend is free to ignore it and use interface-engine
+  offloading instead; actual OAuth/SMTP-relay tenant setup and
+  customer-routing logic remain backend work in the separate
+  `receive_interface_message` repo (tracked as a Jira ticket, not
+  buildable from here).
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- CSS unchanged this batch (existing `.ps-conf-*` form classes reused).
+- Full suite: 516/516 test files, 4502/4502 tests passing (12 net new
+  tests this batch: 9 in `resolveEmailToSmsGatewayAddress.test.ts`, 3
+  added to `postGaAlertChannels.test.ts`, on top of Batch 292's 4490).
+
+## Batch 294 — closes the CSV export/import + clone-template gap Batch 293's own new fields left open
+
+### What this batch is
+
+Immediate follow-up self-audit after Batch 293: `smsCapablePhone` had
+never round-tripped through the Physicians CSV export/import or the
+"duplicate physician" clone template, and the two new Batch 293 fields
+(`smsCarrier`/`smsCarrierOtherDomain`) would have inherited the exact
+same gap. Fixed for all three at once rather than leaving a
+now-inconsistent gap behind.
+
+### Changed this batch
+
+- **`components/Config/System/PhysiciansSection.tsx`**:
+  - `PHYSICIAN_PERSON_FIELDS` (the clone-template clear-list) gained
+    `smsCapablePhone`/`smsCarrierOtherDomain` — a cloned physician now
+    starts with neither, same as it already does for `phone`/`email`.
+    `smsCarrier` (an enum, not a free string) is instead cleared
+    explicitly in `handleClonePhysician` — the generic string-clearing
+    loop can't safely handle it.
+  - `handleDownloadPhysicians` — CSV export gained `SmsCapablePhone`/
+    `SmsCarrier`/`SmsCarrierOtherDomain` columns.
+  - `handlePhysicianFileUpload` — CSV import now parses those same three
+    columns (carrier validated against the curated list, same pattern
+    already used for `Status`/`PreferredContact`), falling back to the
+    matched existing record's value when a cell is blank/unrecognized.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- No CSS change.
+- Full suite: 516/516 test files, 4502/4502 tests passing (no test
+  count change — no dedicated test file exists for this component,
+  matching its pre-existing convention; covered instead by this
+  session's manual verification of the export/import/clone code paths
+  against the same patterns their existing, tested siblings use).
+
+## Batch 295 — PS-276 (Document Rendering Engine), app-side scope: barcode embedding, deterministic re-rendering, image-resolution check
+
+### What this batch is
+
+PS-276 is one of four new, interlocking Jira stories (PS-276–279, a
+"Print Management & Document Rendering" spec). Before writing any
+code, surveyed the real existing overlap each ticket names (Case Mask
+scoping, TAT resolution, print/routing infrastructure, barcode
+capability, billing PC/TC split, facility branding fields — see PS-276's
+own Jira comment for the full account) and found a genuine
+architectural fork: PathScribe has two separate report-rendering
+pipelines, not one. Cytology renders via real, in-repo jsPDF/pdf-lib
+code; the majority-case surgical-pathology pipeline renders via an
+external, source-inaccessible Firebase `render_report` Cloud Function.
+Per direct guidance, this batch scopes PS-276 to the real, in-repo
+cytology pipeline only, with a new Jira ticket for the external
+pipeline's own equivalent work.
+
+### New this batch
+
+- **`services/documentRendering/`** (new folder) —
+  `resolveBarcodeVectorSpec.ts` + `drawBarcodeOnJsPdfDoc.ts` (real
+  vector Code 128/QR/Data Matrix barcode geometry and drawing, no
+  raster/SVG/DOM involved — the exact bar/module math was independently
+  verified against bwip-js's own working `toSVG()` renderer before
+  shipping); `applyDeterministicPdfMetadata.ts` (closes two real,
+  diffed-and-confirmed non-determinism sources in jsPDF's own output —
+  wall-clock `/CreationDate`/`/ModDate`, and a randomized trailer `/ID`
+  jsPDF's own internal `setFileId()` generates on every `.output()`
+  call); `checkEmbeddedImageResolution.ts` (real, pure effective-DPI
+  check against the spec's 300 DPI minimum, computed at the image's
+  actual printed size, not its raw pixel count alone). Full README
+  with the real, honest account of what's closed vs. still open.
+  **Real bug found and worked around**: bwip-js 4.11.2's ESM build has
+  a named-export collision (a barcode symbology literally named "raw"
+  shadows the real geometry-data utility of the same name) — diagnosed
+  directly against the installed package's own source, not assumed;
+  see `resolveBarcodeVectorSpec.ts`'s own header comment.
+- 21 new tests across the four new files.
+
+### Changed this batch
+
+- **`services/cytology/generateCytologyReportPdf.ts`** — draws a real
+  Code 128 barcode of the accession number in the report header;
+  `generateCytologyReportPdfWithAttachments()` now applies
+  `applyDeterministicPdfMetadata()` as its last step on every path
+  (with or without real image associations).
+- **`services/imageAssociation/embedImageAssociationsIntoPdf.ts`** —
+  return shape changed from a bare `Uint8Array` to
+  `{ bytes, warnings }`; `warnings` carries a real, per-association
+  below-300-DPI flag (never a silent drop or a blocked embed). One
+  real call site updated; its own test file updated for the new shape
+  plus 2 new tests covering the warning itself.
+
+### Explicitly not done here (real, disclosed gaps, not silently skipped)
+
+- Full ISO 19005 (PDF/A) conformance is not claimed — jsPDF's default
+  standard-14 font is not embedded, which PDF/A requires; scoped as
+  separate follow-up.
+- Independent PDF/A validation (veraPDF) was attempted — the specific
+  GitHub release URL tried 404'd; not pursued further given the time
+  budget.
+- A Web Worker offload for the spec's "never block the client UI"
+  requirement was not built — reviewed and judged low-risk in practice
+  for cytology's own short reports, but flagged, not assumed moot.
+- The surgical-pathology `render_report` Cloud Function's own
+  equivalent PDF/A/determinism/barcode work — entirely backend work in
+  a separate repository, filed as a new Jira ticket alongside this
+  batch.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- No CSS change.
+- Full suite: 520/520 test files, 4525/4525 tests passing (23 net new
+  tests this batch, on top of Batch 294's 4502).
+
+## Batch 296 — vitest.config.ts: real hook/test timeout headroom for the suite's current size (not a code regression)
+
+### What this batch is
+
+A full-suite local run reported 5 failing files (7 failed tests) —
+`mockCytologyQaReportService.test.ts`, `mockIntraoperativeService.test.ts`,
+`processInboundStainingInstrumentStatusEvent.test.ts`,
+`resolveStaffByQuickAuthPin.test.ts`, `processLegacyRecordImport.test.ts`
+— all with "Hook timed out"/"Test timed out" errors. None of these
+files were touched by Batch 293–295's own real changes. Verified
+directly before touching anything: ran all 5 files in isolation and
+they passed cleanly (42/42 tests, ~9.6s total) — a real, quick, clean
+pass, not a logic bug. Root cause: vitest's own defaults (10000ms
+hook / 5000ms test) were sized for a much smaller suite; at 500+
+files and 4500+ tests, each running its own async `beforeAll`
+(dynamic imports, mock-service seeding), real CPU/worker contention
+under full parallel load can push some files past those defaults —
+confirmed by re-running the full suite here afterward: 520/520 files,
+4525/4525 tests, zero failures.
+
+### Changed this batch
+
+- **`vitest.config.ts`** — added `test.hookTimeout: 20000` and
+  `test.testTimeout: 15000`. Real headroom for the suite's current
+  size, not a blanket "ignore slow tests" change — a genuinely stuck
+  test still times out, just against a threshold sized for this
+  suite's real current scale instead of vitest's own decade-old
+  one-size-fits-all default.
+
+### Validation
+
+- Full suite re-run after the change: 520/520 files, 4525/4525 tests
+  passing, no failures.
+
+## Batch 297 — PS-277 (Master Template Engine), app-side scope: modular header/footer, conditional branding, page-break controls, font/margin governance
+
+### What this batch is
+
+PS-277 is the second of four interlocking Jira stories (PS-276–279,
+"Print Management & Document Rendering"). Per direct architecture
+guidance received mid-batch (two explicit clarifications — conditional
+branding reuses Case Mask Scoping's own real Facility/Department/
+Enterprise hierarchy, Facility-first; PS-277 consumes the existing
+`ServiceChargeRecord.billingType` component-split flag rather than
+building a new one), this batch scopes to the same real, in-repo
+cytology pipeline PS-276 already established, per the same real
+architectural fork (surgical pathology's own `render_report` Cloud
+Function remains out of this repo's reach).
+
+### New this batch
+
+- **`services/documentRendering/applyContinuationPageHeaders.ts`** —
+  real, second-pass abbreviated header (Patient Name, MRN, Accession
+  Number, Page X of Y) on every page after the first. 4 new tests.
+- **`services/documentRendering/validatePrintLayoutGovernance.ts`** —
+  real, fail-loud font allowlist (`helvetica`/`times`/`courier`) and
+  0.5in/12.7mm minimum-margin guards. 4 new tests.
+- **`services/facilities/resolveFacilityPrintBranding.ts`** — real
+  Facility → Department → Enterprise branding resolution (a
+  deliberate, Facility-first reordering of
+  `resolveCaseMaskScopeCandidates.ts`'s own department-first order —
+  see `types/config/FacilityBranding.ts`'s header comment for why),
+  with real, independent per-FIELD fallback (not whole-record, unlike
+  `CaseMask`) for `headerLogoUrl`/`directorName`/`cliaOrIsoNumber`.
+  Also consumes the real, existing `ServiceChargeRecord.billingType`
+  ('TC' | '26' | 'Global') to withhold Director/CLIA attribution on a
+  pure 'TC' (technical-component-only) report. 9 new tests.
+- **`types/config/FacilityBranding.ts`** — `BrandingScopeType`/
+  `BrandingScopeCandidate`/`ResolvedPrintBranding`.
+
+### Changed this batch
+
+- **`services/cytology/generateCytologyReportPdf.ts`** — real,
+  per-line page-overflow fix (a real, pre-existing gap: only
+  section-header boundaries were previously checked, so a long
+  paragraph mid-section could run off the page uncaught); "Keep With
+  Next" for section headers; a real, optional facility-branding header
+  block; and — closing a separate, real, pre-existing gap found while
+  building this — `addendumText` now actually renders (it existed on
+  `CytologyReportContent` already but nothing printed it), optionally
+  forced onto its own dedicated page. 7 new tests.
+- **`services/cytology/releaseCytologyAddendum.ts`** — now resolves
+  the real performing lab's own `forceAddendumOnDedicatedPagePrintPolicy`
+  (via the same `resolvePerformingLabFacilityId()` every other
+  performing-lab-scoped Facility setting in this app already uses) and
+  threads it onto the new addendum record's own `reportContent`. 4 new
+  tests.
+- **`services/cytology/resolveCytologyReportContent.ts`** /
+  **`types/cytology/CytologyReportContent.ts`** — new optional,
+  pre-resolved `printBranding`/`componentSplitBillingType`/
+  `forceAddendumOnDedicatedPage` fields, threaded through a new,
+  optional trailing `printContext` param — every existing call site is
+  unaffected. 2 new tests.
+- **`services/facilities/IFacilityService.ts`** — `Facility` gained
+  `directorName?`/`headerLogoUrl?`/`forceAddendumOnDedicatedPagePrintPolicy?`,
+  gated to `performing_lab` same as the existing `cliaOrIsoNumber`.
+- **`services/departments/IDepartmentService.ts`** — `Department`
+  gained the same three fields as the real, middle branding fallback
+  tier.
+- **`components/FacilityDictionary/FacilityEditorModal.tsx`** — real
+  UI for the three new Facility fields, gated to `performing_lab`,
+  right alongside the existing CLIA/ISO field. All 6 new i18n keys
+  translated into all 5 locales (not just English).
+- **`services/facilities/mockFacilityService.ts`** — `c-trust-fenwick`
+  (the one real, unambiguous Enterprise in this seed data) seeded with
+  a real `headerLogoUrl`/`directorName`, demonstrating the real
+  Enterprise-level fallback a non-overriding affiliate would use;
+  `c-fenwick-womens` (the real hospital that would perform GYN
+  cytology) seeded with `forceAddendumOnDedicatedPagePrintPolicy: true`
+  — deliberately does NOT also seed its own CLIA/Director, since
+  `jsonWebhookBuilder.test.ts`'s own existing, real test depends on
+  this exact facility staying clean of `cliaOrIsoNumber` (a real
+  conflict found and fixed by running the full suite before shipping,
+  not assumed safe).
+
+### Explicitly not done here (real, disclosed gaps, not silently skipped)
+
+- Header logo image embedding — `headerLogoUrl` is a real, resolved
+  reference; actually fetching and drawing it as embedded PDF content
+  is separate follow-up work.
+- A genuinely split '26' billing case's own separate "which facility
+  did the technical work" branding block — this app's real case data
+  doesn't carry that second facility reference yet.
+- A dedicated admin screen for Department/Enterprise-level branding
+  overrides (Facility's own three fields ARE editable via
+  `FacilityEditorModal.tsx`, added this batch).
+- "Synoptic tables kept unbroken across page boundaries" — cytology's
+  own report content has no tabular/synoptic-grid content today; no
+  real caller to close this against yet.
+- Everything on the surgical-pathology `render_report` Cloud
+  Function's own side of the real architectural fork — unchanged from
+  PS-276's own disclosure, tracked in PS-333.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- No CSS change (reused existing `cem-*` form classes).
+- Full suite: 523/523 test files, 4555/4555 tests passing (30 net new
+  tests this batch, on top of Batch 295's 4525 — Batch 296 added none).
+- A real conflict with an existing test (`jsonWebhookBuilder.test.ts`)
+  was found and fixed by running the full suite before packaging this
+  batch, not assumed safe from the new code's own tests alone.
+
+## Batch 298 — PS-278 (Print Destination Routing Engine): multi-criteria rules, printer mapping hierarchy, real IP protocol clients
+
+### What this batch is
+
+PS-278 is the third of four interlocking Jira stories (PS-276–279,
+"Print Management & Document Rendering"). Before writing any code,
+surveyed the real existing overlap the ticket itself flags (Case Mask
+Scoping's 3-scope hierarchy, TAT resolution's weighted, most-specific-
+wins scoring, `TemplateRoutingService`'s ordered-pass cascade, and
+Component B/C — `services/printing/`/`services/delivery/` — from
+PS-276/277's own spec) and found that §2.1.1's "Client/Ordering
+Physician preference (auto-print vs. electronic-only)" criterion is
+**already fully built** (Component C, `DeliveryRule`/
+`resolveDeliveryAction`) — this engine deliberately runs downstream of
+that decision (only once it has already said "print"), resolving
+*which printer*, never re-deciding *whether* to print.
+
+### New this batch
+
+- **`services/printRouting/`** (new folder) — `resolvePrintDestination.ts`,
+  the pure resolver implementing a deliberate hybrid: a strict, ordered
+  outer pass across §2.1.2's own four named tiers (workstation →
+  location → clientAccount → facility, same real ordered-candidate
+  convention as `resolveCaseMaskScopeCandidates.ts`), and a
+  specificity-scored inner pass among rules sharing a tier (same real
+  convention `resolveDeliveryAction.ts` already establishes for
+  Component C) for §2.1.1's own two, independently-optional criteria
+  (Specimen/Case Type, Event Trigger Type). 16 new tests.
+  `resolveRealPrintRoutingContext.ts` resolves the real, live criteria
+  a case actually has — reusing `Case.order.locationId → Location.pointOfCare`
+  and `Case.order.facilityId` **directly** (the same real fields
+  Component C already resolves against, never a second lookup). 9 new
+  tests. `IPrintRoutingRuleService.ts`/`mockPrintRoutingRuleService.ts`
+  — real CRUD, seeded with one demonstrable rule per tier. Full README
+  with the complete real reasoning and two, real, disclosed gaps (see
+  below).
+- **`services/printing/transport/`** (new folder, §2.1.3) — three real
+  IP print protocol clients: `sendRawPrintJob.ts` (RAW/9100, a plain
+  TCP socket write), `sendLprPrintJob.ts` (LPR/LPD, a real, minimal
+  RFC 1179 job/control-file/data-file exchange, each step's real
+  single-byte acknowledgement checked), `sendIppPrintJob.ts` (IPP, a
+  real, binary-encoded RFC 8010 Print-Job request over HTTP). RAW/9100
+  and LPR/LPD tested byte-for-byte against a real, local TCP mock
+  server; IPP's own request encoding tested for real self-consistency
+  via an independently re-derived decoder in its own test — disclosed
+  honestly as self-consistency, not verified interoperability against
+  a real CUPS instance (this sandbox has no way to reach one), same
+  posture this app's own PDF/A veraPDF-validation attempt already
+  established. `dispatchViaPrintProtocol.ts` — the one real dispatch
+  point picking among the three by protocol. "Print-server
+  abstraction" (the ticket's own fourth-sounding option) is
+  deliberately NOT a fourth protocol here — confirmed it's already
+  exactly `PrintDeliveryMode.INTERFACE_ENGINE_HANDOFF` from PS-276/277's
+  own spec, not a gap. 25 new tests across the four new files.
+- **`types/printRouting/PrintDestination.ts`** —
+  `PrintProtocol`/`DEFAULT_PRINT_PROTOCOL_PORT`/`PrintDestination`.
+- **`types/printRouting/PrintRoutingRule.ts`** — `PrintRoutingRule`,
+  the real, new `SpecimenCaseType`/`EventTriggerType` classifications
+  (confirmed nothing in this app already expresses this exact
+  vocabulary), and `mapReportTypeToEventTriggerType()` — a real, direct
+  mapping from the already-wired `ReportReleasedEventType`, never a
+  second, independently-maintained classification of the same event.
+
+### Changed this batch
+
+- **`types/printing/PrintJob.ts`** — `PrintDeliveryMode` gained
+  `'DIRECT_NETWORK_PRINT'` (Mode 3): no QZ Tray, no Interface Engine —
+  the resolved `PrintDestination` is reached directly over one of the
+  three real protocols above.
+- **`services/facilities/IFacilityService.ts`** —
+  `Facility.printDeliveryConfig.mode` widened to the real
+  `PrintDeliveryMode` type (was a bare, duplicated literal union);
+  gained `directNetworkPrintDestination?: PrintDestination` — the
+  real, least-specific, Facility-tier fallback Mode 3 uses only when
+  no real `PrintRoutingRule` matched at any tier.
+- **`services/printing/dispatchPrintJob.ts`** — new Mode 3 branch:
+  resolves the real four-tier hierarchy first (via
+  `resolveRealPrintRoutingContext`/`resolvePrintDestination`), falling
+  back to `directNetworkPrintDestination` only when nothing matched —
+  never the other way around, so a facility-wide default can't shadow
+  a real, more specific admin override. Fails honestly
+  (`PRINT_REJECTED`) when neither resolves anything, same posture an
+  unset `NATIVE_QZ_TRAY` printerName already has. New, optional,
+  additive `printRoutingContext` parameter — every existing caller's
+  behavior is unchanged (verified: all of Mode 1/Mode 2's own existing
+  tests pass unmodified). 7 new tests.
+- **`services/reports/publishReportReleasedEvent.ts`** — forwards the
+  already-real, already-used `event.source` ('SURGPATH'/'CYTOLOGY')
+  through to `dispatchPrintJob`, so Mode 3 can resolve the one real,
+  reliable Specimen/Case Type signal this app has today. No new field
+  on the event; a real, existing signal reused. 2 test assertions
+  updated for the new call-arg shape, plus 1 new test.
+- **`components/Config/System/DemoResetTab.tsx`** — added the new
+  `print_routing_rules_v1` storage key to `SETTINGS_KEYS`, caught by
+  this app's own real, automated `DemoResetTab.coverage.test.ts`
+  (which fails the build on any real storage key a Full Reset would
+  silently leave behind) — not discovered by inspection, discovered by
+  the test that exists specifically to catch this.
+
+### Explicitly not done here (real, disclosed gaps, not silently skipped)
+
+- **Specimen/Case Type resolution is partial, by real necessity, not
+  oversight**: Cytology resolves reliably (`event.source`); Frozen
+  Section vs. Routine Surgical genuinely isn't inferable from any real,
+  existing Case-level field (`Case.priority` is urgency, not specimen
+  type, and the real frozen-section signal lives at the intraoperative-
+  workflow layer with no real rollup bridging it to this call site
+  today) — defaults honestly to `ROUTINE_SURGICAL` rather than
+  guessing, with a real `specimenCaseTypeOverride` hook for a future
+  caller (the intraop workflow itself) that genuinely knows. See
+  `services/printRouting/README.md`.
+- **User/Workstation identity** — no real source exists at this
+  automated, event-publish dispatch layer (it isn't an interactive
+  "print from this workstation" action); `workstationId`/`userId` are
+  real, typed, and threaded all the way through for a real, future
+  interactive caller to supply.
+- **No admin UI** to author `PrintRoutingRule` records — same,
+  already-accepted gap `services/delivery/README.md` names for
+  `DeliveryRule`; a rule has to be created programmatically (or via
+  seed data) today.
+- **IPP interoperability against a real printer/CUPS instance is not
+  independently verified** — only self-consistency (see above).
+- Everything on the surgical-pathology `render_report` Cloud
+  Function's own side of the real architectural fork — unchanged from
+  PS-276/277's own disclosure, tracked in PS-333.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- Full suite: 529/529 test files, 4601/4601 tests passing (46 net new
+  tests this batch, on top of Batch 297's 4555).
+- A real gap this batch's own new storage key would otherwise have
+  left behind (`print_routing_rules_v1` surviving a Full Reset) was
+  found and fixed by running the full suite before packaging, not
+  assumed safe from the new code's own tests alone — same real
+  discipline Batch 297's own `jsonWebhookBuilder.test.ts` conflict
+  established.
+
+## Batch 299 — PS-279 (Print Queue Management Dashboard & Batch Operations): admin dashboard, hold/release/cancel/redirect, scheduled batch aggregation, duplex/tray controls
+
+### What this batch is
+
+PS-279 is the fourth and last of the four interlocking "Print
+Management & Document Rendering" stories (PS-276–279), built directly
+on top of PS-278's routing engine. Component C (`services/delivery/`)
+already decides *whether* to print; PS-278 decided *which printer*;
+this batch adds the operational layer on top of an already-queued job:
+a real admin dashboard (§2.2.1), on-demand batch aggregation (§2.2.2),
+real hold/release/cancel/retry/redirect operations individually or in
+bulk (§2.2.3), and programmatic paper-source/duplex resolution
+(§2.2.4). Extracted `dispatchPrintJob.ts`'s own Mode 1/2/3 delivery
+logic into a shared `attemptPrintDelivery.ts` first, specifically so
+the new Retry/Redirect orchestration could reuse it rather than
+duplicate it.
+
+### New this batch
+
+- **`services/printing/attemptPrintDelivery.ts`** — the real Mode
+  1/2/3 delivery-attempt logic, extracted out of `dispatchPrintJob.ts`
+  unchanged in behavior, now shared by both the original dispatch call
+  and the new `redispatchPrintJob.ts`. 12 new tests.
+- **`services/printing/resolvePrintPresentationOptions.ts`** (§2.2.4)
+  — pure resolver: report type → real default paper source/duplex,
+  overridden per-field by the real, new
+  `Facility.printPresentationPreference` (the ORDERING facility's own
+  preference — deliberately separate from the PERFORMING facility's
+  `printDeliveryConfig`). 8 new tests.
+- **`types/printing/PrintBatch.ts` + `services/printing/aggregatePrintJobsForBatch.ts`**
+  (§2.2.2) — pure grouping of real, `QUEUED`, non-interfaced jobs by
+  client account or delivery route within a real time window. Honest,
+  disclosed scope: "one consolidated job" means a shared `batchId`,
+  never a byte-merged PDF (this ticket doesn't ask for, and this batch
+  doesn't build, a real multi-document PDF merge). A real,
+  host-timezone-dependent bug (`Date.getHours()` instead of
+  `getUTCHours()`) was caught by the full suite before packaging and
+  fixed — window boundaries are evaluated in UTC, disclosed honestly
+  as not yet a genuine per-site local workday (this app has no
+  facility-timezone field). 9 new tests.
+- **`services/printing/runScheduledBatchAggregation.ts`** (§2.2.2) —
+  the real, on-demand ("Run Batch Now") orchestration; this app has no
+  real scheduler/cron infrastructure anywhere to run it on a timer
+  instead, confirmed directly before building this. 3 new tests.
+- **`services/printing/redispatchPrintJob.ts`** (§2.2.3, Retry/
+  Redirect) — real re-send using the job's own persisted `pdfBase64`,
+  honoring a real `redirectedToDestination` override over the original
+  `resolvedDestination`. `redirectAndRedispatchPrintJob`/
+  `...ManyPrintJobs` compose "record the redirect" with "immediately
+  resend" into the one, real action the dashboard needs. 14 new tests.
+- **`src/pages/PrintQueueDashboardSection.tsx`** (§2.2.1) — the real
+  admin dashboard: status filter, hold/release/retry/redirect/cancel
+  per row (gated by the same real status rules the service enforces),
+  bulk selection + bulk actions, an inline redirect mini-form, and the
+  batch-aggregation control panel. Registered as a third
+  `interfacesSubTab` (`'print_queue'`) in `AuditLogPage.tsx`. 8 new
+  render tests (`@testing-library/react`, same convention
+  `OrSuiteDashboardPage.test.tsx` established). No inline
+  `style={{}}` anywhere — only existing `.ps-conf-*`/`.ps-dlq-*`/
+  `.ps-qa-tab-toolbar` classes; no business logic in the component —
+  every real decision (holdability, grouping, redirect+retry) lives in
+  the service files above. Every string routes through `t()` under a
+  new `printQueueDashboard.*` namespace, in all 5 locales.
+- **`services/printing/mockPrintQueueService.test.ts`** (new) — the
+  first real test file for this service (the original 4 methods had
+  none); 20 new tests across `getById`, `persistRenderedPdf`, hold/
+  release, cancel, redirect, and the bulk variants.
+
+### Changed this batch
+
+- **`types/printing/PrintJob.ts`** — `status` gained `'HOLD'`/
+  `'CANCELLED'` (naming mirrors `ServiceChargeRecord.approvalStatus`'s
+  own `'HOLD'` literal, not a fresh vocabulary); new `PaperSourceTray`/
+  `DuplexMode` types; new optional fields for hold/release/cancel/
+  redirect provenance, `resolvedDestination`/`redirectedToDestination`,
+  the new `pdfBase64` persistence (a deliberate, disclosed
+  architecture change — see the field's own doc comment), and
+  `source`/`orderingFacilityId`/`pointOfCare`/`batchId`/`paperSource`/
+  `duplexMode`.
+- **`services/facilities/IFacilityService.ts`** — new
+  `Facility.printPresentationPreference`.
+- **`services/printing/IPrintQueueService.ts` /
+  `mockPrintQueueService.ts`** — `getById`, `persistRenderedPdf`,
+  `holdPrintJob`/`releaseHold`/`cancelPrintJob`/`redirectPrintJob`,
+  `holdMany`/`releaseHoldMany`/`cancelMany`, `tagBatch` — every real
+  state-changing method follows the same `auditService.logEvent`
+  convention the original 4 methods established.
+- **`services/printing/dispatchPrintJob.ts`** — refactored to call the
+  extracted `attemptPrintDelivery`; the real routing-context resolution
+  (`resolveRealPrintRoutingContext`) now runs for every delivery mode,
+  not only `DIRECT_NETWORK_PRINT`, since `orderingFacilityId`/
+  `pointOfCare` are needed on every job for batch aggregation
+  regardless of mode; persists the rendered PDF onto the job record
+  right after it's generated.
+- **`services/printing/transport/dispatchViaPrintProtocol.ts` /
+  `sendIppPrintJob.ts`** — optional `presentation` parameter, encoded
+  by `sendIppPrintJob.ts` as a real IPP job-template attribute group
+  (`sides`/`media-source`); RAW_9100/LPR_LPD have no protocol-level
+  equivalent, disclosed rather than silently dropped. 7 new tests
+  across both files.
+- **`src/pages/AuditLogPage.tsx`** — new `'print_queue'`
+  `interfacesSubTab` option.
+- **`src/i18n/locales/{en,de,fr,nl,ko}.json`** — new
+  `printQueueDashboard.*` namespace (all 5 locales) and
+  `auditLog.interfacesTab.subTabPrintQueue`.
+
+### Real, deliberate scope not yet built
+
+- **`NATIVE_QZ_TRAY` jobs don't forward paperSource/duplexMode to QZ
+  Tray** — its own bridge (`utils/labels/qzTrayBridge.ts`) has no real
+  tray/duplex selector wired through yet; the fields are still real and
+  persisted for audit/display, but only a Direct Network Print (IPP)
+  job actually carries the hint to the physical printer.
+- **IPP's new `sides`/`media-source` attributes are self-consistency
+  tested only** — same real, disclosed limit the rest of
+  `sendIppPrintJob.ts` already carries.
+- **Batch windows are UTC, not genuine per-site local time** — closing
+  this for real needs a `Facility`-level timezone field this app
+  doesn't have.
+- **No true background scheduler** — batch aggregation is admin-
+  triggered, not a real timer.
+- Every real, disclosed PS-278 gap (Specimen/Case Type inference for
+  Frozen Section, User/Workstation identity threading, no admin UI for
+  `PrintRoutingRule`, IPP interoperability against a real device) is
+  unchanged by this batch — still open, tracked in `services/printRouting/README.md`.
+
+### Validation
+
+- `tsc --noEmit`: clean, project-wide.
+- Full suite: 536/536 test files, 4673/4673 tests passing (72 net new
+  tests this batch, on top of Batch 298's 4601).
+
+## Batch 300 — PS-276/277 gap-closing pass, part 1: real header-logo PDF embedding; split-'26' branding block confirmed unbuildable with real data
+
+### What this batch is
+
+The first of a planned, ticket-ordered pass back through PS-276/277's
+own disclosed gaps (then PS-278/279's), per direct instruction. No new
+user-facing strings — this batch is pure rendering-pipeline/data-model
+work, so no locale files changed.
+
+### Investigated and confirmed (no code change, README/doc-comment update only)
+
+- **A genuinely split '26' (professional-only) billing case's own
+  second "which facility did the technical work" branding block
+  (PS-277 §1.2.2)** — `resolveFacilityPrintBranding.ts` already
+  disclosed this as unresolved; this batch checked it directly rather
+  than leaving it an assumption. Read in full:
+  `types/billing/ServiceChargeRecord.ts` (the permanent billing
+  ledger), `types/billing/OutboundChargeQueueEntry.ts` (the outbound
+  dispatch queue), `types/billing/BillingRuleVersion.ts` (the billing
+  rule dictionary — scoped by `siteId`, deliberately never
+  `facilityId`), and `types/case/Case.ts`'s `OrderMetadata` (whose only
+  facility reference is the single, ordering `facilityId`). None of
+  them carry a distinct technical-component-performing-facility
+  reference anywhere in this app's real data model. `billingType: 'TC'
+  | '26' | 'Global'` genuinely exists and is genuinely resolved at
+  charge finalization, but there is no second facility identifier for
+  it to point at — closing this for real means inventing a new field
+  no direct guidance has ever specified, out of scope for a
+  gap-closing pass. Still open — see
+  `services/documentRendering/README.md`.
+
+### Closed this batch
+
+- **Header logo image embedding (PS-277 §1.2.2)** —
+  `content.printBranding.headerLogoUrl` is now actually fetched and
+  drawn as real, embedded PDF image content, not just resolved and
+  left unrendered.
+  - `services/cytology/generateCytologyReportPdf.ts` — reserves a
+    fixed, content-independent box in the header whenever
+    `headerLogoUrl` is set (same "never shifts with content length"
+    reasoning as the existing accession barcode), and exposes it via a
+    real, optional `layoutOut` out-parameter rather than changing this
+    function's own return type — every existing, plain,
+    single-argument caller (`CytologyScreeningPage.tsx`'s interactive
+    print preview) is completely unaffected.
+  - **`services/documentRendering/embedCytologyHeaderLogo.ts`** (new)
+    — fetches the real logo bytes (injectable fetch, same convention
+    as `embedImageAssociationsIntoPdf.ts`), draws them onto the
+    EXISTING page 1 via pdf-lib at the reserved region, with a real
+    "contain" fit (never stretched, never upscaled past native size)
+    and the same 300 DPI minimum check
+    (`checkEmbeddedImageResolution.ts`) already applied to clinical
+    images. A fetch failure leaves the reserved space blank and
+    returns a real, honest warning — never a thrown error, never a
+    placeholder page (a blank letterhead corner is a benign gap,
+    unlike a missing clinical image). 5 new tests.
+  - `generateCytologyReportPdfWithAttachments()` wires the new pass in
+    ahead of the existing `imageAssociations` embedding pass — a
+    header logo belongs on page 1, never one of imageAssociations' own
+    appended pages. 9 new tests (region reservation, wrapper wiring,
+    fetch-failure fallback, no-URL no-fetch).
+
+### Still open (unchanged by this batch)
+
+- Full ISO 19005 (PDF/A) font embedding (PS-276 §1.1.1) and
+  independent veraPDF validation (PS-276 §1.1.1) — not attempted this
+  batch; next in the ticket-ordered pass.
+- A Web Worker offload for cytology PDF generation (PS-276 §1.1.4).
+- A dedicated admin screen for Department/Enterprise-level branding
+  overrides (PS-277 §1.2.2).
+- The split-'26' branding block above, and every PS-278/279 gap
+  (`services/printRouting/README.md`, `services/printing/README.md`) —
+  unchanged, later in the ticket order.
+
+### Validation
+
+- `tsc --noEmit`: clean, project-wide.
+- Full suite: 537/537 test files, 4684/4684 tests passing (11 net new
+  tests this batch, on top of Batch 299's 4673).
+
+## Batch 301 — PS-276/277 gap-closing pass, part 2: Department/Enterprise branding admin UI
+
+### What this batch is
+
+Second of the ticket-ordered pass back through PS-276/277's own
+disclosed gaps. Closes the "no admin UI for Department/Enterprise-
+level branding overrides" gap Batch 300 left open.
+
+### Closed this batch
+
+- **Department branding fields (PS-277 §1.2.2)** —
+  `Department.headerLogoUrl`/`directorName`/`cliaOrIsoNumber` were
+  real, typed fields `resolveFacilityPrintBranding.ts` already reads
+  as its own middle fallback tier, but `DepartmentsSection.tsx`
+  (Config/System/) never exposed them to an admin. Added a new
+  "Report Branding Override (optional)" field group to its add/edit
+  modal — same free-text, "not validated against a format" posture as
+  Facility's own equivalent fields. New locale keys added to all 5
+  locale files (`departmentsSection.modal.branding*`). 4 new tests
+  (first test file for this screen).
+- **Real, latent gap found and closed while verifying the "Enterprise"
+  side of this same fix — `FacilityEditorModal.tsx`'s own CLIA/
+  Director/Header-Logo fields were gated to `hasRole('performing_lab')`
+  alone.** `isEnterprise` and `FacilityRole` are architecturally
+  independent fields (confirmed directly — `isEnterprise` is
+  deliberately its own flag, never a `FacilityRole` value), so an
+  Enterprise-tagged facility that didn't also happen to hold
+  `performing_lab` had no way to configure the very fields
+  `resolveFacilityPrintBranding.ts` reads from it as the Enterprise
+  fallback tier. Every real seed Enterprise record in this app happens
+  to carry `performing_lab` too, so this was real but latent, not
+  visible against today's seed data. Fixed by gating on
+  `hasRole('performing_lab') || form.isEnterprise` instead; updated
+  `directorNameHint` in all 5 locales to describe both cases. 3 new
+  tests (first test file for this component).
+
+### Still open (unchanged by this batch)
+
+- Full ISO 19005 (PDF/A) font embedding (PS-276 §1.1.1) and
+  independent veraPDF validation (PS-276 §1.1.1).
+- A Web Worker offload for cytology PDF generation (PS-276 §1.1.4).
+- The split-'26' branding block (PS-277 §1.2.2, confirmed unbuildable
+  with real data in Batch 300).
+- Every PS-278/279 gap (`services/printRouting/README.md`,
+  `services/printing/README.md`) — unchanged, later in the ticket
+  order.
+
+### Validation
+
+- `tsc --noEmit`: clean, project-wide.
+- Full suite: 539/539 test files, 4691/4691 tests passing (7 net new
+  tests this batch, on top of Batch 300's 4684).
+
+## Batch 302 — PS-276/277 gap-closing pass, part 3: Web Worker offload for cytology PDF generation (PS-276 §1.1.4)
+
+### What this batch is
+
+Third of the ticket-ordered pass back through PS-276/277's own
+disclosed gaps. Closes the "no Web Worker (or equivalent) offload for
+§1.1.4" gap `services/documentRendering/README.md` had disclosed as
+real, scoped, and not yet built: `generateCytologyReportPdfWithAttachments()`'s
+own synchronous jsPDF/pdf-lib work is real, CPU-bound, main-thread
+JavaScript, which could cause real, if brief, UI jank for a report
+with several large embedded images.
+
+First real Web Worker usage anywhere in this codebase. Verified
+beforehand, not assumed, that this pipeline is safe to move off the
+main thread: its jsPDF usage is pure vector/text/image drawing (never
+jsPDF's own DOM-dependent `html()` canvas-rendering path), and pdf-lib
+is itself fully environment-agnostic (Node, browser, and Worker are
+all real, documented, supported targets).
+
+### New this batch
+
+- **`services/cytology/generateCytologyReportPdf.worker.ts`** — the
+  actual Worker-side entry point; a one-shot script generating exactly
+  one PDF per Worker instance (deliberately not a persistent pool —
+  this app generates a cytology PDF on sign-out/dispatch, an
+  infrequent, one-at-a-time operation, not a high-throughput batch
+  job). Necessary `self as unknown as Worker` casts throughout: this
+  project's tsconfig `lib` is `["ES2020","DOM","DOM.Iterable"]`, never
+  `"webworker"` (the two are mutually exclusive in TypeScript), so
+  `self` types as `Window` here even though the real runtime `self` a
+  Worker module executes against is a real worker global — only the
+  compile-time type is the mismatch being cast around.
+- **`services/cytology/generateCytologyReportPdfInWorker.ts`** (+
+  `.test.ts`, 5 tests) — the one, real public entry point a caller uses
+  in place of calling `generateCytologyReportPdfWithAttachments()`
+  directly. Uses Vite's own documented worker-import convention (`new
+  Worker(new URL('./generateCytologyReportPdf.worker.ts',
+  import.meta.url), { type: 'module' })`). Real, honest fallback, never
+  a silent behavioral difference a caller needs to account for: when
+  `Worker` isn't a real, available global, or constructing one throws,
+  generation runs synchronously on the main thread instead — same real
+  bytes either way. Accepts an injectable `workerFactory` (defaulting
+  to the real Worker constructor above) so this function's own real
+  dispatch/fallback/error-handling logic can be tested deterministically
+  against a fake, in-memory Worker double, since this project has no
+  real Worker-execution test harness (module Workers need a real
+  bundler/browser runtime vitest doesn't provide) — the real jsPDF/
+  pdf-lib generation itself stays covered directly by
+  `generateCytologyReportPdf.test.ts`, unaffected by this change.
+- **Real, established cast workaround reused**: this project's
+  `strictNullChecks: false` disables TypeScript's own control-flow
+  narrowing on a boolean-literal-discriminated union
+  (`{ ok: true; bytes } | { ok: false; error }`) — same real situation
+  `dispatchPrintJob.ts`/`attemptPrintDelivery.ts`/
+  `mockPrintQueueService.ts` already document and work around via an
+  explicit cast; `generateCytologyReportPdfInWorker.ts` does the same.
+
+### Changed this batch
+
+- **`services/cytology/generateCytologyReportPdfSnapshot.ts`** — now
+  calls `generateCytologyReportPdfInWorker()` instead of
+  `generateCytologyReportPdfWithAttachments()` directly. Its own
+  `{ pdfBase64?, generationError? }` contract to
+  `services/printing/dispatchPrintJob.ts` is completely unchanged, so
+  nothing downstream of it needed to change.
+- **`services/cytology/generateCytologyReportPdfSnapshot.test.ts`** —
+  updated to mock `generateCytologyReportPdfInWorker` in place of
+  `generateCytologyReportPdfWithAttachments`; same three tests
+  (round-trip, large-data chunking, thrown-failure-returns-honest-error),
+  now exercising the real, updated call chain.
+- **`services/documentRendering/README.md`** — §1.1.4's "not built" gap
+  moved to closed, with the real mechanism described; the
+  corresponding bullet removed from "Real, remaining gaps"; added a
+  pointer to `services/cytology/README.md` for the Worker files
+  themselves (they live in that folder, not this one).
+- **`services/cytology/README.md`** — new dated section describing this
+  offload end to end.
+
+### Validation
+
+- `tsc --noEmit`: clean, project-wide.
+- Full suite: 540/540 test files, 4696/4696 tests passing (5 net new
+  tests this batch, on top of Batch 301's 4691).
+
+## Batch 303 — PS-276/277 gap-closing pass, part 4 (final): real, embedded font (Liberation Sans), closing the last material PDF/A blocker
+
+### What this batch is
+
+Fourth and final part of the ticket-ordered pass back through
+PS-276/277's own disclosed gaps. Closes the one, real, material
+blocker to a PDF/A embedded-fonts claim: jsPDF's default `'helvetica'`
+(and `'times'`/`'courier'`) are the 14 PDF standard fonts, which by the
+PDF spec itself are never embedded — no jsPDF configuration can change
+that, only swapping to a genuinely separate, real font program does.
+
+### New this batch
+
+- **`services/documentRendering/embeddedFonts/LiberationSans-Regular-normal.ts`
+  / `LiberationSans-Bold-bold.ts`** — the actual, real TrueType font
+  program bytes (base64), sourced from the `@typopro/dtp-liberation`
+  npm package. Verified directly (fontTools name-table read, not
+  assumed) before use: family `TypoPRO Liberation Sans`, license
+  `Licensed under the SIL Open Font License, Version 1.1`. Liberation
+  Sans is a real, purpose-built, metrically-compatible, freely
+  embeddable replacement for Helvetica/Arial — chosen so this app's
+  real, existing print layout doesn't meaningfully shift from what it
+  was built against. Full sourcing/licensing/trade-off account in the
+  new **`embeddedFonts/LICENSE_NOTICE.md`**.
+- **`services/documentRendering/registerEmbeddedPrintFont.ts`** (+
+  `.test.ts`, 4 tests) — registers both weights onto a real jsPDF doc
+  via `addFileToVFS()`/`addFont()` (`WinAnsiEncoding`). Idempotent.
+  Verified directly: the test suite reads back the actual output PDF
+  bytes and asserts a real `/FontFile2` object is present — the
+  literal proof of genuine embedding — with a contrasting test
+  confirming the old `'helvetica'`-only baseline never produces one.
+
+### Changed this batch
+
+- **`services/cytology/generateCytologyReportPdf.ts`** — calls
+  `registerEmbeddedPrintFont(doc)` once at doc construction;
+  `addWrappedText()` (the one place all real body text is drawn) now
+  uses the embedded family instead of `'helvetica'`.
+- **`services/documentRendering/applyContinuationPageHeaders.ts`** —
+  its own continuation-page header line also switched to the embedded
+  family. Real, deliberate completeness: leaving this one call site on
+  `'helvetica'` would have been an easy-to-miss partial-compliance gap
+  on any real, multi-page report.
+- **`services/documentRendering/applyContinuationPageHeaders.test.ts`** —
+  every test doc now registers the embedded font first, matching what
+  the real caller always does.
+- **`services/documentRendering/validatePrintLayoutGovernance.ts`** —
+  `ALLOWED_PRINT_FONTS` gained `'LiberationSans'`; header comment
+  updated to disclose that the original three base-14 entries remain
+  allowed but are NOT embedded, now stated explicitly rather than
+  implied.
+- **`services/documentRendering/README.md`** — new §1.1.1 closed
+  section; the corresponding "remaining gaps" bullet removed. **`services/cytology/README.md`** —
+  new dated Phase 82 section.
+
+### Validation
+
+- `tsc --noEmit`: clean, project-wide.
+- Full suite: 541/541 test files, 4700/4700 tests passing (4 net new
+  tests this batch, on top of Batch 302's 4696).
+
+This closes the last of the five gaps originally identified across
+PS-276/277's own disclosed scope (Batches 300–303). Remaining, separate
+follow-up: an independent veraPDF re-validation attempt (the earlier
+attempt's GitHub releases URL 404'd) — not part of this ticket-ordered
+gap-closing pass, tracked next.
+
+## Batch 304 — Cytology Assisted Instrumentation: real, per-facility modality (high priority, multi-facility support)
+
+### What this batch is
+
+Real, per direct follow-up, high priority given this app's real,
+multi-facility support: "each performing facility could identify their
+own mode... is it possible that an individual system could have both
+types?" `services/cytology/ICytologyInstrumentationService.ts`'s own
+header had explicitly disclosed this as the real, deliberate scope
+limit of its first increment — a single, global setting, "not silently
+assumed sufficient for every real, multi-facility lab." This batch
+closes that gap.
+
+### New this batch
+
+- **`services/cytology/IFacilityCytologyInstrumentationOverrideService.ts`
+  / `mockFacilityCytologyInstrumentationOverrideService.ts`** — a real
+  Tier 2 (facility-level override), the same established shape as this
+  module's own siblings for exactly this cascade shape
+  (nomenclature/workload-cap/QC facility overrides). Tier 1
+  (`ICytologyInstrumentationService.ts`, the Enterprise default) is
+  unchanged.
+- **`services/cytology/resolveEffectiveCytologyInstrumentationModality.ts`**
+  (+ `facilityCytologyInstrumentationCascade.test.ts`, 10 tests) — the
+  real "facility override wins over the Enterprise default" merge. The
+  direct, real consequence of moving from one global value to a real,
+  independent per-facility record: a single system can now genuinely
+  run BOTH modalities at once, resolved independently per facility —
+  both halves of the original question answered by one real fix.
+- **`components/Config/Cytology/CytologyInstrumentationSection.test.tsx`**
+  (4 tests) — first test file for this component; scoped to the new
+  Tier 2 behavior (Tier 1 already covered directly in
+  `mockCytologyInstrumentationService.test.ts`).
+
+### Changed this batch
+
+- **`pages/CytologyWorklistPage/CytologyScreeningPage.tsx`** — the flat,
+  one-time Enterprise-only read is replaced with a real resolution
+  keyed off THIS case's own performing facility
+  (`caseData?.order?.facilityId`, the same real field every other
+  facility-scoped cascade on this page already reads), re-run whenever
+  that facility id changes.
+- **`components/Config/Cytology/CytologyInstrumentationSection.tsx`** —
+  gained a real Tier 2 admin UI (add/list/remove a facility override),
+  reusing the `.ps-cytqc__*` CSS class family directly (no new,
+  duplicate class set) — same established "reuse this Cytology config
+  family's own classes/i18n keys when the shape matches" precedent this
+  component already used for its own `cytologyQcSettingsSection.enterprise.unsavedChange`
+  reuse.
+- **`components/Config/System/DemoResetTab.tsx`** — the new
+  `facilityCytologyInstrumentationOverrides` storage key added to Full
+  Reset's `SETTINGS_KEYS`. Real, fail-loud guardrail doing its job: this
+  app's own `DemoResetTab.coverage.test.ts` failed the full suite run
+  immediately when this key was first added without also being wired
+  into the reset — caught and fixed in the same batch, not shipped
+  broken.
+- **All 5 locale files** — `cytologyInstrumentationSection.subtitle`
+  rewritten to describe the real 2-tier cascade instead of disclosing
+  the now-closed single-global-setting limit; new
+  `cytologyInstrumentationSection.facility.title`/`emptyState` keys,
+  mirroring `cytologyQcSettingsSection.facility`'s own established
+  translations per locale.
+- **`services/cytology/README.md`** — new dated Phase 83 section.
+
+### Validation
+
+- `tsc --noEmit`: clean, project-wide.
+- Full suite: 543/543 test files, 4714/4714 tests passing (14 net new
+  tests this batch, on top of Batch 303's 4700).
+
+## Batch 305 — Gap 6 re-investigated to conclusion: independent veraPDF validation confirmed genuinely unreachable from this build environment
+
+### What this batch is
+
+Real, per direct follow-up on PS-276's own still-open Gap 6 (the prior
+attempt's veraPDF GitHub-releases URL had 404'd and wasn't pursued
+further). Re-attempted properly this time, checking each possible path
+directly rather than retrying the same one — no code changes, this is
+an investigation batch, and the honest conclusion is that this gap
+cannot be closed from inside this environment at all, by any tool
+choice:
+
+1. **veraPDF's own `veraPDF-apps` GitHub repo has no releases published,
+   period** — confirmed by fetching its releases page directly ("There
+   aren't any releases here"). The prior attempt's 404 wasn't a stale
+   or wrong URL; there was never a real GitHub release to link to.
+2. **veraPDF's real, canonical distribution is `software.verapdf.org`**
+   (confirmed via `docs.verapdf.org`'s own install docs, which give
+   `https://software.verapdf.org/releases/verapdf-installer.zip` as the
+   real, current download) — and that domain sits outside this
+   project's build environment's network allowlist. Confirmed directly,
+   not inferred: a direct request to it returns `403 Forbidden` at the
+   proxy, the same response any other non-package-registry host gets.
+3. **No npm or PyPI package bundles a real, standalone, offline-runnable
+   veraPDF validator.** Searched the npm registry directly; the
+   veraPDF-adjacent packages that exist are a results-highlighting
+   viewer component and third-party hosted services, neither of which
+   is a real local conformance checker this environment could run.
+
+**Conclusion, stated plainly**: this specific gap needs an environment
+with broader network access (a CI runner, or a developer's own machine
+with veraPDF installed directly) run against a real PDF this repo's
+own cytology pipeline generates — it is not something more research or
+a different in-repo tool choice can close. Documented in full in
+`services/documentRendering/README.md`'s "Real, remaining gaps"
+section, replacing the prior, less-conclusive disclosure.
+
+### Validation
+
+- No code changed this batch — documentation-only investigation
+  closure. `tsc --noEmit` and the full suite were not re-run since
+  nothing that affects either was touched.
+
+## Batch 306 — PS-278/279 gap-closing pass, part 5 (final): all four remaining disclosed sub-gaps closed with real code
+
+### What this batch is
+
+Real, per direct follow-up ("Lets work towards complting out the
+feature, number 1 goal now") — closes the four remaining PS-278/279
+sub-gaps PS-338's tracker had open (three of the four were also
+independently re-surfaced mid-pass by an external release-readiness
+review; all three turned out to already be closed by this batch's own
+work, corrected back to the reviewer rather than re-built a second
+time):
+
+**Gap A — Specimen-type inference (Frozen Section vs. Routine
+Surgical).** New `services/printRouting/wasCaseFrozenSectioned.ts`:
+resolves this from the real, existing (if indirect) intraop-merge
+signal — `IntraoperativeEntry.mergedIntoCaseId`'s one-directional
+reverse lookup plus a real `frozen_section_cut` milestone on that
+entry's own specimens — the same pattern `IntraopLinkageTab.tsx` and
+`qualityCalculations.ts` already use, not a new or guessed mechanism.
+`resolveRealPrintRoutingContext.ts` now calls it whenever `source`
+isn't `CYTOLOGY` and no override was supplied; honestly returns
+`ROUTINE_SURGICAL` on any service error rather than throwing. 5 new
+tests.
+
+**Gap B — Workstation/user identity threading.**
+`publishReportReleasedEvent.ts` already resolved `event.releasedBy?.id`
+at every real call site — it just wasn't forwarded the one hop further
+into the print-routing dispatch context. Now forwards it as `userId`,
+alongside `workstationId` via the already-established
+`getEffectiveScanStationId()` utility (same device-persisted /
+logged-in-user fallback `mockAuditService.ts`/`CaseRouter.ts`/
+`mockReportVersionService.ts` already use). `userId` is honestly
+`undefined` when no `releasedBy` was given — never fabricated. 2 new
+tests, 3 existing assertions updated.
+
+**Gap C — PrintRoutingRule admin UI.** New
+`components/Config/System/PrintRoutingRuleSection.tsx` — real CRUD
+(rule table, Add/Edit modal, live Test panel calling
+`resolvePrintDestination.ts` directly), copying
+`DeliveryRulesSection.tsx`'s exact three-part pattern rather than
+inventing a new one. Zero new CSS (confirmed by direct grep — every
+`.ps-rr-*`/`.ps-conf-*`/`.ps-modal-dark`/`.ps-overlay` class already
+exists). Registered under `'print_routing_rules'` in the
+Administration & Compliance group. Fully localized across all 5
+locales under a new `printRoutingRulesSection` namespace — parity
+verified programmatically (zero missing/extra keys in any locale).
+This also closed PS-337's own Print Routing bullet — investigating it
+surfaced that PS-337's premise about Delivery Rules was itself stale:
+`DeliveryRulesSection.tsx` already existed and was wired, but
+`services/delivery/README.md` had never been corrected to say so.
+Fixed that README in this pass; PS-337 narrowed accordingly (only
+Print Queue's own `Facility.printPresentationPreference` admin UI
+remains genuinely open).
+
+**Gap D — QZ Tray duplex/tray forwarding.** Verified directly against
+the installed `qz-tray` package's own source/types that
+`qz.configs.create()` accepts real `duplex`/`printerTray` config keys.
+`utils/labels/qzTrayBridge.ts` gained `QZ_DUPLEX_BY_DUPLEX_MODE`/
+`QZ_TRAY_BY_PAPER_SOURCE` mapping tables and an optional 5th
+`presentation` param on `printPdfViaQzTray()`; `attemptPrintDelivery.ts`
+now always forwards it — the same resolved `{paperSource, duplexMode}`
+that already reached `DIRECT_NETWORK_PRINT`/IPP now reaches
+`NATIVE_QZ_TRAY` too. One honest, disclosed, remaining caveat: unlike
+IPP's registered `media-source` keywords, QZ Tray's `printerTray` value
+is driver-specific with no universal standard — the shipped mapping is
+a real, working default, not a guaranteed-portable one across every
+printer driver QZ Tray might manage. 7 new tests (`qzTrayBridge.test.ts`
+had zero prior coverage of this function at all), 2 existing
+`attemptPrintDelivery.test.ts`/`dispatchPrintJob.test.ts` assertions
+updated to match the now-forwarded presentation object.
+
+### Validation
+
+- `tsc --noEmit` — clean, zero errors, project-wide.
+- Full `vitest run` — **544 test files / 4731 tests, all passing**
+  (one pre-existing test file, `dispatchPrintJob.test.ts`, needed its
+  two exact-arg `printPdfViaQzTray` assertions updated to include the
+  now-forwarded presentation object — a correct, expected consequence
+  of Gap D actually closing, not a regression).
+- Docs updated: `services/printRouting/README.md` (all three
+  previously-disclosed gaps + the admin-UI gap moved from "Real,
+  honest, disclosed gap" to "Closed"), `services/printing/README.md`
+  (Gap D's own entry closed), `services/delivery/README.md` (stale
+  "no admin UI" claim corrected), `components/Config/System/README.md`
+  (new `PrintRoutingRuleSection.tsx` entry).
+- Jira: PS-338's tracker updated to mark all four sub-gaps closed (with
+  the QZ Tray caveat carried over honestly, not dropped); PS-337
+  narrowed to its one real remaining piece; PS-278/PS-279 each got a
+  comment documenting their own closed disclosed gaps.
+
+## Batch 307 — PS-55: confirmed already-built QZ Tray wiring, fixed the one real bug undermining it
+
+### What this batch is
+
+Real, per direct follow-up ("continue implementing Jira work items,
+high priority ones first") — PS-55 asked for QZ Tray to be wired into
+`MaterialTreePanel.tsx`/`MatrixBlockEditorModal.tsx`/
+`BlockStainEditorModal.tsx`'s own print actions. Investigated directly
+before building anything: that wiring already exists, end to end —
+`printCassetteForBlock`/`printMatrixCassette`/container-label printing
+all already resolve the station's own configured `PrinterProfile` and
+dispatch via `qzTrayBridge.ts` automatically whenever `bridgeType` is
+`qz_tray` (via `dispatchZplLabel.ts`, extracted since this ticket was
+filed). No separate "Print via QZ Tray" action was needed — QZ Tray
+already *is* the dispatch path, not an alternative to add alongside one.
+
+**Real bug found and fixed along the way**: the seeded demo printer
+profile (`printer-zt411-example`, mockPrinterProfileService.ts) still
+had `bridgeType: 'os_print_dialog'` — a real, valid value, but one this
+pipeline explicitly documents as having no working dispatch. Left as
+seeded, the app's only two `supportsPrinting` demo stations would
+always hit a real "not yet implemented" refusal on every Print
+Cassette/Print Slide action — the demo never actually exercised the
+QZ Tray path it's supposed to showcase. Fixed: seed now uses
+`bridgeType: 'qz_tray'`.
+
+**Real test-coverage gap closed**: this integration layer (station
+lookup → printer-profile lookup → `printCassetteLabel`/
+`printSlideLabel` call) had no test of its own before this batch —
+only the lower-level dispatch units (`printCassetteSlideLabel.test.ts`)
+were covered. Added 5 new tests to `useSpecimenBlockManagement.test.ts`
+exercising the real, end-to-end chain (mocking only the true external
+boundary, `qzTrayBridge.ts`'s own `printZplViaQzTray`).
+
+PS-55's own two remaining items — real hardware verification and the
+production signing-certificate decision — are confirmed to genuinely
+need something outside this environment (live QZ Tray + Zebra
+hardware; a real procurement decision), same honest posture as every
+other "can't verify from here" gap this engagement has disclosed.
+
+### Validation
+
+- `tsc --noEmit` — clean, zero errors, project-wide.
+- Full `vitest run` — 544 test files / 4736 tests, all passing (5 net
+  new this batch).
+- Docs updated: `services/printerProfiles/README.md`.
+- Jira: PS-55's own description updated with the full finding.
+
+## Batch 308 — PS-46: happy-dom upgraded past its critical VM-escape vulnerability (15.11.7 → 20.14.5)
+
+### What this batch is
+
+Real, per direct follow-up ("continue implementing Jira work items,
+high priority ones first") — PS-46 flagged `happy-dom` (this app's own
+`@vitest-environment happy-dom` test environment, devDependency only,
+never bundled into any real build) for a critical VM Context Escape
+advisory plus two others, fixed only by a major version bump
+(`isSemVerMajor: true`). The ticket itself asked for a real, dedicated
+testing pass before landing it, not a blind force-bump, given how
+heavily happy-dom is used across the whole suite.
+
+Upgraded straight to the current latest (`20.14.5`), not the ticket's
+own cited `20.11.2` — `npm audit`'s own advisory range (`happy-dom
+<=20.8.8`) and `npm audit fix --force`'s own suggested target both
+confirmed `20.14.5` is the real, current fix, newer patches having
+shipped since the ticket was filed.
+
+### Validation
+
+- `tsc --noEmit` — clean, zero errors, project-wide.
+- Full `vitest run` — **544 test files / 4736 tests, all passing** —
+  zero test behavior shift from the major version bump, the real
+  dedicated pass this ticket asked for.
+- `npm audit` — happy-dom's critical advisory (VM Context Escape) and
+  its two other real advisories are gone; the one remaining critical
+  (`protobufjs`, transitively via `firebase-admin`) is explicitly
+  PS-47's own, separately-gated scope ("when Firestore actually goes
+  live"), not touched here.
+- No code changes beyond `package.json`/`package-lock.json` — this is
+  a dependency-only fix, no domain README applies.
+
+## Batch 309 — PS-128: Config Page now honors dirty-flag checks on tab-switch navigation
+
+### What this batch is
+
+Real, per direct follow-up ("continue implementing Jira work items,
+high priority ones first") — PS-128 was filed with no description
+("Config Page does not honor dirty flag checks"), so the real, concrete
+gap had to be found before anything could be built. Investigated
+broadly across `components/Config/` for any real, existing
+unsaved-draft state (`isDirty`), rather than guessing at either a huge
+generic refactor or a narrow, wrong fix.
+
+Found three real `isDirty` producers total, but only one is actually
+reachable through `pages/ConfigurationPage.tsx`'s own tab-switching:
+`Macros/MacroPanel.tsx`'s real `isDirty` (previously known only to its
+own Save button). The other two — `Templates/TemplateRenderer.tsx` and
+`Protocols/SynopticEditor.tsx` — already have their own real
+`isDirty`/navigate-away guards, but both are confirmed, via `App.tsx`'s
+own route table, to be separate, standalone routes
+(`/template-review/:templateId`, `/template-editor/:templateId`),
+never mounted inside `ConfigurationPage.tsx`'s own tab tree at all —
+an earlier pass in this same engagement had mistakenly assumed
+`TemplateRenderer.tsx` was rendered inside the Protocols tab; re-verified
+directly against the real route table before building anything, and it
+is not.
+
+**Real fix**: `ConfigurationPage.tsx`'s tab bar (`handleTabChange`),
+its `PATHSCRIBE_NEXT_TAB`/`PATHSCRIBE_PREVIOUS_TAB` voice-nav
+listeners, and `ConfigSearchBar`'s `onNavigate` all called `navigate()`
+unconditionally before this fix — any of the three could silently
+discard an in-progress Macros edit. All three now route through one
+shared `guardedNavigateToTab`, gated on a new `tabIsDirty` page state
+fed by a small, new, opt-in bridge —
+`components/Config/configDirtyGuardContext.ts` (a React Context
+carrying a single `setDirty(boolean)`, deliberately not a per-tab-id
+registry, since this page only ever mounts one tab at a time). When
+dirty, the real, shared `ConfirmModal` component (this app's own
+established `window.confirm()` replacement) confirms before
+discarding; when clean, every path behaves exactly as before this
+fix — verified directly, not just asserted.
+
+Real, honestly disclosed scope limit, not silently ignored: the other
+~30 Config admin screens (dictionaries, routing rules, etc.) each
+manage their own add/edit state inside their own modal-based CRUD
+flows, not an inline, page-persistent draft the way Macros does — this
+page-level guard genuinely doesn't apply to them the same way, so they
+were deliberately left alone rather than exhaustively retrofit in one
+pass over a ticket with no stated scope.
+
+### Validation
+
+- `tsc --noEmit` — clean, zero errors, project-wide.
+- Full `vitest run` — **547 test files / 4748 tests, all passing** (12
+  net new this batch).
+- New tests: `components/Config/__tests__/configDirtyGuardContext.test.tsx`
+  (the new context module's own no-op-outside-a-provider and
+  reaches-the-real-provider behavior), `components/Config/Macros/
+  __tests__/MacroPanel.test.tsx` (the panel's own real `isDirty` →
+  `setDirty` reporting, including on unmount), and `pages/__tests__/
+  ConfigurationPage.test.tsx` (the page-level guard itself — clean
+  switches are unaffected, a dirty switch shows a real confirm via the
+  tab bar/search bar/voice-nav, cancel stays put, confirm actually
+  navigates, and the guard resets cleanly for the next switch).
+- Docs updated: `pages/README.md`, `components/Config/README.md`,
+  `components/Config/Macros/README.md`.
+- i18n: `configuration.dirtyGuard.{title,message,discardButton}` added
+  to all 5 locale files — exact match, no unused or missing keys.
+- Jira: PS-46 commented with the full finding.
+
+## Batch 310 — PS-66: 12 real internalKey collisions between systemActions.ts and mockActionRegistryService.ts, resolved
+
+### What this batch is
+
+Real, per direct follow-up ("continue implementing Jira work items,
+high priority ones first") — PS-66 asked for a judgment call, not a
+mechanical fix: "That's a judgment call about the intended
+architecture of these two files, not something to guess at
+mechanically." The ticket itself claimed exactly 10 `internalKey`
+collisions between `constants/systemActions.ts`'s `ACTION_MAP` and
+`services/actionRegistry/mockActionRegistryService.ts`'s own
+hardcoded-literal entries.
+
+Independent, exhaustive re-verification (a script scanning every
+literal `internalKey` in both files, not a re-read of the ticket's own
+list) found **12**, not 10 — the ticket's own scan missed
+`ENTER_ADDENDUM` (vs. `diagnosis.enterAddendum`), `FULL_VIEW` (vs.
+`synoptic.jumpNextRequired`), and `TABBED_VIEW` (vs.
+`synoptic.markDeferred`); one of its stated 10, `F18+PS014`, turned
+out to already be the legitimate `ACTION_MAP[...]` alias pattern, not
+a second hardcoded literal — a false positive.
+
+**The judgment call, made per key, not guessed at:** compared label,
+shortcut, and voice-trigger content for every colliding pair.
+
+- **9 pairs are the same logical action, described twice** — exact
+  label matches (`ENTER_ADDENDUM`/`enterAddendum` = "Enter Addendum",
+  `CONFIRM_FIELD`/`confirmField` = "Confirm Field", all four
+  `GROSSING_*`/`grossing.*` pairs share both label and existing key
+  value already) or matching shortcut+voice-trigger content despite
+  different current keys (`NEXT_UNANSWERED`'s `Ctrl+Alt+U`/"next
+  unanswered" matches `synoptic.jumpNextUnanswered`'s own description
+  verbatim). **Consolidated**: the mock file's entry now aliases
+  `systemActions.ts`'s own key via
+  `ACTION_MAP['id']?.internalKey ?? 'fallback'` — the same pattern
+  already established by `ENTER_GROSS`/`ENTER_MICRO`/`ENTER_DIAGNOSIS`/
+  `MSG_MARK_UNREAD`/`MSG_COMPOSE` — so the two files can no longer
+  silently drift apart on these keys.
+- **3 pairs are genuinely different actions that only accidentally
+  collided** — `SKIP_FIELD`, `FULL_VIEW`, `TABBED_VIEW` have zero
+  matching `systemActions.ts` counterpart anywhere in the file
+  (confirmed by full-file grep). **Renumbered** to fresh, never-used
+  literals (`F17+PS054`–`PS056`) instead.
+- Freeing the keys the 9 consolidations needed required renumbering
+  `ai.viewConfidence`/`ai.override`/`ai.reviewTriage`/`ai.codeSuggest`/
+  `ai.narrativeGenerate` (`F17+PS004`–`PS008` → `F17+PS047`–`PS051`)
+  and `synoptic.confirmField`/`synoptic.overrideField`
+  (`F17+PS007`/`PS008` → `F17+PS052`/`PS053`) on the
+  `systemActions.ts` side; `synoptic.jumpNextUnanswered`/
+  `jumpNextRequired`/`markDeferred` keep their existing keys
+  (`F17+PS009`–`PS011`) unchanged, becoming the canonical shared keys
+  the mock file's aliases now point to.
+
+**Real, honestly disclosed finding, not fixed here:** the 5 keys
+renumbered above were part of a much larger, purely-internal
+duplication already known within `systemActions.ts` itself (21 keys
+total, unrelated to the mock file — see `constants/README.md`'s
+existing entry). Only the 5-key portion needed to resolve this
+ticket's actual cross-file scope was touched; the other 16
+(`ai.diagnosisSuggest`/`ai.grossAssist`/`ai.macroSuggest` colliding
+with `diagnosis.*`, and the entire `F18+PS001`–`PS013`
+`delegation.*`/`pool.*`-vs-`messages.*` overlap) remain exactly as
+found — recommended as a separate follow-up ticket, since fixing them
+means repeating this same per-key judgment call 16 more times, not a
+mechanical extension of this pass.
+
+### Validation
+
+- `tsc --noEmit` — clean, zero errors, project-wide.
+- Full `vitest run` — **547 test files / 4750 tests, all passing** (2
+  net new this batch).
+- New tests, both in
+  `services/actionRegistry/mockActionRegistryService.test.ts`: one
+  confirming no hardcoded `internalKey` literal in the mock file
+  collides with any `systemActions.ts` `ACTION_MAP` key (the real
+  regression guard for this bug class — aliasing is fine, a bare
+  literal duplicate is not), one confirming each of the 9
+  consolidations resolves to its intended `systemActions.ts` action's
+  own key and each of the 3 renumbers landed on a key no
+  `systemActions.ts` action holds. The pre-existing "every action has
+  a genuinely unique internalKey" test (mock-internal uniqueness only)
+  still passes unchanged, as intended — it was never scoped to catch
+  cross-file collisions in the first place.
+- Docs updated: `constants/README.md`,
+  `services/actionRegistry/README.md`.
+- Jira: PS-66 updated with the corrected 12-collision count, the fix
+  applied, and the disclosed, separate, larger internal-duplication
+  finding.
+
+## Batch 311 — PS-73: Duplicate + assigningAuthority uniqueness for Facility Configuration, and the whole-file inline-CSS sweep completed
+
+### What this batch is
+
+Real, per direct follow-up ("continue implementing Jira work items,
+high priority ones first") — PS-73 was already "In Progress" with two
+real re-verification comments from Pete flagging exactly what was
+left: (1) the ticket's own "Client Dictionary" matrix entry, never
+wired; (2) a whole-file inline-CSS sweep not applied consistently
+across 4 files; (3) `utils/README.md`'s Duplicate-and-edit section
+left stale after several passes.
+
+**Gap 1 — rescoped and closed.** The standalone
+`components/ClientDictionary/` fork Pete's comment named had, by this
+point, already been confirmed genuinely dead (zero real imports) and
+deleted in a separate, unrelated dead-code pass — `Facility`/
+`FacilityDictionary/` is its real, living successor (see that folder's
+own "Facility rename" README note). That's where the real gap
+actually lived: `FacilityEditorModal.tsx` validated `assigningAuthority`
+as required only, despite `mockOrderIntakeService.ts`'s own real
+Facility-resolution lookup keying directly on it — the exact same
+class of risk `CrosswalkSection.tsx`'s compound check already
+protects elsewhere. Added Duplicate (`FacilityTable.tsx` +
+`FacilityDictionaryPage.tsx`'s new `handleDuplicateFacility()`) and
+real uniqueness validation (`findDuplicate()` on `assigningAuthority`).
+
+Facility isn't a person, so `preparePersonDuplicate()` doesn't apply
+(deliberately scoped to person-shaped records — see its own header),
+but it carries real contact-person fields alongside its own org
+config, so the duplicate handler clears both by hand: `assigningAuthority`
+(must never be copied — it's the crosswalk key) and every contact/
+location field (`contactGivenNames`/`email`/`phone`/`fax`/`address`/
+`notes`), while org-level config (roles, jurisdiction, reporting, TAT,
+escalation, AI settings, LIS routing, identifier formats) genuinely
+carries over as the real starting template.
+
+**Real bug class closed on the way, not just the feature added:**
+`FacilityEditorModal.tsx`'s `isEdit` was `!!facility` — true the
+moment Duplicate started passing a prefilled `facility` object into
+'add' mode. Two real effects (`eligibleModels` for the AI tab,
+`locations` for the Locations tab) were gated on `facility?.id` alone,
+which a Duplicate template's placeholder id would satisfy, firing real
+lookups against a bogus id and showing a tab that shouldn't exist for
+an unsaved record. `FacilityDictionaryPage.tsx`'s own `handleSave` had
+the matching bug: `if (editingFacility)` decided add-vs-update, which
+Duplicate's populated-but-unsaved `editingFacility` would have
+mis-routed into `facilityService.update()` — silently overwriting the
+real source facility instead of creating a new one. Both fixed with an
+explicit `mode: 'add' | 'edit'`, matching the exact pattern
+`PhysicianModal`'s own `mode` prop already established for this same
+bug class elsewhere in this ticket's earlier passes.
+
+**Gap 2 — whole-file inline-CSS sweep, completed.** Re-scanned all 4
+files Pete's comment flagged: `SubspecialtiesSection.tsx` and
+`SpecimenCategoriesSection.tsx` were already fully clean (0 remaining
+— resolved by other, unrelated work since that comment was written).
+`CassetteColorsSection.tsx`'s one remaining inline style
+(`style={{ background: c.hexCode }}`) was a real, genuinely
+per-row value with no static-class equivalent — converted to the same
+CSS-custom-property indirection `DelegationTypeSection.tsx` already
+uses for the identical need (`--swatch-color`, consumed by
+`.ps-cassette-color-swatch` in `pathscribe.css`), rather than left as
+a raw inline style. `DelegationTypeSection.tsx`'s own 2 remaining
+inline styles were already using that exact pattern (confirmed
+directly) — legitimate, not a leftover gap, and already documented as
+such in `Config/System/README.md`.
+
+**Gap 3 — `utils/README.md` rewritten against a real, current,
+code-verified consumer list**, not extended piecemeal again: every
+real `findDuplicate()`/`prepareDuplicate()`/`preparePersonDuplicate()`
+call site across the codebase re-confirmed directly (not carried
+forward from the stale list or Pete's own comment), including one
+consumer (`CasePoolAssignmentSection.tsx`) neither the old README nor
+Pete's re-verification comment had ever listed.
+
+### Validation
+
+- `tsc --noEmit` — clean, zero errors, project-wide.
+- Full `vitest run` — **548 test files / 4757 tests, all passing** (7
+  net new this batch: 5 in `FacilityEditorModal.test.tsx`, 2 in the
+  new `pages/system/FacilityDictionaryPage.test.tsx`).
+- New tests confirm the real regression this fix is about: a Duplicate
+  template (mode='add' with a populated, placeholder-id `facility`
+  prop) never fires the real `eligibleModels`/`locations` lookups and
+  never shows the Locations tab; a real edit does both correctly. The
+  uniqueness check blocks a real collision, allows a genuinely unique
+  value, and never flags a record against its own unchanged value in
+  edit mode. At the page level: Duplicate-then-Save calls
+  `facilityService.add()`, never `.update()`, and a real Edit calls
+  `.update()`, never `.add()` — the exact bug class this fix closes,
+  confirmed end to end, not just at the modal boundary.
+- i18n: `facilityEditorModal.errors.assigningAuthorityCollision` added
+  to all 5 locale files — exact match, no unused or missing keys.
+- Docs updated: `utils/README.md`, `components/FacilityDictionary/
+  README.md`, `components/Config/System/README.md`.
+- Jira: PS-73 updated with the full account of all three gaps closed.
+
+## Batch 312 — PS-327: requiresCountersign wired into real, per-lab enforcement (canFinalizeCase's authorityOverrides gap, closed the other half)
+
+### What this batch is
+
+Per the standing "continue implementing Jira work items, high priority
+ones first" instruction — PS-327 ("Wire per-lab signing-authority
+overrides into real finalize/countersign enforcement") was next by
+priority. Independent verification against current source (the same
+discipline that found real discrepancies in PS-66 and PS-73 this
+session) found the ticket's own premise was partially stale:
+
+- **AC#1** (`canFinalizeCase()` resolves per-lab via
+  `resolveParticipationTypeAuthority()`, not a hardcoded literal) — **already
+  fully done**, in an undocumented prior pass (`services/auth/
+  caseAccessControl.ts`'s own doc comments already described the real
+  wiring in past tense).
+- **AC#2** (`deriveEligibleFinalizerIds()`/`Case.eligibleFinalizerIds`
+  lab-scoped the same way) — **partially done, deliberately**:
+  real and data-driven, but explicitly NOT lab-scoped, per that
+  function's own doc comment (`CaseRouter.ts`'s `updateCase()` chokepoint
+  only ever receives a partial `Case` patch, usually without
+  `order.facilityId` — lab-scoping there would mean an extra full-case
+  fetch on every participant-touching write). Confirmed this is moot in
+  practice today: nothing server-side consumes
+  `Case.eligibleFinalizerIds` — left as-is, documented, not silently
+  reversed. **Correction (Sep 24, Batch 316):** this entry originally
+  said "there is still no real `firestore.rules` file anywhere" —
+  wrong; one exists at the repo root (version compare-and-swap,
+  finalized-case immutability). It has no finalize-eligibility rule, so
+  the conclusion holds, but the stated fact was false.
+- **AC#3** (`requiresCountersign` gating through the same mechanism) —
+  **the real, genuinely open gap**. Confirmed via a whole-codebase grep
+  excluding admin-UI/test files: zero real consumers of
+  `ParticipationTypeRecord.requiresCountersign` existed anywhere except
+  a cosmetic badge in `CaseTeamModal.tsx`. The actual, live resident/
+  attending countersign gate (`resolveResidentCountersignRequired.ts`)
+  has always been a hardcoded check on the literal ids `'resident'`/
+  `'cytotechnologist'` (plus FPPE/competency assignment lookups) — it
+  never once consulted the configurable flag at all.
+- **AC#5** (admin-facing way to set `authorityOverrides`) — **already
+  done**: `components/Config/System/TypeModal.tsx`'s per-lab override
+  rows (`setLabOverrideEnabled`/`setLabOverrideFlag`), read in full and
+  confirmed real, functioning UI, not just evidence of one.
+
+This batch closes AC#3 — the one real, confirmed gap — leaving AC#2's
+disclosed, deliberate limitation exactly as-is and documenting all four
+findings rather than silently re-implementing what already worked.
+
+### The real fix
+
+- **`services/auth/caseAccessControl.ts`** — new
+  `resolveCountersignRequiredTypeIds(participationTypes,
+  performingLabFacilityId?)`, the `requiresCountersign` counterpart to
+  the existing `resolveFinalizeEligibleTypeIds()`. Same real per-lab
+  `authorityOverrides` resolution via `resolveParticipationTypeAuthority()`;
+  no fallback constant (there's no pre-existing hardcoded literal this
+  replaces) — null/undefined/empty resolves to `[]`, never a guessed
+  default.
+- **`services/cases/resolveResidentCountersignRequired.ts`** — new,
+  optional `countersignRequiredTypeIds?: string[]` input field and a new
+  `'configured_type'` reason. Purely additive: a signer holding an
+  active participation type whose id appears in the (caller-resolved)
+  list is now also intercepted for countersign, checked in the same
+  static, type-based tier as the existing hardcoded `isResidentParticipant`
+  check, before the FPPE/cytotech assignment-based checks. Omitting the
+  field (Cytology's and Autopsy's two other real callers still do)
+  reproduces the exact pre-existing behavior with zero change.
+- **`pages/SynopticReportPage/hooks/useSignOutWorkflow.ts`** — the one
+  real call site wired end to end (Surg Path sign-out, the most fully-
+  instrumented path — already the only one calling `canFinalizeCase()`
+  at all). `resolveFinalizeAuthorityContext()` is now resolved once, up
+  front in `handleSignOutConfirm()`, and reused by both the countersign
+  gate and the later `canFinalizeCase()` write-guard — previously a
+  second, separate resolution right before `canFinalizeCase()`; removing
+  the duplicate also removes one redundant facility/participation-type
+  fetch from every sign-out attempt.
+- **Deliberately not extended to Cytology (`CytologyScreeningPage.tsx`)
+  or Autopsy (`services/autopsy/signAutopsyReport.ts`) in this pass**:
+  confirmed directly that neither call site resolves real
+  participation types or a performing lab at all today (neither calls
+  `canFinalizeCase()` either) — wiring per-lab `requiresCountersign`
+  gating into them is a real, separate, larger lift, not an incidental
+  addition to this ticket.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- Full suite: 548 files / 4772 tests passing (up from 4757 at Batch
+  311 — 15 new tests: 8 in `resolveResidentCountersignRequired.test.ts`
+  for the new `configured_type` path plus regression-safety of omitting
+  it, 4 in `caseAccessControl.test.ts` for
+  `resolveCountersignRequiredTypeIds()`'s own no-override/override/
+  new-custom-type behavior, and 2 integration-level in
+  `useSignOutWorkflow.test.ts` exercising the real
+  release-for-countersign redirect and its negative case end to end).
+  Zero existing tests changed behavior — every prior assertion in all
+  three files passes unmodified.
+- Docs updated: `services/auth/README.md`, `services/cases/README.md`
+  (new `resolveResidentCountersignRequired.ts` entry — this file had
+  never actually been documented there before, an unrelated pre-
+  existing gap closed in the same pass), `services/participationTypes/
+  README.md` (fleshed out from a two-line stub), `pages/
+  SynopticReportPage/hooks/README.md`.
+- Jira: PS-327 updated with the full account of all five acceptance
+  criteria's real, current status.
+
+## Batch 313 — Jurisdiction-bound signing authority: country-keyed profiles, country-scoped regional roles, Pete's AU/NZ/EU/UK/IE/CA/KR data
+
+### What this batch is
+
+The follow-up PS-327's own ticket explicitly deferred ("defining the
+actual per-country default overrides… follow-up once the enforcement
+mechanism itself is live"), driven by Pete's own per-country role data
+(Screener / Second Reviewer / Supervisor tiers + key regulatory nuance
+for AU, NZ, EU, UK, Ireland, Canada, South Korea) and his explicit
+design direction: roles must be tied to their jurisdiction, since
+regulatory frameworks, college requirements, and legal liability are
+jurisdiction-bound. His three rules, implemented as stated:
+
+1. **Global baseline types** stay global where behavior is identical
+   everywhere.
+2. **Country-scoped regional roles** — new `scopedJurisdictions` field;
+   new `biomedical_scientist` (UK + EU member states) and
+   `bms_advanced_practitioner` (UK only) types.
+3. **Country-code-keyed overrides** — new
+   `jurisdictionProfiles: Partial<Record<Jurisdiction, {label,
+   regulatoryNote, canFinalize, requiresCountersign, canViewWholeCase}>>`.
+
+**Correction on the way in, owned**: my first recommendation treated the
+per-country data as naming only (since every stated rule matches the
+platform default). Pete corrected that — a role's legal scope isn't
+uniform even when today's flags happen to match — and the model now
+follows his direction.
+
+**Reconciled with what PS-327 already shipped, not replaced**: the
+facility-keyed `authorityOverrides` stays as-is and still wins. It
+models a narrower, real case (one lab's exception to its own country's
+norm, e.g. a UK lab that has credentialed a specific BMS). Resolution is
+now three-tier, most specific first: lab exception → country profile →
+platform default.
+
+### The real changes
+
+- **`services/participationTypes/IParticipationTypeService.ts`** —
+  `jurisdictionProfiles` and `scopedJurisdictions` fields;
+  `resolveParticipationTypeAuthority()` gains an optional `jurisdiction`
+  third tier; new `resolveParticipationTypeLabel()` and
+  `isParticipationTypeOfferedIn()`. Also corrected a stale doc comment
+  on `authorityOverrides` that still said enforcement didn't consult it.
+- **`services/participationTypes/mockParticipationTypeService.ts`** —
+  Pete's data seeded as explicit profiles on `resident` (Screener),
+  `consultant` (Second Reviewer), `primary`/`attending` (Supervisor) for
+  all 12 jurisdiction codes his seven regions cover, each with the real
+  local title and his regulatory-nuance text. Flags are recorded
+  explicitly even where they equal the platform default — an inspectable
+  compliance record that also pins each country against future default
+  changes. New `mergeSeedJurisdictionData()` upgrades existing browsers'
+  stored lists on load without discarding admin edits (storage key
+  deliberately not bumped).
+- **`services/facilities/resolveCasePerformingLabScope.ts`** (new) —
+  one shared resolution of a case's performing lab + **that lab's**
+  jurisdiction (never the ordering site's). Never rejects.
+- **`services/auth/caseAccessControl.ts`** — `jurisdiction` threaded
+  through `canFinalizeCase()`, `resolveFinalizeEligibleTypeIds()`,
+  `resolveCountersignRequiredTypeIds()`.
+- **`pages/SynopticReportPage/hooks/useSignOutWorkflow.ts`** — both real
+  call sites (Orchestration sign-out and Assist-mode finalize) now pass
+  the performing lab's jurisdiction into both gates.
+- **`pages/SynopticReportPage/modals/CaseTeamModal.tsx`** — offers only
+  types valid in the case's jurisdiction, shows local titles, and shows
+  **effective** authority badges. Real fix: the badges used to show raw
+  platform defaults, which could contradict what the gate enforced.
+  Types already held by an active participant stay visible regardless.
+
+### Disclosed, not closed
+
+- **No admin UI yet for `jurisdictionProfiles`/`scopedJurisdictions`** —
+  seed data only, short of PS-327's own "usable without a manual data
+  edit" bar. Saving through `TypeModal.tsx` preserves them (regression-
+  tested). A country-profile editor is the natural next step.
+- Cytology/Autopsy sign-out and `deriveEligibleFinalizerIds()` still
+  don't consult either override tier (unchanged from Batch 312).
+- Pete's PA/Grossing and Cytotechnologist naming rows aren't covered by
+  his tier data and remain reference-only.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- Full suite: **550 files / 4807 tests passing** (up from 4772 — 35 new):
+  `participationTypeJurisdiction.test.ts` (new, 24 — three-tier
+  precedence incl. field-by-field fall-through, labels, scoping incl.
+  unknown-jurisdiction, every seeded jurisdiction/tier, the Canada-vs-
+  Korea "Fellow" case, BMS defaults, admin-edit preservation, merge
+  upgrade); `resolveCasePerformingLabScope.test.ts` (new, 6 — incl. the
+  delegating-site case and never-rejects); `caseAccessControl.test.ts`
+  (+4, end-to-end through the real gate); `useSignOutWorkflow.test.ts`
+  (+1, jurisdiction reaches both gates). Zero existing tests changed.
+- Docs updated: `services/participationTypes/README.md` (rewritten
+  around the full model), `services/auth/README.md`,
+  `services/facilities/README.md`, `services/cases/README.md`,
+  `pages/SynopticReportPage/hooks/README.md`,
+  `pages/SynopticReportPage/modals/README.md`.
+
+## Batch 314 — Facility-level sign-out authority as a first-class, human-in-the-loop control (transparent inheritance, break-glass override, audit trail)
+
+### What this batch is
+
+Pete's direction on Batch 313: the facility → jurisdiction → platform
+resolution order is the right balance — "smart defaults out of the box
+while keeping the human in full control" — **provided** the facility tier
+is a first-class, editable control for administrators, with (1)
+transparent inheritance (active rule + source of truth, no black boxes),
+(2) an explicit "Override Default for this Facility" control, and (3) a
+compliance audit trail (who, when, why). All three built as specified.
+This closes the main open admin-UI item on PS-341.
+
+### The real changes
+
+- **`services/participationTypes/IParticipationTypeService.ts`** — new
+  `FacilityAuthorityOverride` (the three flags + `overriddenBy`,
+  `overriddenAt`, optional `justification`); `AuthorityFlag` type +
+  `AUTHORITY_FLAGS`.
+- **`services/participationTypes/authorityProvenance.ts`** (new, pure) —
+  `resolveAuthorityWithSource()` (per-flag active value + source:
+  facility with who/when/why, jurisdiction with regulatory note, or
+  platform); `resolveInheritedAuthority()` (what a new override seeds
+  from); `stampFacilityOverrideChanges()` (diffs before/after, stamps
+  added/changed/removed/re-justified overrides, preserves untouched
+  provenance exactly); `buildFacilityOverrideAuditEntry()`.
+- **`components/Config/System/TypeModal.tsx`** — the per-lab section
+  rebuilt: jurisdiction chip, active rule + color-coded source per flag,
+  regulatory basis, "Override default for this facility", justification
+  field, "Revert to inherited default" with undo. `onSave` now also
+  passes the per-facility justifications.
+- **`components/Config/System/ParticipationTypesSection.tsx`** — stamps
+  provenance on save; writes one real audit entry per change, only after
+  the save succeeds.
+- **`pathscribe.css`** — `.ps-ptauth-*` replaces the four dead
+  `.ps-participationtypes__lab-*` rules.
+- **i18n** — `participationTypesSection.modal.authority.*` (14 keys) in
+  all 5 locales; `perLabLabel`/`perLabHint` rewritten. Keys kept in the
+  files' existing alphabetical order; diff against Batch 311's copies
+  confirmed exactly 20 changed lines per locale, nothing else touched.
+
+**Real bug fixed on the way**: the old per-lab toggle seeded a new
+override from the type's raw *platform* default. With Batch 313's
+jurisdiction profiles in place, merely switching an override on at a UK
+lab would have silently replaced its RCPath-derived values — a change to
+real sign-out behavior with no deliberate edit. New overrides now seed
+from the inherited value, so switching one on changes nothing.
+
+### Disclosed, not closed
+
+- Jurisdiction profiles and `scopedJurisdictions` still have no editor —
+  deliberately (they encode national regulation; the facility tier is the
+  sanctioned local path). A platform-level editor stays open on PS-341.
+- Two pre-existing inline `style={{ background }}` color-swatch previews
+  in `TypeModal.tsx` are untouched (outside this change).
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- Full suite: **553 files / 4831 tests passing** (up from 4807 — 24 new):
+  `authorityProvenance.test.ts` (new, 14 — incl. agreement with the
+  enforcement resolver across every lab/jurisdiction combination, and
+  each change kind); `TypeModal.test.tsx` (new, 8 — the first tests for
+  this component); `ParticipationTypesSection.test.tsx` (new, 2 — stamped
+  provenance + audit entry end to end, and no audit on a failed save).
+  Zero existing tests changed.
+- Docs updated: `services/participationTypes/README.md`,
+  `components/Config/System/README.md`, `services/auditlog/README.md`.
+
+## Batch 315 — Standing-rules pass on Batches 313–314: no inline CSS, no business logic in components, international support
+
+### What this batch is
+
+Pete restated the three standing rules. Auditing everything touched in
+Batches 313–314 against them found real violations in my own work, not
+just pre-existing code:
+
+- **Inline CSS** — four raw `style={{…}}` declarations in files I edited:
+  `TypeModal.tsx`'s colour swatch + preview chip (flagged in Batch 314 as
+  "outside this change" — wrong call, they were in a file I changed) and
+  `ParticipationTypesSection.tsx`'s attribute + abbreviation chips.
+- **Business logic in components** — I had put override seeding, lab
+  filtering, and dirty detection in `TypeModal.tsx`; provenance stamping
+  and the audit loop in `ParticipationTypesSection.tsx`; and type
+  filtering/resolution in `CaseTeamModal.tsx`.
+- **International support** — jurisdiction names rendered from the
+  English-only `JURISDICTION_LABELS` constant (a German admin saw
+  "England & Wales (NHS)"), and a hard-coded `": "` separator (French
+  typography needs `" : "`).
+
+### The fixes
+
+- **New `services/participationTypes/facilityAuthorityEditor.ts`** — the
+  modal's full view model (rows, seeding, unsaved/pending-removal state).
+- **New `services/participationTypes/saveParticipationType.ts`** — stamp →
+  persist → audit-on-success, with injected dependencies.
+- **`resolveCaseTeamParticipationTypes()`** in
+  `IParticipationTypeService.ts` — the case-team editor's selection logic.
+- **`TypeModal.tsx` / `ParticipationTypesSection.tsx` / `CaseTeamModal.tsx`**
+  now render and dispatch only.
+- **Inline CSS** — swatches set only `--swatch-color` (the CSS already
+  consumed it); chips set only `--ps-hue`, with tints/borders/off-state
+  as real `color-mix()` rules (the stylesheet's existing pattern, 34 uses).
+- **i18n** — new top-level `jurisdictionNames.*` block (13 codes × 5
+  locales; NHS/HSC/HSE kept as proper nouns) and `authority.ruleWithValue`
+  (`"{{flag}} : {{value}}"` in French). Keys inserted in the files'
+  alphabetical order; diff vs. Batch 314 is exactly 16 added lines per
+  locale.
+- **New `services/participationTypes/standingRules.guard.test.ts`** —
+  enforces all three rules at source level for these three components
+  (details in `services/participationTypes/README.md`). Mutation-tested:
+  reintroducing one violation of each rule makes it fail.
+
+### Found, disclosed, not fixed here
+
+- Six other screens still render the English-only `JURISDICTION_LABELS`:
+  `CytologyQcRulesSection.tsx`, `GoverningBodiesSection.tsx`,
+  `FacilityTable.tsx`, `AccessionPage.tsx`, and two QA tabs
+  (`EnterpriseRollupTab.tsx`, `InspectionModeTab.tsx` — which also use it
+  in CSV exports, where English may be intentional). The
+  `jurisdictionNames.*` keys now exist, so each is a small change; not
+  folded in unasked.
+- `TypeModal.tsx`'s label/abbreviation validation (`handleSave`) is still
+  inline component logic — it's PS-73's work, which Pete is re-scoping,
+  so left untouched.
+
+### Validation
+
+- `tsc --noEmit`: clean.
+- Full suite: **556 files / 4863 tests passing** (up from 4831 — 32 new):
+  `facilityAuthorityEditor.test.ts` (9), `saveParticipationType.test.ts`
+  (6), `resolveCaseTeamParticipationTypes` (+3), and
+  `standingRules.guard.test.ts` (14). Existing tests unchanged except one
+  `TypeModal.test.tsx` assertion updated from the English jurisdiction
+  name to the localized key.
+
+## Batch 316 — Project rules codified (`CLAUDE.md`), i18n parity setup + enforcement, README chain to the repo root
+
+### What this batch is
+
+Pete asked for three things: record the standing rules so he doesn't
+have to restate them each time, set up internationalization properly,
+and update the README at every folder level up to the main PathScribe
+folder.
+
+### 1. `CLAUDE.md` (new, repo root)
+This file is read automatically at the start of every session on the
+project. It records the standing rules (no inline CSS, no business
+logic in components, international support), the "verify, don't trust"
+rule, the delivery routine (the real `npm run type-check` / `npm test`
+scripts, the README chain, the changelog, the delta zip, and Jira
+without status transitions), and a pre-delivery checklist.
+
+### 2. Internationalization setup
+- **Measured before changing anything**: 10,000+ English keys. The same
+  45 keys were missing from all four other locales (the critical-alert
+  reference page, the audit log's Critical Alerts tab, the physician
+  SMS-carrier fields), so non-English users saw English there. There
+  were no placeholder mismatches, and every file was already sorted.
+- **Translated all 45** into fr/de/nl/ko, reusing terms the files
+  already establish. Brand names (AT&T, Verizon, …) are kept as-is, and
+  the disclosure banner keeps its `<strong>` markup for `<Trans>`. The
+  diff against Batch 315 is add-only: +59 lines per locale, no existing
+  line changed.
+- **Korean blanks confirmed intentional**: the two empty
+  `addFirstFacilityPrefix` values sit next to a Suffix that carries the
+  text (verb-final word order). The parity test encodes this as a
+  general Prefix/Suffix rule rather than an exception list.
+- **New `i18n/localeParity.test.ts`**: project-wide, every key in every
+  locale, 24 checks, no exceptions. Mutation-tested (old French file,
+  a dropped placeholder, stripped markup: all fail).
+- **New "Setup, conventions, and enforcement" section** at the top of
+  this README.
+
+### 3. README chain to the repo root
+- **Root `README.md` (recreated).** `docs/ARCHIVE.md` and
+  `docs/developer/GETTING_STARTED.md` both referred to it, but it was
+  missing from this copy of the repo. The new one covers setup, every
+  real npm script, the rules, i18n, structure, the documentation map,
+  and Jira.
+- **Updated**: `src/README.md`, `services/README.md` (new "Signing
+  authority" section tracing the feature across its five service
+  folders), `components/README.md`, `components/Config/README.md`,
+  `pages/README.md`, `pages/SynopticReportPage/README.md`.
+- **`docs/developer/GETTING_STARTED.md`** now matches the standing
+  rules. It had still allowed inline colours from props and only
+  banned logic "inline in JSX".
+
+### Corrections found along the way, owned
+- **`firestore.rules` exists** at the repo root. My Batch 312–313 docs,
+  a code comment in `caseAccessControl.ts`, and my Jira comments on
+  PS-327/PS-341 said no such file existed anywhere. I had repeated a
+  comment without searching outside `src/`. The conclusion still holds
+  (the file has no finalize-eligibility rule, so nothing server-side
+  reads `Case.eligibleFinalizerIds`), but the stated fact was false.
+  Corrected in every place I'd repeated it.
+- **`src/README.md` claimed** `ACCESS_CONTROL_PLAN.md`,
+  `PRIORITY_FIXES.md`, and `NETFLIX_SETUP.md` didn't exist, "reason
+  unclear". In fact `docs/ARCHIVE.md` records all three:
+  `ACCESS_CONTROL_PLAN.md` moved to `docs/architecture/`, and the other
+  two were retired (`PRIORITY_FIXES.md` items became Jira PS-57–71).
+  Stale "at repo root" references in the component READMEs were fixed
+  too.
+- **Broken footer link**: `src/README.md` linked a non-existent
+  `orchestrator/README.md`. Fixed; the four folders with no README
+  (`mocks/`, `orchestrator/`, `protocols/`, `styles/`) are now listed
+  as such.
+- **Encoding corruption**: `components/README.md` (39) and
+  `components/Config/README.md` (46) had em-dashes, arrows, and ✅
+  mangled by a Windows code-page decode ("β€”" for "—"). All restored.
+  A repo-wide scan (UTF-8 bytes read as cp1253 with a cp1252 fallback,
+  Korean and Greek text excluded) found no other affected file.
+
+### Disclosed, not done
+- The six screens still rendering English-only `JURISDICTION_LABELS`
+  (listed in the conventions section above).
+- READMEs for `mocks/`, `orchestrator/`, `protocols/`, `styles/`.
+- About 40 historical `PRIORITY_FIXES.md #N` citations across folder
+  READMEs are left as-is. They're historical, and the root README and
+  `docs/ARCHIVE.md` explain where the file went.
+
+- **`npm run lint` cannot run**: there is no ESLint config file
+  anywhere in the repo, although the script and the ESLint plugins are
+  in `package.json`. Adopting a config is a rules decision, and would
+  likely surface a large backlog under `--max-warnings 0`. Noted in the
+  root README's scripts table.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **557 files / 4887 tests passing** (up from 4863; the 24
+  new tests are `localeParity.test.ts`).
+
+## Batch 317 — PS-73: Duplicate only where it belongs (Pete's framework), localized copy names, real protocol lifecycle actions
+
+### What this batch is
+Pete's framework for PS-73:
+
+- **Duplicate** fits complex configuration, templates, and multi-site variants.
+- **Duplicate does not fit** real people or entities, flat lookups, or transactional and audit records.
+
+His answers settled the edge cases: remove Duplicate from Delegation Types and RVU rows, add it to six named screens, and make the protocol screens' actions real now. The screens he named as examples (Physicians, Container Types, Specimen Categories, routing, TAT) followed from the framework directly.
+
+### Policy, recorded and enforced
+- **`services/duplication/duplicatePolicy.ts`**: every decision, with its category and reason.
+- **`services/duplication/duplicateEntities.ts`**: one pure copy function per entity. Each deep-copies, uses a placeholder id, takes a localized copy name, clears identity and matching-key fields, and drops built-in status.
+- **`duplicatePolicy.guard.test.ts`**: fails the build if
+  - a "no" screen offers Duplicate, or a "yes" screen doesn't;
+  - any component under `src/` renders a Duplicate label without being registered;
+  - any source file stores an English "(Copy)" / "Copy of";
+  - the covered screens use inline CSS.
+
+### Screens
+- **Removed:** Physicians (a real person), Container Types, Delegation Types, RVU code-map rows (flat lookups).
+- **Added:** Specimen Categories, Specimen Dictionary, Routing Rules, Cassette Routing, TAT/escalation, Abnormal Trigger Rules, Printer Profiles, Workstation Groups, Participation Types, Action Groups. Cassette routing and abnormal-trigger copies start inactive, because an unchanged copy would match real cases exactly like its source.
+- **Kept, logic moved to the service, names localized:** Facility, Stain Dictionary, Case Pool routing, Processing Protocols, Role Dictionary, QA Configuration Center, Cytology QC Rules, Report Parts/Templates.
+
+What the copies no longer carry:
+
+- **Facility:** CLIA/ISO number, director, city/state/zip, legacy tenant ids, pediatric authorizations, interface endpoint and credential flag. This refines Batch 311's "carry config" decision: the connection *shape* still carries.
+- **Molecular target:** the gene symbol (a copy's symbol is now empty rather than "ERBB2 (Copy)").
+- **Processing protocol:** the source's version history.
+- **Participation type:** facility overrides (audited decisions about one role) and regional titles.
+
+### Synoptic protocols: the actions are real now
+On All Protocols, Duplicate / Export JSON / New Version / Archive had empty handlers. On Active Protocols, "Duplicate" opened the **published** protocol for direct editing. Now (`ProtocolCardParts.tsx`, with the rules in `services/templates/protocolLifecycle.ts`):
+
+- **Duplicate:** a new protocol with a localized copy name.
+- **New Version:** same name, minor version bump, `supersedesId`. Publishing it archives the old version.
+- **Export JSON:** the full editor template plus metadata.
+- **Archive:** a new `archived` state, with confirmation. **Restore** brings it back as a draft, which must be reviewed again.
+- **Archived filter:** All Protocols gains one, and "All" hides archived protocols.
+- **List cache:** registry writes now invalidate the cached protocol lists.
+
+### Bugs fixed on the paths this touched
+- **Specimen Dictionary saves dropped fields.** `protocolId` and `specimenCategory` (both editable in the form) were never saved. Six other fields (`defaultComplexity`, `microUpgradeBaseCptCode`, `organSite`, `isSelfCollected`, `defaultSynopticTemplateId`, `autoCreated*`) were wiped from any entry edited there. Fixed in the new `services/specimenDictionary/buildSpecimenEntry.ts`.
+- **TAT editor.** Add vs edit came from `!!entry`, so a copy would have overwritten its source. Every save also forced `roleId: null`, widening per-role targets to all roles. Both fixed in the new `services/tatConfig/`; the types moved to `types/quality/TatConfigEntry.ts`.
+- **Routing-rule priority check** excluded the passed-in rule even in add mode. It is now edit-only. An add from a copy keeps its lab scope and mapped specimen types.
+- **Abnormal Trigger form** only pre-filled in edit mode, so a copy opened blank. A copy now keeps its synthetic coding.
+- **Participation Type editor** didn't carry `jurisdictionProfiles` / `scopedJurisdictions`.
+- **Hard-coded locales.** RVU code map (`en-US`) and SynopticEditor (`en-GB`) now use `utils/formatDate.ts`.
+
+### Standing rules
+- **No inline CSS** remains in SynopticEditor (20 removed, including imperative `onFocus` style writes), RoleDictionary (11), protocolShared/AllProtocols/ActiveProtocols/ReviewQueue (17). Colours built in JSX were also removed from DelegationTypeSection. `LIFECYCLE_STYLES` / `SOURCE_STYLES` were replaced with CSS classes.
+- **New keys, in all five locales:**
+  - `common.copyOfName`, `common.none`, `addCodeModal.unsavedChangesConfirm` (the last two were already used in code but missing from every locale; found by a usage scan);
+  - `templateListTab.defaultCustomTemplateName`, `protocolShared.lifecycle.archived`, `protocolShared.buildModal.templateMeta_one/_other` (replaces the English "fields");
+  - `synopticEditor.nav.breadcrumbNewVersion`, `protocolActions.*`, `routingRulesTab.protocolWithStatus` (the Template Builder routing picker showed a raw English status such as "(in_review)").
+- **Jurisdiction names:** CytologyQcRulesSection (touched for Duplicate) now renders `t('jurisdictionNames.<code>')` instead of the English-only `JURISDICTION_LABELS`. Five screens remain on the list above.
+- **Removed as unused:** `containerTypesSection.modal.headerDuplicate`, `delegationTypeSection.modal.duplicateTitle`, `physiciansSection.modal.addFromTemplateHeader`, `rvuCodeMapSection.entryModal.headerDuplicate`.
+- **`CLAUDE.md`** now covers dates via `utils/formatDate.ts`, copy names as data, the duplicate policy, and an honest checklist line for large legacy files.
+
+### Found by an independent review before delivery, fixed
+- **A copy of a non-diagnostic protocol became diagnostic.** The editor template doesn't carry `isDiagnostic`/`type`/`group`, so the first save of a Duplicate or New Version of a Grossing checklist would have defaulted it to diagnostic. Publishing a New Version also archives the original, so the checklist would then have shown up as a diagnostic template in grossing completion and billing. Copies now record `copiedFromId`, and the first save inherits those attributes (`inheritedCopyAttributes`).
+- **A restored protocol could get stuck as "published" in the reviewer.** `TemplateRenderer.tsx` prefers its own cached `ps_state_<id>` over the registry. Archive, restore and supersede now clear that cache.
+- **Template Builder routing offered archived protocols** for new rules, labelled with a raw English status. It no longer does (an existing rule still shows its protocol), and the status label is translated.
+
+### Disclosed, not done
+- **Logic left in large legacy components.** Only the changed code paths moved to services. The rest of the logic in TATConfigSection (filters, simulator), SpecimenDictionarySection (CSV import), StainDictionarySection and ProtocolDictionarySection is untouched.
+- **Protocol lifecycle transitions** (including the new archive/restore) are logged to the console, not the audit log. That was already true of every transition.
+- **`Config/Templates/TemplateRenderer.tsx`** (the reviewer page) has its own lifecycle map without `archived`. An archived protocol opened there by URL shows draft styling and offers no transitions. That file also still has 6 inline styles.
+- **Protocol cards** show a "Sections" figure estimated as fields ÷ 7 (pre-existing).
+- **Workstation/Action Group `create()`** forces `status: 'Active'`, ignoring the form's toggle (pre-existing).
+- **Korean wording** for the new archive-confirmation text should get native-speaker review.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **563 files / 4987 tests passing** (up from 557 / 4887).
+
+## Batch 318 — PS-137 (Validation Study on agreement signals) and PS-86 (Audit Log: Outbound Dispatches)
+
+### How these were picked
+Every Highest-priority ticket still in To Do was checked against its comments. PS-66, PS-128, PS-46 and PS-55 already have their work done and are waiting on Pete's status change. PS-54 and PS-47 are gated. PS-58 needs design decisions. PS-110 is blocked by this environment (below). That left PS-105's open child **PS-137**, then **PS-86** at the top of High.
+
+### PS-137: agreement signals now carry the Validation Study
+- **The gap.** PS-137's last comment named one open item: abnormal-detection agreement signals never recorded which active Validation Study covered the case. The narrative-edit signals PS-137 mirrors do.
+- **Now:**
+  - `AbnormalDetectionSignal.studyId`, with `getByStudy` and `getStats(studyId?)`;
+  - `services/abnormalDetection/recordAbnormalDetectionOutcomes.ts`, where the signal mapping moved out of `useSignOutWorkflow.ts` (it was written out twice there);
+  - `services/validationStudies/resolveActiveStudyId.ts`, now shared by both kinds of signal so they can't disagree.
+- **Unchanged:** de-identification of narrative quotes, and fire-and-forget capture.
+
+### PS-86: Audit Log → Interfaces → Outbound Dispatches
+- **What it shows.** Each OrderCreated event PathScribe sent (Category E, phase 1 as Pete scoped it):
+  - timestamp, message ID, category and message type;
+  - accession and ordering facility;
+  - outcome, with filter pills and search.
+- **Payload drawer.** Clicking a row opens the exact JSON sent, as an expandable tree, with Copy Payload. There is no HL7 view: PathScribe sends JSON and the interface engine builds the HL7, so the drawer says so rather than inventing a message.
+- **Outcomes are now stored.** The ticket assumed a send couldn't fail. That stopped being true once OrderCreated began going through the generic dispatcher, but the outcome was never kept. It now is: delivered, or failed with the error and error code, plus an attempt count. Older events show "outcome unknown".
+- **Bug fixed: failed events were reported as delivered.** Re-posting an event with the same `messageId` returned `delivered: true` without sending, even when the first send had failed. A failed event is now re-sent; a delivered one still isn't.
+- **Standing rules.** The Audit Log page and its section components have no inline CSS (checked). All 32 new keys are in all five locales.
+
+### Found, not changed (needs a decision)
+- **Two different id spaces behind `organisationId`.** An OrderCreated payload's `organisationId` holds `Case.originEnterpriseId`, an enterprise id such as `ENT-MFT`. Staff users' `organisationId` holds organisation ids such as `ORG-MFT`. The spec should say which one it means before anything is filtered by it. The new trail is unscoped, like the other Interfaces views.
+
+### PS-110: still blocked here
+- Java 21 is present, but `storage.googleapis.com`, where the Firestore emulator downloads from, is refused by this environment's network allowlist (HTTP 403 at the proxy).
+- Per the ticket's own instructions, I stopped there and reported it rather than working around it. The tests need to be run on a machine that can reach that host.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **567 files / 5007 tests passing** (up from 563 / 4987).
+
+## Batch 319 — PS-78: dead `ps-msg-*` CSS removed; ConfigurationPage test timeout fixed
+
+### What was done
+- **Fresh scan, not the ticket's stale list.** 133 `ps-msg-*` classes in `pathscribe.css`: 63 are used, all by the live message drawer in `AppShell.tsx` (plus `ps-msg-drawer` in `EMRSidecarDrawer.tsx`), and 70 are used nowhere.
+- **Other ways a class could be referenced were ruled out:** templated class names only append literal modifiers to used classes, there are no `classList` calls, and `MessagingContext` references none of them.
+- **Why they were dead.** The live thread, compose and user-search views use `ps-thread-*` / `ps-compose-*` / `ps-user-*`. The dead ones were the leftover half of a pasted earlier Messages UI spec, including the four `ps-msg-legacy-*` rules PS-96/PS-97 had renamed out of the way.
+- **How they were removed.** A CSS parser, not line ranges, removed:
+  - 130 rules whose every selector contains an unused class (a dead class inside `:not()` was not treated as dead);
+  - `@keyframes ps-toast-in`, used only by a removed rule;
+  - 19 comments that headed only removed rules.
+
+  One rule inside the dead block that styles the live sidebar on mobile was kept. 832 lines were removed.
+- **Browser check.** The app was run in Chromium with the old and the new stylesheet. The computed styles of every element in the message drawer were compared in its list, thread and compose states (653 elements, 30 properties each): **0 differences**, apart from one badge captured mid-animation.
+
+### Docs corrected
+- `components/AppShell/README.md` said the `.ps-msg-bubble` system was wired into `ThreadPanel`. That stopped being true when `ThreadPanel` moved to `ps-thread-*`, so the claim is now corrected.
+- `docs/ARCHIVE.md` has the full PS-78 entry, and the 2026-08-20 entry that deferred this work now points to it.
+
+### Test fix: 7 ConfigurationPage failures on Pete's Windows run
+Pete's run after Batch 318 had 7 failures in `pages/__tests__/ConfigurationPage.test.tsx` (the PS-128 guard tests); they pass here. The cause was in the test, not the page:
+- The first test did `await import('../ConfigurationPage')`, so the first transform of that page's whole import graph happened inside the test's 15 s timeout.
+- On a loaded machine that test timed out. Its render then mounted after cleanup, and the leaked DOM (a second "configuration.loading" tree) made the next six tests fail.
+
+The page is now imported statically at the top of the file (the `vi.mock` calls are hoisted, so the mocks still apply), which keeps that cost out of every test's timeout. No production code changed.
+
+### i18n
+No UI text changed.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **567 files / 5007 tests passing**, unchanged: this batch removes CSS and fixes one test file.
+
+## Batch 320 — PS-58: AI models as a global catalog with per-tenant adoption
+
+### Decision
+Pete chose **Option 2** on PS-58: a global model catalog with per-tenant adoption records.
+- **Why:** models are platform assets ForMedrixAI publishes once. An organisation adopts, validates and activates them.
+- **What is tenant state:** everything an organisation decides about a model (status, its default, case counts, config and threshold overrides) lives on its own record under its `organisationId`.
+
+### What was built (`services/models/`)
+- **Types** (`IModelService.ts`):
+  - `ModelCatalogEntry` (platform-owned);
+  - `ModelAdoption` (tenant-owned);
+  - `AIModel`, now documented as the joined view every consumer already read, so `resolveClientAiModel`, `resolveVoiceAiModel`, the facility editor and Validation Studies needed no change;
+  - `ModelServiceError` codes.
+- **Adopt instead of create:** `adopt(modelId)` replaced `create()`, since a tenant can no longer create model records. `update()` refuses changes to catalog fields.
+- **`modelCatalog.ts`:** the global catalog, merged from the old seed list and the old store catalog.
+  - Both lists had described `gemini-2.5-pro` under different names; it is now one entry.
+  - A test enforces one entry per vendor + API model id.
+- **`modelAdoption.ts`:** the pure rules.
+  - Join the catalog with adoptions.
+  - Adopt: always Beta, never the default, zero cases.
+  - Group-aware default: voice and report generation are separate groups.
+  - Allowed changes, store availability, starter adoptions, and the legacy migration.
+- **`mockModelService.ts`:** `createModelService(deps)`.
+  - Scoped to `getSessionUser().organisationId`. It fails closed without one: empty reads, `NO_ORGANISATION` on writes.
+  - Storage is `pathscribe_model_adoptions`, grouped by organisation.
+  - Each of the four demo organisations starts with its own copy of the old seed state, so they diverge independently. A new organisation starts with nothing.
+- **Legacy migration:** the old unscoped `pathscribe_models` list is migrated into every demo organisation on first load, then removed.
+  - Store downloads are matched to the catalog by vendor + API model id.
+  - Their old random ids are kept in `legacyModelIds`, so `getById` still resolves them.
+- **`mockModelStoreService.ts`:** listings are catalog entries this organisation hasn't adopted, and "download" adopts. `createModelStoreService(deps)` is injectable.
+- **`firestore.rules`:** new `isOrgMember(orgId)` helper, and two new blocks.
+  - `/modelCatalog/{modelId}`: read for any signed-in user, write for vendor staff only.
+  - `/organisations/{orgId}/adoptedModels/{modelId}`: read for members and vendor staff. Create only in the caller's own organisation, for a model in the catalog, as Beta / non-default / zero cases. Update only within the organisation and the same model. Never delete.
+
+### Screens
+- **Models tab** (`Config/Models/index.tsx`):
+  - The subtitle says the list is this organisation's.
+  - Set Default asks the service layer (`canBecomeDefault`, new in `Config/AI/resolveVoiceAiModel.ts`) and then re-reads, instead of repeating the default-grouping logic in the component.
+  - Facilities Approved uses `facilitiesPinnedToModel`.
+  - Accuracy and case counts are formatted in the user's locale.
+- **Store** (`ValidationStudies/ModelStoreModal.tsx`):
+  - The button reads **Adopt**, and the intro says adoption is for your organisation only.
+  - Errors come back as codes and are shown translated.
+  - The English-only vendor label map was replaced by the shared `services/models/modelLabels.ts`.
+  - The published date is formatted in the user's locale.
+- **DemoResetTab:** `pathscribe_model_adoptions` was added to `SETTINGS_KEYS`.
+
+### Browser check
+Run in Chromium against the dev server:
+- As the demo user (ORG-DVMC): the Models tab showed the same six models as before. The store offered v4.0 and voice 2.5-flash-lite, and adopting v4.0 added it as Beta / 0 cases.
+- As Paul Carter (ORG-MFT): the Models tab was unchanged, and the store still offered v4.0.
+
+### i18n
+- **New keys:**
+  - `modelStoreModal.error.{alreadyAdopted, generic, noOrganisation, notInCatalog, storeNotLicensed}`;
+  - `modelsTab.accuracyValue` (`{{value}} %` in fr/de).
+- **Changed text:**
+  - `modelStoreModal.introPrefix`, `modelStoreModal.nothingNew`, `modelStoreModal.download` / `downloading` ("Adopt" / "Adopting…");
+  - `modelsTab.subtitle`.
+- All in en/fr/de/nl/ko. The Korean wording uses 도입 for "adopt"; it needs native-speaker review, like the rest.
+
+### Open
+- The new rules blocks haven't been run against the Firestore emulator, which this sandbox can't download. `firestoreModelRules.guard.test.ts` is a text check only.
+- Any organisation member can create an adoption under the rules. Admin-only needs a role claim the rules don't have yet.
+- Validation studies or facility pins that reference a pre-PS-58 store-download id still resolve through `getById`. List screens that match on `m.id` show them unmatched until they are re-selected or the demo is reset.
+- `configOverrides` / `thresholdOverrides` exist on the adoption, but nothing reads or edits them yet.
+- Validation studies and facilities themselves are still unscoped in the mock layer; that is outside PS-58.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **571 files / 5048 tests passing**.
+  - 4 new files: `modelAdoption.test.ts`, `modelCatalog.test.ts`, `mockModelService.test.ts`, `firestoreModelRules.guard.test.ts`.
+  - 41 new tests.
+
+## Batch 321 — Admin Guide material: label printing routes and the PathScribe Agent (PS-52)
+
+### What was done
+Pete asked for the workstation-agent discussion to go into the README so it can be included in the Admin Guide. A new customer-facing section, **"Admin guide: how a site prints labels"**, is in `services/printerProfiles/README.md`. It covers:
+- **Why a route is needed:** a browser can't reach a label printer on its own. Each printer's Bridge Type (Configuration → System → Workstation & Hardware → Printer Profiles) picks the route.
+- **The order of preference:**
+  1. server-side printing through the interface engine or BarTender (nothing installed on workstations);
+  2. a bridge the site already runs (QZ Tray, Zebra Browser Print);
+  3. the PathScribe Agent, only when neither applies.
+- **What the site's IT must approve for the agent**, from Pete's PS-52 design note:
+  - a signed installer (EV certificate for Windows; Developer ID plus notarization for macOS) that IT can push silently;
+  - it listens only on `127.0.0.1` and makes no outbound connections;
+  - it uses port 9100, falling back to 9101 or 9102;
+  - jobs from several tabs are queued one at a time, each with a success or failure reply.
+- **Onboarding questions** that usually make the agent unnecessary.
+- **An Availability table** checked against the code:
+  - QZ Tray and the OS print dialog work today.
+  - Direct via Interface Engine: PathScribe's side is built (`dispatchNetworkPrintJob.ts`), the engine connection is a stub (PS-53).
+  - BarTender, Zebra Browser Print and the PathScribe Agent: planned.
+
+Pointers were added in `services/README.md`, `src/README.md` and the root `README.md` documentation map.
+
+### i18n
+No UI text changed.
+
+### Validation
+Documentation only; no source files changed, so the suite is unchanged from Batch 320 (571 files / 5048 tests).
+
+## Batch 322 — PS-87: Assist-mode LIS polling drives the AI synoptic draft
+
+### Decisions (Pete, Sep 24)
+- **Poll.** In Assist mode the LIS rarely sends preliminary results out, so PathScribe polls it.
+- **Gross Complete:** the AI uses the gross to decide which synoptic templates the case needs, and fills in what it can.
+- **Microscopic/Diagnosis Complete:** the AI completes the draft.
+- **Timing:** drafts are generated when the milestone is detected, not when the case is opened.
+
+### What was built
+- **`services/assistPolling/`** (new):
+  - `types.ts`;
+  - `assistMilestoneRules.ts` (pure rules);
+  - `runAssistPollCycle.ts` (one poll, dependencies injected);
+  - `assistPollingRuntime.ts` (`runAssistPollNow`);
+  - `mockAssistPollingService.ts` (settings, cursor, records, run log);
+  - `mockLisStatusSource.ts` (demo LIS).
+- **Reuses the existing AI functions:** `evaluateSynopticAssignment` for the template choice, and `generateAiSuggestionsForReport` for the field fill. No new prompts.
+- **Rules:**
+  - **Status mapping:** each site maps its own LIS status values to the two milestones (case-insensitive; blank and duplicate statuses are refused).
+  - **Gross-stage fills:** the AI sees the gross only.
+  - **Full fills:** the AI sees the gross, the microscopic text and the diagnosis.
+  - **Template proposals:**
+    - A proposal for a specimen with no report creates a new draft (`aiDraftSource` marks it).
+    - A change to an untouched AI draft is applied directly.
+    - A change to a pathologist's own report goes to `pendingProtocolChanges` for review.
+  - **Answers:** refilled only when empty or still the AI's own unverified value.
+  - **Never touched:** signed-out and Orchestration cases.
+  - **Text fingerprints:** skip unchanged re-polls, and redraft when the LIS text is amended.
+  - **Late Gross:** a Gross that arrives after Micro/Diagnosis was drafted only updates the text.
+  - **AI Behavior toggles:** Gross-Driven / Microscopic-Driven AI still apply. With a toggle off, the text is synced and no draft is made.
+  - **Failures:** a failing case is reported, doesn't stop the others, and the cursor stays before it so the next poll retries it.
+  - **Audit:** every draft and every text sync is audit-logged (literal English detail).
+- **Types:** `SynopticReportInstance.aiDraftSource` added (`types/case/Case.ts`).
+- **Screen:** Configuration → System → Integrations → **Assist LIS Polling** (`AssistLisPollingSection.tsx`).
+  - Controls: on/off, the interval, the LIS status mapping, **Poll now**, the run log, and the latest poll's results by case.
+  - Unsaved changes report to the Config dirty guard.
+  - Two small CSS classes (`.ps-assist-poll-interval`, `.ps-assist-poll-actions`).
+- **Demo reset:** `pathscribe_assist_lis_polling` was added to `DemoResetTab.tsx`.
+
+### Browser check
+Run in Chromium, with the AI endpoint stubbed so no real AI was called:
+- **Poll now:** processed the three demo LIS cases.
+  - `MFT26-8809-POOL` (GROSSED): AI draft prepared. The template came from the gross only; the prompt had no microscopic text.
+  - `S26-4417-BX-001` (MICRO_COMPLETE): AI draft prepared.
+  - `MPA26-1006-POOL` (RECEIVED): status not mapped.
+- **Report editor:** opening `S26-4417-BX-001` showed the new draft as "AI Drafted", with the Colon Resection synoptic and its unverified fields offering Confirm / Override, as for any other AI suggestion.
+
+### i18n
+- New `assistLisPolling.*` namespace and `systemTab.sections.assistLisPolling`, in en/fr/de/nl/ko.
+- The Korean wording needs native-speaker review, like the rest.
+
+### Open
+- **The real LIS source.** A FHIR `_lastUpdated` search, an HL7 query or a vendor API, depending on the site's LIS; each needs that LIS's integration guide. The mock source stands in.
+- **The schedule.** No timer exists yet; production needs a server-side job (e.g. a Vercel cron beside `api/webhooks/engine/`, not in this working copy). Until then only **Poll now** runs a poll.
+- **One LIS per deployment.** Settings are deployment-wide.
+- **No draft marker in the editor.** The editor doesn't yet show which LIS milestone produced a draft.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **574 files / 5076 tests passing**.
+  - 3 new files: `assistMilestoneRules.test.ts`, `runAssistPollCycle.test.ts`, `AssistLisPollingSection.test.tsx`.
+  - 28 new tests.
+
+## Batch 323 — PS-87 ingestion layer (Pete's design) and PS-62 native dropdown colours
+
+### PS-87: vendor-agnostic LIS ingestion layer
+Pete's design note (Sep 24):
+- **Adapters** isolate PathScribe from each vendor's quirks.
+- **A universal staging queue:** PathScribe's workflow only ever reads from it, never from the external LIS.
+- **Hybrid push and poll.**
+
+Batch 322 had polled straight into the AI worker. This batch puts the layer in between.
+- **New `services/lisIngestion/`:**
+  - `types.ts`: `NormalizedLisUpdate`, `StagedLisEvent`, and the adapter interfaces and error codes.
+  - `stagingRules.ts`: staging with de-duplication, oldest-first work order, attempts (`MAX_ATTEMPTS` 5), **Retry failed**, and trimming.
+  - `mockLisStagingQueueService.ts`: the queue's storage (`pathscribe_lis_staging_queue`).
+  - `adapters/hl7v2StatusAdapter.ts`: ORU^R01 / ORM^O01 / OML^O21. Accession from OBR-3/OBR-2/ORC-3; status from ORC-5 then OBR-25 (configurable order); time from OBR-22/MSH-7; gross, microscopic and diagnosis text from OBX by LOINC 22634-0 / 22635-7 / 22637-3; HL7 escapes decoded.
+  - `adapters/webhookJsonAdapter.ts`: PathScribe's published JSON contract.
+  - `adapters/mockPollAdapter.ts`: the demo poll source, moved from `assistPolling/mockLisStatusSource.ts`, which is now a re-export that can be deleted.
+- **`services/assistPolling/` is now the worker that drains the queue.** It has three entry points:
+  - `runAssistPollCycle`: poll → stage → process;
+  - `ingestPushedMessage`: push → stage → process on receipt;
+  - `retryFailedEvents`.
+- **Failure handling:**
+  - A failed event waits in the queue and is retried, so the poll cursor now always moves past everything staged (`nextCursor` removed).
+  - The same change arriving by push and by poll is handled once.
+  - If the LIS can't be reached, already-staged events are still processed.
+- **Audit:** the detail says which way each update came in.
+- **Screen** (renamed **Assist LIS Ingestion**):
+  - new **Test an inbound message** card (HL7 v2 or JSON, with a loadable example, through the real adapter and queue);
+  - new **Staging queue** card (counts, recent events, **Retry failed**);
+  - the run log gains a "New in queue" column and the push and retry triggers.
+
+**Browser check** (AI endpoint stubbed):
+- **Poll now** staged and handled the three demo LIS cases.
+- The HL7 example message was accepted as "HL7 v2 message", staged, and drafted straight away. The queue showed all four events as Handled, with their results.
+- The drafted case opened in the report editor with the AI draft.
+
+### PS-62: native `<select>` elements
+- **Pete's decision:** keep native selects and fix the open list's styling with CSS.
+- **Scope was larger than the ticket said:** a fresh count found about 190 selects in Config/System (the ticket said 18) and about 400 app-wide.
+- **What changed:** one app-wide rule set in `pathscribe.css`: `color-scheme: dark` on every select, and one shared dark option and optgroup colour. It replaced four per-class option rules in four different shades. Checked in the browser: every select on Accession, Staff and System computes the same option colours, and the closed boxes are unchanged.
+- **Not done: Chrome/Edge's fully styled list** (`appearance: base-select`). It was tried, and the browser check showed it sizes each select to its selected value rather than its widest option. That would shift toolbar and table widths as values are picked, and it also changed the arrow glyph and row height. It was left out and put to Pete on PS-62.
+
+### i18n
+- New keys under `assistLisPolling.push.*`, `.source.*`, `.queue.*`, `.adapterError.*`, `.activity.col.staged`, `.trigger.push`, `.trigger.retry`.
+- Changed text: `assistLisPolling.title`, `.subtitle`, `.activity.col.fetched`, and `systemTab.sections.assistLisPolling`.
+- All five languages; the Korean wording needs native-speaker review.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **576 files / 5095 tests passing**.
+  - 2 new files: `lisIngestion/stagingRules.test.ts`, `lisIngestion/adapters/adapters.test.ts`.
+  - Rewritten: `assistPolling/runAssistPollCycle.test.ts`.
+  - One test added to `AssistLisPollingSection.test.tsx`.
+
+## Batch 324 — PS-47: firebase-admin 10 → 14
+
+### Why now
+PS-47 was waiting for "firebase-admin becomes a production dependency". Checking it against the code showed that had already happened:
+- it's in `dependencies`, not `devDependencies`;
+- the Engine webhook backend (`api/webhooks/engine/`) writes through it.
+
+Pete sent the `api/` folder so the upgrade could be compiled and tested against the code that uses it.
+
+### What changed
+- **`package.json` / `package-lock.json`:**
+  - `firebase-admin` `^10.3.0` → `^14.5.0`;
+  - new `"engines": { "node": "22.x" }`, because 14 requires Node 22+ and Vercel picks the function runtime from this field.
+- **`scripts/seedTerminology.ts`:** moved from the namespaced API (`admin.firestore()`, `admin.credential.cert`, `admin.firestore.Timestamp`), which 14 removed, to the modular imports. The behaviour is unchanged.
+- **`api/`:** no code changes; it already used modular imports.
+- **`api/webhooks/engine/README.md`:** it said `firestore.rules` had never been seen. It exists at the repo root, but doesn't yet include this folder's collections, so the rules fragment still needs merging.
+
+### Results
+- **`npm audit --omit=dev`:** 1 critical / 7 high / 46 moderate → **0 critical / 1 high / 44 moderate**.
+  - The remaining high is `@tiptap/core`, which is unrelated and has its own fix available.
+  - Two moderate advisories stay in firebase-admin's own chain: `uuid` via `@google-cloud/storage` → `gaxios`. It applies only when a caller passes its own buffer to uuid, and PathScribe doesn't use Cloud Storage.
+- **Type-check:** `api/` and `scripts/seedTerminology.ts` are clean against 14; the app type-check is clean.
+- **`npm test`:** **588 files passed, 3 skipped / 5178 tests passed, 9 skipped.** This is the first run here to include `api/`'s own tests. The three skipped files are the emulator integration tests, which skip without `FIRESTORE_EMULATOR_HOST`.
+
+### Still needed
+- An emulator run of `npm run test:integration` (PS-110) on Pete's machine. The Firestore emulator can't be downloaded here.
+- Confirm the Vercel project runs Node 22.
+
+### i18n
+No UI text changed.
+
+## Batch 325 — PS-52: PathScribe's side of the workstation PathScribe Agent
+
+Built to Pete's design note on PS-52. The agent program itself is separate and not built; its language is still Pete's call.
+- **`utils/labels/pathscribeAgent/agentProtocol.ts`** — the WebSocket contract:
+  - `PING`/`PONG` handshake;
+  - `GET_PRINTERS`/`PRINTERS`, `GET_CAPABILITIES`/`CAPABILITIES`;
+  - `PRINT_LOCAL_LABEL` → `PRINT_QUEUED` → `PRINT_SUCCESS` / `PRINT_ERROR`;
+  - `ERROR`;
+  - message validation and protocol version 1.
+- **`pathscribeAgentClient.ts`:**
+  - **Port discovery:** 9100, then 9101, then 9102. Only a listener that answers `PING` with a PathScribe Agent `PONG` is trusted, because 9100 is also the raw-printing port.
+  - **Jobs:** each print gets a job ID and resolves on that job's own outcome; other jobs' messages are ignored.
+  - **Timeouts and dropped connections** are reported, and the next call finds the agent again.
+  - **Queue:** the FIFO queue and printer lock across tabs are the agent's job, per the design note.
+- **`dispatchZplLabel.ts`:** printers with Bridge Type `pathscribe_agent` now print through the agent (previously refused as not implemented). Failures come back in the same plain-English message style as the QZ Tray path.
+- **The contract is documented** in `utils/labels/pathscribeAgent/README.md`, for the agent's developers.
+- **Admin Guide availability row** (`services/printerProfiles/README.md`) updated.
+
+### Open (in the README)
+- **The agent program.**
+- **Chrome's Private Network Access rules** for an `https` page reaching `127.0.0.1`: they may need a preflight answer or `wss://` from the agent.
+- **The scale lookup** (`resolveScaleWeightCapture.ts`) expects the same agent over HTTP at an admin-entered base URL. That should be aligned when the agent is built.
+
+### i18n
+Changed `printerProfilesSection.bridgeLabels.pathscribe_agent`, which said "not yet built", to say the agent app must be installed on the workstation. All five locales.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **589 files passed, 3 skipped / 5192 tests passed, 9 skipped**. The 3 skipped are the emulator integration tests. New file: `utils/labels/pathscribeAgent/pathscribeAgentClient.test.ts`, 14 tests.
+
+## Batch 326 — PS-63: synoptic template workflow documented, and an editor fix
+
+### What was done
+- **Walkthrough.** The whole synoptic template lifecycle was walked end to end in Chromium, as the demo admin: Build / Customise from an existing template → edit → Save Draft → Submit for Review → Review Queue → reviewer → Approve → Publish → Active Protocols. It works end to end.
+- **Admin Guide section.** "Admin guide: building and publishing a synoptic template" in `components/Config/Protocols/README.md`, written from that walkthrough. It covers:
+  - the three lists;
+  - starting from scratch or from an existing template, and New Version;
+  - the editor (metadata, sections and fields, coding, the coverage and readiness panels, Preview, Save Draft);
+  - submitting;
+  - the reviewer's actions (Needs Changes / Approve / Publish / Reset), including each governing body's terms (CAP Accept/Release, RCPath Ratify/Publish);
+  - what happens after publishing, including Archive and Restore.
+
+  It's linked from the root README's documentation map.
+
+### Bug fixed
+After the first save of a new template or a Duplicate / New Version, the address bar still pointed at `/template-editor/new` or at the source's id with `?mode=duplicate`, so a refresh created a second copy on the next save.
+- **Fix:** the editor now moves to the saved protocol's own address. The rule is `services/templates/protocolLifecycle.ts → editorUrlAfterSave`, and `SynopticEditor.tsx` calls it after a successful save.
+- **Browser check:** save, refresh, save again leaves exactly one copy.
+
+### Found, not changed (listed in `components/Config/Protocols/README.md` and on PS-63)
+- **The 80% SNOMED rule isn't enforced.** The Review Queue's "≥80% SNOMED coverage and clinical sign-off before publishing" is shown but not checked; a 0%-coverage template was published in the walkthrough.
+- **No separation of duties:** the author approved and published their own template.
+- **Lifecycle e-mails go nowhere yet:** they look up recipients from a backend API that doesn't exist, so in the demo the lookup fails and nothing is sent.
+- **Reviewer screen:** no guidance for reviewers, bright white comment boxes, and **Reset** beside **Approve**.
+
+### i18n
+No UI text changed.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **589 files passed, 3 skipped / 5194 tests passed, 9 skipped**. The 3 skipped are the emulator integration tests. 2 new tests are in `protocolLifecycle.test.ts`.
+
+## Batch 327 — HTTPS everywhere PathScribe makes a connection
+
+Pete: "I noticed we are using HTTP, I want to use HTTPS?"
+
+### What was checked
+- **The deployed app** was already HTTPS-only. Vercel redirects every HTTP request with a 308 and sends HSTS (`max-age=63072000`). Nothing to change there.
+- **A repo-wide search for `http://` and `ws://`** (outside `node_modules`/`dist`) found three places PathScribe itself connects without encryption. Everything else was XML/FHIR namespace identifiers, a URL-parsing base in `vite.config.ts`, or the Postman collection's local dev address.
+
+### What changed
+- **Workstation agent (PS-52):** `agentUrl` is now `wss://127.0.0.1:<port>`, with no `ws://` fallback.
+  - The agent README's new "Security certificate" section sets out the installer's job: a certificate unique to each workstation, trusted in the Windows store / macOS System keychain, Firefox enterprise roots, renewal and removal.
+  - The "agent not found" message now also mentions an untrusted certificate. A browser can't tell a page why a `wss://` connection failed.
+- **Report renderer and interface receiver:** new pure `utils/serviceEndpoint.ts`.
+  - **Production build:** `VITE_REPORT_PDF_ENDPOINT` and `VITE_INTERFACE_RECEIVER_ENDPOINT` must be `https://`. Missing, malformed or plain-HTTP values are refused before any request, with a message naming the variable. Previously they fell back to `http://localhost:8080/`.
+  - **Development build:** keeps the emulator default and allows plain HTTP to loopback only.
+  - **What refusal looks like:** interface dispatch returns `DISPATCH_UNREACHABLE` with the message; PDF printing falls back to printing from screen.
+- **Grossing scale:** `agentBaseUrl` must be `https://`. The mock service refuses plain HTTP on create and update, and `resolveScaleWeightCapture` returns the new reason `not_https` without fetching.
+- **Admin Guide** (`services/printerProfiles/README.md`): two new items IT must agree to:
+  - the agent's per-workstation certificate;
+  - Chrome/Edge's Local Network Access permission (Chrome 147+, both `ws://` and `wss://`), which IT can pre-approve with `LocalNetworkAccessAllowedForUrls`.
+- **Inline CSS:** `SynopticReportPage.tsx` (touched) had one inline style, the Dev Tools menu position. It now uses the CSS variables `--devmenu-top`/`--devmenu-left`. Browser check: the menu opens 4 px below its button, as before.
+- **Corrected docs:** `services/reports/README.md` and `services/clinical/postGaAlertChannels/README.md` described the old localhost default.
+
+### i18n
+No UI text changed. The new messages are service/dispatch errors in the same plain-English form as the existing dispatch errors, which go to the interface log. The toast that shows the PDF error is pre-existing English on `SynopticReportPage.tsx` and was not converted in this batch.
+
+### Pete to check
+In Vercel → Settings → Environment Variables, confirm `VITE_REPORT_PDF_ENDPOINT` and `VITE_INTERFACE_RECEIVER_ENDPOINT` are set to their `https://` Cloud Function URLs for Production.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **590 files passed, 3 skipped / 5205 tests passed, 9 skipped**. The 3 skipped are the emulator integration tests, which Pete ran on his machine the same day: 9/9 passed.
+- New tests (11):
+  - `utils/serviceEndpoint.test.ts`: 7;
+  - agent protocol (wss): 1;
+  - grossing profile service (refuses HTTP): 1;
+  - scale capture: 2.
+
+## Batch 328 — PS-63: template review rules enforced
+
+Pete, on PS-63: "This needs to be enforced", with a spec for self-approval and required reviewers.
+
+### What was done
+- **SNOMED gate.** A diagnostic template can't be published below 80% field-level SNOMED coverage. Procedural templates (`isDiagnostic: false`) are exempt. The coverage calculation moved from `SynopticEditor.tsx` to `services/templates/templatePublishingRules.ts`, so the editor's Readiness item and the publish check use one figure.
+- **Independent review, as specified.**
+  - **Can Publish** = (approver role) ∧ (self-approval allowed ∨ user ≠ author). Approve follows the same rule.
+  - **Approver roles:** Template Approver, Lab Director or Admin (staff roles), or an administrator app role.
+  - **Author:** anyone who saved the template. `saveDraft` records `editorIds`; the old `owner` field only held the last saver's name.
+- **Site settings** (Configuration → System → Administration & Compliance → **Template Review**, new):
+
+  | Setting | Default |
+  |---|---|
+  | Allow Template Self-Approval | Disabled (Block) |
+  | Required Reviewers | 1 independent reviewer (up to 3) |
+
+  Changes go to the audit log.
+- **Approval rounds.** Each approval is recorded with its user id. A template becomes Approved once it has the required number of counting approvals. Edit, resubmit, request-changes and reset start a new round.
+- **Refusals** are thrown by the service as `{ code, message }`. The reviewer page shows each one as translated text in the confirm box. The self-approval text is Pete's wording exactly.
+- **The session carries staff roles.** `AuthContext` now copies `StaffUser.roles` to `User.staffRoles`, backfilling old sessions, and `getSessionUser()` returns them.
+
+### Bugs fixed on the way
+- **The reviewer page didn't wait for the service.** It changed state first, then called the service fire-and-forget, so a failed transition still showed as done. It now waits for the service, and the registry's status wins over its local copy.
+- **Reset never reached the registry.** `transitionTemplate(id, 'draft')` had no handler and threw, and the error was swallowed. `templateService.resetToDraft` now handles it.
+
+### Inline CSS (touched files)
+`TemplateRenderer.tsx` had six inline styles. They are now CSS classes: per-state `ps-tmplr-state--*` classes set `--tmplr-bg/fg/border`, plus modifier classes for selected options, the current and past flow steps, and the destructive confirm button. Checked in the browser against the previous look.
+
+### Browser check (demo login, Pete Nimmo, superadmin)
+1. Built and submitted a 0%-coverage template as Pete. Approve → refused with Pete's self-approval message; the status stayed In Review.
+2. System → Template Review → turned self-approval on. The audit entry reads "Allow Template Self-Approval: Disabled → Enabled".
+3. Approve → Approved. Publish → refused: "Publishing needs at least 80% SNOMED coverage. This template has 0%…".
+
+### Not done: left for Pete
+- **Drafting by role.** "Drafting: open to users with the Template Author role" is not enforced. Anyone with Configuration access can still draft.
+- **The roles aren't built in.** Template Approver and Lab Director are recognised by name, but they are not built-in roles. A site creates them in Staff → Roles (Admin already exists).
+
+### i18n
+18 new keys in all five locales:
+- `systemTab.sections.templateGovernance`
+- `templateGovernanceSection.*`, including a `_one`/`_other` plural
+- `templateRenderer.governance.*`
+
+The service's `message` and the audit detail stay literal English.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **592 files passed, 3 skipped / 5227 tests passed, 9 skipped**.
+- New tests (22):
+  - `templatePublishingRules.test.ts`: 15;
+  - `templateService.governance.test.ts`: 7.
+- Updated test: `templateService.archive.test.ts` now approves before publishing.
+
+## Batch 329 — PS-63: drafting locked to Template Author; built-in template roles
+
+Pete's decisions on PS-63: lock drafting to Template Author, with Admin inheriting it, and ship Template Author, Template Approver and Lab Director as built-in roles with immutable ids.
+
+### What was done
+- **Built-in roles with fixed ids** (`services/roles/systemRoles.ts`, new):
+  - `template-author`, `template-approver` and `lab-director` join `admin` as built-in seed roles in `mockRoleService.ts`. Their permission sets are in `constants/systemActions.ts`.
+  - The rules compare **ids, not names**, so an administrator can rename a role's display name and the checks still work.
+  - **Migration:** `mergeBuiltInRoles` adds missing built-in roles to a stored catalog on load and keeps admin edits.
+  - **Renames reach staff:** renaming a role now updates every staff record that holds it. Staff records store names, so before this a rename silently removed the role from everyone.
+- **Drafting gate:**
+  - `canDraftTemplates` allows Template Author, Admin, and admin app roles.
+  - `saveDraft`, `submitForReview` and `deleteTemplate` refuse anyone else with `NOT_TEMPLATE_AUTHOR`. `resubmitForReview` allows authors and approvers.
+  - The editor asks `canCurrentUserDraftTemplates()` and opens read-only, with a banner and disabled Save/Submit, for users without the role.
+- **Live role lookup:** `templateService.currentActor()` reads the staff record and role catalog at the moment of the action. A role granted or renamed therefore takes effect without signing in again.
+
+### Correction to Batch 328
+Batch 328 copied staff role *names* into the session (`User.staffRoles`, `SessionUser.staffRoles`) and matched them by name. Both fields were removed in this batch, `AuthContext.tsx` and `caseAccessControl.ts` are back to their earlier shape, and the READMEs that described the session field are corrected.
+
+### Browser check
+1. **Migration:** an old stored catalog (Pathologist + Admin renamed "Administrator (renamed)") gained Template Author, Template Approver and Lab Director on reload, and the Admin rename was kept.
+2. **Read-only editor:** with the demo user reduced to a plain Pathologist, the editor showed the read-only banner and disabled Save Draft and Submit for Review.
+3. **Editable again:** after adding Template Author to the same user, the editor was editable.
+
+### Not done
+- **Firestore:** `firestoreRoleService.ts` is still a stub. Its seed or migration should call `mergeBuiltInRoles` when it is built.
+- **Identity providers:** mapping SAML/OAuth/LDAP group claims to these role ids waits for single sign-on.
+
+### i18n
+- **New keys, in all five locales:** `synopticEditor.errors.notTemplateAuthor` and `synopticEditor.readOnly.notTemplateAuthor`.
+- **Reworded in all five locales:** `templateGovernanceSection.rolesNote`.
+- Role names and descriptions are persisted data and stay untranslated, like the other built-in roles.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **593 files passed, 3 skipped / 5234 tests passed, 9 skipped**.
+- New tests (7):
+  - `services/roles/systemRoles.test.ts`: 4;
+  - `templatePublishingRules.test.ts`: +1;
+  - `templateService.governance.test.ts`: +2.
+
+## Batch 330 — Deployment-readiness guard for the UI
+
+Pete: PathScribe was always meant to deploy to the cloud, public or private, and he wanted to be sure the front-end design hadn't compromised that. It hadn't:
+- screens reach data through services;
+- the interface/mock/real pattern keeps the backend replaceable;
+- the business rules are pure;
+- Firebase is imported in only one UI file.
+
+This batch stops new wiring shortcuts from building up while the real backend is designed.
+
+### What was done
+- **`services/deploymentReadiness/deploymentReadiness.guard.test.ts`** (new) applies three rules to the UI layer (`components/`, `pages/`, `hooks/`, `contexts/`, top-level `src/*.tsx`). UI code may not:
+  1. import a mock service directly;
+  2. use `localStorage`/`sessionStorage` directly;
+  3. import the Firebase SDK directly.
+- **`deploymentBaseline.ts`** records today's files that break a rule: 183 mock imports, 39 browser-storage users and 1 Firebase import. The lists only shrink. A new file that breaks a rule fails the guard, and so does a listed file that no longer needs its entry. Checked: a new file importing a mock and using `localStorage` fails with the fix named.
+- **`utils/uiPreferences.ts`** (new) is the sanctioned place for per-user display preferences. It uses a `ps_ui_` prefix and wraps every access against blocked storage.
+- **`CLAUDE.md`** has a new standing rule **4. Deployment-neutral UI** and a checklist line. "Verify, don't trust" is now rule 5.
+
+### Known, not guarded (listed in `services/deploymentReadiness/README.md`)
+- **Synchronous services:** `getSessionUser()` and Batch 328's `getTemplateGovernanceSettings()`.
+- **The protocol registry** lives in a component folder.
+- **`VITE_` settings** are fixed when the app is built.
+
+### i18n
+No UI text changed.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **595 files passed, 3 skipped / 5243 tests passed, 9 skipped**.
+- New tests (9): the guard 7, `uiPreferences.test.ts` 2.
+
+## Batch 331 — PS-327: Autopsy signing authority, forensic appointments, staff credentials editor
+
+PS-327's open follow-up: extend per-lab signing authority beyond Surgical Pathology. Pete's decisions:
+- Autopsy uses the **coroner jurisdiction** for the country profile.
+- Cytology gets the **pathologist track only** (next batch).
+- **Forensic cases** must also check the signer's **active jurisdictional appointment**. Country-level is enough for now; the US county/state boundary is a follow-up.
+
+### What was done
+- **Autopsy (`services/autopsy/signAutopsyReport.ts`).** Before this, anyone reaching Sign PAD / Sign FAD could sign. Now:
+  1. **Countersign first:** residents and provisional hires are routed for countersign, using the per-lab and country configured countersign types.
+  2. **Signing authority:** `canFinalizeCase` checks everyone else, with `authorityOverrides` for the performing lab and `jurisdictionProfiles` for `autopsy.jurisdiction` (falling back to the lab's country).
+  3. **Forensic appointment:** forensic cases also need an active credential normalizing to `FORENSIC_AUTOPSY_SIGNOUT` for the case's jurisdiction, read live from the signer's staff record. There's no admin override. The rule is the new pure `resolveForensicSignOutAuthority.ts`.
+  - Results carry an `errorCode`.
+- **Credentials** (`services/staff/resolveNormalizedCredentialCapabilities.ts`):
+  - New capability `FORENSIC_AUTOPSY_SIGNOUT`, from `MEDICOLEGAL_APPOINTMENT` or `UK_HO_REGISTERED_FORENSIC_PATHOLOGIST`.
+  - `KNOWN_CREDENTIAL_TYPES` for the editor.
+- **Staff credentials editor** (`components/Config/Staff/StaffTab.tsx`). This section is new because nothing could record a credential before.
+  - **Fields:** type, issuing body, jurisdiction, effective date and optional expiry.
+  - **Rules:** validation and audit detail are in the new `services/staff/providerCredentialRules.ts`.
+  - **Audit:** each change writes "Staff credentials changed".
+- **Shared authority context.** `services/auth/resolveFinalizeAuthorityContext.ts` moved out of `useSignOutWorkflow.ts`, with the same behaviour and an optional `jurisdictionOverride`.
+- **Converted on touch:**
+  - `SynopticReportPage.tsx`'s Autopsy sign banners and toasts are now translated, with the PAD date locale-formatted.
+  - `StaffTab.tsx`'s 4 inline role-colour styles now use `--ps-hue` with `color-mix`.
+
+### Browser check
+1. A forensic US autopsy was refused for the demo admin with no appointment. The toast read: "This is a forensic case. Signing it needs an active medicolegal appointment for United States on your staff record."
+2. The Staff editor validated an empty row, saved a credential and wrote the audit entry.
+3. With a US medicolegal appointment on the signer's record, the PAD signed and the FAD banner appeared, correctly translated in French.
+
+### Not done
+- **Sub-national appointments** (US county or state medical examiner, coroner areas) need a region on both the case and the credential. Pete agreed it's a follow-up.
+- **Cytology (pathologist track):** next batch.
+- **Still English:** the adjacent "Ready for Body Release" banner.
+- **Duplicate type:** `StaffTab.tsx` still declares its own copy of `StaffUser` (pre-existing), so `providerCredentials` was added to both by hand.
+
+### i18n
+38 new keys in all five locales: `autopsySignOut.*` (15) and `staffTab.providerCredentials.*` (23). Credential and jurisdiction names are shown through lookup keys; stored values stay as codes. The forensic and credential wording should get native-speaker review before clinical use, the Korean especially.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **598 files passed, 3 skipped / 5257 tests passed, 9 skipped**.
+- New tests (14):
+  - `signAutopsyReport.test.ts`: +4;
+  - `resolveForensicSignOutAuthority.test.ts`: 4;
+  - `providerCredentialRules.test.ts`: 3;
+  - `resolveFinalizeAuthorityContext.test.ts`: 3.
+
+## Batch 332 — PS-327: Cytology signing authority (pathologist track) and the body-release banner
+
+Pete's decision: Cytology gets per-lab and country signing authority on the **pathologist track only**. The cytotechnologist track keeps its CLIA rules, where a credentialed CT may sign NILM GYN independently.
+
+### What was done
+- **`services/cytology/resolveCytologySignOutAuthority.ts`** (new, pure, 4 tests).
+  - **Cytotechnologist track:** nothing is added.
+  - **Pathologist track:** the configured countersign types apply (per lab and country, never `cytotechnologist`), and a direct sign-out needs `canFinalizeCase`.
+- **`CytologyScreeningPage.tsx`:**
+  - resolves the authority context through the shared `resolveFinalizeAuthorityContext`, using the performing lab's country;
+  - passes the countersign types to the existing countersign gate;
+  - refuses a direct sign-out without authority, showing the reason as a toast;
+  - now shows a toast when a case is released for countersign.
+- **Converted on touch:**
+  - The Cytology sign-out strings are translated: the signed-out banner (locale date and time), "select a Final Diagnosis", ready / pathologist-required, Sign Out / Signing…, the signed-out toast, and the Final Diagnosis pathologist-only error.
+  - The Autopsy "Ready for Body Release" banner is translated, closing Batch 331's open item.
+
+### Behaviour change
+A Consultant or Second Opinion participant on a cytology case can no longer sign it out unless the lab's override or the country profile grants finalize authority. That is the same as in Surgical Pathology. Administrators keep their override.
+
+### Browser check
+- A non-admin Consultant was refused with "Only the assigned Primary/Attending, or an administrative supervisor, may finalize this case." The case stayed in progress.
+- The same user as Primary signed out, and the banner read "Signed out by Pete Nimmo on 09/25/2026, 08:55 PM."
+
+### Not done
+- **Readiness line (not a gap, per Pete):** "Ready to sign out." describes the case, not the user. The case is ready; it just has to be signed by someone with the right role, and the Sign Out check enforces that.
+- **Still English:** the gate's own blocked-reason text (from `resolveCytologySignOutGate`), and the countersign-request e-mail's subject and body.
+- **Rest of the page:** `CytologyScreeningPage.tsx` still imports mock services directly and has other English strings elsewhere. It remains on the deployment-readiness baseline.
+
+### i18n
+11 new keys in all five locales: `cytologySignOut.*` (9) and `autopsyBodyRelease.bannerTitle` / `bannerSummary`.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **599 files passed, 3 skipped / 5261 tests passed, 9 skipped**. That includes 4 new tests.
+
+## Batch 333 — PS-89: Generic Code Engine (rules and storage)
+
+PS-89's design was complete but had drifted from the code, so it was re-checked first. Findings:
+- **Approval workflow:** billing rules now go Draft → Pending Approval → Active with four-eyes, which the design predates. Per Pete, a bulk import is **one job, one approval**.
+- **Natural sunset:** `createVersion` doesn't sunset the prior version; `approveVersion` does, and it did it wrongly (see the fix below).
+- **Retired function:** `organisationService.getSiteConfig` no longer exists. The country lookup uses `listAllSites` → `getOrganisation`.
+- **Country codes:** `Organisation.country` uses `UK`/`EU`, not ISO.
+- **No shared tooling:** there was no column-mapping UI and no shared CSV upload component (only `utils/csv.ts`).
+
+### Bug fixed: natural sunset
+Approving a new billing rule version marked the prior ACTIVE version RETIRED immediately. Approving a future-dated change, such as the seeded 88307 v2 effective 2027-01-01, therefore left every date of service before 2027 with no rule, and those charges couldn't resolve.
+- **Now:** per PS-89 §6, the prior version stays ACTIVE with `effectiveTo` = the moment before the new version starts (`codeEngine/naturalSunset.ts`).
+- **Limits:** only an open-ended prior is closed, and a deliberate expiry is never overwritten.
+- **Test:** the existing approval test now expects this and checks both sides of the boundary.
+
+### What was built
+- **Types:** `BillingRuleVersion` gains `vocabulary` (CPT, HCPCS, NHS_OPCS4, LOCAL_LAB), `importJobId` and `rollbackNotes`. `CodeImportJob` is new, the append-only ledger.
+- **Pure rules in `services/billing/codeEngine/`:**
+  - natural sunset;
+  - country matching (UK/GB aliasing, EU membership);
+  - CSV column mapping (three required targets, a fallback date, auto-matching);
+  - import planning (next version per scope, PENDING_APPROVAL, synthesized `changeReason`, per-row refusal reasons);
+  - job approve / reject / rollback (four-eyes; rollback retires used rows and removes unused ones on tuple-exact matching, preserves `changeReason`, and reopens superseded versions).
+- **`mockCodeImportService.ts`** stores the jobs (`billing_code_import_jobs_v1`, kept out of Demo Reset). It refuses a file with bad rows unless asked to skip them.
+- **`mockBillingRuleService`:**
+  - natural sunset on approval;
+  - a row created by an import job can't be decided on its own;
+  - `getActiveRuleAt` filters by country (site → organisation) and vocabulary (default CPT);
+  - pre-PS-89 rows are backfilled on load.
+- **`resolveBillingRuleAt`** gains optional country and vocabulary filters. With no options its behaviour is unchanged.
+- **`mockServiceChargeService.listRuleReferenceKeys()`** is new, for the rollback reference check.
+
+### Storage-neutral
+The design's Firestore write-batch sizes aren't in the rules. With the database choice open, chunking belongs to whichever real backend is built.
+
+### Not done (next batch)
+- **The CSV column-mapping wizard UI**, and the import-job list with approve / reject / rollback. Until then, import-job rows appear in Pending Approvals but refuse single-row approval, with a message pointing to the job.
+- **Audit entries** for import, approve, reject and rollback will be added with the UI.
+
+### i18n
+No UI text changed. Service messages are plain English, as elsewhere in billing; the UI will translate the refusal codes.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **601 files passed, 3 skipped / 5278 tests passed, 9 skipped**.
+- New tests (17):
+  - `codeEngine/codeEngine.test.ts`: 13;
+  - `mockCodeImportService.test.ts`: 3;
+  - `mockBillingRuleService.test.ts`: +1 (backfill).
+- One existing test was changed to expect natural sunset.
+
+## Batch 334 — PS-89: Code Import screens, import-job approvals, SQL Server in the docs
+
+### Code Import (Bulk) — new System screen
+System → Financial & Revenue Lookups → **Code Import (Bulk)** (`components/Config/System/CodeImportSection.tsx`):
+- **File and scope:** a CSV, the coding standard (CPT, HCPCS, NHS OPCS-4, local lab codes), country (defaulted from the coding standard) and site, plus a batch note that goes into every code's change reason.
+- **Match columns:** suggested from the headers. Billing code, CPT and effective date are required; one effective date for the whole file can replace a date column. Level and billing type have defaults for files without them.
+- **Check file:** `codeImportService.previewImport` (new) lists every refused row with its reason, without saving. Refused rows block the import unless the admin chooses to skip them.
+- **Import:** one PENDING_APPROVAL job.
+- **Import history:** every job, newest first, with status, outcome and **Roll back** (reason required) on approved jobs.
+
+### Pending Billing Rule Approvals
+- **Whole-job decisions:** a pending import job appears once in the dictionary-updates table, with Approve / Reject (reason required). The uploader sees it locked (four-eyes).
+- **Per-row list:** versions created by an import job no longer appear there one by one (`codeEngine/pendingImportQueue.ts`).
+- **Converted on touch:** dates use `formatDate` in the user's language, the scope column's "Enterprise-Wide" is translated, and the screen imports `@/services` instead of four mock files. It is off the deployment baseline (mock imports: 183 → 182).
+
+### Services
+- **Audit in the service:** upload, approve, reject and rollback each write an audit entry in literal English (`codeEngine/importJobAudit.ts`), whichever screen or caller triggers them.
+- **Refusal codes:** approve / reject / rollback failures carry a `code` that the screens translate (`codeImportSection.refusals.*`).
+- **`services/index.ts`** now exports `codeImportService`, `billingRuleService`, `modifierDictionaryService`, `ncciEditService` and `rvuCodeMapService`.
+- **New pure rules:** `codeEngine/importWizardRules.ts` (CSV header reading, default country per coding standard, when an import can be submitted).
+
+### Checked in the browser
+- **Upload:** a 3-row CSV mapped itself (CPT Code → billing code and CPT, Effective Date, Short Descriptor, WorkRVU). Check file listed row 3 ("soon") as a bad date. Import stayed disabled until "skip" was ticked, then created a 2-code job.
+- **Four-eyes:** the uploader saw the job locked in Pending Approvals; its codes weren't in the per-row list. A second user approved it.
+- **Rollback:** it refused without a reason, then rolled back (2 unused versions removed, 1 earlier version reopened).
+- **Audit:** three audit entries were written, and the screen rendered in French.
+
+### Microsoft SQL Server
+The root `README.md`, `CLAUDE.md`, `services/README.md`, `services/deploymentReadiness/README.md` and `services/billing/codeEngine/README.md` now record SQL Server (behind a PathScribe API server) as the production database. They also note that the Firestore stubs, `firestore.rules` and emulator tests will be replaced.
+
+### Changelog correction (Batch 332)
+Batch 332's cytology entry is corrected: "Ready to sign out" is not a gap, per Pete. The case just has to be signed by the right role.
+
+### i18n
+- **New keys, all five locales:**
+  - `codeImportSection.*`;
+  - `systemTab.sections.codeImport`;
+  - `pendingApprovalSection.dictionaries.names.codeImport`.
+- **Rewritten:** `pendingApprovalSection.dictionaries.subtitle`, to cover imports.
+- **Reused:** level names reuse `billingDictionarySection.modal.level*Option`.
+- **Accepted values stay English:** refused-row reasons quote the accepted file values (specimen, block, stain, decant; TC, 26, Global) in English in every language, because those are what the file must contain.
+- **Review:** the Korean text should get native-speaker review.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **602 files passed, 3 skipped / 5286 tests passed, 9 skipped**.
+- New tests (8):
+  - `codeEngine/importWizard.test.ts`: 7;
+  - `mockCodeImportService.test.ts`: +1 (preview, refusal codes, audit).
+
+### Still open
+- **Real backend:** on SQL Server, an import and a rollback should each be one transaction. That also closes the §7 race.
+- **Uploader column:** the job lists show the uploader's user id, not their name, like the other approval tables.
+- **Older audit code:** `PendingApprovalSection.tsx` still builds the audit text for single billing-rule and dictionary decisions itself (older code, not moved in this batch).
+
+## Batch 335 — PS-341: Country Signing Rules (platform-level editor), sign-out cache fix
+
+### Country Signing Rules — new System screen
+System → Clinical Lookups → **Country Signing Rules** (`components/Config/System/CountrySigningRulesSection.tsx`). This closes PS-341's last acceptance criterion: an editor for `jurisdictionProfiles` / `scopedJurisdictions`, which until now were seed data only.
+- **Country picker:** covers all 13 jurisdictions and shows one card per participation type.
+- **Each card:**
+  - the local title;
+  - the three signing flags, each set to the platform default (shown), Yes or No;
+  - the regulatory basis;
+  - who last changed it, when, and why.
+- **Country-scoped roles** (the UK/EU Biomedical Scientist, Advanced Practitioner BMS): a card shows whether the role is offered here, with a button to offer it or stop offering it. A role can't lose its last country, because an empty list means "offered everywhere". A global role can't be made country-specific from this screen.
+- **Platform-level:** only `superadmin` (the platform administrator role in `caseAccessControl.ts`) can edit. Everyone else sees the rules read-only, pointed to Participation Types → Edit for a single lab's exception. The service refuses a non-platform-admin save too.
+- **Audit:** a save needs a reason. Each changed type gets one audit entry in literal English (for example, `Participation type "Resident / Fellow" in GB_EW — local title: "Trainee Pathologist" → "Specialty Registrar (StR)"; canFinalize: no → yes. Reason: "…"`). Profiles store `updatedBy` / `updatedAt` / `changeReason`.
+- **Rules:** in `services/participationTypes/countryProfileEditor.ts` (pure) and `saveCountryProfiles.ts`.
+
+### Bug fixed: sign-out used stale rules until a reload
+`utils/participationTypeLookup.ts` cached participation types for the whole session. A saved rule change, including a Batch 314 lab override, didn't reach the sign-out check until the page was reloaded. Both save paths now clear the cache (`invalidateParticipationTypeLookup()`).
+
+### Other changes
+- **`services/index.ts`** exports `participationTypeService`.
+- **`standingRules.guard.test.ts`** now also covers the new screen, and its i18n check understands plural keys (`_one` / `_other`).
+- **Correction:** `services/README.md`'s "Signing authority" section still said Cytology and Autopsy sign-out weren't wired. They have been since Batches 331–332. Corrected.
+
+### Checked in the browser
+- **Editing:** GB_EW Resident / Fellow was retitled "Specialty Registrar (StR)" with Can finalise set to Yes.
+  - **Without a reason:** "Enter a reason for the change."
+  - **With a reason:** saved, and the card showed who, when and why.
+  - **No reload needed:** the sign-out lookup returned the new values straight away.
+- **Last-country rule:** the Advanced Practitioner BMS came off England & Wales and Scotland, then was refused for Northern Ireland, its last country. It was then restored.
+- **Scope in the US:** the BMS showed "Not offered in this country", with its fields locked.
+- **Audit:** five audit entries were written.
+- **Read-only:** with the `admin` role, the screen was read-only with no save bar.
+- **Language:** it rendered in German.
+
+### i18n
+- **New keys, all five locales:**
+  - `countrySigningRules.*`;
+  - `systemTab.sections.countrySigningRules`.
+- **Data stays as stored:** the local titles and regulatory notes are data (the regulator's own wording) and are not translated.
+- **Review:** the Korean text should get native-speaker review.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **604 files passed, 3 skipped / 5299 tests passed, 9 skipped**.
+- New tests (13):
+  - `countryProfileEditor.test.ts`: 10, covering the rules and the save;
+  - `utils/participationTypeLookup.test.ts`: 1;
+  - the standing-rules guard: 2 more cases.
+
+### Still open
+- **Weak demo gate:** every demo login is `superadmin`, including customer demo accounts, so in the demo anyone can edit country rules. A real platform-admin identity comes with real sign-in (SSO) on the API server.
+- **Global to country-scoped:** changing a role from global to country-scoped (or back) isn't on this screen. It would change every country at once, so it needs its own decision.
+- **Seed-data reset:** saved profiles are kept on load. There is no "reset this country to the seed data" button.
+
+## Batch 336 — PS-342: medical spell-check engine (part 1 of 3)
+
+Pete's direction: no quick fixes. The first release ships a real engine, because a customer won't trust a spell checker with flawed basics.
+
+### Decisions (Pete, Sep 26)
+- **Language:** the facility sets the default, the assigned pathologist's profile preference is inherited, and the pathologist can switch the language per case.
+- **Facility dictionary:** additions take effect immediately and are audited.
+- **Coverage:** all report free text.
+- **AI spelling check:** retired (in Batch 337, once the new checker is live in the editors).
+
+### Engine choice (measured, not assumed)
+- **nspell (pure JavaScript), rejected:**
+  - French took 5 s to load and about 350 MB of memory;
+  - Korean took 3.4 s to check 5 words and wrongly accepted "teh".
+- **hunspell-asm, rejected:** its 2020-era build hangs in the browser under Vite.
+- **`@farscrl/hunspell-wasm`, chosen** (real Hunspell 1.7.3; MIT bindings, Hunspell under MPL):
+  - in Node, every language loads in under 0.4 s;
+  - in a real browser worker, UK English loads in about 260–300 ms and 5,000 words are checked in about 20–25 ms, with main-thread frames at about 16 ms;
+  - it works in the production build, where the worker is one file of about 1.2 MB including the WASM.
+
+### Built (`src/services/spellcheck/`)
+- **The cascade (AC1):** personal → facility → regional check → jurisdiction medical → clinical → base.
+- **No regional false positives (AC2):** under en-GB "haematology" is accepted and "hematology" is flagged with "haematology" suggested, and the reverse under en-US. Canadian English accepts both.
+- **Code pass-through (AC3):** SNOMED ids, LOINC, ICD-10, ICD-O, TNM, markers (CK7, Ki-67, HER2), measurements, Gleason scores, accession numbers and short acronyms are never flagged, in any language.
+- **Web Worker and client (§2.3, AC4):** a paragraph that hasn't changed is never re-sent.
+- **Personal and facility dictionaries (AC5, service side):**
+  - admin-tier roles only for facility words;
+  - facility additions are immediate and audited ("Facility spelling dictionary word added/removed").
+- **Language resolution:** case → pathologist → facility → en-US. An unavailable language is skipped.
+- **Dictionaries (`public/spellcheck/`, built by `npm run spellcheck:build`):**
+  - English (US, UK, Australian, Canadian), French, Dutch and Korean;
+  - licences are recorded in `NOTICE.txt`;
+  - PathScribe's own lexicon in `spellcheck-data/`: about 815 English entries, 163 US/UK pairs, and about 150 Korean terms.
+- **Why the lexicon was necessary:** measured against PathScribe's own clinical text, the base dictionaries reject 819 of 3,070 distinct words, including dysplasia, adenoma, mucosa, hyperplasia, lymphovascular and urothelial.
+
+### Found and fixed
+**`npm run build` was failing.** A Batch 250 comment in `pathscribe.css` contained `theme.colors.*/theme.gradients.*`. The `*/` ended the comment early, and the CSS minifier rejected the rest. The comment is reworded, and the production build now succeeds.
+
+### Not in this batch
+- **Batch 337:** squiggles in the editors and text boxes, the right-click menu, the per-case language switch, the profile preference, removing the AI check, and a frame-time check while typing.
+- **Batch 338:** the build step for the SPECIALIST Lexicon (NLM: open, attribution only; it covers the breadth of English medical vocabulary), SNOMED CT national editions and LOINC.
+
+### Still open
+- **German:** the only packaged dictionary is GPL-only, so it needs a licensing decision.
+- **French and Dutch:** no medical tier yet.
+- **Korean:** the lexicon and particle list need native-speaker review. The Korean download is about 14 MB.
+- **Node version:** `@farscrl/hunspell-wasm` declares Node ≥ 24, while the repo pins 22. It runs on 22; npm only warns.
+
+### i18n
+No UI text in this batch; the screens come in Batch 337.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **607 files passed, 3 skipped / 5318 tests passed, 9 skipped**.
+- New tests (19): `spellcheck.test.ts` 14, `customDictionary.test.ts` 3, `spellCheckClient.test.ts` 2.
+- Production `vite build`: succeeds, and the worker was checked in the built app.
+
+## Batch 337 — PS-342: German spell checking under the GPL; no machine-translated lexicons
+
+### German (Pete, Sep 26: option 1, use the GPL dictionary)
+German (de-DE) is now available: igerman98, © Björn Jacke, via `dictionary-de`, under GPL-2.0 or GPL-3.0.
+- **How it ships:**
+  - unmodified: `public/spellcheck/base/de-DE.aff` and `de-DE.dic` are byte-for-byte copies, and a test checks this;
+  - as separate data files that the Web Worker fetches at run time, not compiled into PathScribe's code;
+  - with the full GPL-2.0 and GPL-3.0 texts in `public/spellcheck/licenses/`, alongside the MPL-2.0 (French) and MPL-1.1 (Korean) texts;
+  - with its source: whatever is placed in `spellcheck-data/sources/de-DE/` (the upstream igerman98 archive) ships next to it. Until then, `NOTICE.txt` carries the GPL written offer, and `npm run spellcheck:build` warns while the offer's contact (`spellcheck-data/licenses/source-offer-contact.txt`) is still a placeholder.
+- **Before release:**
+  - a lawyer confirms the arrangement;
+  - add the source archive, or a real contact address.
+- **Gap:** German has no medical word list yet, and the general dictionary lacks even "Karzinom" and "Adenokarzinom". A test records this gap.
+
+### No machine translation for lexicons (Pete, Sep 26)
+Pete asked whether English medical terms could be run through Google Translate to build the other languages, then concluded from further research that it is unsafe for clinical documentation. Recorded as a rule in `spellcheck-data/README.md` and `services/spellcheck/README.md`: a mistranslated lexicon term would be accepted and never flagged. Non-English medical tiers come only from validated sources:
+- **German:** the SNOMED CT German National Edition (BfArM);
+- **French:** the SNOMED CT common French translation;
+- **Dutch (Netherlands):** the Netherlands Edition (Nictiz);
+- **Dutch and French (Belgium):** the Belgian extension;
+- **Korean:** the national classification plus native-speaker curation, because KOSTOM is no longer updated.
+
+These go through the Batch 339 build step.
+
+### Fix
+Batch 336's 5,000-word timing test compared two timings a few milliseconds apart, which failed intermittently in a busy full-suite run. It now asserts an upper bound plus the real property, that each distinct word is looked up once. The AC4 evidence remains the browser measurement.
+
+### Renumbering
+Editor integration is now Batch 338, and the dictionary build step (SPECIALIST Lexicon, SNOMED CT, LOINC) is Batch 339.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **607 files passed, 3 skipped / 5320 tests passed, 9 skipped**. That's 2 new tests (the German checks, and the check that the German files are unmodified with their licence texts); the other spell-check tests were adjusted.
+
+## Batch 338 — PS-342: spell checking in the report screens (part 3 of 4)
+
+Wires the Batch 336/337 engine into the report screens and retires the AI spelling check. The dictionary build step (SPECIALIST Lexicon, SNOMED CT, LOINC) is Batch 339, waiting on the SNOMED licence (PS-343).
+
+### What the pathologist sees
+- **Report editor** (`PathScribeEditor`): inside a report screen, words are checked in a Web Worker about 300 ms after typing stops. Red squiggles mark misspellings; blue ones mark the other English convention's spelling. Right-click for up to 5 suggestions, **Ignore for this session**, **Add to my dictionary**, and (admin roles) **Add to the facility dictionary**. The browser's own spell check is switched off there; outside report screens it's unchanged.
+- **Report text boxes**: 18 plain text boxes in 11 files now use `SpellCheckedTextarea` (synoptic text fields; the Amendment, Sign-out feedback, Case Hold, Retention Hold, Discordance and AI Narrative Review modals; cytology notes, synoptic form and ROSE impression; intraop quick gross and frozen diagnosis).
+- **Spelling language control**: in the report editor's header (replacing the "British/American English" badge), the microscopic entry panel, the cytology screening header and the intraop capture form. It shows the language and why ("English (United Kingdom) (facility default)"); choosing one saves it on the case, and **Default** clears it.
+- **Pathologist preference**: Staff → edit → **Spelling language** (`StaffUser.spellingLocale`).
+- **AI spelling check retired** (Pete, Sep 26): Accept commits the section directly. `PathScribeAIService.checkSpelling` is removed.
+
+### Decisions in services (no logic in components)
+- `services/spellcheck/resolveCaseSpellingContext.ts`: case choice → assigned pathologist's preference → ordering facility's default → en-US, plus the performing lab's facility dictionary.
+- `services/spellcheck/editorTextBlocks.ts`: editor positions ↔ checker text.
+- `services/spellcheck/spellMenuModel.ts`: what the menu offers.
+- `hooks/useCaseSpellCheck.ts` orchestrates; `components/SpellCheck/` renders.
+
+### Fix found in the browser check
+Suggestions were listed dictionary by dictionary, so the medical list crowded out closer everyday words: "specimin" offered "spermatic" first. `suggestWord` now pools both lists and ranks by edit distance (a swap of two neighbouring letters counts as one edit); "specimen" comes first.
+
+### Standing-rule clean-ups in touched files
+- `components/Editor/PathScribeEditor.tsx`: all inline styles, the hover handlers and the embedded `<style>` block moved to `pathscribe.css` (theme as `--pse-*` custom properties); the theme preference goes through `utils/uiPreferences.ts`. Off the browser-storage baseline (38 left).
+- `OrchestratorSectionEditor.tsx`: the label inline style became `--label-*` custom properties (`utils/labelStyleVars.ts`); macros and voice macros come from `@/services` (new barrel export `voiceMacroService`). Off the mock-import baseline (181 left).
+- `RightSynopticPanel.tsx`: the progress bar's width is passed as `--syn-progress-pct`.
+
+### New keys (all 5 locales)
+- `spellCheck.locales.*`: 8 language names (en-US, en-GB, en-AU, en-CA, fr-FR, nl-NL, de-DE, ko-KR).
+- `spellCheck.menu.*`: `label`, `regionalHint`, `loading`, `noSuggestions`, `ignore`, `addPersonal`, `addFacility`, `facilityRefused`.
+- `spellCheck.language.*`: `label`, `useDefault`, `current`, `unavailable`, `source.{case,pathologist,facility,platform}`.
+- `staffTab.modal.spellingLocaleLabel` / `spellingLocaleDefault` / `spellingLocaleHint`.
+- `common.skip` (moved from `orchestratorSectionEditor.spellCheck.skipButton`, which `AiReviewModal` borrowed).
+
+**Removed** (retired AI check): `orchestratorSectionEditor.spellCheck.*` (9 keys), `orchestratorSectionEditor.jurisdiction.*` (4) and `orchestratorSectionEditor.checkingLabel`. Korean text needs native-speaker review, as usual.
+
+### Correction
+While working on PS-342 I said (in conversation, not in Jira) that the AI spelling check "never flagged anything" because `OrchestratorSectionEditor` read `result.success` from a result that reports `ok`. That was wrong: `PathScribeAIService` uses the older `{ success, data }` result (`types/serviceResult.ts`), so the check was consistent. What *was* wrong with it: its prompt treated every language other than UK English as American English, and its badge said "British English" for every non-US country. The same en-GB-or-American rule is **still used by `refineTranscript`** (dictation clean-up); not changed here.
+
+### Verified in the browser (dev server, Chromium)
+- **UK case** (O26-0006, Royal Manchester Centre, facility default en-GB): British spellings were accepted and "specimin" / "recieved" were flagged, with the first squiggle about 300 ms after typing stopped. The menu offered "specimen" first and replaced the word; Add to my dictionary cleared "recieved". Switching the case to US English flagged "tumour", "haemorrhage" and "colour" in blue and saved `spellingLocaleOverride: 'en-US'` on the case; **Default** returned to the facility's language.
+- **Typing:** frame gaps stayed at 16.8 ms at most while typing continuously.
+- **Case Hold note** (`SpellCheckedTextarea`): squiggles lined up with the text, and the menu replaced "refering" with "referring".
+- **Cytology screening:** the control and a spell-checked box rendered with no page errors.
+- **Intraop capture:** the facility default (en-GB) applied, and "nodul" / "irregualr" were flagged.
+
+### Disclosed, not fixed
+- **Seed data:** the MFT demo cases use facility ids (`c-mft-01`…) that don't exist in the facility seed, so their language falls back to the platform default (en-US).
+- **English-only text** remains in `CytologyScreeningPage.tsx`'s loading, not-found and header states and in `SynopticReportPage.tsx`'s "Case not found" block.
+- **Accessioning:** case and report comments on the accessioning page use the browser's spell check (no case provider there).
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **608 files passed, 3 skipped / 5355 tests passed, 9 skipped**. That's 35 new tests: `services/spellcheck/editorIntegration.test.ts` (33: the three new services plus source-level guards that the report text boxes, providers and editor stay wired and the AI check stays retired) and 2 in `spellcheck.test.ts` (suggestion ranking with the real dictionaries, `editDistance`).
+
+## Batch 339 — PS-342: dictionary build step for the licensed clinical vocabularies (part 4 of 4)
+
+The last planned batch of PS-342. The spell checker can now take in the licensed releases once Pete has them (the SNOMED CT licence is in progress, PS-343). It is tested end to end on synthetic sample files.
+
+### How it's used
+Drop the releases into `spellcheck-data/licensed/` as downloaded and run `npm run spellcheck:build`:
+- `specialist/`: the SPECIALIST Lexicon (NLM, open);
+- `snomed/`: one or more SNOMED CT RF2 releases (International, US, UK, AU, CA, Netherlands, Belgian, German, French...);
+- `loinc/`: `Loinc.csv` plus `LinguisticVariants/`.
+
+Only the derived word lists ship (`public/spellcheck/medical/`, `clinical/`), with each licence's required attribution in `NOTICE.txt`. With no licensed folder the output is byte-for-byte what it was before (checked).
+
+### What it builds (`scripts/spellcheck/licensedSources.mjs`, rules in `spellcheck-data/licensed-sources.json`)
+- **SPECIALIST Lexicon:** every inflected form of every spelling variant (`LRAGR`) goes into the English medical tier.
+- **SNOMED CT:** active descriptions of active concepts in 12 pathology-relevant hierarchies go into the clinical tier, keeping SNOMED's case significance.
+  - English follows the dialect language reference sets (US, GB/NHS, AU, CA, with fallbacks). Language refsets the build doesn't map are reported.
+  - German, French, Dutch and Korean translations go by language code.
+- **LOINC:** pathology, cytology, molecular, cell-marker, haematology and microbiology classes, excluding deprecated codes. English (US spelling) goes to US and Canadian English; the linguistic variants feed German, French, Dutch and Korean.
+- **US/UK rules:** pairs found in the sources become regional-variant rules, and the other spelling is dropped from each convention's list. This applies only where that convention's dictionary rejects the other spelling, so "meter" stays correct in UK English.
+- **Only new words ship:** words the general dictionary already accepts are left out.
+- **The engine:** loads the clinical tier as a third Hunspell dictionary (Korean: a word list), so SNOMED and LOINC words appear in suggestions. `suggestWord` pools medical, clinical and base suggestions.
+
+### Verified
+- **Sample releases:** `scripts/spellcheck/fixtures/licensed/` holds synthetic files in the real formats, with hand-written rows and no licensed content. The end-to-end test checks, with the real Hunspell:
+  - a SNOMED-only word is accepted and offered first for its misspelling;
+  - "hemosiderotic" is flagged in UK English with "haemosiderotic" preferred, and "haematocolpos" in US English;
+  - Canadian English accepts both spellings;
+  - German Plattenepithelkarzinom and Cholangiokarzinom are accepted;
+  - Korean 담관암종 is accepted with a particle;
+  - inactive descriptions and concepts, other hierarchies, CHEM-class and deprecated LOINC codes are left out;
+  - no release file is copied into the output.
+- **Browser:** with the sample build served, the report editor on a UK case accepted "chondroblastoma", offered it first for "chondroblastomma", and flagged "hemosiderotic" as a regional variant. The sample build was then removed and the clean build restored.
+- **Scale:** a synthetic release of 400,000 concepts, 1.2 million descriptions and 1.6 million refset rows was read in 20 s, using about 550 MB of memory.
+
+### No UI text in this batch.
+
+### Still open
+- **Real releases:** need the licences (PS-343). When they arrive, check the Australian (`32570271000036106`), Canadian (`19491000087109`) and NHS (`999001261000000100`) language refset ids in `licensed-sources.json` against the releases; the build lists any it doesn't map.
+- **Size:** measure the download size once the real SPECIALIST Lexicon is built in. If the English medical tier is too large, restrict it to words that also occur in the clinical vocabularies.
+- **Licence review:** SNOMED CT-derived words are served to browsers as static files. Confirm with SNOMED International / the national release centres that this fits the Affiliate Licence (including customers outside member territories), and confirm LOINC's terms for a derived word list.
+- **Inflections:** German, French and Dutch get few plural forms from SNOMED/LOINC.
+
+### Validation
+- `npm run type-check`: clean.
+- `npm test`: **609 files passed, 3 skipped / 5374 tests passed, 9 skipped**. That's 19 new tests in `scripts/spellcheck/licensedSources.test.mjs`.
+
+## Batch 340 — PS-344: dependency security fixes
+
+`npm audit`: **54 findings (8 high, 46 moderate) → 4 moderate, 0 high, 0 critical.** Updated in groups, re-testing after each.
+
+### Updates (all within the current major versions)
+| Package | Before | After | Advisories fixed |
+| --- | --- | --- | --- |
+| All `@tiptap/*` (report editor; 19 direct, kept on one version) | 3.23.4 | 3.31.3 | ReDoS in Markdown attribute parsing (high, GHSA-j95f-988m-3j2f); `mergeAttributes()` `__proto__` → DOM attributes (GHSA-cp6q-959q-f8rh) |
+| `react-router-dom` / `react-router` | 6.30.4 | 6.30.6 | Open redirect leading to XSS (GHSA-jjmj-jmhj-qwj2) |
+| `vitest` / `@vitest/mocker` | 4.1.10 | 4.1.11 | Path traversal via redirect mock (GHSA-82fw-gwwq-j7x9) |
+| `js-yaml` (under ESLint 8) | 4.3.1 | 4.3.2 | CPU exhaustion via merge keys (high, GHSA-2883-xcg3-v3hh) |
+| `minimatch` (under `@typescript-eslint/typescript-estree` 6, which pins 9.0.3 exactly) | 9.0.3 | 9.0.9, via `overrides` in `package.json` | Three ReDoS advisories (high) |
+
+### Mitigated in code
+React Router 6 still carries **GHSA-wrjc-x8rr-h8h6**: `navigate("/\evil.example")` goes off-site. It is fixed only in React Router 7.18, a major upgrade. I checked every `navigate()` whose target isn't a literal: only message config links (`AppShell`) come from stored data. Those now go through the new `utils/safeInternalPath.ts` (with tests), which accepts only PathScribe paths. The other targets are built in code, or start with a fixed path such as `/configuration?tab=`, `/report/`.
+
+### Left open (moderate, documented in PS-344)
+- **`react-router` GHSA-wrjc-x8rr-h8h6:** mitigated as above. It closes fully with React Router 7, which needs its own decision.
+- **`react-router` GHSA-337j-9hxr-rhxg:** SSR hydration only. PathScribe is client-rendered, so this isn't reachable.
+- **`uuid` < 11.1.1 under `gaxios` 6:** comes from `firebase-admin` → `@google-cloud/storage`, which is legacy Firestore tooling and not shipped. The flaw needs uuid v3/v5/v6 with a caller-supplied buffer, and gaxios uses v4. It closes with the firebase-admin work (PS-47), or by dropping Firebase tooling.
+
+### Found along the way
+- **npm 10.9.7 crashes** on this project's tree ("Cannot read properties of null (reading 'edgesOut')"). npm 11.6.2 (Pete's version) works; the lockfile was regenerated with it. The root README now says to use npm 11.
+- **`npm run lint` doesn't work:** the repo has no ESLint config file. This is pre-existing and already noted in the root README, so lint couldn't serve as a check. ESLint itself still loads with the updated packages.
+
+### Verified
+- `npm run type-check`: clean.
+- `npm test`: **610 files passed, 3 skipped / 5376 tests passed, 9 skipped**. That's 2 new tests (`utils/safeInternalPath.test.ts`).
+- `vite build`: succeeds.
+- **Browser (dev server, fresh dependency cache):**
+  - the report editor on a UK case: spell-check squiggles, the menu, replacement, Add to my dictionary and the language switch all work;
+  - bold, table insert and the formatting-marks toggle work;
+  - typing frame gaps stayed at 16.8 ms at most;
+  - React Router navigation, including browser back, works.
+
+### No UI text in this batch.
+
+## Batch 341 — PS-344 follow-up: React Router 7 and Node 24 (Pete, Sep 26: "Upgrade react then move to node version")
+
+### React Router 6.30.6 → 7.18.4
+- **Package:** `react-router-dom` is replaced by `react-router` 7.18.4, which exports everything the app uses (`BrowserRouter`, `MemoryRouter`, `Routes`, `Route`, `Navigate`, `Outlet`, `useNavigate`, `useLocation`, `useParams`, `useSearchParams`, `redirect`, `LoaderFunctionArgs`). All 85 files importing it (including the `vi.mock('react-router', …)` test mocks) now import `react-router`, and `vite.config.ts`'s vendor chunk rule names it.
+- **Behaviour:** unchanged. `App.tsx` had already opted into the two version 7 behaviours (`v7_startTransition`, `v7_relativeSplatPath`), so that `future` prop is simply removed; version 7 always behaves that way.
+- **Closes:** GHSA-wrjc-x8rr-h8h6 (open redirect via backslash) and GHSA-337j-9hxr-rhxg. `utils/safeInternalPath.ts` stays as a second line of defence for links from stored data.
+- **`npm audit`:** 4 → **2 moderate** (`uuid` under `gaxios` 6, via `firebase-admin` → `@google-cloud/storage`; legacy tooling, not shipped, not reachable; closes with PS-47).
+
+### Node 22 → 24 (LTS)
+- **What changed:** `package.json` `engines.node` is now `24.x` (also recorded in the lockfile), and a new `.nvmrc` says `24`.
+- **Why:**
+  - Pete's machine runs Node 24.13;
+  - `@farscrl/hunspell-wasm` declares ≥ 24;
+  - Vercel supports Node 24 for builds and functions (the engines field picks the webhook runtime);
+  - firebase-admin 14 (≥ 22) and React Router 7 (≥ 20) are satisfied;
+  - Node 24 ships npm 11, which this tree needs (npm 10.9 crashes on it).
+- **Docs:** the root README, `api/webhooks/engine/README.md` and `services/spellcheck/README.md` updated.
+
+### Verified
+- **Type-check:** clean on Node 22 and Node 24.
+- **`npm test`:** **610 files passed, 3 skipped / 5376 tests passed, 9 skipped**, on both Node 22 (React Router 7) and Node 24.21.
+- **Builds:** `vite build` succeeds on Node 24. `npm run spellcheck:build` on Node 24 gives the same dictionaries as before.
+- **`npm install` on Node 24:** no engine warnings.
+- **Browser, React Router 7:** an unknown path redirects to `/login`; login lands on `/`; worklist, configuration with `?tab=`, the case report and audit with query parameters all load; `?accessDenied=` is cleared as before; browser back works. The report editor's formatting, table insert and formatting marks work. No console errors.
+
+### Still open
+The `firebase-admin` / `gaxios` / `uuid` chain (2 moderate) belongs to PS-47.
+
+### No UI text in this batch.
+
+## Batch 342 — PS-262: live updates for the OR Suite Live Board and Intraop Queue (SignalR)
+
+**Decision (Pete, Sep 26):** "Plan SignalR (.NET) now." The PathScribe API server is ASP.NET Core, and live updates come from its SignalR hub. This batch builds the browser side and specifies the hub (`docs/architecture/LIVE_UPDATES_SIGNALR.md`); no server code ships. Scope, per Pete: the OR boards plus the Intraop Queue.
+
+### Built
+- **`services/liveUpdates/`:**
+  - **`liveUpdateContract.ts`:** the wire contract. Hub `/hubs/live`, `SetIntraopScope`, `IntraopChanged`, and events carrying ids only (no PHI), with validation.
+  - **`liveUpdatePolicy.ts`** (pure): reconnect back-off that never gives up (0, 2, 5, 10, 20, then 30 s, ±20 % jitter); 15 s polling without a connection, 60 s while live; scope matching and combining; the duplicate filter; the transport choice.
+  - **`signalRLiveUpdateService.ts`:** the production client on `@microsoft/signalr` 10.
+    - One connection per window, closed 1 s after the last screen leaves.
+    - The scope is re-sent and the screens re-read after every reconnection.
+    - A failed first start or a closed connection is retried on the same schedule.
+  - **`localLiveUpdateService.ts`:** with no hub, the mock services publish each write (`announceIntraopChange`) and a BroadcastChannel reaches this browser's other windows.
+  - **`liveUpdateService.ts`:** SignalR when `VITE_LIVE_UPDATES_HUB_URL` is valid (https in production), otherwise local.
+- **`hooks/useLiveIntraopUpdates.ts`:** subscribe, coalesce bursts into one re-read, re-read on reconnect, fallback polling. **`components/LiveUpdates/LiveStatusBadge.tsx`** shows the state.
+- **OR Suite Live Board:**
+  - the fixed 15 s poll is replaced by live updates, with a badge in the header;
+  - the Multi-Suite location choice and flash bookkeeping moved to `services/intraopDashboard/resolveOrBoardLiveView.ts`;
+  - the dismissal and its audit record moved to `dismissFromBoardWithAudit.ts`, which reports a failed log write instead of ignoring it;
+  - the terminal and event-log services come from `@/services` (off the mock-import baseline, 180 left);
+  - the demo timer's stale refresh is fixed.
+- **Intraop Queue:** follows every intraop change live, with the same badge.
+- **Barrel:** `@/services` also exports `liveUpdateService`, `orSuiteTerminalService` and `orEventLogService`.
+- **Packages:** `@microsoft/signalr` ^10.0.11 (MIT), plus `ws` ^8.22.0 as a dev dependency for the test hub (it was already installed indirectly). `npm audit` is unchanged (2 moderate, legacy Firebase).
+
+### Text
+- **New keys:**
+  - `liveUpdates.status.*` and `liveUpdates.hint.*` (5 states each; hints carry `{{seconds}}`);
+  - `orSuiteDashboard.locationWithRoom` and `orSuiteDashboard.headerLocationWithRoom`, replacing hard-coded " — " and " · " separators;
+  - `intraopQueue.page.logButtonWithCount`, replacing a hard-coded " (n)".
+- **Removed:** `orSuiteDashboard.room`, now unused.
+- **Refused dismissal:** shows `orSuiteDashboard.dismissFailedGeneric` instead of the service's English text.
+
+### Verified
+- **Real client, protocol-compatible hub** (`signalRProtocol.integration.test.ts`, Node): the real `@microsoft/signalr` client through `signalRLiveUpdateService`, against `testing/fakeSignalRHub.ts`.
+  - Two boards and a queue receive only their own locations, about 10 ms over loopback.
+  - Every connection recovers after the server drops them all, re-sends its scope and re-reads.
+- **Browser** (Chromium, dev server, two OR boards plus the Intraop Queue):
+  - *Local transport:* a demo on board A showed on board B in 143 ms; a dismissal on A cleared the row on B in 120 ms; a new session reached the queue in 206 ms.
+  - *Through a SignalR-protocol hub:* both boards showed **Live**. A hub publish reached board B's rows in 129 ms, a dismissal in 83 ms, and a new session reached the queue in 203 ms.
+  - *After the hub dropped every connection:* the badge showed *Reconnecting…*, then *Live*, with no reload.
+  - *Timing includes* the screens' re-reads, and every result is under the 500 ms target.
+- **Found in the browser check and fixed:** React re-mounting a screen, or moving between screens, stopped and restarted the connection mid-negotiation, which logged errors. The connection now closes only after a 1 s grace period, so it is reused. Covered by a test.
+- **`npm run type-check`:** clean.
+- **`npm test`:** **613 files passed, 3 skipped / 5401 tests passed, 9 skipped**. That's 25 new tests (`liveUpdates.test.ts`, `signalRProtocol.integration.test.ts`, `orBoardLive.test.ts`, and 2 in `OrSuiteDashboardPage.test.tsx`).
+- **`vite build`:** succeeds.
+
+### Still open
+- **The hub itself** (ASP.NET Core), per the spec: authentication, including **device tokens for OR terminals** (the board is a public kiosk route, so the hub must refuse unauthenticated connections until then); per-location authorisation; publish-after-commit through an outbox; scale-out (Azure SignalR Service, or a Redis backplane for private cloud).
+- **`accessTokenFactory` wiring** in the client comes with real authentication (PS-60).
+- **`VITE_LIVE_UPDATES_HUB_URL` is build-time only;** runtime configuration is a deployment-readiness item.
+- **Verbal report:** the OR board's verbal-report modal still writes its event-log record directly.
+
+## Batch 343 — PS-60: single sign-on, and the demo passwords out of the code
+
+**Premise corrected:** PS-60 said SSO "needs a backend first" for the token exchange. For Entra ID, Okta and similar that isn't so. The app is a public single-page client using the authorization code flow with PKCE, with no client secret. The API server is still what must trust the token; that part is specified, not built. Google is the exception: its token endpoint needs the client secret, so it waits for the server.
+
+**Defaults taken** (Pete hadn't decided; all can change):
+- generic OpenID Connect, with Entra ID first;
+- only provisioned, active staff can sign in (the earlier requirements' rule);
+- password sign-in in demo builds only.
+
+### Found
+- **Plain-text passwords in the bundle:** `contexts/AuthContext.tsx` held eleven accounts with plain-text passwords, ten of them `superadmin`, and they shipped in every production bundle. **Treat those passwords as known and change them** (`scripts/auth/hash-demo-password.mjs`).
+- **Conflict check lost on reload:** reloading a tab released its claim on the same-browser active-session marker for good, so another tab's sign-in was no longer reported as a conflict. Fixed.
+
+### Built
+- **`services/auth/`:**
+  - `authConfig.ts`: the `VITE_AUTH_*` settings. https only; Microsoft must name the hospital's tenant; Google refused; an unknown mode fails closed.
+  - `externalIdentity.ts`: the linking rule. Match on issuer + permanent account id (Entra `oid`); a first sign-in links by trusted email to exactly one active record. Refusals: `not_provisioned`, `inactive`, `ambiguous`, `already_linked`.
+  - `sessionRole.ts`: app role from the role catalogue (never superadmin); return path through `safeInternalPath`.
+  - `sso/ssoClient.ts` (`oidc-client-ts` 3.5.0): the code exchange, plus issuer, audience and expiry checks. Tokens in sessionStorage; the return path is kept in local state, not sent to the provider; refresh-token renewal.
+  - `sso/resolveSsoProfile.ts`: who signed in, from `GET /api/me` on the API server, or locally against the demo directory with the link stored and audited.
+  - `authSession.ts` / `authSessionInstance.ts`: sign-in, the conflict check, sign-out, restore, the access token. Exported from `@/services` as `authSession` and `authConfig`.
+  - `demo/`: the demo accounts as PBKDF2-SHA256 hashes (600,000 iterations), left out of `VITE_AUTH_MODE=sso` builds.
+  - `accessTokenSource.ts`: the live-update hub now sends SSO users' tokens.
+- **Screens:**
+  - `LoginPage`: working provider buttons, the password form only when allowed, return to the page the user wanted.
+  - New `AuthCallbackPage` at `/auth/callback/:providerId`, with the conflict prompt.
+  - `ProtectedRoute` passes `from`.
+  - `AuthContext` keeps React state only.
+- **Staff data:** `StaffUser.externalIdentities`.
+- **Audit** (literal English): *Signed in*, *SSO account linked*, *SSO sign-in refused*.
+- **Session helpers:** `sessionProfile.ts` stores the session under the same key as before. `getSessionUser()` and `effectiveScanStation` read through it, and the superseded notice moved into `sessionSupersedeService`.
+- **Deployment baselines:** `AuthContext` came off both lists, `ProtectedRoute` and `LoginPage` off the browser-storage list (179 mock imports, 35 browser-storage users left).
+- **Docs:** `docs/architecture/AUTHENTICATION_OIDC.md` (setup, Entra registration, the API server's part). `LIVE_UPDATES_SIGNALR.md` §4 updated; `ACCESS_CONTROL_PLAN.md` marked as partly superseded.
+
+### i18n
+New `login.*` keys in en/fr/de/nl/ko:
+- `signInNotConfigured`, `ssoCompleting`, `ssoOrganisation`;
+- `ssoError.*`, one per refusal reason (10).
+
+### Verified
+- **Integration test:** the real `oidc-client-ts` against a local provider (`testing/fakeOidcProvider.ts`, which checks PKCE S256 and refuses a client secret). It covers sign-in, the refresh-token renewal, a wrong issuer, cancellation and a forged callback.
+- **Browser, demo mode:**
+  - a deep link while signed out → the login page → back to `/worklist?view=mine`;
+  - a wrong password and an unknown email each take about 210 ms;
+  - the demo login works and survives a reload.
+- **Browser, SSO mode (local provider):**
+  - Sarah Chen signed in: the link was stored and both audit entries written; the session survived a reload;
+  - a second tab got the conflict prompt, and the first tab was signed out;
+  - an unknown account was refused with the "no active PathScribe account" message, leaving no session or tokens.
+- **Bundles:**
+  - a `VITE_AUTH_MODE=sso` build has no demo account, email or hash (`verifyDemoCredentials` compiled to `null`);
+  - a demo build has none of the old plain-text passwords, and the hashes only in a lazy `demoAccounts` chunk.
+- **Type-check** clean. **Full suite:** 619 files passed, 3 skipped (622); 5467 tests passed, 9 skipped (5476).
+
+### Open
+- **API server:** token validation, `/api/me`, the link table, a Google code exchange.
+- **Admin screen** for linked accounts.
+- **OR terminal device tokens.**
+- **Runtime configuration** of providers.
+- **Changing the demo passwords** (Pete).
+
+## Batch 344 — PS-60 follow-up: confirming who signs; token contract and SCIM spec
+
+**Pete:** "Is this important enough to just implement? Seems like it is." Recorded under PS-60, not a new ticket.
+
+### Found
+- **The sign-out modal** (sign-out and countersign) asked for a username and password and **never checked them**.
+- **The per-synoptic finalize modal** did the same.
+- **The pre-finalisation signing panel** accepted any password of three characters or more, and showed the case's assigned pathologist as the signer, not the person signed in.
+- **Cytology sign-out and the autopsy PAD/FAD signatures** asked for no confirmation at all.
+- **Net effect:** anyone at an unlocked session could sign a case as the signed-in user.
+- **Biometric:** the WebAuthn check is simulated (it always succeeds once enrolled), and the "cadence" setting signed with no action at all.
+
+### Built
+- **`services/auth/signerConfirmation.ts`** (exported from `@/services` as `signerConfirmation`):
+  - **Password sessions (demo):** the password again, plus the username on the first signature of a sign-in session (21 CFR 11.200(a)(1)).
+  - **SSO sessions:** the identity provider's sign-in page in a popup (`prompt=login`, `max_age=0`, `login_hint`). It must return the same account (issuer + subject; the profile now stores `ssoIssuer` / `ssoSubject`) and be freshly authenticated (`auth_time`, else `iat`).
+  - **Biometric:** demo builds only.
+  - **Lockout:** five failed confirmations lock signing for 15 minutes; a cancelled or blocked popup doesn't count.
+  - **Audit** (literal English): *Signature confirmed*, *Signature confirmation failed*, *Signing locked*.
+- **`sso/ssoClient.ts`:** `reauthenticate` (a separate UserManager with its own throwaway token store, so the popup never replaces the session's tokens) and `completeReauthPopup`.
+- **`main.tsx`:** on `/auth/signing/<provider>` it hands the answer back and never starts the app, so the popup can't disturb the session markers.
+- **`hooks/useSignerConfirmation.ts`**, and **`components/Signing/`** (`SignerConfirmationFields`, `SignatureConfirmModal`).
+- **Screens:**
+  - `CaseSignOutModal`, `FinalizeSynopticModal` and the `PreFinalisationModal` signing panel use the shared fields and call their sign callback only with a confirmation in hand.
+  - The pre-finalisation panel names the signed-in user, and the cadence auto-sign is removed.
+  - Cytology Sign Out and autopsy Sign PAD / Sign FAD open a `SignatureConfirmModal` first.
+  - The unchecked credential state is gone from `useSynopticFinalize`.
+- **Converted on touch:**
+  - `CytologyScreeningPage`'s loading, empty, assist-mode and header text (`cytologyScreening.*`);
+  - `SynopticReportPage`'s "Case not found" block (`caseNotFound.*`);
+  - `useSynopticFinalize`'s preference, which now goes through `uiPreferences`.
+- **Deployment baselines:** `PreFinalisationModal` came off the mock-import list and `useSynopticFinalize` off the browser-storage list (178 mock imports, 34 browser-storage users left). `biometricService` is exported from the barrel.
+- **Spec (`docs/architecture/AUTHENTICATION_OIDC.md`),** from the development team's text, with corrections:
+  - **§5, token contract:**
+    - the broker (Entra External ID) for shared SaaS, direct Entra ID for dedicated installs;
+    - `tid` is the broker's on the shared path, so the organisation comes from a PathScribe-controlled mapping;
+    - no roles in tokens;
+    - three checks on every request (token, staff record, SQL Server row-level security);
+    - §5.4: the server must verify each signature's popup ID token itself.
+  - **§6, SCIM 2.0:**
+    - SCIM `id` is PathScribe's own id, and `externalId` is the hospital's;
+    - `DELETE` only deactivates;
+    - a SCIM-created record has no roles until a hospital admin grants them;
+    - on the broker path, the linking caveat;
+    - what SCIM can never change.
+  - The Entra registration step now lists the signing popup's redirect URI.
+
+### i18n
+- `signerConfirmation.*` (new, 26 keys including the 12 errors).
+- `cytologySignOut.confirmTitle`, `autopsySignOut.confirmTitle`, `finalizeSynopticModal.bodyLocks`.
+- `cytologyScreening.{assistModeOnly, backToWorklist, caseTitle, noSpecimen}`, `caseNotFound.*`.
+- Retired as no longer used:
+  - `caseSignOutModal.{hint, usernameLabel, usernamePlaceholder, passwordLabel, passwordPlaceholder}`;
+  - `finalizeSynopticModal.body`;
+  - `preFinalisationModal.signing.{password, passwordFallback, passwordIncorrect, passwordRequired, signingAs}`.
+
+### Verified
+- **Browser, demo build**, case O26-0006 (its synoptics marked finalized for the test), Sign Out Case:
+  - an empty form asked for the username;
+  - a wrong password and someone else's username were refused ("… 4 / 3 attempts left");
+  - the right credentials signed;
+  - the audit log holds the two failures and the confirmation, with the case.
+- **Browser, SSO build** (local provider), same case:
+  - no password fields;
+  - the popup sent `prompt=login`, `max_age=0` and `login_hint=pete.nimmo@pathscribe.ai` to `/auth/signing/oidc`, returned, and closed in about 3.8 s;
+  - the sign-out went ahead and was audited;
+  - the session's active-session marker was untouched.
+- **Not checked in the browser** (their gates need more set-up): the finalize, pre-finalisation, cytology and autopsy screens. They use the same fields and hook, and the guard test checks their wiring.
+- **Type-check** clean. **Full suite:** 622 files passed, 3 skipped (625); 5493 tests passed, 9 skipped (5502).
+
+### Open
+- **The client doesn't yet send the popup's ID token** with the signing request, and the server-side verification (§5.4) doesn't exist yet. Until then the confirmation is enforced in the browser only.
+- **The confirmation isn't stored with the signed record.** The sign-out and finalize handlers receive it but only the audit log records it. The server should keep it with the signature (method, time, token id).
+- **Real WebAuthn** for biometric signing.
+- **Korean** wording for the new keys should get native-speaker review.
+
+## Batch 345 — PS-60 follow-up: each signature checked at the save and stored; linked sign-in accounts
+
+**Pete:** "Yes" to the three unblocked items (store the confirmation with the signed record, keep the SSO proof with it, the linked-accounts panel), then a backend ticket for the development team.
+
+### Built
+- **The confirmation carries its proof:** `SignatureConfirmation` gains `confirmationId` and `proof`, the ID token the provider returned to the SSO popup (`ssoClient.reauthenticate` now returns it).
+- **`services/auth/signatureEvidence.ts`** (`signatureGate`, exported from `@/services`): the check the API server will make (`AUTHENTICATION_OIDC.md` §5.4), run at the save against the mock services.
+  - **`accept` checks:**
+    - signer, action and case;
+    - age of 5 minutes or less;
+    - one use per confirmation id and per ID-token hash;
+    - for SSO: this app's token, the session's own account, and a fresh `auth_time`.
+    It holds the accepted confirmation for the case; a paused signing (a data gate) resumes with it for up to 15 minutes.
+  - **`commit`** stores a signature record once the signed state is saved.
+  - **Audit:** refusals and records are both audited.
+  - **What's left for the server:** the token's cryptographic signature. Evidence says `verifiedBy: 'browser'`.
+- **`services/signatures/`** (new): `SignatureRecord`, append-only. It stores who signed, the outcome (`signed`, `finalized`, `released_for_countersign`), the link (report version, autopsy snapshot + tier, cytology sign-out record) and the evidence. The evidence holds a SHA-256 of the ID token, never the token. Exported as `signatureRecordService`.
+- **Wired into every signed state change:**
+  - **`useSignOutWorkflow`:** sign-out and countersign, the resident release, `finalizeCase` (which now requires an accepted confirmation), pre-finalisation, and per-synoptic finalize.
+  - **Autopsy PAD/FAD** in `SynopticReportPage`.
+  - **Cytology sign-out** in `CytologyScreeningPage`.
+  A refused or missing confirmation stops before anything is written.
+- **Staff → edit:** a **Linked sign-in accounts** panel (`components/Config/Staff/LinkedSignInAccounts.tsx`, `services/auth/linkedAccounts.ts`).
+  - Each account shows the provider, a shortened account id, and when and how it was linked.
+  - **Unlink** takes one confirmation, takes effect at once, and is audited.
+  - The panel explains that email linking re-links unless the person is deactivated or their email changed.
+- **Also:**
+  - `ExternalIdentityLink.linkedBy` gains `'scim'`.
+  - Demo Reset clears signature records with the cases.
+  - The spec's §5.4, §5.5 (signature records table) and §8 are updated.
+
+### i18n
+- `signatureEvidence.refused.*` (11).
+- `staffTab.linkedAccounts.*` (12, including the three `linkedBy` values).
+
+### Verified
+- **Browser, SSO build** (local provider), sign-out of O26-0006:
+  - a signature record was stored: `signed`, linked to the report version, action `case-sign-out`, method `sso`, `verifiedBy: browser`;
+  - it holds the account, `auth_time` and a 64-hex token hash;
+  - no raw token was found in storage;
+  - *Signature confirmed* and *Signature recorded* are in the audit log.
+- **Browser, Staff → edit** for Pete Nimmo:
+  - one linked account ("Organisation sign-in · linked 09/26/2026 at first sign-in");
+  - Unlink → confirm → the list is empty, "Sign-in account unlinked.", and *SSO account unlinked* is audited.
+- **Unit and guard tests:**
+  - replay, wrong case, stale login, missing proof and another account are each refused;
+  - a resume after a gate is limited to the same case and kind of action;
+  - every signed state change calls the check (guard test);
+  - the hook test covers a refusal writing nothing.
+- **Type-check** clean. **Full suite:** 624 files passed, 3 skipped (627); 5508 tests passed, 9 skipped (5517).
+
+### Open
+- **Binding enforcement** needs the API server: the same check server-side, plus the ID token's signature, written with `verifiedBy: 'server'`. See the backend ticket.
+- **No screen yet lists a case's signature records.** The audit trail has matching entries.
+- **Korean** wording for the new keys should get native-speaker review.
+
+## Batch 346 — PS-52: the agent's port can be set, and users see "queued" / "printing now"
+
+**Pete:** "Note the admin doc bits for later. Implement point 1 and 2." Points 1 and 2 of the developers' PS-52 review: a configurable agent port that PathScribe tries first, and an optional "printing now" status.
+
+### Built
+- **Agent port (point 1):**
+  - `PrinterProfile.agentPort` is optional and shown in the printer editor only when the Bridge Type is PathScribe Agent. It has a hint ("leave empty unless IT moved the agent") and a range check (1024–65535).
+  - `agentProtocol.ts` gains `isValidAgentPort` and `agentPortOrder`: the configured port first, then 9100–9102, each once.
+  - `discover(preferredPort)` and `printZpl(…, { preferredPort })` use it; `dispatchZplLabel` passes `printer.agentPort`.
+  - The "agent not found" message now lists the ports actually tried.
+  - The handshake rule is unchanged, so a printer on the custom port is still skipped.
+- **"Printing now" (point 2):**
+  - **Protocol:** a new, optional agent message `PRINT_STARTED { jobId }`. `PRINT_QUEUED.position` is now defined as the number of jobs ahead (0 = prints next); a negative value is refused.
+  - **Client:** it reports each job's progress through `onJobStatus` (sending, queued with position, printing, then done or failed).
+  - **Shared status:** the shared client feeds `utils/labels/pathscribeAgent/printJobStatus.ts`, an in-memory store with `summariseAgentPrintJobs` to pick the line to show.
+  - **Status line:** `components/Printing/AgentPrintStatus.tsx` (new), mounted once in `App.tsx`, shows a small line at the bottom left: "Sending label to the printer…", "Label queued: 2 jobs ahead" or "prints next", "Printing on ZD421", and "1 more label waiting". It is an ARIA live region and disappears when the job ends.
+  - **Older agents:** an agent that never sends `PRINT_STARTED` still works; the line goes from queued to gone.
+- **Translated:** `dispatchZplLabel.ts`'s hard-coded English messages (agent errors and the "bridge not implemented" refusal) now go through `printLabels.*`.
+- **Logic out of the component:**
+  - `services/printerProfiles/validatePrinterProfileDraft.ts` now holds the editor's save checks (`isPrinterProfileDraftValid`, `hasInvalidAgentPort`, `printerProfileDraftForSave`). The last one clears the port when the bridge changes.
+  - The editor used to repeat the required-fields check itself.
+- **Admin Guide correction noted, not made** (as Pete asked): EV certificates no longer bypass Windows SmartScreen. The recommendation is Microsoft Artifact Signing, or deployment through Intune or Group Policy; the macOS advice stands. It is recorded in the agent README's Open list and on PS-52.
+
+### i18n
+- `agentPrintStatus.*` (7, with plurals).
+- `printLabels.agent.*` (12).
+- `printLabels.bridgeNotImplemented`.
+- `printerProfilesSection.modal.agentPort*` (4).
+- The not-found message uses i18next's list formatter (`{{ports, list}}`), so the port list is punctuated per language.
+
+### Verified
+- **Browser, demo build, System → Printer Profiles:**
+  - the Agent Port field appears only for PathScribe Agent;
+  - 80 shows "Enter a port number from 1024 to 65535." and disables Add;
+  - 9200 saves (`agentPort: 9200` stored);
+  - Edit shows 9200, and switching the bridge to QZ Tray and saving clears it.
+- **Browser, status line** (driven through the app's own store):
+  - "Label queued: 2 jobs ahead · 1 more label waiting";
+  - then "Printing on ZD421-BENCH3";
+  - gone after done and failed;
+  - French: "Étiquette en file d'attente : 1 tâche avant elle".
+- **Unit tests:**
+  - port order and range;
+  - a configured port tried first, with fallback to the standard ports;
+  - `PRINT_STARTED` parsing;
+  - progress reports with and without `PRINT_STARTED`, and on failure;
+  - the not-found message listing "9200, 9100, 9101, and 9102";
+  - the store and summary;
+  - the component following a job;
+  - the validator.
+- **Type-check** clean. **Full suite:** 626 files passed, 3 skipped (629); 5522 tests passed, 9 skipped (5531).
+
+### Open
+- **The agent program** is still to be built. Its developers need to know that `PRINT_STARTED` is optional but recommended, what `position` means, and that the agent should accept a custom port setting.
+- **Admin Guide EV/SmartScreen correction:** noted for later.
+- **`PrinterProfilesSection.tsx`** still filters its list in the component (`filteredProfiles`); it was not in this change's path.
+- **Korean** wording for the new keys should get native-speaker review.
+
+## Batch 347 — PS-54: interface-engine print results reach the user, with a manual Retry
+
+**Pete:** "Yes" to the proposed scope:
+- the engine's answer over the live-update connection;
+- "printed" / "failed" with a Retry that keeps the job id;
+- audit;
+- a demo trigger;
+- translation;
+- the server side added to the spec.
+
+Retry is manual only.
+
+**Correction to what I told Pete:** I said cassette **and slide** labels already went to the engine. Slides were refused on that path ("needs its own payload shape — not yet built"). This batch adds the slide payload, so both now go.
+
+### Built
+- **The answer's route:** engine → API server → SignalR hub → the user who sent the job.
+  - **Contract:** `liveUpdateContract.ts` gains `PrintJobStatus` / `PrintJobStatusEvent` / `parsePrintJobStatusEvent`.
+  - **Service interface:** `ILiveUpdateService` gains `subscribePrintJobs`.
+  - **SignalR transport:** it keeps the connection for print-result subscribers and sends no scope for a print-only connection.
+  - **Local transport:** it gains `publishPrintJobStatus`, used by the demo.
+- **`services/networkPrint/`** (new): `networkPrintJobs` (in `@/services`).
+  - **Tracking:** it tracks each label sent and listens only while one is waiting.
+  - **Audit:** it audits each result, and each retry with the user who retried.
+  - **Answers it ignores:** an answer for an earlier attempt, or a repeat.
+  - **No answer:** a label with no answer after 2 minutes becomes retryable.
+  - **Retry:** it resends with the same `idempotencyKey`, a new `eventId` (`…-R2`) and `attempt` 2.
+  - **Moved here:** `handleNetworkPrintCallback` moved here from `utils/labels/dispatchNetworkPrintJob.ts`.
+- **`components/Printing/NetworkPrintJobs.tsx`** (new), in `App.tsx` above the agent status line (`.ps-print-feedback`):
+  - it shows "sent, waiting", then "printed" (5 s) or "did not print: <reason>" with Retry and Dismiss;
+  - a failure is announced;
+  - **demo only** (no hub, not an SSO build): *Simulate: printed / out of labels*.
+- **Payload** (`NetworkPrintPayload`):
+  - `labelData.labelType` (`CASSETTE` / `SLIDE`, absent = cassette) and `labelData.slide` (level, stain), with template `ZPL-SLIDE-V1`;
+  - `attempt`;
+  - the `callbackUrl` is now a relative placeholder that the API server replaces.
+- **Bug fixed:** job ids were `EVT-{case}-{ms}`, so a batch of labels sent in one millisecond shared an id and an idempotency key. An engine enforcing the key would have printed only one of them. Ids are now unique per label (`newNetworkPrintJobId`).
+- **`printCassetteSlideLabel.ts`:** engine jobs go through the tracker; slides now print on that path; messages are translated.
+- **Server spec:** `docs/architecture/LIVE_UPDATES_SIGNALR.md` §10 (new):
+  - the endpoints: `POST /api/print/jobs`, and `POST /api/print/callbacks` with the engine's own credential;
+  - sending to the user;
+  - the idempotency rule (a key that has printed is never printed again; failed keys may be retried);
+  - the audit entries, and tests for the server.
+- **Test hub:** `fakeSignalRHub` can send print results; the real SignalR client receives one end to end.
+
+### i18n
+- `networkPrint.*` (24 keys: job states and seven failure reasons, Retry / Dismiss / attempt, demo buttons, payload and GTIN errors).
+- The English print errors in `dispatchNetworkPrintJob.ts` and `printCassetteSlideLabel.ts` are converted.
+
+### Verified
+- **Browser, demo build,** a cassette and a slide sent to a *Direct via Interface Engine* printer:
+  - both showed "sent, waiting";
+  - simulated *out of labels* on the cassette: "did not print: ZT411-GROSS-2 is out of labels." with Retry and Dismiss (announced as an alert);
+  - simulated *printed* on the slide;
+  - Retry → "Attempt 2" waiting → printed;
+  - both cleared after 5 s;
+  - the audit shows Dispatched, Failed, Retried (by Pete Nimmo), Dispatched attempt 2 with the same idempotency key, and Succeeded; the slide used `ZPL-SLIDE-V1`;
+  - German: "Etikett S26-4403-B1 wurde nicht gedruckt: ZT411-GROSS-2 hat keine Etiketten mehr." with "Erneut versuchen".
+- **Unit and integration tests:**
+  - the tracker: printed, failed, retry, late and duplicate answers, no answer, several labels, simulation rules;
+  - the panel;
+  - the contract and both transports;
+  - the real SignalR client receiving a print result;
+  - unique ids and the slide payload.
+- **Type-check** clean. **Full suite:** 628 files passed, 3 skipped (631); 5535 tests passed, 9 skipped (5544).
+
+### Open
+- **API server:** `POST /api/print/jobs` (the browser still only records the job), `POST /api/print/callbacks`, sending `PrintJobStatus`, and `GET /api/print/jobs/{id}` for re-reading after a reload. Specified in §10; added to PS-345.
+- **Vial and rack/batch label templates** need real label stock and hardware (PS-54 item 2).
+- **Jobs live in the tab's memory:** after a reload, earlier answers are audited but not shown.
+- **Korean** wording for the new keys should get native-speaker review.
+
+## Batch 348 — PS-67: one service result shape across the app
+
+**Pete:** "Next Jira ticket". PS-67 is the next workable High-priority item. PS-50 and PS-53 are engine-side work, and PS-59 needs a product decision.
+
+### Checked first
+- **Who used the old shape:** `types/serviceResult.ts` (`{ success, data, error }`) was imported only by the three `services/aiIntegration/` files, through the `types/index.ts` barrel. Every one of the 355 `ServiceResult` imports was resolved to confirm this.
+- **Who reads the result:** the live caller is now `useSignOutWorkflow.ts` (AI synoptic suggestions, and the narrative from synoptic answers). The ticket's `OrchestratorSectionEditor.tsx` stopped using it when its AI spelling check was retired in Batch 338.
+- **Also converted:** `mockVoiceMacroService.refineTranscript` returned its own inline `{ success, data }`.
+- **Left alone:** other `success` fields are separate result types that carry more than data: a case claim with `claimedBy`, an email send with `messageId`, an editor insert result. They are not this convention.
+
+### Changed
+- **AI services:** `IAIIntegrationService`, `PathScribeAIService` and `MockAIIntegrationService` return `ServiceResult` from `services/types.ts` (`{ ok: true, data }` / `{ ok: false, error }`).
+- **Voice macros:** `mockVoiceMacroService.refineTranscript` returns the same shape.
+- **The live caller:** `useSignOutWorkflow.ts`'s two call sites check `result.ok === false`. This is an explicit comparison because `strictNullChecks` is off. Behaviour is unchanged.
+- **Deleted:** `types/serviceResult.ts`, and its re-export from `types/index.ts`.
+- **New guard test:** `services/serviceResultShape.guard.test.ts` checks that the old type stays gone and that these services return `{ ok, … }`.
+- **READMEs:** `types/README.md` now marks the old finding resolved, and corrects which component calls `PathScribeAIService`.
+
+### i18n
+None (no user-facing text changed).
+
+### Verified
+- **Type-check** clean.
+- **Full suite:** 629 files passed, 3 skipped (632); 5537 tests passed, 9 skipped (5546).
+
+### Open
+- None for PS-67. PS-68, a related clean-up of the unused `ReportSnapshot` types, is still separate.
+
+## Batch 349 — Quick UI fixes: PS-100 toasts, PS-101 search, PS-126 macros
+
+**Pete:** "Yes" to starting the quick UI bug batch (PS-100, PS-101, PS-126, PS-98). PS-98 needs the screen named: the ticket's attachment can't be read from here.
+
+### Checked first (in the browser, as the demo user)
+- **PS-101, "Search does not appear to be working":** the Search button works, and names and accession numbers were found. Three real faults:
+  - an MRN typed alone (`100001`) found nothing: a value matching no configured format filled patient name, MRN and MPI together, and all three had to match;
+  - the page silently limited every search to the last 30 days of accession dates, so an older case never appeared for its own accession number;
+  - the header search popup showed raw status codes (`pending-review`) in near-invisible grey.
+- **PS-100, toasts vanish too fast:** the report page's own toast showed every message, failures included, for 2.2 seconds with a green check; every other toast (react-toastify) closed after 5 seconds whatever its length.
+- **PS-126, macros:** the sidebar hint was `#475569` on the dark panel (about 2.3:1). Administrators saw only their own personal macros, and every user was offered Enterprise.
+
+### Changed
+- **Toasts (PS-100):**
+  - `utils/toastPolicy.ts` (new): warnings, errors and messages over 120 characters stay until closed; short confirmations fade after 4 to 9 seconds, depending on length.
+  - `utils/installToastPolicy.ts` (new), called once in `App.tsx`: applies the rule to every react-toastify toast, so no call site changed. Toasts are larger, wrap lines, and are 420 px wide.
+  - Report page: `useSynopticToast.ts` and `SaveToast.tsx` take a kind, show its icon, and close on a click or ×. The 75 warning and failure calls in `SynopticReportPage/` pass `'warning'` (a material-tree simulation passes it only when events failed). Nine English-only warnings there were translated.
+- **Search (PS-101):**
+  - `detectIdentifierType.ts`: an unrecognised value is matched against name, MRN **or** accession (`anyIdentifier` → the case service's existing `search` parameter).
+  - `utils/search/resolveSearchDateRange.ts` (new): an identifier search with no dates chosen searches every date. The page says so under the field, and the results summary names "all accession dates".
+  - `CaseSearchBar.tsx`: every case status has a translated label on a readable pill. Its flag chips' inline colours became a `--ps-hue` custom property.
+- **Macros (PS-126):**
+  - `services/macros/macroAccess.ts` (new): administrators (`admin`, `pathologist-admin`, `superadmin`) see every macro and alone may create or change Enterprise macros. It also builds the grouped list: Enterprise, then facilities, then each user's personal macros.
+  - `MacroPanel.tsx`: an **All** tab for administrators, grouped with headers, with the four tabs two by two. Enterprise is offered only to administrators; for anyone else an Enterprise macro, or another user's, opens read only (note, no Delete, Save disabled, and the save refuses it). Hint and empty-list text are readable.
+
+### i18n
+33 new keys in all five locales:
+- `saveToast.close`;
+- `synopticReportPage.toast.*` (10);
+- `searchPage.summaryParts.{allDates, anyIdentifier}` and `searchPage.identifierField.allDatesHint`;
+- `macroPanel.tier.all`, `macroPanel.group.{facility, personal}`, `macroPanel.errors.notAllowed` and `macroPanel.editor.readOnly`;
+- `caseSearchBar.status.*` (14: ten reuse the Search page's existing status wording, plus accepted, AI-assisted, claiming and closed).
+
+The Korean should get native-speaker review with the rest.
+
+### Tests
+- **New:** `toastPolicy.test.ts`, `installToastPolicy.test.ts`, `search/resolveSearchDateRange.test.ts`, `services/macros/macroAccess.test.ts` and `pages/Synoptic/__tests__/synopticToast.test.tsx`.
+- `MacroPanel.test.tsx` gained 4 PS-126 tests.
+- `detectIdentifierType.test.ts` expects the any-identifier result.
+- 26 hook-test assertions now expect the `'warning'` argument.
+
+### Verified
+- **Type-check** clean.
+- **Full suite:** 634 files passed, 3 skipped (637); 5558 tests passed, 9 skipped (5567).
+- **Browser (demo user):**
+  - **Search:** MRN `100001` finds 2 cases (was 0), and `S26-4403` and `Williams` are found with no dates chosen.
+  - **Header popup:** every status is labelled.
+  - **Toasts:** a long warning toast is still up after 10 seconds, while "Draft saved" has faded.
+  - **Macros:** the macro panel opens on All with an Enterprise group and readable hint text.
+
+### Open
+- **PS-98:** waiting for Pete to say which screen has the tile too close to the Tab Selector.
+- **Found, not fixed:**
+  - One demo case (`S26-9101-CYT-001`) is seeded with status `complete`, which isn't a case status, so it shows as raw text.
+  - The header popup reads `case.flags`, but cases store `caseFlags`, so flag chips never show there.
+
+## Batch 350 — Search repaired, results paged on the server
+
+**Pete:** "Based on the research, I would say that the search is largely broken. Let repair search. One thing I want is that results should be paged so that the heavy lifting is done on the server side." This batch covers sections 1 and 2 of that day's gap analysis. Section 3 (new searchable case data: case type, sign-out date, holds, amendments …) is left for a decision.
+
+### Checked first
+- **Filters that never matched:**
+  - diagnosis read fields that aren't on a case;
+  - requisition numbers were compared to accession numbers;
+  - pathologist matched only the assigned pathologist;
+  - ICD matched ICD-10 only;
+  - the synoptic protocol list was hard-coded with mostly the wrong template ids;
+  - flags missed the older inline records most demo cases carry;
+  - Non-binary and Other could never match the recorded sex.
+- **Paging:**
+  - the access check ran after each page was cut, so pages came back short and counts were wrong;
+  - specimen flags filtered only the loaded page;
+  - the table re-sorted what Load More appended.
+- **Storage and other rules:**
+  - saved searches lived in this browser only and dropped facility and specimen flags;
+  - the last search kept the whole result list (patient data) in session storage;
+  - export covered the rows on screen, with English headings and US dates;
+  - the page imported a mock service directly and used browser storage (on both deployment baselines).
+
+### Changed
+- **`services/caseSearch/`** (new): the server-side search.
+  - Access-filtered cases → match → sort (stable tiebreak) → count → one page; page sizes 25, 50 or 100.
+  - Export: every match up to 5,000, as data, audited without patient data.
+  - The matching rules fix every item above.
+  - Contract for the .NET server: `docs/architecture/CASE_SEARCH_API.md` (new).
+- **`services/cases/`:** the Search-only filters left `CaseFilterParams`, `caseFilterUtils.ts` and the Firestore stub, so there is one implementation.
+- **`services/savedSearches/`:** the Search page's saved searches (context `caseSearch`) store its whole draft. The seeds were converted.
+- **`utils/search/`** (new files, and a README): building the request, the summary, the CSV, date shortcuts, session navigation state (no results kept), specimen suggestions and picker filtering.
+- **`utils/detectIdentifierType.ts`:** a requisition number fills the order-number filter.
+- **`pages/SearchPage.tsx`:**
+  - One draft and a pager (first, previous, next, last), with page size and sort. "26–50 of 99 cases".
+  - Paging and sorting re-run the search that produced the results.
+  - Protocols come from the protocol registry; flags are chosen by id.
+  - Statuses: 16 of 17 are offered. Sex offers the recorded values.
+  - Saved searches go through the service. Returning from a case fetches the same page again.
+  - Off both deployment baselines (177 mock imports and 33 browser-storage users left).
+- **`components/Worklist/WorklistTable.tsx`:**
+  - New `preserveOrder`, so Search shows the server's order without the urgent/pool sections.
+  - Status labels translated.
+  - Raw inline styles converted: flag chip, container height, divider pointer, and the status-dot glow built in JSX.
+- **`utils/caseRevisionDisplay.ts`:** `getCaseStatusLabel(…, t)` is translated (also on the report page's header pill). The English wording is unchanged, except "AI-Assisted".
+- **`AppShell.tsx`, `SynopticReportPage.tsx`:** the return-to-Search mark and where a case was opened from go through `utils/search/searchSession.ts`.
+
+### i18n
+- **Added 72 keys in all five locales** (plural forms counted separately):
+  - `searchPage.*` (51): `csv.*` (11), `dateShortcuts.days7/days30/days90/year1`, `export.*`, `pager.*`, `sort.*`, `summary.noResults/rangeOfTotal_*/searchFailed`, `summaryParts.facility/orderNo/specimenFlags`, `statusLabelKey.accepted/aiAssisted/claiming/closed` (reusing the case search bar's wording), `resourceLinks.*`, `savedSearch.deleteAria/failed`, and the chip and aria labels;
+  - `caseStatusDisplay.*` (21): 17 statuses, 3 revisions and `finalWithRevision`.
+- **Removed 5 unused keys:** `searchPage.summary.loadMore`, `summary.resultCount_one/_other`, `genderLabelKey.NonBinary/Other`.
+- The Korean should get native-speaker review.
+
+### Tests
+- **New:**
+  - `services/caseSearch/caseSearchMatching.test.ts`: one case per repaired filter, ordering and paging.
+  - `createCaseSearchService.test.ts`: pages never overlap, totals after access rules, the page-size cap, a page past the end, export limit and audit.
+  - `utils/search/caseSearchUtils.test.ts`.
+- `detectIdentifierType.test.ts` expects `orderNo`.
+
+### Verified
+- **Type-check** clean.
+- **Full suite:** 637 files passed, 3 skipped (640); 5603 tests passed, 9 skipped (5612).
+- **Browser (demo user):**
+  - All dates → 99 cases in 4 pages, "26–50 of 99" on page 2. Sort by patient name and accession number re-sorts on the server.
+  - Results show as one list in the server's order.
+  - MRN `100001` → 2 cases. Diagnosis "adenocarcinoma" → 2 (the 2 seed cases whose text says so; before, 0).
+  - `REQ-2026-44002` → its case. Flag "Second Opinion Requested" → 6 cases (before, 0).
+  - Export: 99 rows with translated headings.
+  - A saved search saves and reloads through the service.
+  - Opening a case from page 2 and returning restores page 2 and the sort.
+  - French: the results bar and pager fit.
+
+### Open
+- **Section 3 of the gap analysis:** new searchable data. Waiting for Pete's choice.
+- **Found, not changed:**
+  - The report page's breadcrumb says "Worklist" when the case came from Search, though it returns to Search.
+  - The header search popup reads `case.flags`, which cases don't have (from Batch 349).
+  - Demo case `S26-9101-CYT-001` has the non-existent status `complete`.
+- **Still in `SearchPage.tsx`:** the user, facility, specimen and code pickers' own list filtering.
+
+## Batch 351 — Search: the section 3 filters (new searchable case data)
+
+**Pete:** "Move to section 3 issues", then **"All 15 in one batch"** when asked whether to do the 7 high-value items first.
+
+### Checked first
+Every item has a data source, but most are empty in the demo cases:
+- **No data:** holds, the abnormal marker, locations, intake type, payer and autopsy details.
+- **Sign-out timestamps:** no case has `finalizedAt`, and one finalized case has an issued date.
+- **With data:**
+  - amendment records (4 cases);
+  - stain orders (15 cases);
+  - cytology specimens (26);
+  - performing labs through the facility (16 cases; other cases' facility ids aren't in the facility list);
+  - specimen CPT codes (5);
+  - participants (4) and delegations (5).
+- **Turnaround:** TAT targets have system defaults (24 h routine, 4 h STAT).
+- **Already covered by Batch 350:** item 5, "other identifiers" (external accession, requisition, external order, referral). This batch adds lab and block numbers.
+
+### Changed
+- **`services/caseSearch/`**
+  - **15 new kinds of criterion:** case type, date basis (sign-out, release), pathologist role, revisions, holds, result flag, pending work, past TAT target, subspecialty, performing lab, location, intake, payer, CPT and autopsy (jurisdiction, authority, reports).
+  - **Wider matching:** diagnosis text includes the synoptic grade and biomarkers; order numbers include lab and block numbers.
+  - **New sort:** sign-out date. **Export:** a sign-out date column.
+  - **Joins:** matching joins reference data from one `loadReferenceData()` dependency: the specimen and stain dictionaries, performing labs, released amendments, countersigns, open delegations, and the subspecialty and TAT resolvers.
+  - `accessionDateFrom/To` became `dateFrom/dateTo` with `dateBasis`.
+- **`utils/search/`:** request, labels, summary and CSV for the new filters. Stored drafts with an unknown basis or role fall back to the default.
+- **`pages/SearchPage.tsx`:**
+  - a date-basis selector on the date range;
+  - Case type pills;
+  - a pathologist role selector, shown once a pathologist is chosen, with residents in the picker;
+  - a collapsible **More filters** section with a count, holding the other filters and a shared id/name picker.
+- **`docs/architecture/CASE_SEARCH_API.md`:** the new criteria, sort and joined data (§5, §5.1, §6), and open items.
+
+### i18n
+- **75 new `searchPage.*` keys** in all five locales: `dateBasis.*`, `caseType.*`, `pathologistRole.*`, `holdType.*`, `resultFlag.*`, `pendingWork.*`, `intake.*`, `autopsyReport.*`, `moreFilters.*`, `lookupModals.option*`, 18 `summaryParts.*`, `sort.signedOutDateDesc`, `csv.signedOutDate` and `sections.caseType`.
+- **Reused:** `caseStatusDisplay.revision.*`, `autopsyIntake.caseAuthority.*` and `jurisdictionNames.*`.
+- **Removed:** `searchPage.sections.accessionDate`, replaced by the selector.
+- The Korean should get native-speaker review.
+
+### Tests
+- `caseSearchMatching.test.ts`: 12 new tests, covering every new criterion, including the release buffer, open vs signed-out TAT, and non-autopsy cases never matching autopsy filters.
+- `caseSearchUtils.test.ts`: request, normalisation and summary.
+
+### Verified
+- **Type-check** clean.
+- **Full suite:** 637 files passed, 3 skipped (640); 5618 tests passed, 9 skipped (5627).
+- **Browser (demo user, 99 cases):**
+  - **Case type:** gyn cytology 25, non-gyn 1, surgical 73 (all 99 covered).
+  - **Revisions:** 5. **Pending work:** stains 6, IHC 3, molecular 0 (the only molecular order is ready for review).
+  - **Codes and dates:** CPT 88307 → 3; sign-out date since Jan 1 → 1; past TAT target → 66; holds → 0 (no data).
+  - **Through the service:**
+    - PATH-001 is assigned on 43 cases, signed out 1 and is countersigner on 1;
+    - subspecialty gi → 18, breast → 19;
+    - performing labs return their cytology cases.
+  - **Layout:** the More filters section fits in English and German.
+
+### Open
+- **Demo data:** filters with no demo data match nothing until such cases exist: holds, result flag, location, intake, payer, autopsy.
+- **Facility ids:** the Henry Ford, Manchester and Midwest labs find no cases because those demo cases' facility ids aren't in the facility list.
+- **Services to create:**
+  - TAT targets and their resolver still live in component files (loaded lazily by the search service);
+  - delegations are read from a function on the mock case service.
+
+  Both belong in services the API server owns.
+
+## Batch 352 — Demo data: ordering clients for the Manchester, Midwest and Henry Ford cases (PS-101)
+
+Pete: "Can you add the data." The Batch 351 browser check found no cases for the Henry Ford, Manchester and Midwest performing labs.
+
+**Cause.** Eleven facility ids used by the demo cases (and by the physician master file) had no facility record. Those cases had no performing lab, so Search by lab found nothing. The same gap left TAT targets, specimen routing and the sign-out country rules on their defaults for those cases.
+
+**Added** (`services/facilities/mockFacilityService.ts`): 11 ordering clients, named as the cases name them, each with a `performingLabFacilityId`.
+- Manchester Royal Infirmary, Wythenshawe and North Manchester General → the Manchester Trust lab (GB_EW). They have no parent, so the Accession page's site list is unchanged.
+- Northwestern Memorial, Rush and Advocate Illinois Masonic → Midwest Pathology Associates.
+- Henry Ford Macomb, Detroit Medical Center and Michigan Urology Centre → Henry Ford Health System.
+- Desert Hills Urology and Oasis Dermatology (outreach) → Desert Valley Medical Center.
+
+The facility seed version is now 6, so browsers reload the list. No UI text changed.
+
+**Verified**
+- Type-check clean.
+- Full suite: 637 files passed (3 skipped); 5618 tests passed (9 skipped).
+- Browser: search by performing lab found:
+  - Manchester Trust 6;
+  - Midwest 3;
+  - Henry Ford 6, including 3 CAP proficiency slides;
+  - Desert Valley 2 (was 0 for all four).
+- The facility list has 49 records.
+
+**Correction.** The Batch 351 entry said the other cases' facility ids "aren't in the facility list". For the Desert Valley cases at Metro General, Riverside, Northside and Westview (`c1`–`c4`) that was wrong: those facilities exist, but they have no lab link. Corrected in `services/caseSearch/README.md`.
+
+**Still open**
+- **Manchester site labs:** the three site labs find no cases; searching by the Trust does not include its sites.
+- **`MPA26-1006-POOL`:** a Midwest case whose ordering facility is a Henry Ford client, so it is found under Henry Ford.
+- **Desert Valley `c1`–`c4` cases:** 33 cases still resolve to no lab. Linking those four facilities to Desert Valley would fix them; not done, since it wasn't asked.
+
+## Batch 353 — TAT targets and delegations behind services (part one, front end)
+
+Pete: "TAT targets and delegations still come from screen code and the demo case data rather than proper services. They'll need to move to services the API server owns." He then chose to "complete part one. Front end." The demo implementations keep everything demoable until the API server is ready. Contract for the server: `docs/architecture/TAT_AND_DELEGATION_API.md` (new).
+
+**TAT targets** (`services/tatConfig/`)
+- **New:**
+  - `ITatTargetService`: `getAll`, `add`, `update` and `remove`. A system default can't be removed.
+  - `mockTatTargetService`, which keeps the same storage key, so demo edits carry over.
+  - `systemDefaultTatEntries.ts`, moved from `TATConfigSection.tsx`.
+  - `tatTargetResolution.ts`, the resolver moved unchanged from `components/Contribution/qualityCalculations.ts`, which re-exports it.
+- **Readers switched off the TAT screen's browser storage:**
+  - the TAT screen itself (add or update now comes from the editor's mode);
+  - Search's past-TAT filter (no more lazy component import);
+  - the Quality tab;
+  - the Contribution dashboard;
+  - the Enterprise rollup;
+  - the facility and subspecialty reference check.
+
+**Delegations** (`services/delegations/`, new)
+- **New:**
+  - `IDelegationService`: `list`, `delegate` and `complete`.
+  - `delegationRules.ts`: `planDelegation`, `pendingDelegationsTo`, `findPendingInformalReview` and `informalReviewsAsDelegations`, all moved out of screens.
+  - `delegationStore.ts`: the records and seed, moved out of `mockCaseService.ts`, same storage key.
+  - `mockDelegationService`.
+- **In the demo case service:**
+  - `getDelegations` and `completeDelegation` are gone.
+  - `assignSynoptic` returns its record.
+- **Switched to the service:**
+  - the Worklist's "Delegated to me";
+  - the Delegate dialog, which also gets types through the new `delegationTypeService` export;
+  - the informal-review banner;
+  - the Quality tab;
+  - Search.
+- **Also new:** `services/quality/qualityTatInputs.ts`, the Quality tab's joins.
+
+**Standing rules on the files touched**
+- **Inline styles converted:**
+  - QualityTab: the trend pill colour was built in JSX; it now uses `--ps-hue`. The client bars use `--bar-pct` / `--peer-pct`.
+  - DelegateModal: type-zone states are classes; the drag offset is `--drag-transform`.
+  - WorklistPage: the page layout is now `.ps-wl-page*` classes.
+- **Translation:** the Enterprise rollup shows jurisdiction names through `jurisdictionNames.*`.
+- **Deployment baselines:**
+  - Mock imports: 177 → 171. Off it: `TATConfigSection`, `QualityTab`, `EnterpriseRollupTab`, `ContributionDashboardPage`, `DelegateModal`, `InformalReviewBanner`.
+  - Browser storage: 33 → 29. Off it: the first four of those.
+
+**Verified**
+- Type-check clean.
+- Full suite: 641 files passed (3 skipped); 5635 tests passed (9 skipped), 17 new.
+- Browser:
+  - The TAT screen lists the 17 targets, and the service refuses to delete a system default.
+  - The dashboard's TAT tile and the Quality tab's trend pill render; the pill colour comes from `--ps-hue`.
+  - The Worklist layout is unchanged.
+  - A Second Opinion delegated from the Delegate dialog on S26-4404 was recorded through the service.
+  - The selected type zone shows its colours from CSS.
+
+**Found, disclosed**
+- **The informal-review banner isn't shown anywhere.** `InformalReviewBanner.tsx` is not rendered by any page (informal reviews moved to their own service earlier). It was converted anyway.
+- **Pool claims** (`ps_claims_v1`) are still kept by the demo case service.
+- **Delegation list scope:** the demo `list()` returns every record. The server should limit it to cases the user can access.
+- **Still in component files:** the TAT outlier calculations remain in `components/Contribution/qualityCalculations.ts`. `TATConfigSection.tsx`'s list filtering and sorting are still in the component.
+- **Not seen in the browser:** the client TAT bars (`--bar-pct`) did not appear with the demo data, so they weren't checked there.
+
+## Batch 354 — Search: a Trust includes the sites under it
+
+Pete: "Trust-level search to automatically include child organizations and specimens underneath them."
+
+**Done**
+- **Expanding the filters.** Choosing an organisation as the submitting facility or performing lab now includes every facility under it (`Facility.parentId`, any depth).
+  - `services/facilities/facilityHierarchy.ts` (new, pure): `parentFacilityIdMap` and `withDescendantFacilityIds`, which is loop-safe.
+  - `caseSearchMatching.ts → expandOrganisationCriteria` runs once per search, before matching. The reference data gained `parentFacilityIdById`.
+- **Demo data.** Each Manchester ordering client now sends to its own hospital site's lab and sits under that site (Trust → site → client; facility seed version 7). Batch 352 had sent all three to the Trust's lab.
+  - They are not direct children of the Trust, so the Accession page's site list is unchanged.
+  - This also fixes the Batch 352 gap where the Manchester site labs found nothing.
+- **Screen:** a hint under both filters once one is chosen. New key `searchPage.includesSitesHint`, in all five languages; Korean wording wants native-speaker review.
+- **API spec:** `docs/architecture/CASE_SEARCH_API.md` §5 has the rule, a recursive CTE on the server.
+
+**Verified**
+- Type-check clean.
+- Full suite: 642 files passed (3 skipped); 5643 tests passed (9 skipped), 8 new.
+- Browser:
+
+| Search | Cases found |
+|---|---|
+| Performing lab: Manchester Trust | 6 |
+| Performing lab: Wythenshawe | 3 |
+| Performing lab: Manchester Royal Infirmary | 2 |
+| Performing lab: North Manchester | 1 |
+| Submitting facility: the Trust | 6 |
+| Performing lab: Midwest | 3 (unchanged) |
+
+  The hint shows under the performing-lab filter.
+
+**Found, disclosed**
+- **Manchester cases with no facility.** MFT26-8801, 8803 and 8805 record no ordering facility, so no organisation filter finds them.
+- **Midwest and Henry Ford clients have no parent.** They aren't placed under their enterprise, because that would add them to the Accession page's site list. Choosing Midwest as the *submitting facility* therefore doesn't include them; the performing-lab filter does.
+- **Jira.** Pete asked for a bug for the orphaned informal-review banner found in Batch 353: **PS-346** created.
+
+## Batch 355 — PS-346: orphaned informal-review banner deleted
+
+Pete chose "Delete it". The banner (`pages/SynopticReportPage/components/InformalReviewBanner.tsx`) wasn't rendered by any page. The report page stopped showing it when informal reviews moved from `CASUAL_REVIEW` delegations to `InformalReviewRequest`, which surfaces through the Internal Notes button and the Worklist's Informal Review tile.
+
+**Removed**
+- The component.
+- Its `.ps-informal-review-banner` CSS.
+- Its `informalReviewBanner.*` keys (three per language, all five languages).
+- `findPendingInformalReview` (`services/delegations/delegationRules.ts`) and its test.
+
+**Updated**
+- Comments that pointed to the banner: `ReleaseBufferBanner.tsx`, `RevisionFeedbackBanner.tsx`, `qualityCalculations.ts`, `SynopticReportPage.tsx` and the CSS.
+- The READMEs, and the TAT and delegation API document.
+
+**Kept**
+- `delegationService.complete()` stays in the contract, though nothing on screen calls it now.
+- Consultation TAT still counts informal review requests and the seeded `CASUAL_REVIEW` records.
+
+**Verified**
+- Type-check clean.
+- Full suite: 642 files passed (3 skipped); 5642 tests passed (9 skipped). That is one fewer test, the removed rule's.
+- A search of the whole repo finds no remaining reference except the history in this changelog and the READMEs.
+
+## Batch 356 — PS-326: an instrument list for molecular batches
+
+Pete's choices:
+- an instrument is tied to a facility and a scan station;
+- a batch picks from the list only;
+- when he asked whether instrument configuration already existed, the whole-repo search found none that lists analytical instruments, and he chose "Deliver as built".
+
+**New: `services/instruments/`**
+- `IInstrumentService`, exported as `instrumentService`. Code, name, model, performing lab, optional scan station, status. The code is fixed once created.
+- `instrumentRules.ts`, pure: validation with translation-key errors, `checkBatchInstrument`, `checkInstrumentStation`, and picker/list helpers.
+- `mockInstrumentService`, seeded with PANTHER_01/02/03 (the codes the demo batches and tests use), two of them at a new seeded "Molecular — Amplification Bay" scan station.
+- Demo Reset clears the `instruments` key.
+
+**Screens**
+- **Configuration → System → Workstation & Hardware → Instruments** (`InstrumentsSection.tsx`, new): add, edit, deactivate and reactivate. The station list shows the chosen lab's stations only. Recorded as no-Duplicate in `duplicatePolicy.ts`.
+- **Plate builder:**
+  - The target instrument is a list of active instruments, this station's lab first. It was a text box.
+  - A refused instrument and scan-check failures are shown translated, with the failures joined by the new `utils/formatList.ts`.
+  - Well and legend colours are no longer built in JSX: they use `--ps-hue` with `color-mix` and state classes.
+
+**Services**
+- `mockMolecularBatchService.create` refuses an unknown or inactive instrument (`MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE`).
+- `resolveMolecularScanVerification` reports `stationVerified`.
+- `dispatchMolecularWorklist` checks the device's station against the instrument's and returns `verificationFailures`.
+- `@/services` also exports `scanStationService`.
+
+**i18n:** `instrumentsSection.*` (new), new `molecularPlateBuilderPage` keys, and `systemTab.sections.instruments`, in all five languages. The unused `molecularPlateBuilderPage.instrumentPlaceholder` was removed. Korean wording wants native-speaker review.
+
+**Verified**
+- Type-check clean.
+- Full suite: 645 files passed (3 skipped); 5660 tests passed (9 skipped), 18 new.
+- Browser:
+  - The Instruments screen lists the three Panthers with their lab and station, in English and Korean.
+  - Adding "cobas 1" was refused for its code format, then "COBAS_1" saved.
+  - The plate builder offers the four active instruments.
+  - Legend swatches take their colour from CSS.
+
+**Still open**
+- **Seed station in existing browsers.** The new molecular station reaches a browser that already stored scan stations only after Demo Reset: stations have no seed version. *Fixed in Batch 357.*
+- **Plate builder baseline.** The plate builder still imports several demo services and stays on the mock-import baseline.
+- **Workcenter display.** The Molecular Workcenter still shows instrument codes, not names.
+- **Other free-text ids.** Molecular QC run records and inbound instrument messages still carry a free-text `instrumentId`.
+- **English service errors.** Batch-service rejection messages other than the instrument one are still English (pre-existing).
+
+## Batch 357 — Demo data: new seed stations and instruments reach existing browsers
+
+Pete flagged the Batch 356 gap: "anyone who has already used the demo won't see the new molecular station until they run Demo Reset."
+
+**Done**
+- `services/mockSeedMerge.ts` (new, pure): `withMissingSeedRecords(stored, seed)`. It appends seed records whose id isn't stored, and never replaces stored records or their edits.
+- `mockScanStationService` and `mockInstrumentService` use it when loading, and write the list back. This is safe because neither list can be deleted from (deactivate only).
+
+**Verified**
+- Type-check clean.
+- Full suite: 647 files passed (3 skipped); 5664 tests passed (9 skipped), 4 new.
+- Browser: a stored station list without the molecular bay gained "Molecular — Amplification Bay" on load, with no reset.
+
+**Answered, not built.** Pete asked whether equipment configuration should be centralised. The recommendation was a hybrid:
+- one Equipment register for identity, location, status and, later, maintenance and calibration;
+- workflow-specific settings kept in Printer Profiles, Grossing Hardware, engravers and cold chain, each pointing at a register entry.
+
+This waits on his decision.
+
+## Batch 358 — Equipment register (centralised equipment, part 1)
+
+Pete: "it might make sense to centralize this equipment configuration, unless it makes more sense to keep it within its workflow family". He then said "Yes" to the hybrid recommendation:
+- one register for what every device shares;
+- workflow-specific settings stay on their own screens and point at it.
+
+**New: `services/equipment/`**
+- **Contract.** `IEquipmentService`, exported as `equipmentService`, with `EQUIPMENT_KINDS`. Each item has code, name, kind, make, model, serial number, performing lab, scan station and status. The code is fixed once created, and nothing is deleted.
+- **Kinds:** analyser, stainer, tissue processor, slide scanner, camera, scale, label printer, engraver, storage unit, other.
+- **Rules.** `equipmentRules.ts` generalises Batch 356's instrument rules and adds a kind check. `checkBatchInstrument` now also refuses non-analysers.
+- **Demo register.** `mockEquipmentService` seeds the Panther analysers with the same ids and codes. A browser holding Batch 356's `instruments` list brings it across once as analysers (tested, and checked in the browser with an admin-added "Cobas 1"). Later seed records reach existing browsers.
+
+**Replaced:** `services/instruments/` and `InstrumentsSection.tsx` (listed in the zip's `DELETED_FILES.txt`).
+- **Screen:** Configuration → System → Workstation & Hardware → **Equipment** (`EquipmentSection.tsx`). Kind, make, model and serial fields; a kind filter and column; a hint that active analysers are what molecular batches target.
+- **Wiring:** the plate builder, batch creation and dispatch now use the register.
+- **Admin lists:** the Demo Reset keys and the duplicate policy were updated.
+
+**i18n:**
+- `instrumentsSection.*` became `equipmentSection.*`.
+- New `equipmentKinds.*`.
+- `systemTab.sections.instruments` became `systemTab.sections.equipment`.
+- Two plate-builder messages now name the equipment register.
+
+All five languages. Korean wording wants native-speaker review.
+
+**Verified**
+- Type-check clean.
+- Full suite: 647 files passed (3 skipped); 5665 tests passed (9 skipped).
+- Browser:
+  - The register lists the migrated Cobas 1 and the three Panthers, in English and German.
+  - A camera was added (kind, make, serial number, station); the kind filter shows it alone.
+  - The plate builder offers analysers only.
+
+**Still open**
+- Printer Profiles and Grossing Hardware are not yet linked to the register (Batch 359, next).
+- Engravers and cold-chain storage units aren't linked.
+- There are no maintenance or calibration records yet.
+- Molecular QC runs and inbound messages still carry a free-text instrument id.
+
+## Batch 359 — Equipment register, part 2: Printer Profiles and Grossing Hardware linked
+
+**Correction.** When recommending the hybrid, I said a scale's settings "stay in Grossing Hardware" as if that were a screen. It wasn't: the grossing hardware service existed, but its admin screen was never built (its README said so). I told Pete before building, and he chose "Build the screen and link".
+
+**Done**
+- **Grossing Hardware screen** (new, `GrossingHardwareSection.tsx`, under Workstation & Hardware): cameras and scales.
+  - Fields: kind; name; connection (camera = browser or Agent; scale = Agent or manual entry, never the browser); an https:// Agent address; station; register device; active.
+  - The rules are pure and tested (`grossingHardwareRules.ts`). `@/services` exports `grossingHardwareProfileService`.
+- **Device links:**
+  - `PrinterProfile.equipmentId` and `GrossingHardwareProfile.equipmentId` name the physical device in the register.
+  - The mock services refuse a device of the wrong kind (`EQUIPMENT_LINK_INVALID`), and the screens translate the refusal.
+  - Printer Profiles gained a Register Device field and column. A refused save now shows a message; it used to close silently.
+- **Register:** a new **Settings** column lists the printer and grossing profiles that point at each device.
+- **Seed:** the Zebra ZT411 is added to the register, and the seeded printer profile links to it. `withSeedFieldBackfill` (new, `mockSeedMerge.ts`) gives browsers that stored the profile earlier the link, without replacing stored values.
+- **Duplicating a printer profile** no longer copies its device.
+- **Also:**
+  - Grossing Hardware is recorded as no-Duplicate.
+  - The printer list's filter and support label moved to `printerProfileList.ts`.
+  - Status toggles on the new screen are real buttons.
+
+**i18n:** `grossingHardwareSection.*` (new); printer device keys; `equipmentSection.headers.settings` and `.settingsLink.*`; `systemTab.sections.grossingHardware`. All five languages; Korean wording wants native-speaker review.
+
+**Verified**
+- Type-check clean.
+- Full suite: 649 files passed (3 skipped); 5683 tests passed (9 skipped), 18 new.
+- Browser:
+  - A camera added to the register was linked to the default grossing camera profile.
+  - A scale is offered only Agent or manual entry, and an http:// Agent address is refused.
+  - The Zebra profile shows its register printer.
+  - The register's Settings column shows both links.
+  - Checked in English and Korean.
+
+**Still open**
+- **Not linked:** engravers and cold-chain storage units.
+- **Not built:** maintenance and calibration records.
+- **Location:** a settings record's own lab or station and its device's aren't kept in step.
+- **Default profiles:** the two seeded grossing profiles are unlinked by design; they aren't a specific bench's device.
+
+## Batch 360 — Equipment register, part 3: maintenance and calibration records
+
+Pete answered "Yes" to the choice between maintenance/calibration records and the Jira bug list. I read it as the records, the first option offered, and said so before starting.
+
+**Done**
+- **Schedules** on each device: maintenance and calibration intervals in days (optional, 1 to 3650).
+- **Service log** (`services/equipment/IEquipmentLogService.ts`, exported as `equipmentLogService`).
+  - Entry types: maintenance, calibration, function check, repair, malfunction.
+  - Outcomes: pass, fail, not applicable. Each entry records the date done, who did it (staff or a service engineer) and notes.
+  - **Append-only:** no edit or delete, and every entry is audited (`equipment.log_entry_added`, English detail).
+- **Rules** (`equipmentLogRules.ts`, pure, tested):
+  - Validation: no future dates; a failure or malfunction needs notes.
+  - Due dates count from the last passing entry. A failed calibration doesn't reset the clock.
+  - An open malfunction lasts until a passing repair or function check.
+  - One status per device, worst first: malfunction, overdue, not yet done, due soon, up to date, not scheduled.
+- **Screens:**
+  - The Equipment register has schedule fields, a **Service** column ("Next due …" / "Was due …", dates in the user's locale on the facility's calendar) and a **Log** action.
+  - `EquipmentLogModal.tsx` (new) shows due dates, an open-malfunction warning, an entry form and the history.
+- **Demo data:** schedules on the Panthers, and a seeded history showing up to date, overdue and malfunction. Browsers that stored the register earlier get the schedules.
+  - Demo Reset clears `equipment_log`.
+  - `utils/facilityTime.ts` gained `getFacilityIsoDate`.
+
+**i18n:** `equipmentLog.*` (new), and new `equipmentSection` keys for schedules, service and due dates. All five languages; Korean wording wants native-speaker review.
+
+**Verified**
+- Type-check clean.
+- Full suite: 651 files passed (3 skipped); 5699 tests passed (9 skipped), 16 new.
+- Browser:
+  - The register shows up to date, overdue and malfunction for the three Panthers, and "not scheduled" for the printer.
+  - Recording a failed repair without notes is refused.
+  - A passing repair cleared Panther 3's malfunction.
+  - Checked in English and German.
+
+**Still open**
+- **No blocking.** A device with an open malfunction or overdue calibration is flagged, not blocked; a molecular batch can still target it. Whether to block is Pete's call.
+- **No reminders or cross-device report** yet.
+- **Engravers and cold-chain storage units** still aren't linked to the register.
+
+## Batch 361 — Equipment shown in red
+
+Pete answered the open question from Batch 360 ("block, or just flag?") with "Show the device in red": flag, don't block.
+
+**Done**
+- **Rule** (`services/equipment/equipmentLogRules.ts`): `isServiceAlert(state)` is true for an open malfunction or anything past due (maintenance or calibration). `serviceStatesById` gives each device's state for a picker. Both are tested.
+- **Equipment register:** the device's row is red (red name, red left edge, faint red background).
+- **Molecular batch instrument picker** (`MolecularPlateBuilderPage.tsx`):
+  - An alert analyser's option reads "⚠ Panther 3 (PANTHER_03): Malfunction" in red. The text is there because some browsers ignore colour on dropdown options.
+  - When one is chosen, the picker gets a red border and a warning below it. It can still be chosen.
+
+**i18n:** three new `molecularPlateBuilderPage` keys (`instrumentAlertMalfunction`, `instrumentAlertOverdue`, `instrumentOptionAlert`) in all five languages. There is no separate Flemish locale; Belgian Dutch users get the Dutch (nl) text. Korean wording wants native-speaker review.
+
+**Verified**
+- Type-check clean.
+- Full suite: 651 files passed (3 skipped); 5701 tests passed (9 skipped), 2 new.
+- Browser: Panther 2 (overdue) and Panther 3 (malfunction) are red in the register; Panther 1 and the printer are not. In the picker, checked in all five languages (en, fr, de, nl, ko): the two alert options are red and labelled, each shows its own warning when chosen, and Panther 1 shows none.
+- Correction: Batch 360's browser check covered English and German only. The other three languages were covered by the locale tests (every key present, placeholders match), not on screen. This batch checked all five on screen.
+
+**Still open**
+- The Molecular Workcenter lists batches by instrument code only, so it has no red flag.
+- No reminders or cross-device report; engravers and cold-chain storage units still aren't linked to the register.
+
+## Batch 362 — Belgian Dutch (nl-BE)
+
+Pete: "For completeness we should add the Belgium Dutch version." Before this, Belgian users got the Netherlands Dutch text and Netherlands date format.
+
+**Done**
+- **`locales/nl-BE.json`** (new), a regional variant with 23 strings. Everything else falls back to Dutch, then English (`config.ts`: `SUPPORTED_LANGUAGES` gains `nl-BE`, new `REGIONAL_VARIANTS`, `fallbackLng` per language). The Belgian wording:
+  - aanmelden/afmelden rather than inloggen/uitloggen (log-out buttons, session messages, automatic log-off, a foot-pedal description);
+  - familienaam rather than achternaam (staff, physicians, patient name fields);
+  - gsm and operator for a mobile phone and carrier (physician SMS fields);
+  - "registratie-" for the specimen log-in stickers;
+  - Belgian address order in the two address placeholders ("Kerkstraat 12, 9000 Gent").
+- **Dates and numbers** come from the `nl-BE` locale: 27/09/2026, where the Netherlands shows 27-09-2026.
+- **Language menu:** "Nederlands (Nederland)" and "Nederlands (België)" (the `language.nl` label changed, and `language.nl-BE` was added, in all five full files); the button shows NL-BE. A browser set to Belgian Dutch starts in nl-BE.
+- **`utils/formatOrdinal.ts`** treats a regional variant as its language (it would otherwise have fallen to English ordinals). New `formatOrdinal.test.ts`.
+- **`localeParity.test.ts`:** nl-BE may hold only keys English has, with English placeholders and markup, each different from the Dutch. Any Dutch string using a Netherlands-only word (inlog/uitlog, achternaam) must have a Belgian version, so new keys can't drift. The wiring check accepts hyphenated codes.
+- **`CLAUDE.md` rule 3** describes the variant: new keys go in the five full files; nl-BE only when the Dutch uses a Netherlands-only word.
+
+**Verified**
+- Type-check clean.
+- Full suite: 652 files passed (3 skipped); 5708 tests passed (9 skipped), 7 new.
+- Browser:
+  - A fresh browser set to Belgian Dutch opened in nl-BE and showed the Belgian wording; unchanged keys showed the Dutch text, never English.
+  - The equipment register showed dates as 18/10/2026. After switching to Nederlands (Nederland) it showed 18-10-2026 and the Netherlands wording.
+  - The choice survived a reload.
+
+**Still open**
+- **Voice:** there's no Belgian Dutch voice profile; dictation in Dutch uses nl-NL recognition.
+- **Spelling:** the spell checker uses the one Dutch dictionary, which is correct since spelling is shared.
+- **French-speaking Belgium:** fr-BE is not a variant; Walloon and Brussels users get France French.
+- **Wording review:** the Belgian wording should be reviewed by a Flemish speaker.
+- **Noticed, not changed:** `JURISDICTION_LOCALE` in `types/systemConfig.ts` gives the Netherlands a DD/MM/YYYY date format, but Dutch dates are written with dashes (DD-MM-YYYY), as the browser's nl-NL format shows.
+
+## Batch 363 — PS-72: patient data kept out of support screenshots
+
+Pete said "next" on the Jira list. PS-72 was the next bug with real work left: the ticket's last recount found 442 untagged places where the UI shows patient data, which the Enhancement Request screenshot would then capture.
+
+**What the old count really was**
+- `scripts/tag-phi.mjs` matches lines. Re-run this batch, it flagged 420. Reading them showed most were not gaps: CSS class names containing "accession", translation keys, comments, search filters, values handed to child components, and cells already tagged on the enclosing element (the worklist's name/MRN/DOB cells).
+- The toast question from the ticket had already been answered: `components/Common/PhiToastMessage.tsx` exists and redacts a toast.
+
+**Done**
+- **A structure-aware check** (`services/phi/phiRenderAudit.ts`, new, tested): it reads each file with TypeScript's parser and reports patient data that is actually shown (a JSX child, a form field's value, `<Trans values>`, a toast message) outside an element the screenshot redacts. What it counts and ignores is in `services/phi/README.md`.
+- **A guard** (`phiTagging.guard.test.ts`) runs it over all of `src/` in about 5 seconds, with no exception list. A mutation check strips the worklist's tags and confirms it notices.
+- **The gaps it found, all fixed,** across 60 files (`data-phi` tags, plus redacted toasts):
+  - patient names, MRNs and dates of birth in the report's patient panel, order lookup, patient-link search, intraoperative queue, OR board, external consult view, microtomy/embedding context bars, cytology worklists, cytology QA, molecular batches and billing logs;
+  - case numbers in the worklist (card and table), audit log, QA screens, queues, search bar, material tree (specimen/block/decant ids contain the accession) and many modals;
+  - the audit log's free-text detail and interface-exception reasons as whole cells, because stored text can carry any identifier.
+  - Two found only by the browser check: the worklist's case-number cell (`{c.id}`) and the audit log's case links. The checker was then taught that a case's id is its case number, and that `caseId` and `…PatientIdentifier` fields are identifiers.
+- **Toasts:**
+  - the report page's `showToast(message, kind, { containsPhi: true })` tags the message in `SaveToast`; printing and countersign toasts use it;
+  - `services/phi/phiToast.ts → phiToastContent()` does the same for react-toastify messages outside components;
+  - the three HL7 notifications (block exception, material location, cassette dispatch) use `phiToastContent()`.
+- **Mis-tag fixed:** `OrSuiteDashboardPage` had `data-phi="mrn"` on the "MRN" label, not the value.
+- **Standing rules on the files touched:**
+  - **Translation:** the HL7 notifications, the cytology worklist row subtitle and "Unknown patient", the break-glass downtime option and the report page's intraoperative-merge toast were hard-coded English. They are now translated: `hl7Notifications.*`, `cytologyWorklist.rowSubtitle` / `unknownPatient`, `breakGlassRebindModal.downtimeOption`, `synopticReportPage.toast.intraopMerged`, all five languages.
+  - **Inline styles:** colours built in JSX (cytology worklist tiles, identifier-format kind badge), the report watermark and the report preview's column layout now go through custom properties and CSS rules.
+  - **Deployment baseline:** seven files came off the mock-import baseline (`@/services` instead of the mock file).
+- **`CLAUDE.md`:** new standing rule **5. Patient data on screen is redactable**, and a checklist line. "Verify, don't trust" is now rule 6.
+
+**Verified**
+- Type-check clean.
+- Full suite: 655 files passed (3 skipped); 5735 tests passed (9 skipped), 27 new.
+- Browser, 20 screens:
+  - The screens: worklist, three case reports and their synoptic pages, cytology worklist and QC queue, surgical QA, intraoperative queue, the three bench stations, molecular order queue, add-on orders, Quality Assurance, audit log, OR board, pathology workspace, and the search bar with results.
+  - The check: every visible text node and form field containing a seeded patient's name, MRN, date of birth or accession was checked against the redaction selectors.
+  - The result: 0 unredacted.
+
+**Still open**
+- The check reads names, not types. A value that reaches the screen under an uninformative name from an unrelated function can be missed; the browser pass is the backstop.
+- `scripts/tag-phi.mjs`'s line count remains high by design. PS-72's definition of done ("every flagged item tagged or reviewed") is now met by the structure-aware check instead: 0 findings.
+- The 33 other touched files on the deployment baseline still import mock services directly; most use services `@/services` doesn't export yet.
+
+## Batch 364 — Support references, and support tickets without identifiers (PS-349, PS-350)
+
+Pete forwarded three suggestions from the developers:
+- correlation IDs instead of identifiers in support artifacts;
+- a support redaction policy;
+- a scrubbed diagnostic bundle.
+
+While checking them, I found that support tickets sent the page address, which on a case is e.g. `/report/S26-4403`: the case number went to the support inbox even though the screenshot was redacted. Pete said yes to fixing that and building the references first. All four steps are in Jira:
+- PS-349, the ticket leak (bug);
+- PS-350, support references;
+- PS-351, the policy and customer brief;
+- PS-352, Support Mode (later).
+
+**Done**
+- **Support references** (`services/supportReferences/`, new, tested):
+  - The format is `SR-` plus eight Crockford base-32 characters (40 random bits).
+  - A reference is created the first time a record's is asked for, and stored beside it.
+  - It is random rather than a hash of the case number. Case numbers are predictable, so a hash could be reversed; HIPAA's de-identification rule asks the same of a re-identification code.
+  - Records covered: cases, audit entries, error entries, interface exceptions.
+  - Resolving one writes `support_reference.resolved` to the audit log. Typed input is normalised: lower case, spaces, missing dashes, I/L/O.
+  - Exported as `supportReferenceService`; Demo Reset clears it.
+- **Shown:**
+  - a "Support reference" chip on the case header (compact and full). A click creates or reveals the reference and copies it;
+  - the same chip on every Audit Log row (audit, errors, interfaces).
+- **Looked up:**
+  - "Find a support reference" on the Audit Log, which shows the entry or opens the case; `?supportRef=` deep-links to it;
+  - typing a reference into the case search box opens the case.
+- **Support tickets** (PS-349):
+  - System details send the route pattern (`/report/:caseId`) and the case's support reference, never the address or query string (`supportPageOf`; a test keeps its route list in step with `App.tsx`).
+  - Before sending, the title and description are checked for case numbers, MRNs and other identifiers against every format PathScribe knows. The user can replace case numbers with references, edit, or send anyway.
+  - The emails show the reference; a stray `null` line in the text email is fixed.
+
+**i18n:** `supportReference.*` (new) and `enhancementRequestModal.identifierWarning.*` in all five languages. `enhancementRequestModal.includeSystemDetailsHint` now says what is sent (the page type and the case's support reference, never the case number).
+
+**Verified**
+- Type-check clean.
+- Full suite: 660 files passed (3 skipped); 5761 tests passed (9 skipped), 26 new.
+- Browser:
+  - the case header chip created `SR-…`, copied it to the clipboard, and gave the same reference on a second click;
+  - `captureMetadata` on a case page returned `/case/:caseId/synoptic` plus the reference, with no case number anywhere;
+  - the ticket warned about `S26-4403 (case number)` and `1234567 (MRN)`, replaced the case number in both fields, and kept warning about the MRN;
+  - typing the reference into the search box opened the case;
+  - an audit row's reference, typed with spaces, found the entry, and an unknown reference said so;
+  - both lookups appear in the audit log, and `?supportRef=` works.
+
+**Still open**
+- **Demo tickets don't send:** this build has no support email address configured, so a demo ticket stops at "No recipients configured". That behaviour predates this batch.
+- **Not checked:** patient names in typed text (no pattern can recognise them) and attachments.
+- **Production:** the API server should issue and resolve references (PS-350).
+- **Next in the plan:** PS-351 (policy and customer security brief) and PS-352 (Support Mode, deferred).
+
+## Batch 365 — Belgium follow-ups: Belgian French, Netherlands dates, Belgian Dutch dictation (PS-347)
+
+**Done**
+- **Belgian French (fr-BE)**, a regional variant like nl-BE:
+  - `locales/fr-BE.json` (new) with 4 strings: Belgian address order in the two address placeholders ("Rue et numéro, code postal, commune"; "Rue de l'Église 12, 5000 Namur"), and "GSM" in the physician SMS fields. Everything else falls back to French, then English.
+  - `config.ts`: `SUPPORTED_LANGUAGES`, `REGIONAL_VARIANTS` and `fallbackLng` gain fr-BE.
+  - Language menu: "Français (France)" and "Français (Belgique)" (`language.fr` changed and `language.fr-BE` added in all five full files); the button shows FR-BE.
+  - `localeParity.test.ts` checks every regional variant the same way (now a list), with a word each region doesn't use: inloggen/achternaam for nl-BE, soixante-dix/quatre-vingt-dix for fr-BE. A new test checks `config.ts` falls back from each variant to its language.
+- **Netherlands date format:** `JURISDICTION_LOCALE.NL` is now `DD-MM-YYYY` (it said `DD/MM/YYYY`; the browser's nl-NL format writes 27-09-2026), and the comment that claimed slashes across BE/NL/FR is corrected.
+  - Checked every reader of `dateFormat`: the Identifier Formats tab (shows it), the Accession page placeholder, and the order lookup, which writes dates of birth in it. Nothing parses it.
+  - **Bug found and fixed on the way:** `utils/isoDateForSearch.ts` only knew the slash and year-first forms, so a German lab's order lookup showed dates of birth month first (07/23/1990 under a DD.MM.YYYY header), and a date typed 23.07.1990 matched nobody. It now writes and matches every jurisdiction's format, including the new Dutch one. `JurisdictionDateFormat` (new, `types/systemConfig.ts`) is the one list of formats; `dateFormatHint` returns it, and the Accession page's untrue narrowing cast is gone.
+  - `OrderLookupModal.tsx` now takes the patient index from `@/services` (new `patientIndexService` export) and is off the deployment baseline.
+- **Belgian Dutch dictation: not added.** The ticket asked to confirm Chrome accepts nl-BE before adding a profile. It couldn't be confirmed here:
+  - Chrome publishes no list of speech languages, and Google's Chrome speech demo page refused the fetch;
+  - Chromium's own availability check answered "available" for nl-BE and equally for a made-up tag;
+  - Google Cloud Speech-to-Text lists nl-BE, but only for telephony models, which isn't the same service.
+
+  Dictation stays on nl-NL; a comment in `constants/voiceProfiles.ts` gives the one-line profile to add once a Belgian speaker has tried it in Chrome.
+
+**Verified**
+- Type-check clean.
+- Full suite: 660 files passed (3 skipped); 5770 tests passed (9 skipped), 9 new.
+- Browser:
+  - the menu listed both French variants;
+  - choosing Français (Belgique) showed FR-BE, stored fr-BE and survived a reload;
+  - the Belgian strings came from fr-BE and the rest from French.
+  - Order lookup with the jurisdiction set to NL, DE and US: the placeholder, column header and date of birth read dd-mm-yyyy / 23-07-1990, dd.mm.yyyy / 23.07.1990 and mm/dd/yyyy / 07/23/1990. The date typed each way found the order.
+
+**Still open**
+- **Belgian Dutch dictation:** needs a real test in Chrome by a Belgian speaker (could go with the PS-348 review).
+- **Belgian French wording:** only clear-cut differences were added. Words like "encoder" (Belgian for entering data) are left to the Belgian French review (PS-348 item 3).
+- **Belgian French dictation:** not asked for. French dictation uses fr-FR.
+
+## Batch 366 — PS-68: the unused ReportSnapshot type removed
+
+**Checked first**
+- A search of the whole repo (code, docs, `api/`, scripts) found no code using `ReportSnapshot`, `ReportSnapshotHistory`, `ReportSnapshotType` or `isOperativeSnapshot`. The other hits were comments, and `originalReportSnapshot` on `AmendmentRecord`, which is unrelated.
+- **What the app uses instead:**
+  - `ReportVersionRecord`, written at every sign-out and amendment, with the PDF;
+  - `AmendmentRecord`, which says whether an amendment corrects the report or adds to it, and why.
+  - Together they cover everything `ReportSnapshot` described except two points (below).
+
+**Done**
+- **Deleted** `types/case/ReportSnapshot.ts`. It is listed in the zip's `DELETED_FILES.txt`; delete it by hand when applying the zip.
+- **Carried forward** in `ReportVersionRecord.ts`'s header, as notes for the API server. Neither is built:
+  - store the PDF by reference rather than inline;
+  - record a SHA-256 of its bytes at creation and check it on retrieval, so a swapped file is detected.
+- **Comments corrected** in `types/cytology/CytologySignOutRecord.ts` and `services/cytology/ICytologySignOutRecordService.ts`; they called `ReportSnapshot` the app's established pattern.
+- **Guard:** new `types/removedTypes.guard.test.ts` fails if the file is back or anything imports it. It was checked to fail with the file restored.
+
+**Verified**
+- Type-check clean.
+- Full suite: 661 files passed (3 skipped); 5771 tests passed (9 skipped), 1 new.
+
+**Still open**
+- The released-PDF integrity hash is a design note only. Nothing computes or checks one today.
+
+
+## Batch 367 — PS-74: no inline CSS anywhere in the UI
+
+PS-74 measured 2,740 inline styles in 146 files and asked for no dedicated sweep. Converting on touch has since removed most of them. A fresh count, using TypeScript's parser rather than grep, found about 95 style props that set real CSS properties and about 25 style objects built elsewhere, in about 50 files, plus 9 files building colours as hex strings with an alpha suffix. They're all converted, and a guard now holds the whole app to standing rule 1.
+
+**Converted** (the look is now in `pathscribe.css`; per-instance values arrive as custom properties)
+- **Contribution → Productivity** (36 styles):
+  - the theme tokens it uses are set once as `--prod-*` custom properties on `.ps-prodtab-main`, from `pathscribeTheme.ts`, so the theme stays the one source;
+  - the `btn()`/`toggle()` style helpers became classes;
+  - the AI and Mentor progress bars use `--bar-pct`.
+- **Template preview** (15): page size, margins, ruler ticks and per-node columns, font size, alignment and image size, as `--tpp-*`.
+- **Report preview and label previews:**
+  - `labelStyle()` is replaced by `utils/labelStyleVars.ts`, which now takes a name prefix, so the page, header, footer, headings and field labels each read their own `--rp-<part>-*` (custom properties inherit, so one shared name would leak a page's settings into its headings);
+  - the Document Style and Template Assembly previews use the same helper;
+  - bold and italic static labels are classes.
+- **Report page:**
+  - Code Manager: context-menu position, chevron, system tabs, SNOMED filters;
+  - dispatch history badges and borders;
+  - sequencer and AI review progress;
+  - cassette colour swatch, Matrix block grid, protocol-change confidence;
+  - the comment modal's drag position;
+  - the bottom action bar buttons (their hover is CSS now, not React state).
+- **Configuration and admin:**
+  - the Facility editor tabs (`tabStyle()` → `.ps-fem-tab`) and Fonts;
+  - Delivery rules, cytology category chips, Lookup badges;
+  - the patient-ID status dot, draft recovery width;
+  - template canvas spans, inspector textarea height, template request padding;
+  - the label designer canvas and fields;
+  - batch status pills, engraver tiles and cards, embedding/microtomy label previews;
+  - flag severity dots, patient reassignment status text.
+- **Colours built in JSX** (`${c}22`, `c + '18'`), now `--ps-hue` or the element's own colour variable with `color-mix()` tints at the same alpha:
+  - voice button;
+  - validation study badges;
+  - QA, cytology QA and batch filter tiles;
+  - external consult status;
+  - Home, Pathology Workspace and Quality Hub card accents;
+  - Case Team badges;
+  - molecular batch status.
+- **Removed unused pass-throughs:**
+  - `Icons` no longer take `style`, and `ConfirmModal` no longer takes `overlayStyle` (no caller used either);
+  - `WorklistTable`'s `hexToRgba`, whose tints were never used.
+
+**The guard** (`services/styleRules/`, new)
+- `inlineStyleAudit.ts` checks, from the code's structure:
+  - a `style` object may set only `--custom` properties;
+  - a style passed by name to a DOM element must come from a `…Vars` helper, and those helpers may return only custom properties;
+  - no colour may be built from a string.
+- `inlineCss.guard.test.ts` runs it over all 371 `.tsx` files, with no exception list, and checks that it would catch an inline style coming back.
+- `CLAUDE.md` rule 1 names the guard and the `…Vars` convention.
+
+**Verified**
+- Type-check clean.
+- Full suite: 663 files passed (3 skipped); 5783 tests passed (9 skipped), 12 new. The four report-preview label tests now read the custom properties.
+- Browser, pixel comparison before and after, 21 screens:
+  - **Identical (15):**
+    - Contribution overview and its four tabs;
+    - Fonts, Document Style, Delivery Rules, Label Designer;
+    - the Facility editor;
+    - Staff → Roles and Cytology;
+    - the engraver monitor;
+    - microtomy;
+    - template assembly.
+  - **Differences caused by the mouse, not the change (3):** Participation Types, facility list and report page. Each is one table row under the pointer: the "before" colour is exactly the `:hover` rule, `#0d0d0d`.
+  - **Anti-aliasing (3):** batch management, the worklist and embedding each differed by at most one pixel.
+- **Checked after only** (the old code wasn't kept to compare against):
+  - QA tiles, Home/Workspace/Quality Hub cards and validation badges;
+  - the voice button and the action bar buttons;
+  - the Code Manager and flag dialogs.
+
+  Their computed colours match the old values; for example a tile is `#EF4444` at 18%, as `2e` gave.
+
+**Not covered by the screenshots:** the Case Team drop zones, Matrix block editor, protocol-change dialog, draft recovery, comment modal drag, and report preview label formatting. These are covered by reading the CSS against the old values and, for the report preview, by its tests.
+
+## Batch 368 — PS-353: report change history
+
+Pete: "the system should be auditing changes so that a log can be pulled." His decisions (2026-09-28):
+- one entry per save;
+- every change logged;
+- a word-level diff for long text;
+- anyone who can open the case can read it, and admins and QA can export CSV, with each export audited.
+
+**Done**
+- **`services/reportChangeLog/`** (new):
+  - **Recording:** every case write in the mock case services (both case stores, all three write paths) calls `recordCaseChange`, so any screen or background write is covered, not only the report page. Each entry holds:
+    - the user and time;
+    - the workstation;
+    - each changed field with old and new values, grouped by area (synoptic answers, narrative, codes, specimens and blocks, case details).
+  - **Diff rules:**
+    - bookkeeping (versions, timestamps) is ignored;
+    - list items are matched by id, so reordering isn't a change;
+    - records are labelled by their own labels;
+    - codes are filed under Codes wherever they sit.
+  - **Synoptic answers:** recorded with the template's field and option labels as worded at the time ("Procedure: Option 3 → Option 3, Option 1"), not ids.
+  - **Storage:** append-only (`report_change_log`, cleared by Demo Reset).
+  - **CSV export:** `exportChangeLog` refuses anyone below the admin tier, neutralises formula-like cells, and audits `Report change history exported`.
+- **Report page:**
+  - a "📝 N recorded saves" chip beside the version chip opens **Change history**;
+  - entries are newest first, with an area filter;
+  - short values show old → new; long text shows a word-level diff, with removed words struck through and added words highlighted;
+  - the page refreshes when a save is recorded;
+  - every value is tagged `data-phi`;
+  - Export CSV appears for the admin tier.
+- **Server contract:** `docs/architecture/REPORT_CHANGE_LOG_API.md`:
+  - the entry is written in the same transaction as the case update;
+  - the diff is computed server-side;
+  - attribution comes from the token;
+  - the table is INSERT/SELECT only;
+  - endpoints for reading and the audited export.
+- **i18n:** `changeHistoryModal.*` and `headerBar.blocks.changeChip_*` in all five languages.
+
+**Found and fixed on the way**
+- **Version History showed patient name, MRN and date of birth without `data-phi`,** so support screenshots didn't redact them. The PHI check couldn't see them because they pass through a generic label/value list. The values are now tagged, and the blind spot is noted in `services/phi/README.md`.
+- **Deployment baseline (rule 4).** Batch 367 touched files still on the baseline without cleaning them up or saying so; that is corrected here. 15 files came off the baseline:
+  - 13 now take their service from `@/services`: `ProductivityTab`, `AIContributionTab`, `MentorTab`, `CytologyCategoriesSection`, `FacilityEditorModal`, `CytologyQaTab`, `ReassignCasePatientPanel`, `TemplateAssemblyPage`, `BatchDetailView`, `EngraverMonitorPage`, `LabelDesignerPage`, `MolecularWorkcenterPage`, `CaseTeamModal`;
+  - `BottomActionBar` reads `reportReleaseService`;
+  - `CommentModalShell` keeps its position as a UI preference.
+
+  Still listed, and not practical here: `SynopticReportPage`, `QualityAssurancePage`, `DeliveryRulesSection`, `ValidationStudiesSection`, `DemoResetTab`, `TemplatePreviewPanel`, `WorklistTable`, `HeaderBar`.
+
+**Verified**
+- Type-check clean.
+- Full suite: 665 files passed (3 skipped); 5802 tests passed (9 skipped), 19 new.
+- Browser, real UI:
+  - on S26-4403, ticking a Procedure option and pressing Save Draft recorded one entry;
+  - the chip appeared at once;
+  - Change history showed "Generic Template — Lung Adeno › Procedure: Option 3 → Option 3, Option 1".
+- Browser, saves through the case router:
+  - a diagnosis edit showed as a word diff: "acinar → lepidic", "2.4 → 2.1";
+  - the area filter counted 1 synoptic change and 2 narrative;
+  - 8 values were tagged `data-phi`;
+  - Export CSV downloaded 3 rows with translated headings, and the audit log recorded "3 field change(s) from 3 save(s) exported to CSV".
+- Screens re-shot after the `@/services` swaps matched Batch 367's, apart from:
+  - the new chip on the report page;
+  - the Contribution week chart, whose demo data is relative to the current time.
+
+**Still open**
+- **Export is admin tier only.** QA isn't a role the app knows at sign-in.
+- **Attribution of background writes.** Assist-mode polling, pool claims and flags are attributed to the signed-in user in the browser demo; the server knows its real callers.
+- **Field names.** Only synoptic answers are translated to template labels; other field keys show as stored (`finalDiagnosis`, `status`).
+- **Next:** PS-354 (release integrity: a failed PDF blocks release, a SHA-256 fingerprint is checked on retrieval, rendering is reproducible).
+
+## Batch 369 — PS-355: capabilities, phase 1 (access control that is enforced)
+
+**Why:** verified Sep 28, 2026, the 189 actions a role could be granted in the Role Dictionary were never checked anywhere. Pete's four principles (attribute-aware checks; the service decides and the screen follows; audit why an action was allowed; one catalog with no dead flags) and his decisions are in the design doc "PathScribe Access Control: Capabilities in Context":
+- one capability per QA report;
+- no Superadmin bypass;
+- Admin and QA Reviewer by default, Pathologist nothing;
+- scope on the staff assignment;
+- one ticket per phase: PS-355 to PS-358.
+
+**Built**
+
+- **`services/authorization/`** (new):
+  - **The catalog:** `domain:object:verb` keys, admin groups, risk, requirements.
+  - **The check:** `evaluateCapability` returns allow or refuse, with the granting role(s).
+  - **Audit:** high-risk checks are audited with `capabilityAuditEntry` ("Capability allowed" / "Capability refused", literal English).
+  - **Seeds:** `applyCapabilitySeeds` offers each built-in role its seed once, so a removal sticks.
+  - **Dependency plans:** `planGrant` / `planRevoke` / `unmetRequirements`.
+  - **Role save rules:** `roleCapabilityProblem`, and `roleCapabilityChangeAudit` ("Role capabilities changed").
+  - **Service:** `authorizationService` (`evaluate`, `enforce`, `grantedCapabilities`).
+- **Capabilities in phase 1 (15):**
+  - `report:change-history:export`;
+  - 14 Quality Assurance report exports. The binder, `qa:inspection-evidence:export`, requires `qa:activity-dashboard:export` because it lists the records the dashboard totals.
+- **Enforcement:**
+  - `exportChangeLog` checks before building the CSV (`canExportChangeLog` removed).
+  - New `services/qualityAssurance/qaExport.ts` checks before any QA file. `qaReportUtils.exportQaReportRows(capability, …)` goes through it.
+  - The cytology–histology print view checks before opening.
+- **Screens:**
+  - `hooks/useCapabilities.ts` and `components/Common/CapabilityButton.tsx`: an export the user can't take is greyed out, with a tooltip naming the capability. Every QA export button and the change-history Export button use it.
+- **Role Dictionary:**
+  - A new Capabilities tab (`RoleCapabilitiesTab.tsx`), the tab the editor opens on. Capabilities are grouped as Report history, then the QA pillars.
+  - Each capability shows **Audited**, what it needs or is needed by, and its key.
+  - **Pete's dependency prompt:** turning on something that needs another offers to turn that on too; turning off something others need offers to turn those off too; Cancel leaves the role alone. The group select-all goes through the same prompt.
+  - The old **Permissions** tab and column are now **Commands**, with a note that they don't control access.
+  - A Capabilities count column is added.
+- **Roles:**
+  - new built-in **QA Reviewer** (no case or configuration access; given alongside a main role) and **Superadmin** (not assignable to staff; held only through a support sign-in);
+  - the staff role picker and `deriveSessionRole` ignore non-assignable roles;
+  - `duplicateRole` makes an ordinary assignable copy;
+  - the role service refuses unknown keys and unmet requirements.
+- **Guard:** `services/authorization/capabilities.guard.test.ts`:
+  - every catalog capability is checked at an action;
+  - every key used is in the catalog;
+  - gated buttons have a check behind them;
+  - locale text exists for every capability and none is left over.
+- **CLAUDE.md:** new standing rule 7, "A protected action ships with its capability", plus a checklist line.
+- **Docs:**
+  - `docs/architecture/AUTHORIZATION_API.md`: the server contract for phase 4;
+  - `ACCESS_CONTROL_PLAN.md`: an update section;
+  - `REPORT_CHANGE_LOG_API.md`: the export row now names the capability.
+- **i18n:** 56 new keys and 3 changed ones, in all five languages:
+  - `capabilities.*` (15 names and descriptions, 6 groups, `notGranted`);
+  - `roleDictionary.capabilities.*`;
+  - `roleDictionary.tabs.capabilities`;
+  - `roleDictionary.list.headers.capabilities`;
+  - `roleDictionary.permissions.commandsNote`;
+  - the changed `tabs.permissions` / `list.headers.permissions` / `footer.permissionsSummary` (new `{{capabilities}}` placeholder).
+
+  In fr, de, nl and ko, "capabilities" uses the word the old tab used for permissions (Autorisations, Berechtigungen, Machtigingen, 권한), since that now means the enforced list; the commands are Commandes, Befehle, Opdrachten, 명령. Korean needs native-speaker review as usual.
+
+**Rule 4:** seven files came off the mock-import baseline:
+- `RoleDictionary.tsx`
+- `InspectionModeTab.tsx`
+- `IntraopLinkageTab.tsx`
+- `PatientMatchReviewSection.tsx`
+- `QaDashboardTab.tsx`
+- `ReconciliationTab.tsx`
+- `QualityAssurancePage.tsx`
+
+New `@/services` exports: `billingDeficiencyService`, `outboundChargeQueueService`, `codeReviewPoolService`, `reasonDictionaryService`. `SynopticReportPage.tsx` was touched and stays listed, as in Batch 368.
+
+**Corrections (rule 6)**
+- I told Pete there were 11 QA exports. There are 14 reports. The design doc and PS-355 are corrected.
+- `services/roles/README.md` said PathScribe had no single sign-on. SSO has existed since Batch 343; the line now says so.
+- The change-log READMEs and `REPORT_CHANGE_LOG_API.md` said the admin tier exports. They now name the capability.
+
+**Verified in the browser** (demo account, a Superadmin session whose staff record also holds Pathologist and Admin):
+- **The editor:** it opens on Capabilities (15). Turning off the QA dashboard export in Superadmin prompts "This role also has … Export inspection evidence binder", and "Turn both off" removes both. The audit shows "Role capabilities changed | Pete Nimmo | Role "Superadmin": removed …".
+- **Admin still granted it:** the export stayed allowed ("by Admin"), because Pete's staff record holds Admin. After removing it from Admin too, the decision is refused.
+- **The QA Dashboard export button:** `aria-disabled`, with the tooltip "Your roles don't include “Export QA dashboard”." Clicking it downloads nothing.
+- **Calling the export service directly:** it returns `notPermitted`, and the audit shows "Capability refused … no role held grants it".
+- **Enterprise rollup** still downloads, audited as "allowed by role "Admin" (admin), "Superadmin" (superadmin)".
+- **Turning the binder back on** prompts for the dashboard, and "Turn it on as well" sets both.
+- **The roles after the run:** admin 13, qa-reviewer 15, superadmin 15 (not assignable).
+- No page errors.
+
+**Found, not fixed**
+- The cytology–histology correlation CSV includes a `Patient MRN` column, although `qaReportUtils.ts` says QA exports never include MRN. It is now capability-gated and audited; whether the column or the convention changes is Pete's call.
+- CSV exports outside QA are not gated yet (PS-357 sweep list): waste tracking (disposal), audit log, billing logs, dictionary exports, contribution, search.
+- The role-level Pediatric Access switch and Facility Access tab still show and still do nothing (PS-356).
+- The Role Dictionary's "x / 194 actions" total counts actions listed in more than one group twice; there are 189 distinct commands. This is pre-existing.
+
+**Tests:** type-check clean. Full suite: 667 files passed (3 skipped); 5,834 tests passed (9 skipped). New: `authorization.test.ts` (26), `capabilities.guard.test.ts` (6), and a `duplicateRole` test. The change-log export tests were rewritten for the capability.
+
+## Batch 370 — PS-356: capabilities, phase 2 (self-escalation closed, facility scope, dead role switches removed)
+
+**Found while starting phase 2:** any signed-in user could open Configuration, save any role (their own capabilities included) and change any staff member's roles. Nothing stopped a pathologist from giving themselves the QA exports. Pete chose to fix that first, with staff management split (role assignment separate from record edits), and facility scope limiting case actions and QA scope.
+
+**Built**
+- **Four capabilities** (group "Administration: staff, roles and system"; seeded to Admin and Superadmin):
+  - `config:roles:manage`;
+  - `config:staff:edit`;
+  - `config:staff-access:assign`, which requires `config:staff:edit`;
+  - `config:demo-data:reset`.
+- **`services/roles/roleAdministration.ts`**: `saveRole` checks `config:roles:manage`, validates the capabilities, and refuses a save that leaves no assignable role able to manage roles (Superadmin doesn't count). It audits "Role capabilities changed".
+- **`services/staff/staffAdministration.ts`**: `saveStaffMember` checks `config:staff:edit` for any save. It also checks `config:staff-access:assign` when roles, facilities, pediatric/orchestration/cross-tenant access or credentials change; adding someone always counts. It audits "Staff access changed" (new) and "Staff credentials changed" (moved from the screen).
+- **`services/demoReset/`** (new): the reset logic and key lists moved out of `DemoResetTab.tsx`, and `resetAllDemoData` checks `config:demo-data:reset`. Resetting your own hospital's data needs nothing.
+- **Facility scope:** new `StaffUser.facilityIds` (empty = all). `evaluateCapability` refuses a limited user:
+  - another facility's data (`outOfScope`);
+  - anything spanning all facilities: enterprise or organisation QA scopes, and QA reports with no scope switcher;
+  - a case action on a case with no facility (`facilityUnknown`).
+
+  `qaScopeContext(scope)` supplies the context for QA exports, and the change-history export passes the case's `order.facilityId`. The audit entry names the facilities.
+- **Screens:**
+  - **Staff editor:** a new Facilities assignment. Roles, facilities, access flags and credentials are read-only without `config:staff-access:assign`, and Save / Add staff are gated.
+  - **Role Dictionary:** Add Role / Duplicate / Save are gated, and a refused save shows why.
+  - **Demo reset:** the full reset is gated.
+  - **Hook and button:** `useCapabilities` evaluates with context (`authorizationService.snapshot()`), and `CapabilityButton` takes a `context` and names the reason: not granted, missing requirement, or outside the facility assignment.
+- **Removed (never enforced):**
+  - `Role.canViewPediatric`, `canViewOrchestration` and `facilityIds`, stripped from stored catalogs on load (`withoutRetiredRoleFields`);
+  - the role Pediatric Access checkbox and column, the Facility Access tab and column, and the misleading "Pediatric Access Granted/Revoked" audit entry;
+  - 12 locale keys per language and 24 CSS rules.
+- **Comments corrected:** `CaseRouter.ts`, `WorklistTable.tsx` and `orchestratorModeConfig.ts` said orchestration access came from the role. It comes from the staff record.
+- **Rule 4:** `DemoResetTab.tsx` is off the browser-storage baseline.
+- **i18n:** 25 keys added or changed, in all five languages. That covers:
+  - the 4 capability names and descriptions;
+  - the administration group;
+  - the outOfScope and requirementMissing tooltips;
+  - `staffTab.access.*` and `roleDictionary.saveErrors.*`;
+  - the footer summary, without facilities.
+
+**Verified in the browser** (demo account)
+- **Pete limited to facility c1:**
+  - QA dashboard export: refused `outOfScope`. The button is greyed out, with "your facility assignment doesn't cover it", and a direct service call is refused and audited as "…outside the user's facility assignment (the action spans all facilities)".
+  - Intraop linkage for client c1: allowed. For c2: refused.
+  - Change-history export: allowed for a c1 case, refused for a c2 case, and `facilityUnknown` for a case with no facility.
+- **Pete as a plain Pathologist, with Superadmin stripped of the admin capabilities:**
+  - Add staff, Add Role, Save role and Full reset are all greyed out.
+  - The staff editor shows the read-only note, and its pediatric checkbox is disabled.
+  - The Role Dictionary has no Pediatric or Facilities column, and no Facility Access tab.
+  - A direct `saveRole` self-grant returns `notPermitted`, and the Pathologist role is unchanged.
+- No page errors.
+
+**Found, not fixed**
+- `caseMatchesScope`'s client branch matches `order.clientId`, which no seeded case has (cases carry `order.facilityId`), so a QA client scope matches no cases.
+- Unlinking a staff member's SSO account (`LinkedSignInAccounts`) isn't capability-gated yet. It goes to PS-357.
+- `caseAccessControl.ts` still lets a `superadmin` session bypass the tenant check for case visibility. That is case access, not capabilities; it needs a decision from Pete.
+
+**Tests:** type-check clean. Full suite: 670 files passed (3 skipped); 5,855 tests passed (9 skipped). New tests:
+- `roleAdministration.test.ts`;
+- `staffAdministration.test.ts`;
+- `demoReset.test.ts`;
+- a facility-scope block in `authorization.test.ts`.
+
+## Batch 371 — Superadmin reserved for ForMedrixAI support (plus test and dev-server fixes)
+
+**Pete's decisions (Sep 28, 2026)**
+- Superadmin should be reserved for ForMedrixAI support staff.
+- Hospital administrators have no control over it.
+- Paul Carter counts as ForMedrixAI staff.
+- Kept as superadmin: Amber Fehrs-Battey, Bronwyn Prior and Rossana Babakhani.
+
+**Built**
+- **Platform-only capabilities** (`platformOnly: true`, group "ForMedrixAI platform support"). They count only from a role staff can't be given, i.e. Superadmin. `roleCapabilityProblem` refuses them on a hospital role, and `duplicateRole` drops them. There are two:
+  - `platform:cross-tenant-cases:view`: `CaseRouter.getCase` checks it, with an audit entry, whenever a superadmin session opens another organisation's case (`isCrossTenantSupportAccess`, new and pure). Lists aren't audited per case.
+  - `platform:governing-bodies:manage`: `services/governingBodies/governingBodyAdministration.ts`. The screen was `isSuperAdmin={true}` for everyone; it now needs the capability, and the service checks it.
+- **Superadmin is locked:**
+  - `lockPlatformRoles` restores the whole catalog on every load;
+  - `saveRole` refuses edits to it (`platformRole`), and so does the mock role service;
+  - the Role Dictionary shows it as "managed by ForMedrixAI", with View and no Duplicate, and opens it read-only with a banner;
+  - hospital roles don't list the platform group, and their counts exclude it.
+- **Terminology endpoint details** are shown to superadmin sessions only. They were hard-coded `true`.
+- **Demo accounts:** Dr. Sarah Johnson, Dr. Oliver Pemberton and Dr. J. Mark Tuthill now sign in as `pathologist`. Sarah Johnson gained a staff record (Pathologist, ORG-DVMC; `USERS_VERSION` 10); without it she'd have no case access.
+- **i18n:** 9 keys in all five languages. That covers the platform group, the 2 capability names and descriptions, `roleDictionary.list.view` and `.platformManaged`, `platformRole.banner`, and `saveErrors.platformRole`.
+- **Rule 4:** `GoverningBodiesSection.tsx` came off the mock-import baseline (new `@/services` export `governingBodyService`).
+
+**Fixes for Pete's local runs (Sep 28)**
+- **A test file left out of a zip.** `DemoResetTab.coverage.test.ts` was missing from the Batch 370 zip because my packaging filter skipped any path containing "coverage". It shipped in `pathscribe_batch370_fix.zip`, and the filter now skips only the coverage output folder.
+- **Test time limits.** On Pete's Windows machine, the first test in files that load most of the app timed out at 15 s; the slowest took 11.4 s here with only those files running. `vitest.config.ts` now allows 30 s. The per-test 10–20 s limits in seven files, which override the global one, were removed (`pathscribe_batch370_fix2.zip`).
+- **Vite dev server 504 (Outdated Optimize Dep).** `oidc-client-ts` and `@microsoft/signalr` are only reached through lazily loaded modules, so Vite found them mid-session and re-bundled them. `vite.config.ts` now pre-bundles both (`optimizeDeps.include`).
+
+**Verified in the browser** (demo account, superadmin, organisation DVMC)
+- Opening an MFT case wrote "Capability allowed | MFT26-8801-CR-RES | platform:cross-tenant-cases:view allowed by role "Superadmin"". An own-organisation case wrote nothing extra.
+- A direct role-service edit of Superadmin was refused, and it still held 21/21.
+- In the Role Dictionary, Superadmin shows "managed by ForMedrixAI · 21/21 · View" with the banner, no Save, and the platform group; clicking a capability changes nothing. Admin shows 19/19 without the platform group.
+- Governing bodies are editable for support.
+- No page errors.
+
+**Not done:** support access still has no stated reason or time limit ("break-glass"), and superadmin case *lists* across organisations aren't audited per case.
+
+**Tests:** type-check clean. Full suite: 671 files passed (3 skipped); 5,865 tests passed (9 skipped). New tests:
+- platform capabilities in `authorization.test.ts`;
+- the Superadmin lock in `roleAdministration.test.ts`;
+- `governingBodyAdministration.test.ts`;
+- `isCrossTenantSupportAccess`;
+- `duplicateRole` dropping platform capabilities.
+
+## Batch 372 — ForMedrixAI support access, controlled by each hospital
+
+**Pete's specification (Sep 28, 2026)** plus "Access window configurable, default to 2 hrs".
+
+**Built** (`services/supportAccess/`, new; see its README)
+- **Policy per organisation**, set in Configuration → System → Support Access by holders of `config:support-access:policy`:
+  - Disabled / **Approval required (default)** / Always allowed;
+  - an access window of 30 minutes, 1, **2 (default)**, 4 or 8 hours.
+  - "Support access" means a Superadmin session reaching an organisation the person isn't a staff member of. Disabled blocks Superadmin too.
+- **Just-in-time access.**
+  - Support requests access per organisation with a ticket id and a reason (10+ characters).
+  - Approvers in that organisation (`config:support-access:approve`) get an urgent in-app message. The requester can't approve their own request, and neither can anyone from another organisation.
+  - An approval lasts the window. Support can end it early, and the hospital can revoke it.
+- **The gate** (`supportAccessGate.ts`) runs in `CaseRouter.getCase` (before the Batch 371 capability check), `getAll`, `listCasesForUser` and `updateCase`, and in the case search.
+  - Without access, another organisation's cases are left out of lists and searches, and opening or editing one is refused.
+  - A case whose hospital id maps to no organisation has no policy to apply and passes, as before.
+- **The hospital's support audit stream**, one per organisation and separate from the main audit log:
+  - hash-chained (SHA-256 over each entry and the previous hash), so a changed, removed or reordered entry shows;
+  - records requests, decisions, expiries, early ends, revocations, refusals, opens, edits, list and search disclosures (with case ids; search criteria names only, never values), policy changes and exports;
+  - shown with its chain check to holders of `config:support-audit:view`;
+  - exported as CSV or JSON (JSON carries the chain check), with the spec's columns.
+- **Capabilities:** `config:support-access:policy`, `config:support-access:approve` and `config:support-audit:view` (group "Support access"), seeded to Admin. Existing Admin roles pick them up through `applyCapabilitySeeds`.
+- **Screen:** `components/Config/System/SupportAccessSection.tsx`, with the hospital's panels and support's request panel. The decisions it relies on (queues, time left, window labels) are in `supportAccessRules.ts`. New `utils/downloadText.ts`.
+- **i18n:** 109 keys in all five languages: `supportAccess.*`, the 3 capabilities, their group and the section name. Korean needs native-speaker review as usual.
+
+**Found and fixed: the Full Reset cleared the audit trails it claimed to keep.** The mock services store through `mockStorage.ts`, which puts every key under `pathscribe_mock_`. The reset's prefix sweep cleared those keys regardless of `DELIBERATELY_NOT_RESET`. So a Full Reset has been clearing the main audit log, the error log and the four billing dictionaries, even though that list and its comments (and this changelog, in earlier entries) said they survive. Only `ps_ai_audit_log_v1`, stored without the prefix, really did. `keptThroughReset()` now exempts them, and there's a test. Effect: after this batch, a Full Reset keeps the audit log, error log, billing dictionaries and the support audit stream.
+
+**My own mistake during the build:** a one-line script read and rewrote `CaseRouter.ts` in the same expression and emptied it. I restored it from the Batch 371 delivery copy and reapplied the changes. It was caught before anything shipped: type-check and the full suite ran on the restored file.
+
+**Verified in the browser** (demo account PATH-001, superadmin, DVMC; MFT approvers simulated by switching the session profile)
+- Before approval, support saw 34 cases and none of MFT's, and opening MFT26-8801-CR-RES was refused and recorded ("Access refused").
+- A 5-character reason was refused. The request went through and the approver messages arrived: Bronwyn Prior (MFT Admin) got one, Oliver Pemberton (MFT pathologist) didn't. Oliver's approval attempt was refused (`notPermitted`).
+- Bronwyn saw the request, approved it on screen, and the active list showed "120 minutes left".
+- After approval, support saw 43 cases (MFT's 9 added) and could open the MFT case. A search recorded "patientName" only.
+- MFT's audit showed 7 entries, "Record intact". Changing one entry in storage turned it into "Record altered at entry 2".
+- The CSV export had the spec's columns and a single byte-order mark. DVMC's own audit stayed empty.
+- No page errors.
+
+**Not built (server-side, phase 4 / PS-358):**
+- originating IP and country (recorded empty);
+- email and webhook notification (in-app only, and written in the requester's language);
+- ending access when the ticket closes;
+- PDF export;
+- the per-tenant append-only table and ticket-bound session tokens;
+- copying support's exports and configuration changes into the hospital's stream (they're checked and in the main audit log).
+
+The server contract is in `docs/architecture/AUTHORIZATION_API.md` § Support access.
+
+**Demo impact:** with Approval required as the default, superadmin demo accounts no longer see other organisations' cases until an approver there approves, or the organisation switches to Always allowed.
+
+**Also (Pete, 13:17):** the Surgical Post-Sign-Out QA home tile has its own background image, `public/surgical_qa.webp`, made from Pete's photo (1400×933, 40 KB). It had borrowed the Cytology QC tile's image.
+
+**Tests:** type-check clean. Full suite: 672 files passed (3 skipped); 5,884 tests passed (9 skipped). The first full run had 48 failures in 10 files that use a bare superadmin session to reach test cases whose hospital ids map to no organisation. The gate had refused those. Such cases now pass the gate, as described above. New tests:
+- `supportAccess.test.ts` (18): rules, service flow, gate;
+- the seed test updated for Admin's three new capabilities;
+- the Full Reset keeping the audit trails.
+
+## Batch 373 — every hospital id linked to its organisation (so support access can be demoed)
+
+**Pete (Sep 28):** "Link Hospital ID to an Organization so all this can be demo'd appropriately."
+
+**Why:** a case's organisation comes from its hospital id (`originHospitalId`) through `Facility.legacyTenantIds`. 20 of the 99 demo cases carried ids that no organisation listed:
+- Fenwick Women's ×4;
+- Henry Ford Macomb ×3;
+- ten international screening labs ×13.
+
+So no organisation owned them. Their hospital's staff couldn't see them, jurisdiction roll-ups missed them, and (Batch 372) no support access policy covered them.
+
+**Built**
+- **`facilities/facilityHierarchy.ts`:** `organisationIdOf` (up the parents, then through the lab an ordering client sends to) and `linkFacilitiesToOrganisations` (each organisation lists its own id and every member's id). Tested.
+- **Facility seed data** (version 8):
+  - the seed list is linked this way;
+  - the ten international labs, which stand alone, are now organisations (`isEnterprise`), matching what their cases already record (`originEnterpriseId`).
+  - All 99 cases resolve.
+- **Demo starting policies** (`supportAccess/demoSupportAccessSeed.ts`, new `seedSettings` dependency):
+  - Approval required for the organisations with an Admin who can approve: Desert Valley, Manchester and Midwest.
+  - Always allowed for Henry Ford, Fenwick and the ten labs, which have nobody to approve. Their cases stay visible to ForMedrixAI demo accounts, and every look is recorded in their support audit.
+  - An organisation's own saved settings replace the seed.
+
+**Verified in the browser**
+- All 99 demo cases resolve to an organisation.
+- The demo support account sees its own 34 Desert Valley cases, Henry Ford's 5, Fenwick's 4 and the 13 international cases, but no Manchester or Midwest cases until approved.
+- The request list offers 14 organisations.
+- Henry Ford's pathologist now also sees the 3 Macomb cases.
+- No page errors.
+
+**Side effect:** the ten labs now appear wherever organisations are listed (support access, Case Mask, enterprise roll-up, and the facility editor's parent choice).
+
+**Tests:** type-check clean. Full suite: 672 files passed (3 skipped); 5,887 tests passed (9 skipped).
+
+## Batch 374 — the Home page shows only the screens a user may open
+
+**Pete (Sep 28):** "Home Page should only show tiles that the User has access to." He chose to add bench roles and the starting matrix below.
+
+**Why this needed a model:** before this batch, every signed-in user could open every screen, so there was no "access" for tiles to follow. Screens are now capabilities (Pete's model since Batch 369), granted by roles and editable in the Role Dictionary.
+
+**Built**
+- **17 screen capabilities** (`screen:<name>:open`, group "Screens", standard risk, not audited): the 10 Home screens, the 5 Pathology Workspace screens, and Audit and Quality Assurance.
+- **`services/screens/`** (new):
+  - the screen table and hubs;
+  - `visibleTiles` (pure);
+  - the route check (`createScreenAccessService`, through `authorizationService.enforce`).
+- **Home, Pathology Workspace and Quality & Compliance** show only the tiles the user may open. A hub shows when any screen inside it may be opened. A user with none sees a short message.
+- **Routes:** `ScreenGate` wraps the 28 routes behind those screens (sub-pages included), so typing an address shows "You don't have access to this screen".
+- **Nav bar:** the quick case search shows only with Search access. The credentials under the name are now the user's own; it said "MD, FCAP" for everyone.
+- **Four built-in bench roles:** Accessioner, Histotechnologist, Cytotechnologist and Molecular Technologist, with case access.
+- **Starting grants (Pete's matrix, `SCREEN_SEEDS`):**
+  - Pathologist and Fellow: Worklist, Search, Add-On Orders, Intraop Queue, Cytology QC Queue, Surgical Post-Sign-Out QA, My Contribution, Cytology Workspace.
+  - Resident: the same, without the two peer-review queues.
+  - PA: Accession, Worklist, Search, Intraop Queue, Embedding, My Contribution.
+  - Accessioner: Accession, Worklist, Search.
+  - Histotechnologist: Batch Management, Embedding, Microtomy, Slide Distribution, Search.
+  - Cytotechnologist: Cytology Workspace, Batch Management, Search.
+  - Molecular Technologist: Molecular Workspace, Batch Management, Search.
+  - Admin: Configuration, Audit, Quality Assurance.
+  - Template Author and Template Approver: Configuration.
+  - Lab Director: Configuration, Audit, Quality Assurance, Search, My Contribution.
+  - QA Reviewer: Audit, Quality Assurance.
+  - Physician and OR Staff: none. Superadmin: all.
+- **A hospital's own roles** are offered screens once, from their existing access switches, so nobody loses a screen: case access → every screen but Configuration and Quality & Compliance; configuration access → those.
+- **Demo data:**
+  - five sign-ins with the same password as `demo@pathscribe.ai`: Maria Lopez (Accessioner), Kevin Brooks (Histotechnologist), Priya Desai (Cytotechnologist), Daniel Kim (Molecular Technologist), and Connor Whitlock (PA; his staff record already existed);
+  - their staff records;
+  - a staff record for Michelle Nimmo (Pathologist + Admin). Her sign-in had none, so she held no role and would have seen no tiles.
+- **i18n:** 39 keys in all five languages (17 capability names and descriptions, the group, the no-access page and the empty Home message).
+
+**Correction of my own statement:** while planning this I took the Role Dictionary's Case Access and Config Access switches for dead switches. They aren't: they decide whether an SSO sign-in gets the app at all (`auth/sessionRole.ts`). They stay as they are, and they now also seed a hospital's own roles.
+
+**Verified in the browser** (Home tiles by sign-in)
+- Demo (superadmin): all 12.
+- Oliver Pemberton (Pathologist): 8.
+- Maria (Accessioner): Accession, Worklist, Search.
+- Kevin (Histotechnologist): Batch Management, Pathology Workspace (Microtomy, Embedding, Slide Distribution only), Search. Typing /configuration showed the no-access page.
+- Priya and Daniel: 3 each.
+- Connor (PA): 6.
+- The Role Dictionary lists the four new roles and the Screens group.
+- Michelle Nimmo's sign-in wasn't tried; her password isn't the demo one.
+- No page errors.
+
+**Tests:** type-check clean. Full suite: 673 files passed (3 skipped); 5,892 tests passed (9 skipped). New: `screens/screenAccess.test.ts`, the seed matrix, and custom-role screen seeding.
+
+**Not done:** the API server must check the same screen capability on each screen's endpoints (phase 4; `docs/architecture/AUTHORIZATION_API.md`). Case pages and demo-only tools (`/migration-jobs`, `/dev/mock-interface-engine`, `/molecular-order-queue`) aren't screen-gated.
+
+## Batch 375 — fewer Home tiles: queues in the Worklist, Add-On Orders on the case, Batch Management in the workspace
+
+**Pete (Sep 28):**
+- "Fold the Cytology QC and Surgical Post-Sign-Out QA queues into the Worklist."
+- "Make Add-On Orders an action on a case instead of a tile."
+- "Move Batch Management into Pathology Workspace."
+
+These came from my Home review. My Contribution stays a tile (Pete).
+
+**Built**
+- **Worklist:** the two peer-review queues are views beside the case list, picked from header tiles next to LIS Cases and Outreach.
+  - Each queue tile shows only with its screen capability. The case list, LIS/Outreach tiles and filters show only with `screen:worklist:open`.
+  - `?view=cytologyQc` / `?view=surgicalQa` open a queue, and `/cytology-qc-queue` and `/surgical-qa-worklist` redirect there.
+  - The queues are the same screens as before, shown inside the Worklist.
+  - The Home Worklist tile shows for anyone who may open the case list or either queue.
+- **Add-On Orders:** an "Add-on order" action in the report page's block row, for users with `screen:add-on-orders:open`. It opens `/add-on-orders?case=<id>` with the case loaded. The action appears when the case has blocks, since add-ons are ordered against blocks.
+- **Pathology Workspace:** Batch Management tile. The hub's descriptions mention it.
+- **Home:** 8 tiles (Accession, Worklist, Configuration, Intraop Queue, My Contribution, Pathology Workspace, Quality & Compliance, Search), each still shown only to those who may open it.
+- **`services/screens`:** `TILE_SCREENS`, `worklistViews` and `resolveWorklistView`, tested.
+- **Rule 4 cleanup on files touched:**
+  - `WorklistPage.tsx` imports its six services from `@/services` (off the mock-import baseline). Its browser storage (session context, pediatric/orchestration request lists shared with `WorklistTable`) remains.
+  - `HeaderBar.tsx` is off both baselines.
+- **i18n:** 6 new keys (2 queue labels, the add-on action and its tooltip, the Batch Management hub tile). Changed: the hub descriptions and 4 screen-capability descriptions. The 4 removed Home tiles' keys were deleted.
+
+**Verified in the browser**
+- Oliver (Pathologist): Home shows Worklist, Intraop Queue, My Contribution, Pathology Workspace, Search.
+  - The Worklist header shows LIS Cases, Outreach and both queue tiles. Surgical QA opened in place with no case table.
+  - `/cytology-qc-queue` landed on `/worklist?view=cytologyQc`. LIS Cases brought the table back.
+- Kevin (Histotechnologist): Home shows Pathology Workspace and Search. The hub shows Microtomy, Embedding, Slide Distribution and Batch Management.
+- Demo: 8 tiles. On S26-4401-BX-001's report, "Add-on order" opened the Add-On Order Builder with the case and its blocks loaded.
+- No page errors.
+
+**Note:** Pete's Surgical Post-Sign-Out QA photo (`public/surgical_qa.webp`) no longer has a Home tile.
+
+**Tests:** type-check clean. Full suite: 673 files passed (3 skipped); 5,894 tests passed (9 skipped).
+
+## Batch 376 — Field Requirements: required fields by page, per organisation (PS-359)
+
+**Pete (Sep 28):** "The User may need to have control over what fields on a page are required before saving. Field Configuration that is grouped by Pages … Some fields should always be required, and should be uneditable." He's reluctant to offer enterprise and performing-facility overrides, so settings are per organisation only. Ticket PS-359 was created at his direction.
+
+**Before:** the Accession page hard-coded its required fields: given and family names, date of birth, client, requesting provider, a described specimen.
+
+**Built**
+- **`services/fieldRequirements/`** (new):
+  - the catalog of pages and fields, each locked, required or optional;
+  - resolution of an organisation's choices;
+  - `missingRequiredFields`, with per-specimen fields checked on every specimen;
+  - the service that changes a choice. It needs `config:field-requirements:manage` (new, seeded to Admin), works for the person's own organisation only, refuses locked fields, and is audited ("Field requirement changed").
+- **Accession fields:**
+  - Locked: given names, family names, date of birth, submitting facility, requesting provider, specimen description.
+  - Optional by default: Patient ID, location, assigned pathologist, clinical indication, date/time collected, date/time placed in fixative.
+  - The defaults reproduce the old behaviour exactly.
+- **Configuration → System → Field Requirements:** grouped by page and section. Locked fields show "Always required" and a reason; the others have a Required switch, marked when changed from the default.
+- **Accession page:**
+  - Next and Submit follow the organisation's requirements and list what's still required.
+  - Patient ID and Assign to Pathologist drop "(optional)" from their labels when required.
+  - The department-conflict names use `formatList` (no English " and ").
+  - Every service comes from `@/services` (off the mock-import baseline; 9 new exports in `services/index.ts`).
+- **i18n:** 41 new keys in all five languages, plus one Belgian-Dutch variant (familienaam).
+
+**Verified in the browser** (demo, Desert Valley)
+- Field Requirements lists the 12 Accession fields in three groups.
+- Switching Patient ID to Required marked it "Changed from default" and wrote "Desert Valley Medical Center: accession field "mrn" is now required." to the audit log.
+- Accession then showed "PATIENT ID" without "(optional)" and "Still required: Given Name(s), Family Name(s), Date of Birth, Patient ID, Submitting Facility, and Requesting Provider".
+- Switching off date of birth through the service was refused (`locked`).
+- No page errors.
+
+**Tests:** type-check clean. Full suite: 674 files passed (3 skipped); 5,899 tests passed (9 skipped). New: `fieldRequirements.test.ts` (5).
+
+**Open**
+- Which pages come next (Pete to choose).
+- The API server applies the same rules on save (phase 4).
+- If an organisation requires Patient ID, the page's "leave blank to auto-generate" hint no longer applies. The placeholder still says it.
+
+## Batch 377 — a generated Patient ID satisfies a required one (PS-359)
+
+**Pete (Sep 28):** "For leave blank to auto-generate, I assume that if blank the autogenerated id will fulfill the required, unless it fails for some reason, in that case an alert."
+
+That's now how it works. Batch 376 had listed a blank Patient ID as still required even though the page fills one in.
+
+**Built**
+- **Field Requirements:** fields can be `autoFilled` (Accession's Patient ID). A blank value isn't counted as missing, and the settings screen shows "Filled in automatically if left blank".
+- **`services/accessioning/patientIdGeneration.ts`:**
+  - `autoPatientId(caseId)` builds `AUTO-<case id without its prefix>`. The rule moved out of the page, where it was written twice.
+  - `resolveSubmittedPatientId(entered, caseId, required)` decides what to save.
+- **Accession submit:** if the organisation requires Patient ID and none was entered or could be generated, submit stops with an alert: "A Patient ID couldn't be generated for this case. Enter the Patient ID, then submit again."
+- **i18n:** 2 keys in all five languages.
+
+**Verified in the browser** (demo, Desert Valley, Patient ID required): the missing list no longer names Patient ID, and the settings row shows the hint.
+
+**Tests:** type-check clean. Full suite: 675 files passed (3 skipped); 5,902 tests passed (9 skipped). New: `patientIdGeneration.test.ts` (3).
+
+## Batch 378 — Complete grossing, with the Grossing field requirements, a voice command and a shortcut (PS-359)
+
+**Pete (Sep 28):** "Grossing. They all will need to be done if the page can save data."
+- He chose to add Complete grossing: the Grossing screen saves each edit as it's made, and nothing marked grossing as finished.
+- Then: "We will need to add the action and voice command for the save button."
+
+**Built**
+- **Field Requirements → Grossing:**
+  - At least one block per specimen (locked).
+  - Optional, switchable on: piece count on every block, fixation end time, and fixative-to-tissue ratio confirmed. The last two apply to every specimen.
+  - New groups Blocks and Fixation, and the `perBlock` flag.
+- **`services/grossing/grossingCompletion.ts`:**
+  - `completeGrossing` checks the requirements, then `case:grossing:complete` (new group "Case work", seeded to Pathologist, Fellow, Resident and PA).
+  - It moves the case from Accessioned or Draft to Gross Complete and audits "Grossing completed". No code had ever set Gross Complete before.
+  - `missingGrossingItems` says where things are missing, e.g. "Piece count (A2)".
+- **Grossing screen:**
+  - A Complete grossing bar with the button, greyed out until nothing's missing, and the still-required list.
+  - "Grossing completed" once done; a note when the case is past grossing.
+- **Voice and keyboard:**
+  - New action `GROSSING_COMPLETE` / `grossing.complete` (F24+PS050) in a new `GROSSING` context, which the Grossing screen now sets.
+  - Phrases: "complete grossing", "finish grossing", "grossing done", plus French, German, Dutch and Korean.
+  - Shortcut: Alt+Shift+F9.
+  - The service decides exactly as for the button.
+- **i18n:** 20 keys in all five languages.
+
+**Verified in the browser** (demo; two cases set to Accessioned for the test)
+- S26-4402-COLON-RES showed "Still required: At least one block (B)".
+- The "complete grossing" voice action was refused while B had no block.
+- After B got a block, the same voice action completed grossing: "✓ Grossing completed", status gross-complete, and the audit entry "Grossing completed: 2 specimen(s), 4 block(s). Status accessioned → gross-complete."
+  - **Correction (Batch 379):** the voice registry announced every action twice, so this voice command ran twice. The second attempt would have shown "This case was updated elsewhere", which this check didn't look for. Fixed in Batch 379.
+- Field Requirements shows the Grossing page's four fields.
+- No page errors.
+
+**Found:** a specimen with no protocol (S26-4402's specimen B) gets no Add Block on the Grossing screen, so its block has to come from the report page's block editor. Combined with the locked "at least one block", such a case can't be completed from the Grossing screen alone. Gross-only specimens would be blocked the same way. Whether the rule should stay locked is Pete's call.
+
+**Also:** the report page's existing "Mark Block Grossed" command still answers to "grossing complete" in its own (report page) context. The new command uses "complete grossing" on the Grossing screen.
+
+**Tests:** type-check clean. Full suite: 676 files passed (3 skipped); 5,907 tests passed (9 skipped). New: `grossingCompletion.test.ts` (5).
+
+## Batch 379 — Grossing's protocol rule, required by default and switchable per organisation (PS-359)
+
+**Pete (Sep 28):** "Making this rule required by default but switchable per organization is the more robust approach for an anatomic pathology enterprise system… 1. Default State (Strict)… 2. Organization-Level Configuration Flag… RequireProtocolForGrossingCompletion… accessible only to designated system administrators or quality managers. 3. Clear UI Guidance… 'Completing specimen without an attached protocol. This case will be routed for secondary review.'"
+
+**Built**
+- **Field Requirements → Grossing:**
+  - New rule **Grossing protocol attached** (`protocol`), required by default. This is the organisation's require-protocol-for-grossing-completion switch.
+  - **At least one block** moved from locked to required by default. It now applies only to specimens with a protocol (blocks are added from the protocol's pathways) that aren't cytology preparations (decants).
+  - Both show a hint on the Field Requirements screen, via the new `hint` flag; the `blocks` lock reason is gone.
+- **Who can switch it:** holders of `config:field-requirements:manage`, for their own organisation only. Admin has it built in. There's no built-in Quality Manager role, so a hospital grants the capability to its quality manager's role in Staff → Roles.
+- **`services/grossing/grossingCompletion.ts`:**
+  - With the rule on (the default), a specimen without a protocol is listed as missing, e.g. "Grossing protocol attached (B)".
+  - With the rule off, the first Complete grossing returns `needsConfirmation`, before any capability check or change.
+  - Once confirmed, it checks `case:grossing:complete` and completes. The audit entry says "Completed without a protocol: specimen(s) B; routed for secondary review", and each such specimen gets an open **Grossed Without Protocol** deficiency (`def-grossed-without-protocol`). That puts it in Quality Assurance's open specimen-level deficiencies, with Immediate Containment and Escalate to CAPA.
+  - A deficiency that can't be raised doesn't undo the completion. The page says so, and a "Secondary review not raised" audit entry records it.
+- **Grossing screen:**
+  - Before completing, a note names the specimens that will go for review.
+  - Completing opens a confirmation with Pete's wording, listing the specimens. It can be answered by button, voice ("confirm complete grossing" / "cancel complete grossing", in all five languages) or keyboard (Alt+Shift+F10 / F11), through the new actions `GROSSING_COMPLETE_CONFIRM` and `GROSSING_COMPLETE_CANCEL`.
+  - Afterwards, a note says which specimens were routed.
+- **Converted on touch:** the Grossing screen's fixation labels and buttons were English-only, and the ratio line printed a literal `\u2014`. They now go through `t()`, with dates in the user's language. A failed block removal shows a translated message instead of the service's English error. These should have been converted in Batch 378, when the page was last edited.
+- **Deficiency types:** a stored list now gains any new built-in type on load. Before, adding one meant bumping the version, which wiped the site's own custom types.
+- **i18n:** 23 keys added in all five languages, 1 removed (`fieldRequirements.lockReasons.blocks`).
+
+**Fixed: every voice or keyboard command ran twice.** `actionRegistryService.executeAction` announced each action at the start and again after the work. So every page's `onAction` listener ran commands twice:
+- Grossing, Accession, the report page, Intraop, Pool Claim and Delegate;
+- the success toast also showed twice.
+
+Found here because a voice-confirmed Complete grossing ran a second time and showed "This case was updated elsewhere". The Batch 378 voice check had the same second run and didn't look for the dialog (its entry is corrected). Completion is also now guarded against a second simultaneous attempt.
+
+**Verified in the browser** (demo; S26-4402-COLON-RES set to Accessioned; neither of its specimens has a protocol)
+- Default: "Still required: Grossing protocol attached (A and B)", button greyed out.
+- Field Requirements → Grossing shows the five rules with their hints. Switching the protocol rule off shows "Changed from default".
+- Grossing screen then shows "Specimens A and B have no protocol. Completing grossing routes them for secondary review."
+- Complete grossing opens the confirmation. The voice cancel closed it, the voice complete reopened it, and the voice confirm completed:
+  - "✓ Grossing completed · Specimens A and B were routed for secondary review.";
+  - status gross-complete, and the audit entry;
+  - two open Grossed Without Protocol deficiencies.
+- No "updated elsewhere" dialog after the fix, and no page errors. The fixation section reads "Fixation ended: Record now · Fixative-to-tissue ratio: Confirm adequate ratio · Raise deficiency".
+- A Grossed Without Protocol deficiency appears in Quality Assurance's open specimen-level list.
+
+**Tests:** type-check clean. Full suite: 677 files passed (3 skipped); 5,918 tests passed (9 skipped). New or extended: `grossingCompletion.test.ts` (5 → 13), `GrossingScreenPage.test.tsx` (+2), `executeActionDispatch.test.ts` (1, new).
+
+## Batch 380 — Field Requirements for the case report page, group 1 (PS-359)
+
+**Pete (Sep 29):** "Yes start on Synoptic Report Group 1". Group 1 is Add/Edit specimen, Amendment/Addendum, and Critical findings. The earlier ask: "After completion, move on to the synopticReportPage. And it's related modals."
+
+**Built**
+- **Field Requirements → Case report** (new page `report`), in three groups. The locked fields are exactly what each modal already required. Everything else starts off, so nothing changes until an organisation switches it on.
+  - **Add or edit specimen:** label and description are locked. Anatomic site, laterality, collection method, container type, complexity, SNOMED specimen type and SNOMED anatomic site are switchable.
+  - **Amendments and addenda:**
+    - locked: the reason, the explanation or addendum text, an addendum's title, and the clinician notified of a major amendment (CAP, RCPath);
+    - switchable: clinician notification for minor amendments and for addenda. When one is on, the notification section shows for that type, with a note and a description saying the organisation requires it.
+  - **Critical findings:** clinician, method and who notified are locked (CLIA). Read-back is switchable.
+- **`services/fieldRequirements/reportPageChecks.ts`** makes the decisions; the modals show "Still required: …" and mark required labels. **`hooks/useFieldRequirements`** loads a page's requirements.
+- **Voice and keyboard save commands:**
+  - "save specimen" (`SPECIMEN_EDIT_SAVE`, Alt+Shift+F2)
+  - "save amendment" / "save correction" / "release addendum" (`REVISION_SAVE`, Alt+Shift+F3)
+  - "record notification" (`CRITICAL_NOTIFICATION_RECORD`, Alt+Shift+F7)
+  - All five languages. Each saves exactly as its button does.
+- **Template-required synoptic answers** stay with the template and the finalize check; they're not duplicated here.
+
+**Fixed**
+- **Minor amendments and addenda couldn't be saved from a new draft.** The page opens every draft as a major amendment, and switching the modal's mode never changed the draft. In the browser, before the fix:
+  - a Minor Amendment was refused with "Amendment cannot proceed without the Clinical Notification Log";
+  - an Addendum was refused with "Amendment requires an explanation of what changed and why".
+  - New `amendmentService.changeDraftType` makes the draft follow the modal and renumbers it; it's rechecked before saving.
+- **Laterality chosen in Add/Edit specimen was never saved.** It now goes to `collection.laterality`.
+
+**Converted on touch**
+- `AmendmentModal`: dates were fixed to `en-US`; the banner, the version line and the reason placeholder joined translated text with English punctuation; the unknown-user fallback was English.
+- `CriticalFindingsModal`: the quoted finding now uses each language's quotation marks.
+
+**Baseline shrank:** `AmendmentModal.tsx` and `useAmendmentWorkflow.ts` came off the mock-import list.
+
+**i18n:** 37 keys added in all five languages, 2 removed (`amendmentModal.banner.amending` / `correcting`, replaced by templates with the title). Korean clinical wording should get native-speaker review before clinical use.
+
+**Verified in the browser** (demo, S26-4405)
+- Field Requirements → Case report lists the 19 fields, with the locked ones and their reasons. Four were switched on: anatomic site, laterality, minor-amendment notification, and read-back.
+- Edit specimen A with site and laterality cleared: "save specimen" by voice showed "Still required: Anatomic site and Laterality", with both labels marked. Filled in and saved: stored site "Left breast", laterality "Left".
+- Minor Amendment:
+  - the notification section showed with the organisation note;
+  - "Still required: Reason, Explanation or addendum text, and Clinician notified of a minor amendment (who and how)", narrowing as fields were filled;
+  - "save correction" by voice saved it as a correction draft with reason CORR_TYPO and the notification recorded.
+- Default settings (fresh browser): a Minor Amendment saved without notification, and an Addendum released. Both failed before the fix.
+- No page errors.
+- The Critical findings modal only opens at finalize when a critical finding is detected. It's covered by `CriticalFindingsModal.test.tsx` (default gating, required read-back, and the voice command), not by the browser.
+
+**Tests:** type-check clean. Full suite: 679 files passed (3 skipped); 5,932 tests passed (9 skipped). New: `reportPageChecks.test.ts` (9), `CriticalFindingsModal.test.tsx` (3), `mockAmendmentService.test.ts` (+2).
+
+## Batch 381 — Field Requirements for the case report page, group 2, and permissions for holds and delegation (PS-359)
+
+**Pete (Sep 29):** "Move to group 2" (holds, comments, Delegate, biopsy arrays, block cancel/restain). He then chose:
+- **"List fields as locked"**: show each modal's fixed fields as locked, plus the one real switch;
+- **"Add, keep today's users"**: permissions for holds and delegation, seeded so nobody loses them.
+
+**Built**
+- **Field Requirements → Case report:** five more groups.
+  - Locked: the hold and release notes for case and retention holds; comment text; delegation type, recipient, and the synoptic report when one is handed over; a biopsy array's cassette label and at least two specimens; block cancellation reason; restain stain and reason (ISO 15189).
+  - Switchable: **Note on every delegation**, on top of a delegation type's own "requires note".
+  - The checks are in `reportPageChecks.ts`.
+- **Permissions (Rule 7):** `case:hold:place` / `:release`, `case:retention-hold:place` / `:release`, `case:delegation:create`.
+  - Seeded to every role with case access: Pathologist, Fellow, Resident, PA, the four bench roles, and hospitals' own case-access roles.
+  - Checked in the new `services/cases/caseHolds.ts` and in `delegationService.delegate`; audited; buttons are `CapabilityButton`s.
+- **`caseHolds.ts`:** holds used to be written by the modals themselves. They now read the case's holds fresh, refuse a second active hold, save against the case's version, and audit without the free-text note.
+- **Voice and keyboard:**
+  - "place hold" (Alt+Shift+F5), "release hold" (Alt+Shift+F6)
+  - "post comment" (Alt+Shift+F8)
+  - "save biopsy array" (Alt+Shift+F12)
+  - "confirm delegation" now works: `DELEGATE_CONFIRM` was seeded, but the modal never listened.
+  - Block cancel and restain have none: several blocks' forms can be open at once, so a command couldn't tell which one it meant.
+
+**Fixed:** after a hold was placed or released, the report page's next save (a comment, a draft) was refused as someone else's change. The hold moved the case's version on without the page knowing. Delegating did the same. The page now takes the new version. In the browser before the fix, placing and releasing a hold and then posting a comment left the comment unsaved.
+
+**Cleaned up**
+- `SynopticReportPage.tsx` came off **both** deployment baselines:
+  - seven services now come through `@/services` (four static and three dynamic mock imports);
+  - three display preferences go through `utils/uiPreferences`, and Demo Reset clears them;
+  - the search-results list is read with `getSessionFlag`.
+- `BlockStainEditorModal.tsx` came off the mock-import baseline.
+
+**Converted on touch:** dates in the hold modals, the comment modals and the block editor (some fixed to `en-US`) use the user's locale; the block editor's comment author line is a template; "Case delegated" is translated.
+
+**i18n:** 48 keys added in all five languages. Korean should get native-speaker review.
+
+**Verified in the browser** (demo, S26-4401-BX-001)
+- Field Requirements → Case report shows the eight groups (33 rules). "Note on every delegation" was switched on.
+- **Case Hold:** Place was greyed until a note was typed. "place hold" by voice placed it (quality_issue, active), and the modal switched to Release. Release with a note worked. The audit shows the two capability checks and "Case hold placed / released (reason: quality_issue)".
+- **Comment:** Post was greyed while empty. "post comment" by voice posted it, and the thread went 2 → 3. Before the version fix, the same post after a hold was lost.
+- **Delegate:** with Second Opinion (whose type doesn't need a note) and a recipient chosen, the note field showed because of the organisation setting. Confirm stayed greyed until the note was filled. "confirm delegation" by voice delegated, and the record carries the note.
+- No page errors.
+- Biopsy arrays and block cancel/restain were not exercised in the browser; their rules are unit-tested.
+
+**Also in this batch**
+- **PS-98 (Pete):** Quality Assurance's pillar row ("Operations, Financials, CAPA Engine…") had no space under it, so the tiles sat against it. Its new class `ps-qa-pillar-switch` gives it 20px below, the same as the space under the tiles. Checked in the browser on Operations, CAPA Engine and Cytology QA (20px each).
+- **Fixed: amendment drafts could share an id.** `mockAmendmentService.startDraft` built the id from the millisecond alone, so two drafts opened in the same millisecond collided. Batch 380's `changeDraftType` test sometimes did exactly that and then failed. The id now has a random suffix.
+- **This batch's turn was cut off** at about 07:17, just after the full suite started, so it was finished (suite, zip, Jira) in the next turn.
+
+**Tests:** type-check clean. Full suite: 680 files passed (3 skipped); 5,943 tests passed (9 skipped), 11 more than Batch 380. New `caseHolds.test.ts`; additions to `reportPageChecks.test.ts`, `mockDelegationService.test.ts` and `authorization.test.ts`.
+
+**Found, not fixed**
+- Nothing writes `pathscribe:searchResultIds`, so next/previous from Search results never had a list. Pre-existing.
+- `DELEGATE_PEER_REVIEW`, `DELEGATE_FORMAL_CONSULT` and `DELEGATE_FULL_TRANSFER` don't name any seeded delegation type, so they stay unwired.
+- The Delegate modal still builds and filters its staff and pool lists itself.
+
+## Batch 382 — Field Requirements for the case report page, group 3 (part 1), and a permission for correcting an applied billing code (PS-359)
+
+**Pete (Sep 29):** "Split into 382 and 383." Group 3 is split in two: this batch covers the frozen-versus-final reconciliation modal and the two billing modals; Batch 383 takes the autopsy forms and the fixative and pre-analytic date gates. He then chose:
+- **Correcting an applied billing code gets a capability of its own,** "decoupled from standard case access", so a hospital can later take it off its clinical roles without touching the service. Seeded to today's users.
+- **No capability for the Discordance and post-sign-out reason modals.** They are steps inside sign-out and billing.
+- Standing rules restated: no inline CSS, no business logic in UI code, READMEs updated up the folder chain, and scan Jira for related work.
+
+**Built**
+- **Field Requirements → Case report:** two more groups, all locked (Pete's group 2 choice), 10 rules. The report page now lists 43.
+  - **Frozen-final reconciliation:** final diagnosis and category; delta, clinical impact, root cause and comment (only when the final category differs from the frozen one); the explanation (only when the root cause is Other).
+  - **Billing changes after sign-out:** reason and comment; the corrected billing code, which must also differ from the code being corrected.
+  - The checks are in `reportPageChecks.ts`: `discordanceStage`, `discordanceMissing`, `billingChangeMissing`, `correctedCodeCheck`. The modals show "Still required: …" and mark required labels.
+- **`services/quality/discordanceRecord.ts`:** builds the QA record the reconciliation modal saves. The modal used to build it and decide whether it could save. A concordant call stores the categories and diagnoses; a discordant one adds the delta, impact, root cause and comment; a high impact needs escalation. Same records as before.
+- **Permission (Rule 7):** `billing:applied-code:correct`, high risk, in a new **Billing** group.
+  - Checked in `services/billing/correctServiceCharge.ts` (`enforceAppliedCodeCorrection`) for the case, so the report page and the QA billing-deficiency resolution are both covered. The report page also asks before it changes the visible code, because assist mode changes a code without making a charge. A refusal leaves the ledger alone and shows a toast. The modal's button is a `CapabilityButton`.
+  - Seeded to every role with case access and to Admin, Lab Director and QA Reviewer (they resolve billing deficiencies). A hospital's own roles with case or configuration access are offered it. It is its own list in `capabilitySeeds.ts`, not part of the case report actions.
+- **Voice and keyboard:**
+  - "record discordance" (`DISCORDANCE_RECORD`, Ctrl+Alt+Shift+Z)
+  - "confirm billing change" (`POST_SIGNOUT_BILLING_CONFIRM`, Ctrl+Alt+Shift+1)
+  - "correct billing code" (`CORRECT_CODE_CONFIRM`, Ctrl+Alt+Shift+2)
+  - All five languages. Each acts exactly as its button does, checks included. Alt+Shift+F1 and F4 were left free (F1 is help; Alt+F4 closes a window).
+  - New internal keys F17+PS059, F24+PS053 and F24+PS054 (checked against PS-66's collision guard, which passes).
+
+**Cleaned up**
+- **Baseline shrank:** `CorrectAppliedCodeModal.tsx`, `PostSignoutBillingChangeModal.tsx` and `DiscordanceReconciliationModal.tsx` came off the mock-import list (RVU code map, reason dictionary and the frozen-final activity type id now come through `@/services`).
+- **Discordance modal:** the leftover `showDiscordantForm` state, which was only ever set to false, is gone.
+- **Corrected code that equals the original** now says so ("The new code must differ from …") instead of leaving Correct greyed out without a reason.
+
+**i18n:** 20 keys added in all five languages (2 group names, 10 field names, 3 lock reasons, the "must differ" line, one toast, and the Billing capability group with its label and description). No inline CSS was added. Korean clinical wording should get native-speaker review before clinical use.
+
+**Verified**
+- Type-check: no errors in any file this batch touched. The copy I received reports 4 errors that are not from this batch: `CrosswalkSection.tsx` and `AdminTemplateList.tsx` import `react-router-dom` (only `react-router` is installed), and `ClientDictionaryPage.tsx` imports `ClientEditorModal` and `ClientTable`, which are not in the zip. Your last batch reported a clean type-check, so these are likely differences between the zip and your machine.
+- Full suite: **684 files passed (3 skipped); 5,963 tests passed (9 skipped)**, 4 files and 20 tests more than Batch 381. New: `DiscordanceReconciliationModal.test.tsx` (3), `PostSignoutBillingChangeModal.test.tsx` (2), `CorrectAppliedCodeModal.test.tsx` (3), `discordanceRecord.test.ts` (4); additions to `reportPageChecks.test.ts` (+8), `correctServiceCharge.test.ts` (+1) and `authorization.test.ts` (seed expectations updated for the new capability).
+- The guards pass: inline CSS, PHI tagging, deployment readiness (baseline shrank), capabilities, locale parity, and PS-66's action-key collisions.
+- **Not checked in the browser.** I wasn't given the demo password. The three modals are covered by component tests (required fields, "Still required", voice commands, the permission).
+
+**Jira scan (Pete: scan for related work)**: nothing else was safe to build.
+- **PS-148** (post-sign-out major discordance flag) and **PS-146** (amended reports to CAPA) are blocked on their own open decision: how they relate to each other, and no general post-sign-out discovery mechanism exists. Your Sep 19 comment says the result must be a recommendation, not an automatic CAPA record.
+- **PS-147** (discordance pattern detection) is separate pattern work.
+- **PS-336** (split professional billing case) needs a data-model decision.
+- **PS-357** (access control phase 3) is where `billing:applied-code:correct` belongs; this batch did its share for this one action.
+- **PS-346** (informal-review banner) is still To Do although Batch 355 fixed it. Pete to close it.
+
+**Found, not fixed**
+- `SynopticReportPage.tsx` has an English "Unknown User" fallback in six places, not one: the amendment modal (`amendedByName`), the discordance modal's `performedBy`, and four more (`performedBy` at the intraop merge, `authoringPathologist`, and two `authorName`s). Batch 381's handover named one.
+- Group 3 still to do (Batch 383): the two autopsy forms, FixativeTimeGateModal and PreAnalyticDateGateModal.
 
 ---
 *When this framework's own contents change meaningfully (a new

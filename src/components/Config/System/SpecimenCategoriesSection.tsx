@@ -28,6 +28,7 @@ import { checkSpecimenCategoryReferences } from '../../../services/referenceChec
 import { mockAuditService } from '../../../services/auditlog/mockAuditService';
 import ConfirmModal from '../../Common/ConfirmModal';
 import type { SpecimenCategory } from '../../../services/specimenCategories/ISpecimenCategoryService';
+import { duplicateSpecimenCategory } from '@/services/duplication/duplicateEntities';
 import type { RetainableMaterialType, RetentionOverrideDays } from '../../../services/retentionPolicy/RetentionPolicy';
 import { MATERIAL_TYPE_LABEL, formatRetentionPeriod, getCurrentJurisdiction } from '../../../services/retentionPolicy/RetentionPolicy';
 import { resolveCurrentGoverningBodyFloor } from '../../../services/retentionPolicy/resolveRetentionEligibility';
@@ -355,6 +356,12 @@ const SpecimenCategoriesSection: React.FC = () => {
     return matchSearch && matchStatus && matchLab;
   });
 
+  // Duplicate (PS-73): opens the Add form pre-filled. What the copy keeps and
+  // clears (accession prefix/series, auto-create markers) is decided in
+  // services/duplication/duplicateEntities.ts; saving goes through add().
+  const handleDuplicate = (source: SpecimenCategory) =>
+    setModal({ mode: 'add', category: duplicateSpecimenCategory(source, name => t('common.copyOfName', { name })) });
+
   const persistSave = async (draft: Draft) => {
     const { active, ...rest } = draft;
     const payload = { ...rest, status: (active ? 'Active' : 'Inactive') as 'Active' | 'Inactive' };
@@ -500,6 +507,7 @@ const SpecimenCategoriesSection: React.FC = () => {
                           <button className="ps-conf-btn-verify" onClick={() => handleVerify(c.id)}>{t('specimenCategoriesSection.verify')}</button>
                         )}
                         <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', category: c })}>{t('common.edit')}</button>
+                        <button className="ps-conf-btn-row" onClick={() => handleDuplicate(c)}>{t('common.duplicate')}</button>
                       </div>
                     </td>
                   </tr>

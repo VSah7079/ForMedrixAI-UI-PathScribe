@@ -7,28 +7,12 @@ etc.), consumed from many places across `pages/`/`components/`.
 
 ## Files
 
-- **`AuthContext.tsx`** — session/login state, the hardcoded demo
-  credentials list, and `resolveStaffFields` (backfills
-  `canViewPediatric`/`canViewOrchestration`/`canAccessCrossTenantQa`/
-  `organisationId` from the real `StaffUser` record at login and on
-  session restore — deliberately fail-safe: any resolution failure
-  defaults every one of these to `false`/absent rather than granting
-  access). Real, thoughtful reasoning throughout (the `forceSupersede`
-  three-outcome login result, the session-supersede-vs-explicit-logout
-  distinction in `logout()`, the organisationId backfill comment
-  explaining why a stale stored session would otherwise get silently
-  locked out of all case access). Cleaned up this pass: a debug
-  `console.log` that fired on every real login attempt (logging email
-  + password length) removed; `resolveStaffFields`'s `.find((u: any)
-  => ...)` was making `staffUser` implicitly `any`, which had produced
-  an inconsistent mix — 4 fields read off it had a redundant `as any`
-  layered on top of the already-`any` value, 5 didn't, no functional
-  difference, just misleading. Fixed the root cause (typed the `.find`
-  properly) and removed all 4 redundant casts. One more unnecessary
-  cast on `voiceProfile` removed — traced `VoiceProfileId`'s real
-  definition and confirmed it's just `string` underneath, no cast ever
-  needed.
-
+- **`AuthContext.tsx`**: who is signed in, for React (`useAuth()`, `roleHas`, `useIsAdmin`, `useIsSuperAdmin`). **Rewritten in Batch 343 (PS-60):**
+  - **Decisions moved out.** Signing in and out now lives in `services/auth/authSession.ts`: password and SSO sign-in, the same-browser conflict check, sign-out with drafts kept on idle timeout, restore on load with the staff-field backfill. The context keeps React state only, and it's off both deployment baselines.
+  - **Hard-coded accounts gone.** The eleven accounts with plain-text passwords now live in `services/auth/demo/demoAccounts.ts` as PBKDF2 hashes, left out of `VITE_AUTH_MODE=sso` builds.
+  - **SSO added.** `passwordSignInEnabled`, `ssoProviders`, `beginSsoSignIn`, `completeSsoSignIn` (one completion per callback URL, since StrictMode runs the callback page's effect twice), and `resolvePendingSsoSignIn` for the conflict prompt.
+  - **`User`** is now `SessionProfile` (`services/auth/sessionProfile.ts`), with the same fields plus `authMethod` and `ssoProviderId`.
+  - **Earlier history** (the three-outcome login result, the supersede-vs-explicit-logout distinction, the organisationId backfill) carries over unchanged in behaviour.
 - **`MessagingContext.tsx`** — unread count, urgent-flag audio alert,
   drawer open/closed (persisted to `sessionStorage`), inbox polling
   every 20s plus a reload-on-tab-visible listener. Found and fixed one
@@ -175,3 +159,11 @@ an incomplete list as a result. Migrated all 6 consumers onto the real
 service, removed the `<SubspecialtyProvider>` wrapper from `App.tsx`,
 deleted the file. Full writeup in `PRIORITY_FIXES.md` item #31; the
 rest of this folder's smaller findings are item #32.
+
+## Batch 328 (PS-63), reverted in Batch 329
+
+Batch 328 added `User.staffRoles`, the staff record's role names, to the session for template approval. Batch 329 removed it again. Template rights are now read live from the staff record and the role catalog, by role id, at the moment of the action (`services/templates/templateService.ts → currentActor`). A role granted or renamed therefore takes effect without signing in again. `AuthContext.tsx` is back to its Batch 327 shape.
+
+## React Router 7 (Batch 341, PS-344)
+
+Every file here that used `react-router-dom` now imports the same hooks and components from `react-router` 7 (`react-router-dom` was removed from the project). Nothing else changed: the app had already opted into version 7's behaviour. See `src/i18n/README.md` → Batch 341.

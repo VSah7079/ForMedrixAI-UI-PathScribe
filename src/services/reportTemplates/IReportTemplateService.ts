@@ -51,10 +51,10 @@ export interface IReportTemplateService {
 
   /**
    * Duplicate an existing template with a new ID.
-   * Optional name overrides the source template name.
+   * `name` is the copy's name, supplied by the caller in the user's language.
    * The clone is created as a draft regardless of the source status.
    */
-  clone(id: ID, name?: string): Promise<ServiceResult<ReportTemplate>>;
+  clone(id: ID, name: string): Promise<ServiceResult<ReportTemplate>>;
 
   /**
    * Permanently delete a template.

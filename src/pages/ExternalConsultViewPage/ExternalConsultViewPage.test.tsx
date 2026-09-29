@@ -15,7 +15,7 @@
 // config, and mocking Trans to render its own i18nKey — assertions below
 // check for key presence, not translated text.
 //
-// react-router-dom's useParams is mocked directly rather than wrapping in
+// react-router's useParams is mocked directly rather than wrapping in
 // a MemoryRouter — this page only ever reads `token` off the URL, it
 // never navigates, so a full router isn't needed to exercise its logic.
 // ─────────────────────────────────────────────────────────────────────────────
@@ -25,7 +25,7 @@ import { render, screen, cleanup, fireEvent, act } from '@testing-library/react'
 import type { Case } from '@/types/case/Case';
 import type { ConsultToken } from '@/services/consultAccess/IConsultTokenService';
 
-vi.mock('react-router-dom', () => ({
+vi.mock('react-router', () => ({
   useParams: () => ({ token: 'ct_abc123' }),
 }));
 
@@ -35,15 +35,14 @@ vi.mock('react-i18next', () => ({
 }));
 
 const { getCase } = vi.hoisted(() => ({ getCase: vi.fn() }));
-vi.mock('@/services/cases/mockCaseService', () => ({
-  mockCaseService: { getCase },
-}));
 
 const { resolve, recordAccess, submitOpinion } = vi.hoisted(() => ({
   resolve: vi.fn(), recordAccess: vi.fn(), submitOpinion: vi.fn(),
 }));
+// Batch 363: the page reads cases through @/services (caseService), not the mock file.
 vi.mock('@/services', () => ({
   consultTokenService: { resolve, recordAccess, submitOpinion },
+  caseService: { getCase },
 }));
 
 const CASE = {

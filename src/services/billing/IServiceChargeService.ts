@@ -29,6 +29,12 @@ export interface IServiceChargeService {
    *  the full, permanent ledger, charges and credits both. */
   getChargesForCase(caseId: string): Promise<ServiceResult<ServiceChargeRecord[]>>;
 
+  /** PS-89 (Batch 333): every billing rule version any charge resolved
+   *  against, as `${billingCode}::${siteId}::${ruleVersion}` keys
+   *  (codeEngine/planImportJob.ts → ruleReferenceKey). A code-import
+   *  rollback keeps these versions (RETIRED) instead of removing them. */
+  listRuleReferenceKeys(): Promise<ServiceResult<string[]>>;
+
   /** The most recent, real 'charge' transaction for this exact
    *  billingCode on this exact source (specimen or block) that hasn't
    *  already been reversed by a real credit - what a caller removing

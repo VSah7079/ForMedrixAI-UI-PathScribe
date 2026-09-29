@@ -242,7 +242,7 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
               <div className="rrm-sent-title">
                 {isCodeReview ? t('requestReviewModal.sentToCodeReview') : t('requestReviewModal.requestSent')}
               </div>
-              <div className="rrm-sent-desc">
+              <div className="rrm-sent-desc" data-phi="accession">
                 {isCodeReview
                   ? boldSubstrings(t('requestReviewModal.addedToPool', { caseId }), [caseId])
                   : boldSubstrings(t('requestReviewModal.messageSentBody', { name: selected?.name ?? '', caseId }), [selected?.name ?? '', caseId])}

@@ -5,8 +5,8 @@
 // posture as ICytologyReviewRecordService — a sign-out, once it
 // happens, is a genuine, immutable historical fact; correcting a
 // signed-out report is real, separate work (an amendment/addendum
-// mechanism, matching this app's own established ReportSnapshot
-// vocabulary), never an edit to the original sign-out record itself.
+// mechanism, like AmendmentRecord's addendum/correction for surgical
+// reports), never an edit to the original sign-out record itself.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ServiceResult } from '../types';

@@ -6,6 +6,15 @@ audit logging, and a few smaller single-purpose hooks.
 
 ## Files
 
+- **`useLiveIntraopUpdates.ts`** (Batch 342, PS-262): keeps an intraoperative screen current across devices.
+  - **Subscribes** to live updates for a scope (OR locations, or everything), through `liveUpdateService` from `@/services`.
+  - **Re-reads** through the screen's own function when a change arrives (bursts coalesced) and after every reconnection.
+  - **Polls** every 15 s without a live connection, and every 60 s while live.
+  - **Returns** the connection state for the badge.
+  - **Used by** `OrSuiteDashboardPage` and `IntraopQueuePage`. See `services/liveUpdates/README.md`.
+
+- **`useCaseSpellCheck.ts`** (Batch 338, PS-342): spell checking for one case, for a report screen to pass to `<SpellCheckProvider>`. It resolves the case's language and facility dictionary (`services/spellcheck/resolveCaseSpellingContext.ts`), loads the personal and facility word lists through `customDictionaryService`, keeps the Web Worker in step, and exposes add-to-dictionary, ignore-for-this-session and set-the-case's-language. Returns null until the case is known. Used by `SynopticReportPage`, `CytologyScreeningPage` and `IntraopQueuePage`; see `components/SpellCheck/README.md`.
+
 - **`useIdleTimeout.ts`** — session inactivity warning/expiry
   countdown. Genuinely excellent: correctly handles background-tab
   `setTimeout`/`setInterval` throttling by re-deriving state against
@@ -266,3 +275,29 @@ audit logging, and a few smaller single-purpose hooks.
    bug.
 6. **Possible focus-trap coverage gap** (`useFocusTrap.ts`) — flagged,
    not verified further, out of scope for this pass.
+
+## React Router 7 (Batch 341, PS-344)
+
+Every file here that used `react-router-dom` now imports the same hooks and components from `react-router` 7 (`react-router-dom` was removed from the project). Nothing else changed: the app had already opted into version 7's behaviour. See `src/i18n/README.md` → Batch 341.
+
+## useSignerConfirmation (Batch 344, PS-60 follow-up)
+
+**`useSignerConfirmation(action, caseRef)`** holds a signing screen's confirmation state: username, password, error and busy. It calls `signerConfirmation` from `@/services`, which makes every decision:
+- which method applies;
+- the two-component rule;
+- the lockout;
+- the SSO popup.
+
+**`confirm()`** must be called straight from the click: for an SSO session it opens the identity provider's popup, which browsers only allow during the click. It resolves with the `SignatureConfirmation`, or null with a translated `error`. **`confirmBiometric()`** is the demo-only simulated biometric.
+
+## useCapabilities (Batch 369, PS-355)
+
+`useCapabilities()` returns `{ loading, has(capability) }` for the signed-in user, from `authorizationService.grantedCapabilities()`. It is deny-until-known: `has()` is false while loading. It is presentation only; the action's service enforces.
+
+## Batch 370 (PS-356)
+
+`useCapabilities()` now returns `{ loading, has(capability, context?), decide(capability, context?) }`. It evaluates against `authorizationService.snapshot()` with the pure `evaluateCapability`, so facility scope is reflected on screen.
+
+## Batch 380 (PS-359)
+
+`useFieldRequirements(page)`: a page's (or modal's) Field Requirements for the signed-in user's organisation. It starts from the page's defaults, so nothing is looser than the default while the settings load. The decisions stay in `services/fieldRequirements/`.

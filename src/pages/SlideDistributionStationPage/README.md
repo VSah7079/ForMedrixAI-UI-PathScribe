@@ -33,6 +33,11 @@
 - **Split-Destination Warnings are scoped to one block**, same real scope-cut precedent PS-285's own `resolveSplitBlockGroupStatus` documents for its differently-named concept — a genuine whole-accession/cross-specimen check would need data this pass deliberately doesn't reach for.
 - Deliberate scope cuts for this pass, matching the series' own precedent: no `MatrixBlock`-level slides, no formal scanner-instrument registry (free-text `scannerInstrumentId`, same honest convention `WsiScanBatch.scannerInstrumentId` already uses), no real rack/tray container model (see Investigation above). **Physical foot-pedal integration is explicitly deferred, not dropped** — per direct instruction, it is the next real item to address once PS-288 is delivered, tracked here so it isn't lost across the series.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`components/QueuePanel.tsx`: the accession in each queue row is tagged.
+
 ---
 *See [pages/README.md](../README.md) for how this folder fits the whole pages/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

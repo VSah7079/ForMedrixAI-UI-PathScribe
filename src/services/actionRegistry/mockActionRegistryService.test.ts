@@ -34,6 +34,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import { describe, it, expect } from 'vitest';
 import { mockActionRegistryService } from './mockActionRegistryService';
+import { ACTION_MAP } from '../../constants/systemActions';
 import fs from 'fs';
 import path from 'path';
 
@@ -52,6 +53,7 @@ const REAL_LIVE_CONTEXTS = new Set([
   'ACCESSION', 'WORKLIST', 'CONFIGURATION', 'CASE_VIEW', 'INTRAOP', 'SEARCH', 'SYNOPTIC', 'CONTRIBUTION', 'AUDIT',
   'MESSAGES', // set by the messages drawer, not a page — confirmed separately
   'CYTOLOGY', // set by CytologyScreeningPage.tsx's own useEffect — confirmed directly, same pattern as SynopticReportPage.tsx's own SYNOPTIC context
+  'GROSSING', // Batch 378: set by GrossingScreenPage.tsx's own useEffect (Complete grossing)
 ]);
 
 describe('mockActionRegistryService — real regression guard against orphaned/colliding actions', () => {
@@ -107,5 +109,59 @@ describe('mockActionRegistryService — real regression guard against orphaned/c
   it('the real source file never casts (ACTION_MAP as any) — a direct, reliable signal of a stale ActionId reference bypassing the type system instead of being fixed', () => {
     const src = fs.readFileSync(path.join(__dirname, 'mockActionRegistryService.ts'), 'utf8');
     expect(src.includes('ACTION_MAP as any')).toBe(false);
+  });
+
+  // Real fix (PS-66, Sep 2026): independent, exhaustive verification found 12 real
+  // cross-file internalKey collisions between this file and systemActions.ts's own
+  // ACTION_MAP — not the 10 the ticket itself claimed (its scan missed ENTER_ADDENDUM,
+  // FULL_VIEW and TABBED_VIEW, and one of its 10, F18+PS014, was a false positive —
+  // already the legitimate alias pattern, not a second hardcoded literal). Per-key
+  // comparison of label/shortcut/voice-trigger content resolved each pair as either
+  // the SAME logical action described twice (9 cases — now alias systemActions.ts's
+  // own key via ACTION_MAP, so the two files can't drift apart again) or a genuinely
+  // different action that had only accidentally collided (3 cases — SKIP_FIELD/
+  // FULL_VIEW/TABBED_VIEW, renumbered to fresh keys). See systemActions.ts's own
+  // PS-66 comments for the full per-key rationale, and services/actionRegistry/README.md
+  // + constants/README.md for the disclosed, separate, NOT-fixed-here finding: 21 more
+  // internalKey values duplicated purely within systemActions.ts itself (unrelated to
+  // this file), of which only the 5-key portion that fed into this ticket's real
+  // scope (F17+PS004-008) was renumbered as a necessary prerequisite.
+  it('no hardcoded internalKey literal in this file collides with any systemActions.ts internalKey (PS-66 regression guard — aliasing via ACTION_MAP is the correct, intentional way to share a key; a bare literal duplicate is the bug class this ticket fixed)', () => {
+    const src = fs.readFileSync(path.join(__dirname, 'mockActionRegistryService.ts'), 'utf8');
+    // Literal `internalKey: 'X'` assignments that do NOT go through `ACTION_MAP[...]`
+    // first — those are the un-aliased, hardcoded literals PS-66's bug class is about.
+    const literalKeys = [...src.matchAll(/internalKey:\s*(?!ACTION_MAP)'([^']+)'/g)].map(m => m[1]);
+    const sysKeys = new Set(Object.values(ACTION_MAP).map(a => a.internalKey));
+    const collisions = literalKeys.filter(k => sysKeys.has(k));
+    expect(collisions).toEqual([]);
+  });
+
+  it('the 9 PS-66 consolidations resolve to their intended systemActions.ts action\'s own key, and the 3 PS-66 renumbers landed on keys no systemActions.ts action holds', () => {
+    const byId = new Map(actions.map(a => [a.id, a]));
+    const consolidated: [string, string][] = [
+      ['ENTER_ADDENDUM', 'diagnosis.enterAddendum'],
+      ['NEXT_UNANSWERED', 'synoptic.jumpNextUnanswered'],
+      ['NEXT_REQUIRED', 'synoptic.jumpNextRequired'],
+      ['CONFIRM_FIELD', 'synoptic.confirmField'],
+      ['EDIT_FIELD', 'synoptic.overrideField'],
+      ['GROSSING_NEXT_BLOCK', 'grossing.nextBlock'],
+      ['GROSSING_PREVIOUS_BLOCK', 'grossing.previousBlock'],
+      ['GROSSING_MARK_GROSSED', 'grossing.markGrossed'],
+      ['GROSSING_CONFIRM_TRIAGE', 'grossing.confirmTriage'],
+    ];
+    for (const [mockId, sysId] of consolidated) {
+      const mockAction = byId.get(mockId);
+      const sysAction = ACTION_MAP[sysId as keyof typeof ACTION_MAP];
+      expect(mockAction, `expected mock action ${mockId} to exist`).toBeTruthy();
+      expect(sysAction, `expected systemActions.ts action ${sysId} to exist`).toBeTruthy();
+      expect(mockAction!.internalKey).toBe(sysAction!.internalKey);
+    }
+
+    const allSysKeys = new Set(Object.values(ACTION_MAP).map(a => a.internalKey));
+    for (const mockId of ['SKIP_FIELD', 'FULL_VIEW', 'TABBED_VIEW']) {
+      const mockAction = byId.get(mockId);
+      expect(mockAction, `expected mock action ${mockId} to exist`).toBeTruthy();
+      expect(allSysKeys.has(mockAction!.internalKey)).toBe(false);
+    }
   });
 });

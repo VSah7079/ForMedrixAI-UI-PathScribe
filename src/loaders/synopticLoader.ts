@@ -1,4 +1,4 @@
-import { LoaderFunctionArgs, redirect } from "react-router-dom";
+import { LoaderFunctionArgs, redirect } from "react-router";
 import { caseRouter } from "../services/cases/CaseRouter";
 import { getSessionUser } from "../services/auth/caseAccessControl";
 import { resolveCaseAccessGate } from "../services/auth/resolveCaseAccessGate";

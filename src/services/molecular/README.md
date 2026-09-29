@@ -318,3 +318,16 @@ No new tests beyond the 6 corrected — this is real UI/data-reference wiring ag
 **Fix, per direct report** ("if the scan doesn't work, they need a way to input the specimen manually"): confirmed directly — `MolecularRackLoadingPage.tsx` and `MolecularPlateBuilderPage.tsx` both had exactly one way to assign a specimen to a rack position or well: a real, physical barcode scan via the `PATHSCRIBE_SCAN` event, with no fallback at all. A damaged label, an illegible barcode, or a malfunctioning scanner left a tech with no way to proceed. Both real scan handlers' own core logic (movement-record resolution, rack-lookup, well/position assignment) were extracted into a shared function, and a real "Scan not working? Enter specimen ID manually" text-entry option was added right next to each page's own scan button — calling the exact same shared function, so a manually-typed specimen ID produces an identical, real outcome to a successful scan (same movement record, same auto-advance to the next empty position). The one real, honest difference: a manually-typed barcode has no `matchedAccession` auto-resolution the way a real scan's own `ScannerProvider` pipeline provides — left `undefined`, the same as any other real, unmatched scan.
 
 **Bug filed, per direct request** ("are the target instruments also [tied] to the station?"): confirmed directly — `targetInstrumentId` is a plain, free-typed string with no real dictionary entity and no station/facility link anywhere in this app, the exact same class of gap Phase 22 above already fixed once for the sibling `assayCode` field. See `BUG_INSTRUMENT_STATION_LINKAGE.md` for the full account. Filed, not fixed, per the request's own scope.
+
+## Batch 356 (PS-326): target instruments come from a list
+
+- **Batches:** `MolecularBatch.targetInstrumentId` now holds an instrument's code from `services/instruments/`.
+  - `mockMolecularBatchService.create` refuses a code that isn't an active listed instrument, with the `MOLECULAR_BATCH_INSTRUMENT_UNAVAILABLE` error; the screen translates it.
+  - It stores the code as listed.
+- **Scan verification:** `resolveMolecularScanVerification` takes an optional station result and reports `stationVerified`. A `false` blocks dispatch; `null` (nothing to check) doesn't.
+- **Dispatch:** `dispatchMolecularWorklist` takes the device's current station, looks up the instrument, and returns `verificationFailures` (`plate` / `deck` / `station`) so the screen can say what failed in the user's language.
+- **Bug note:** `BUG_INSTRUMENT_STATION_LINKAGE.md` is marked fixed.
+
+## Batch 358
+
+Target instruments come from the equipment register (`services/equipment/`): active equipment of kind `analyser`. `checkBatchInstrument` also refuses a non-analyser code. Dispatch uses `checkEquipmentStation`.

@@ -31,6 +31,15 @@
 - Deliberate scope cuts for this pass (ticket is Autopsy-module-scale): no `MatrixBlock`/specimen-level scan resolution, schematic (non-decodable) label preview, no `buildSlideZplTemplate.ts` rewiring to the new layout config, no action-registry/voice wiring, no admin editor UI for `SlideLabelLayoutConfig`.
 - **Real fix (foot-pedal follow-up, Sep 2026):** foot-pedal support was originally disclaimed here as out of browser reach — re-verified and found incorrect. `useFootPedal.ts` (Gamepad API + keyboard-emulation capture, already working for `SynopticReportPage.tsx`'s dictation controls) is now wired into this page: Pedal 2 fires the real `handlePrintNext()` — PS-284's own named "Print/Etch Next... physical foot pedal integration" trigger. Configured per-workstation at Config → System → Voice → Foot Pedal.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`MicrotomyWorkstationPage.tsx`: the patient name in the context bar is tagged. The page reads scan stations through `@/services`, so it came off the mock-import baseline.
+
+## Batch 367 (PS-74): no inline CSS
+
+`components/HardwarePrintPanel.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
 ---
 *See [pages/README.md](../README.md) for how this folder fits the whole pages/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

@@ -106,6 +106,20 @@ documented adapter) previewing an assembled Template.
   to retire `types/template.ts`'s `ReportTemplate` export entirely, but
   nothing is broken today.
 
+## Localized Duplicate names (Batch 317, PS-73)
+
+`PartLibraryTab` and `TemplateListTab` now pass the copy's name to `clone()` from `t('common.copyOfName', { name })`. The services no longer fall back to an English `"(Copy)"`. "Use Standard Template" names its copy with `t('templateListTab.defaultCustomTemplateName')`, where it used to hard-code `'My Surgical Pathology Report'`.
+
+`RoutingRulesTab`'s protocol pickers no longer offer **archived** synoptic protocols for new rules. A rule that already points at one still shows it. The non-published status beside a protocol's name is translated (`routingRulesTab.protocolWithStatus` + the lifecycle label); it used to show the raw English value, e.g. "(in_review)".
+
+## Batch 367 (PS-74): no inline CSS
+
+`TemplateAssemblyPage.tsx`, `TemplateCanvas.tsx`, `TemplateInspector.tsx`, `TemplatePalette.tsx`, `TemplatePreviewPanel.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`TemplateAssemblyPage.tsx` takes `reportTemplateService`, `reportPartService` and `onReportPartsChanged` from `@/services`, and is off the deployment baseline.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

@@ -36,7 +36,7 @@
  */
 
 import React, { createContext, useContext, useEffect, useRef, useCallback } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import { useNavigate, useLocation } from 'react-router';
 import { useAuth } from './AuthContext';
 import { useEnabledIdentifierFormats } from '../hooks/useEnabledIdentifierFormats';
 

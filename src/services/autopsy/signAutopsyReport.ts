@@ -40,10 +40,13 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { countersignService, qaSupervisionAssignmentService } from '@/services';
+import { countersignService, qaSupervisionAssignmentService, userService } from '@/services';
 import { FPPE_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaSupervisionAssignmentService';
 import { resolveResidentCountersignRequired } from '@/services/cases/resolveResidentCountersignRequired';
 import { publishReportReleasedEvent } from '@/services/reports/publishReportReleasedEvent';
+import { canFinalizeCase, getSessionUser, resolveCountersignRequiredTypeIds } from '@/services/auth/caseAccessControl';
+import { resolveFinalizeAuthorityContext } from '@/services/auth/resolveFinalizeAuthorityContext';
+import { resolveForensicSignOutAuthority } from './resolveForensicSignOutAuthority';
 import type { AutopsyReportTier, AutopsyReportSnapshot } from '@/types/autopsy/AutopsyCaseDetails';
 
 interface OrchestratorSectionLike { id: string; label: string; text?: string }
@@ -84,9 +87,20 @@ function buildCountersignComparisonSnapshot(caseData: any): Record<string, strin
   };
 }
 
+export type SignAutopsyReportErrorCode =
+  | 'CASE_NOT_FOUND' | 'NO_AUTOPSY_RECORD' | 'PAD_REQUIRED'
+  /** Signing authority refused (PS-327); `error` is the translated reason. */
+  | 'NOT_AUTHORIZED'
+  /** A forensic case, and the signer holds no active appointment for its
+   *  jurisdiction (resolveForensicSignOutAuthority). */
+  | 'NO_FORENSIC_APPOINTMENT'
+  | 'SAVE_FAILED';
+
 export interface SignAutopsyReportResult {
   ok: boolean;
   outcome?: 'signed' | 'released_for_countersign';
+  /** The caller shows its own translated text for each code. */
+  errorCode?: SignAutopsyReportErrorCode;
   error?: string;
 }
 
@@ -102,15 +116,15 @@ export async function signAutopsyReport(
   generatePdf?: () => Promise<{ pdfBase64?: string; generationError?: string }>,
 ): Promise<SignAutopsyReportResult> {
   const caseData = await caseRouter.getCase(caseId);
-  if (!caseData) return { ok: false, error: 'Case not found.' };
-  if (!caseData.autopsy) return { ok: false, error: 'Case has no autopsy record.' };
+  if (!caseData) return { ok: false, errorCode: 'CASE_NOT_FOUND', error: 'Case not found.' };
+  if (!caseData.autopsy) return { ok: false, errorCode: 'NO_AUTOPSY_RECORD', error: 'Case has no autopsy record.' };
 
   // Real, deliberate ordering guard: an FAD can never be signed before
   // a real, signed PAD exists — same real-world sequencing
   // resolveAutopsyBodyReleaseGate.ts already assumes (PAD comes before
   // FAD, never the reverse).
   if (tier === 'FAD' && !caseData.autopsy.padSnapshot) {
-    return { ok: false, error: 'The PAD must be signed before the FAD can be signed.' };
+    return { ok: false, errorCode: 'PAD_REQUIRED', error: 'The PAD must be signed before the FAD can be signed.' };
   }
 
   const provisionalParticipant = caseData.participants?.some(
@@ -123,10 +137,21 @@ export async function signAutopsyReport(
     ? await qaSupervisionAssignmentService.getActiveAssignmentForUser(FPPE_ACTIVITY_TYPE_ID, signingUser.id, (caseData as any)?.subspecialtyId).then(r => r.ok ? r.data : null).catch(() => null)
     : null;
 
+  // PS-327 (Batch 331): the same per-lab / country signing authority as
+  // Surgical Pathology. Per Pete, the country profile that applies is the
+  // case's legal (coroner) jurisdiction, not the performing lab's country;
+  // it falls back to the lab's country if the case has none. A lab's own
+  // authorityOverrides still win.
+  const authority = await resolveFinalizeAuthorityContext(caseData, {
+    jurisdictionOverride: caseData.autopsy.jurisdiction,
+  });
+
   const countersignCheck = resolveResidentCountersignRequired({
     participants: caseData.participants,
     signingUserId: signingUser.id,
     hasActiveFppeAssignment: !!activeFppeAssignment,
+    countersignRequiredTypeIds: resolveCountersignRequiredTypeIds(
+      authority.participationTypes, authority.performingLabFacilityId, authority.jurisdiction),
   });
 
   if (countersignCheck.required) {
@@ -152,10 +177,36 @@ export async function signAutopsyReport(
     try {
       await caseRouter.updateCase(caseId, { status: 'pending-countersign' } as any);
     } catch (e) {
-      return { ok: false, error: e instanceof Error ? e.message : 'Failed to release for countersign.' };
+      return { ok: false, errorCode: 'SAVE_FAILED', error: e instanceof Error ? e.message : 'Failed to release for countersign.' };
     }
 
     return { ok: true, outcome: 'released_for_countersign' };
+  }
+
+  // PS-327 (Batch 331): a direct PAD/FAD signature (including an
+  // attending completing a countersign) needs signing authority. Checked
+  // after the countersign gate, as in Surgical Pathology, so a resident
+  // is routed for countersign rather than refused. Before this, anyone
+  // who reached the button could sign.
+  const decision = canFinalizeCase(
+    getSessionUser(), caseData.participants,
+    authority.participationTypes, authority.performingLabFacilityId, authority.jurisdiction,
+  );
+  if (!decision.granted) return { ok: false, errorCode: 'NOT_AUTHORIZED', error: decision.reason };
+
+  // Forensic cases also need the signer's active jurisdictional
+  // appointment, read live from their staff record. No admin override.
+  if (caseData.autopsy.caseAuthority === 'medicolegal_forensic') {
+    const staff = await userService.getById(signingUser.id).catch(() => null);
+    const forensic = resolveForensicSignOutAuthority({
+      caseAuthority: caseData.autopsy.caseAuthority,
+      jurisdiction: caseData.autopsy.jurisdiction,
+      signerCredentials: staff?.ok ? staff.data.providerCredentials : undefined,
+      asOfDate: new Date().toISOString().slice(0, 10),
+    });
+    if (!forensic.allowed) {
+      return { ok: false, errorCode: 'NO_FORENSIC_APPOINTMENT', error: `No active forensic appointment for ${caseData.autopsy.jurisdiction ?? 'this jurisdiction'}.` };
+    }
   }
 
   const snapshot: AutopsyReportSnapshot = {
@@ -203,7 +254,7 @@ export async function signAutopsyReport(
       ...(tier === 'FAD' ? { status: 'finalized' } : {}),
     } as any);
   } catch (e) {
-    return { ok: false, error: e instanceof Error ? e.message : 'Failed to sign the report.' };
+    return { ok: false, errorCode: 'SAVE_FAILED', error: e instanceof Error ? e.message : 'Failed to sign the report.' };
   }
 
   // Real, per direct follow-up ("wire in Autopsy") — routes through

@@ -15,11 +15,19 @@
 // same real reason dictionary (category: 'POST_SIGNOUT_BILLING_CHANGE')
 // and the same field-level requirements; only the surrounding
 // interaction shape differs.
+//
+// Batch 382 (PS-359): the reason and the comment come from the
+// organisation's Field Requirements (both locked; reportPageChecks.
+// billingChangeMissing). The modal shows "Still required: …" and marks
+// the required labels, and Confirm can be said ("confirm billing change",
+// POST_SIGNOUT_BILLING_CONFIRM).
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { mockReasonDictionaryService } from '@/services/reasons/mockReasonDictionaryService';
+import { actionRegistryService, billingChangeMissing, reasonDictionaryService, reportFieldRequired } from '@/services';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
+import { formatList } from '@/utils/formatList';
 import type { ReasonDictionaryEntry } from '@/types/reasons/ReasonDictionaryEntry';
 
 export interface PostSignoutBillingChangeModalProps {
@@ -32,21 +40,32 @@ export interface PostSignoutBillingChangeModalProps {
 }
 
 export const PostSignoutBillingChangeModal: React.FC<PostSignoutBillingChangeModalProps> = ({ summary, onConfirm, onCancel }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const requirements = useFieldRequirements('report');
   const [reasonOptions, setReasonOptions] = useState<ReasonDictionaryEntry[]>([]);
   const [reasonId, setReasonId] = useState('');
   const [comment, setComment] = useState('');
 
   useEffect(() => {
     let cancelled = false;
-    mockReasonDictionaryService.getAll('POST_SIGNOUT_BILLING_CHANGE').then(res => {
+    reasonDictionaryService.getAll('POST_SIGNOUT_BILLING_CHANGE').then(res => {
       if (cancelled) return;
       if (res.ok) setReasonOptions(res.data.filter(r => r.status === 'Active'));
     });
     return () => { cancelled = true; };
   }, []);
 
-  const canConfirm = reasonId !== '' && comment.trim().length > 0;
+  const missing = billingChangeMissing(reasonId, comment, requirements);
+  const canConfirm = missing.length === 0;
+  const star = (id: string) => reportFieldRequired(requirements, id) && <span className="ps-conf-required">*</span>;
+  const confirm = () => { if (canConfirm) onConfirm({ reasonId, comment: comment.trim() }); };
+
+  // Voice/keyboard "confirm billing change": the same Confirm, with the same check.
+  const confirmRef = useRef(confirm);
+  confirmRef.current = confirm;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'POST_SIGNOUT_BILLING_CONFIRM') confirmRef.current();
+  }), []);
 
   return (
     <div className="ps-ms-overlay ps-billing-postsignout-overlay">
@@ -58,7 +77,7 @@ export const PostSignoutBillingChangeModal: React.FC<PostSignoutBillingChangeMod
           </p>
           <div className="ps-conf-form-field">
             <label className="ps-conf-label" htmlFor="postsignout-billing-reason">
-              {t('postSignoutBillingChangeModal.reasonLabel')} <span className="ps-conf-required">*</span>
+              {t('postSignoutBillingChangeModal.reasonLabel')} {star('postSignoutBillingReason')}
             </label>
             <select
               id="postsignout-billing-reason"
@@ -71,7 +90,7 @@ export const PostSignoutBillingChangeModal: React.FC<PostSignoutBillingChangeMod
             </select>
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="postsignout-billing-comment">{t('postSignoutBillingChangeModal.commentLabel')} <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="postsignout-billing-comment">{t('postSignoutBillingChangeModal.commentLabel')} {star('postSignoutBillingComment')}</label>
             <textarea
               id="postsignout-billing-comment"
               className="ps-conf-textarea"
@@ -80,13 +99,18 @@ export const PostSignoutBillingChangeModal: React.FC<PostSignoutBillingChangeMod
               placeholder={t('postSignoutBillingChangeModal.commentPlaceholder')}
             />
           </div>
+          {missing.length > 0 && (
+            <p className="ps-field-still-required" role="status">
+              {t('fieldRequirements.stillRequired', { fields: formatList(missing.map(id => t(`fieldRequirements.fields.report.${id}`)), i18n.language) })}
+            </p>
+          )}
         </div>
         <div className="ps-ms-footer">
           <button className="ps-conf-btn-secondary" onClick={onCancel}>{t('postSignoutBillingChangeModal.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             disabled={!canConfirm}
-            onClick={() => onConfirm({ reasonId, comment: comment.trim() })}
+            onClick={confirm}
           >
             {t('postSignoutBillingChangeModal.confirm')}
           </button>

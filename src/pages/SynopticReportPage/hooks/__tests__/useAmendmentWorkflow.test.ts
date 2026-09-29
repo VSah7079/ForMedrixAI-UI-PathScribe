@@ -7,7 +7,7 @@
 //
 // The largest, most branch-dense hook tested so far. All external services
 // (amendmentService, reportVersionService, aiBehaviorService,
-// lisAmendmentNoticeService, caseRouter, mockAuditService, sendEmail,
+// lisAmendmentNoticeService, caseRouter, auditService, sendEmail,
 // getOrganisationByHospitalId, userService, and the dynamic imports for
 // templateService/generateAiSuggestionsForReport) are mocked — this hook's
 // own sequencing and branching logic is under test, not whether the mock
@@ -39,9 +39,6 @@ vi.mock('@/services/reports/publishReportReleasedEvent', () => ({
 vi.mock('@/services/reportTemplates/resolveFinalDiagnosisText', () => ({
   resolveFinalDiagnosisText: vi.fn(),
 }));
-vi.mock('@/services/auditlog/mockAuditService', () => ({
-  mockAuditService: { logEvent: vi.fn().mockResolvedValue(undefined) },
-}));
 vi.mock('@/services/organisation/organisationService', () => ({
   getOrganisationByHospitalId: vi.fn().mockReturnValue({ id: 'org-1', name: 'Test Org' }),
 }));
@@ -54,6 +51,7 @@ vi.mock('@/services', () => ({
     release: vi.fn().mockResolvedValue({ ok: true, data: { type: 'amendment' } }),
     startDraft: vi.fn().mockResolvedValue({ ok: true, data: { id: 'amend-1', sequenceNumber: 1 } }),
     captureFields: vi.fn().mockResolvedValue({ ok: true, data: {} }),
+    changeDraftType: vi.fn().mockResolvedValue({ ok: true, data: { id: 'amend-1', sequenceNumber: 1 } }),
     getByCaseId: vi.fn().mockResolvedValue({ ok: true, data: [] }),
   },
   reportVersionService: {
@@ -62,12 +60,12 @@ vi.mock('@/services', () => ({
   },
   aiBehaviorService: { get: vi.fn().mockResolvedValue({ ok: true, data: { microscopicEnabled: true } }) },
   lisAmendmentNoticeService: { updateStatus: vi.fn().mockResolvedValue({ ok: true }) },
+  // Batch 380: the hook reaches these through @/services now, not their mock file paths.
+  auditService: { logEvent: vi.fn().mockResolvedValue(undefined) },
+  generateAiSuggestionsForReport: vi.fn().mockResolvedValue({ f1: 'suggested value' }),
 }));
 vi.mock('@/services/templates/templateService', () => ({
   getTemplate: vi.fn().mockResolvedValue({ template: { sections: [{ fields: [{ id: 'f1' }] }] } }),
-}));
-vi.mock('@/services/cases/mockCaseService', () => ({
-  generateAiSuggestionsForReport: vi.fn().mockResolvedValue({ f1: 'suggested value' }),
 }));
 
 function makeTestCase(overrides: Partial<Case> = {}): Case {
@@ -262,13 +260,13 @@ describe('useAmendmentWorkflow — alertAdminsOfUnresolvedDrift', () => {
 
   it('sends a real email to real, active admins within the same organisation, and audit-logs the alert', async () => {
     const { sendEmail } = await import('@/services/communications/notificationService');
-    const { mockAuditService } = await import('@/services/auditlog/mockAuditService');
+    const { auditService } = await import('@/services');
     const { result } = renderHook(() => useAmendmentWorkflow(baseParams()));
 
     await act(async () => { await result.current.alertAdminsOfUnresolvedDrift('CASE-1', 3, 'skipped'); });
 
     expect(sendEmail).toHaveBeenCalledWith(expect.objectContaining({ to: ['admin@test.com'] }));
-    expect(mockAuditService.logEvent).toHaveBeenCalled();
+    expect(auditService.logEvent).toHaveBeenCalled();
   });
 
   it('never throws back to the caller, even if the internal alert logic itself fails', async () => {
@@ -313,7 +311,7 @@ describe('useAmendmentWorkflow — protocol change review', () => {
   });
 
   it('handleProtoCommit with an "add" action creates a real new report WITH AI suggestions, when AI is enabled', async () => {
-    const { generateAiSuggestionsForReport } = await import('@/services/cases/mockCaseService');
+    const { generateAiSuggestionsForReport } = await import('@/services');
     const setCaseData = vi.fn();
     const caseData = makeTestCase({ synopticReports: [] as any });
     const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData, setCaseData })));
@@ -330,7 +328,7 @@ describe('useAmendmentWorkflow — protocol change review', () => {
   it('handleProtoCommit skips AI suggestion generation entirely when the Microscopic-Driven AI toggle is disabled', async () => {
     const { aiBehaviorService } = await import('@/services');
     vi.mocked(aiBehaviorService.get).mockResolvedValueOnce({ ok: true, data: { microscopicEnabled: false } } as any);
-    const { generateAiSuggestionsForReport } = await import('@/services/cases/mockCaseService');
+    const { generateAiSuggestionsForReport } = await import('@/services');
     const caseData = makeTestCase({ synopticReports: [] as any });
     const { result } = renderHook(() => useAmendmentWorkflow(baseParams({ caseData })));
     act(() => { result.current.handleProtocolChangesDetected([{ id: 'c1', action: 'add', specimenId: 'SP-2', proposedTemplateId: 'tmpl-new' } as any]); });

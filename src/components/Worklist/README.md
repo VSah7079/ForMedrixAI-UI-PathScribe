@@ -292,6 +292,29 @@ another, not fixed anything.) Live-verified: a successful claim now
 shows the case as a real, visible, assigned "URGENT" row with genuine
 patient data, not stuck showing "Restricted Pooled Case."
 
+## Batch 350: `WorklistTable.tsx` for Search
+
+- **`preserveOrder`** (new prop): shows cases in the order given, without the urgent/pool regrouping, the stored column sort or the section dividers. Search passes it because the case search service has already sorted and paged the results.
+- **Status labels** on cards and rows are translated (`utils/caseRevisionDisplay.ts → getCaseStatusLabel(…, t)`); they were the English status code in Title Case, on the Worklist too.
+- **Where a case was opened from** is recorded through `utils/search/searchSession.ts` (was direct session storage). The file still uses local storage for its sort, so it stays on the deployment baseline.
+- **Inline styles converted** (standing rule 1):
+  - the flag chip's colours are now `--ps-hue` with `color-mix` in `.wl-flag-chip`;
+  - the container height is `--wl-container-height`;
+  - the collapsible dividers' pointer is `.wl-divider--clickable`;
+  - the status dot's glow is derived in CSS (it was `hex + '66'` built in JSX).
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+- `WorklistTable.tsx`: the case number (card and table views) is tagged. Patient name, MRN and date of birth already were.
+- `PoolClaimModal.tsx`: the header's case summary and case number are tagged.
+
+## Batch 367 (PS-74): no inline CSS
+
+`WorklistTable.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+`WorklistTable.tsx`: `getFlagPalette` returns only the flag's hue; the rgba tints it built were never used.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

@@ -315,10 +315,7 @@ const MatrixBlockEditorModal: React.FC<MatrixBlockEditorModalProps> = ({
 
           <div
             className="ps-matrixblock-core-grid"
-            style={{
-              gridTemplateColumns: `repeat(${columnsFor(sortedParticipants.length)}, 1fr)`,
-              maxWidth: columnsFor(sortedParticipants.length) * 96,
-            }}
+            style={{ '--mb-cols': columnsFor(sortedParticipants.length) } as React.CSSProperties}
           >
             {sortedParticipants.map(p => {
               const sp = specimens.find(s => s.id === p.specimenId);

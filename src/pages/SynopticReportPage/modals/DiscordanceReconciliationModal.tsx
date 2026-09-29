@@ -18,17 +18,25 @@
 // PS-113, Stage 5. Writes only to qaActivityRecordService now — the old
 // reconciliationService/ReconciliationRecord this modal used to
 // dual-write to has been retired and deleted (first release, no real
-// production history to preserve). buildQaActivityRecordPayload below
-// is no longer a dual-write helper; it's simply the one, real payload
-// builder.
+// production history to preserve).
+//
+// Batch 382 (PS-359): what each step needs comes from the organisation's
+// Field Requirements (reportPageChecks.discordanceMissing; every field
+// locked), and the record is built in services/quality/discordanceRecord.ts
+// rather than here. The modal shows "Still required: …", marks required
+// labels, and the save can be said ("record discordance", DISCORDANCE_RECORD).
 // ─────────────────────────────────────────────────────────────────────────────
-import React, { useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import '../../../pathscribe.css';
 import { useTranslation } from 'react-i18next';
-import { qaActivityRecordService } from '@/services';
-import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/mockQaActivityTypeService';
+import {
+  actionRegistryService, buildDiscordanceRecord, discordanceMissing, discordanceStage, qaActivityRecordService, reportFieldRequired,
+} from '@/services';
+import { useFieldRequirements } from '@/hooks/useFieldRequirements';
+import { formatList } from '@/utils/formatList';
 import type { FrozenCategory } from '@/types/intraop/IntraoperativeEntry';
-import type { QaActivityRecord, QaDiscordanceDelta, QaDiscordanceSeverity, QaDiscordanceRootCause } from '@/types/quality/QaActivityRecord';
+import type { QaDiscordanceDelta, QaDiscordanceSeverity, QaDiscordanceRootCause } from '@/types/quality/QaActivityRecord';
+import { SpellCheckedTextarea } from '@/components/SpellCheck/SpellCheckedTextarea';
 
 // Real, persisted enum values stay as data; only the displayed label is
 // translated (this sweep's usual LABEL_KEY pattern). CATEGORY_LABEL_KEY
@@ -60,35 +68,6 @@ const ROOT_CAUSE_LABEL_KEY: Record<QaDiscordanceRootCause, string> = {
   other: 'clientEditorModal.general.other',
 };
 
-function buildQaActivityRecordPayload(args: {
-  caseId: string; specimenId: string; caseType: string; subspecialtyId?: string;
-  frozenCategory: FrozenCategory; finalCategory: FrozenCategory;
-  frozenDx: string; finalDx: string;
-  outcome: 'concordant' | 'discordant';
-  delta?: QaDiscordanceDelta; severity?: QaDiscordanceSeverity; rootCause?: QaDiscordanceRootCause;
-  rootCauseNote?: string; escalationRequired?: boolean; comments?: string;
-  recordedBy: { userId: string; userName: string };
-  draftedBy?: { userId: string; userName: string };
-  isTeachingOnboardingCase: boolean;
-  reviewerFeedback?: string;
-}): Omit<QaActivityRecord, 'id' | 'recordedAt'> {
-  return {
-    activityTypeId: FROZEN_FINAL_ACTIVITY_TYPE_ID,
-    caseId: args.caseId, specimenId: args.specimenId, caseType: args.caseType, subspecialtyId: args.subspecialtyId,
-    fieldValues: {
-      frozenCategory: args.frozenCategory, finalCategory: args.finalCategory,
-      frozenDx: args.frozenDx, finalDx: args.finalDx,
-    },
-    outcome: args.outcome,
-    delta: args.delta, severity: args.severity, rootCause: args.rootCause,
-    rootCauseNote: args.rootCauseNote, escalationRequired: args.escalationRequired, comments: args.comments,
-    recordedBy: args.recordedBy,
-    draftedBy: args.draftedBy,
-    isTeachingOnboardingCase: args.isTeachingOnboardingCase,
-    reviewerFeedback: args.reviewerFeedback,
-  };
-}
-
 interface Props {
   caseId: string;
   specimenId: string;
@@ -109,10 +88,10 @@ interface Props {
 }
 
 export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specimenId, caseType, frozenCategory, frozenDx, performedBy, draftedBy, subspecialtyId, onDone }) => {
-  const { t } = useTranslation();
+  const { t, i18n } = useTranslation();
+  const requirements = useFieldRequirements('report');
   const [finalCategory, setFinalCategory] = useState<FrozenCategory | ''>('');
   const [finalDx, setFinalDx] = useState('');
-  const [showDiscordantForm, setShowDiscordantForm] = useState(false);
   const [delta, setDelta] = useState<QaDiscordanceDelta | ''>('');
   const [severity, setSeverity] = useState<QaDiscordanceSeverity | ''>('');
   const [rootCause, setRootCause] = useState<QaDiscordanceRootCause | ''>('');
@@ -122,47 +101,30 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
   const [busy, setBusy] = useState(false);
 
   const isTeachingCase = !!draftedBy && draftedBy.userId !== performedBy.userId;
+  const stage = discordanceStage(frozenCategory, finalCategory);
+  const entry = { finalDiagnosis: finalDx, finalCategory, delta, severity, rootCause, rootCauseNote, comments, attendingFeedback };
+  const missing = discordanceMissing(frozenCategory, entry, requirements);
+  const required = (id: string) => reportFieldRequired(requirements, id);
+  const star = (id: string) => required(id) && <span className="ps-conf-required">*</span>;
 
-  const canConfirmConcordant = finalDx.trim() && finalCategory;
-  // comments.trim() is the mandatory-narrative fix — previously only
-  // required when rootCause === 'other', which meant sampling error,
-  // interpretation error, and technical artifact (the three most common
-  // root causes) could be recorded with zero explanation at all.
-  const canSubmitDiscordant = canConfirmConcordant && delta && severity && rootCause && comments.trim() && (rootCause !== 'other' || rootCauseNote.trim());
-
-  const confirmConcordant = async () => {
-    if (!finalCategory) return;
+  const record = async () => {
+    const payload = buildDiscordanceRecord(
+      { caseId, specimenId, caseType, subspecialtyId, frozenCategory, frozenDx, recordedBy: performedBy, draftedBy },
+      entry, requirements,
+    );
+    if (!payload || busy) return;
     setBusy(true);
-    await qaActivityRecordService.create(buildQaActivityRecordPayload({
-      caseId, specimenId, caseType, subspecialtyId,
-      frozenCategory, finalCategory, frozenDx, finalDx: finalDx.trim(),
-      outcome: 'concordant',
-      recordedBy: performedBy, draftedBy,
-      isTeachingOnboardingCase: isTeachingCase,
-      reviewerFeedback: attendingFeedback.trim() || undefined,
-    }));
+    await qaActivityRecordService.create(payload);
     setBusy(false);
     onDone();
   };
 
-  const submitDiscordant = async () => {
-    if (!finalCategory || !delta || !severity || !rootCause || !comments.trim()) return;
-    setBusy(true);
-    await qaActivityRecordService.create(buildQaActivityRecordPayload({
-      caseId, specimenId, caseType, subspecialtyId,
-      frozenCategory, finalCategory, frozenDx, finalDx: finalDx.trim(),
-      outcome: 'discordant',
-      delta, severity, rootCause,
-      escalationRequired: severity === 'high',
-      rootCauseNote: rootCauseNote.trim() || undefined,
-      comments: comments.trim(),
-      recordedBy: performedBy, draftedBy,
-      isTeachingOnboardingCase: isTeachingCase,
-      reviewerFeedback: attendingFeedback.trim() || undefined,
-    }));
-    setBusy(false);
-    onDone();
-  };
+  // Voice/keyboard "record discordance": the same button, with the same check.
+  const recordRef = useRef(record);
+  recordRef.current = record;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'DISCORDANCE_RECORD') void recordRef.current();
+  }), []);
 
   return (
     <div className="ps-ms-overlay">
@@ -196,12 +158,12 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">{t('discordanceReconciliationModal.finalDiagnosisLabel')}</label>
-            <textarea className="ps-conf-input ps-conf-textarea" value={finalDx} onChange={e => setFinalDx(e.target.value)} placeholder={t('discordanceReconciliationModal.finalDiagnosisPlaceholder')} />
+            <label className="ps-conf-label">{t('discordanceReconciliationModal.finalDiagnosisLabel')} {star('discordanceFinalDiagnosis')}</label>
+            <SpellCheckedTextarea className="ps-conf-input ps-conf-textarea" value={finalDx} onChange={e => setFinalDx(e.target.value)} placeholder={t('discordanceReconciliationModal.finalDiagnosisPlaceholder')} />
           </div>
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="discordance-final-category">{t('discordanceReconciliationModal.finalCategoryLabel')}</label>
-            <select id="discordance-final-category" className="ps-conf-select" value={finalCategory} onChange={e => { setFinalCategory(e.target.value as FrozenCategory | ''); setShowDiscordantForm(false); }}>
+            <label className="ps-conf-label" htmlFor="discordance-final-category">{t('discordanceReconciliationModal.finalCategoryLabel')} {star('discordanceFinalCategory')}</label>
+            <select id="discordance-final-category" className="ps-conf-select" value={finalCategory} onChange={e => setFinalCategory(e.target.value as FrozenCategory | '')}>
               <option value="">{t('discordanceReconciliationModal.selectPlaceholder')}</option>
               <option value="benign">{t(CATEGORY_LABEL_KEY.benign)}</option>
               <option value="malignant">{t(CATEGORY_LABEL_KEY.malignant)}</option>
@@ -209,14 +171,14 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
             </select>
           </div>
 
-          {finalCategory && finalCategory !== frozenCategory && !showDiscordantForm && (
+          {stage === 'discordant' && (
             <p className="ps-intraop-gate-note">{t('discordanceReconciliationModal.categoryDiffersNote')}</p>
           )}
 
-          {finalCategory && finalCategory !== frozenCategory && (
+          {stage === 'discordant' && (
             <div className="ps-intraop-action-block">
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="discordance-delta">{t('discordanceReconciliationModal.deltaLabel')}</label>
+                <label className="ps-conf-label" htmlFor="discordance-delta">{t('discordanceReconciliationModal.deltaLabel')} {star('discordanceDelta')}</label>
                 <select id="discordance-delta" className="ps-conf-select" value={delta} onChange={e => setDelta(e.target.value as QaDiscordanceDelta | '')}>
                   <option value="">{t('discordanceReconciliationModal.selectPlaceholder')}</option>
                   <option value="upgrade">{t(DELTA_LABEL_KEY.upgrade)}</option>
@@ -225,7 +187,7 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
                 </select>
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="discordance-severity">{t('discordanceReconciliationModal.severityLabel')}</label>
+                <label className="ps-conf-label" htmlFor="discordance-severity">{t('discordanceReconciliationModal.severityLabel')} {star('discordanceSeverity')}</label>
                 <select id="discordance-severity" className="ps-conf-select" value={severity} onChange={e => setSeverity(e.target.value as QaDiscordanceSeverity | '')}>
                   <option value="">{t('discordanceReconciliationModal.selectPlaceholder')}</option>
                   <option value="low">{t(SEVERITY_LABEL_KEY.low)}</option>
@@ -251,7 +213,7 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
                 )}
               </div>
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label" htmlFor="discordance-root-cause">{t('discordanceReconciliationModal.rootCauseLabel')}</label>
+                <label className="ps-conf-label" htmlFor="discordance-root-cause">{t('discordanceReconciliationModal.rootCauseLabel')} {star('discordanceRootCause')}</label>
                 <select id="discordance-root-cause" className="ps-conf-select" value={rootCause} onChange={e => setRootCause(e.target.value as QaDiscordanceRootCause | '')}>
                   <option value="">{t('discordanceReconciliationModal.selectPlaceholder')}</option>
                   <option value="sampling_error">{t(ROOT_CAUSE_LABEL_KEY.sampling_error)}</option>
@@ -262,13 +224,13 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
               </div>
               {rootCause === 'other' && (
                 <div className="ps-conf-form-field">
-                  <label className="ps-conf-label">{t('discordanceReconciliationModal.explainLabel')}</label>
+                  <label className="ps-conf-label">{t('discordanceReconciliationModal.explainLabel')} {star('discordanceRootCauseNote')}</label>
                   <input className="ps-conf-input" value={rootCauseNote} onChange={e => setRootCauseNote(e.target.value)} placeholder={t('discordanceReconciliationModal.explainPlaceholder')} />
                 </div>
               )}
               <div className="ps-conf-form-field">
-                <label className="ps-conf-label">{t('discordanceReconciliationModal.commentLabel')}</label>
-                <textarea
+                <label className="ps-conf-label">{t('discordanceReconciliationModal.commentLabel')} {star('discordanceComments')}</label>
+                <SpellCheckedTextarea
                   className="ps-conf-input ps-conf-textarea"
                   value={comments}
                   onChange={e => setComments(e.target.value)}
@@ -281,7 +243,7 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
           {isTeachingCase && (
             <div className="ps-conf-form-field">
               <label className="ps-conf-label">{t('discordanceReconciliationModal.feedbackLabel', { name: draftedBy!.userName })}</label>
-              <textarea
+              <SpellCheckedTextarea
                 className="ps-conf-input ps-conf-textarea"
                 value={attendingFeedback}
                 onChange={e => setAttendingFeedback(e.target.value)}
@@ -289,13 +251,16 @@ export const DiscordanceReconciliationModal: React.FC<Props> = ({ caseId, specim
               />
             </div>
           )}
+          {missing.length > 0 && (
+            <p className="ps-field-still-required" role="status">
+              {t('fieldRequirements.stillRequired', { fields: formatList(missing.map(id => t(`fieldRequirements.fields.report.${id}`)), i18n.language) })}
+            </p>
+          )}
         </div>
         <div className="ps-ms-footer">
-          {finalCategory && finalCategory === frozenCategory ? (
-            <button className="ps-ms-btn-apply" disabled={!canConfirmConcordant || busy} onClick={confirmConcordant}>{t('discordanceReconciliationModal.confirmConcordantButton')}</button>
-          ) : (
-            <button className="ps-ms-btn-apply" disabled={busy || !canSubmitDiscordant} onClick={submitDiscordant}>{t('discordanceReconciliationModal.recordDiscordantButton')}</button>
-          )}
+          <button className="ps-ms-btn-apply" disabled={busy || missing.length > 0} onClick={() => { void record(); }}>
+            {stage === 'concordant' ? t('discordanceReconciliationModal.confirmConcordantButton') : t('discordanceReconciliationModal.recordDiscordantButton')}
+          </button>
         </div>
       </div>
     </div>

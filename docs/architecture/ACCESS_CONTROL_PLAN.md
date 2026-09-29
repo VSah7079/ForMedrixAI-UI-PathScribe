@@ -45,7 +45,45 @@ Everything today is mock services backed by localStorage — there is no
 real backend enforcement of anything, for any role. The hardcoded `true`
 is an honest reflection of that, not a bug hiding a working system.
 
-## Direction (not yet built)
+## Update, Sep 2026 (Batch 343, PS-60)
+
+Two things below are out of date:
+- **The stack.** Production is SQL Server behind an ASP.NET Core API server, not Firebase, so steps 2–4 of the direction below (Firebase Auth federation, Cloud Function claims, Firestore rules) no longer apply.
+- **"Zero references to OIDC".** User sign-in is now OpenID Connect with the customer's identity provider; see [`AUTHENTICATION_OIDC.md`](AUTHENTICATION_OIDC.md).
+
+The vendor-staff idea still holds, in the new setting. PathScribe support staff sign in through ForMedrix's own tenant, and the API server grants `superadmin` (or a narrower vendor claim) from that tenant's group membership, never from a customer's staff directory. It enforces that on the server, and the UI only mirrors it.
+
+## Update, Sep 2026 (Batch 369, PS-355)
+
+Capabilities now exist (`src/services/authorization/`, `AUTHORIZATION_API.md`). Superadmin is a built-in role in the catalog, granted every capability, with no bypass in the check. It is held only through a support sign-in (session role `superadmin`) and can't be assigned to a hospital's staff: the staff role picker leaves it out, and a staff record naming it gets nothing from it.
+
+That doesn't settle this plan's question. The two platform screens above still receive `isSuperAdmin` from their parent rather than from a capability, and in-app `superadmin` is still what every demo account signs in as. Turning those two screens into vendor-only capabilities is a candidate for the PS-357 sweep; the vendor identity itself still has to come from ForMedrix's own tenant on the server.
+
+## Update, Sep 2026 (Batch 371)
+
+Pete decided that Superadmin is reserved for ForMedrixAI support staff and that hospital administrators have no control over it. Built:
+- **Superadmin is locked** to the whole catalog. A hospital's Role Dictionary shows it read-only, and the role service refuses changes.
+- **Platform-only capabilities** can't be put on a hospital role.
+- **The governing-bodies screen** now needs `platform:governing-bodies:manage`.
+- **Terminology endpoint details** are shown only to superadmin sessions.
+- **Opening another organisation's case** as support is checked and audited (`platform:cross-tenant-cases:view`).
+- **Demo accounts:** only ForMedrixAI people sign in as superadmin.
+
+Still open:
+- **Server-side vendor identity:** the vendor identity still has to come from ForMedrixAI's own tenant on the server (phase 4).
+- **Break-glass access:** a stated reason and a time limit for support access to a hospital's cases isn't built. *(Built in Batch 372 as approval-based support access; see below.)*
+
+## Update, Sep 2026 (Batch 372): support access is the hospital's decision
+
+Pete's specification: the hospital, as data controller, controls ForMedrixAI support's access to its data. Built in the browser (`src/services/supportAccess/`):
+- **Policy per organisation:** Disabled / Approval required (default) / Always allowed, set by holders of `config:support-access:policy`. Disabled blocks support entirely, Superadmin included.
+- **Just-in-time access:** support requests access linked to a ticket, with a reason. Approvers in that organisation (`config:support-access:approve`, not the requester) get an in-app message and approve or reject. An approval lasts the organisation's window (30 minutes to 8 hours, default 2), and ends early if support ends it or the hospital revokes it.
+- **The gate** sits in `CaseRouter` (open, list, edit) and the case search, ahead of the `platform:cross-tenant-cases:view` check.
+- **The hospital's own support audit stream:** requests, decisions, expiries, refusals, case opens and edits, list and search disclosures (case ids; search criteria names, never values), policy changes and exports. Hash-chained, shown with its tamper check to holders of `config:support-audit:view`, and exportable as CSV or JSON.
+
+Still open, all server-side (phase 4, PS-358): originating IP and country; email and webhook notification; ending access when the ticket closes; PDF export; the stream in a per-tenant append-only table; support session tokens bound to the ticket and expiry; copying support's exports and configuration changes into the hospital's stream. See `AUTHORIZATION_API.md` § Support access.
+
+## Direction (not yet built; written for the earlier Firebase plan)
 
 Standard federated-identity shape for a vendor/tenant split:
 

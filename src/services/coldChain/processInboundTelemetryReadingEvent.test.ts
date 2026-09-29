@@ -58,7 +58,7 @@ describe('processInboundTelemetryReadingEvent — real, per the RFP-APLIS-2026-G
       const coldChainDefs = allDeficiencies.data.filter(d => d.deficiencyTypeId === 'def-cold-chain-excursion');
       expect(coldChainDefs).toHaveLength(0);
     }
-  }, 20000);
+  });
 
   it('real, a genuine excursion on a batch that DOES have a real item scanned into it raises a real, open deficiency for that item\'s own real case', async () => {
     const { mockHardwareContainerRegistryService } = await import('../hardwareContainers/mockHardwareContainerRegistryService');

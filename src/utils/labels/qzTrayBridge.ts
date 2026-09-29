@@ -41,8 +41,46 @@
 
 import * as qz from 'qz-tray';
 import type { ConnectOptions } from 'qz-tray';
-import type { PaperSize } from '@/types/printing/PrintJob';
+import type { PaperSize, PaperSourceTray, DuplexMode } from '@/types/printing/PrintJob';
 import { PAPER_SIZE_DIMENSIONS_MM } from '@/types/printing/PrintJob';
+
+/** Real, per PS-278/279 gap-closing follow-up ("NATIVE_QZ_TRAY jobs
+ *  don't forward paper-source/duplex hints"). Confirmed directly
+ *  against the installed qz-tray package's own JSDoc
+ *  (node_modules/qz-tray/qz-tray.js) before writing this: `duplex`
+ *  accepts the literal string tokens
+ *  `one-sided | duplex | long-edge | tumble | short-edge` (or a
+ *  boolean). Same real business default
+ *  services/printing/transport/sendIppPrintJob.ts's own
+ *  IPP_SIDES_BY_DUPLEX_MODE already chose for the identical, real
+ *  reason: 'one-sided' has no long/short-edge distinction to make, so
+ *  DUPLEX maps to the more common long-edge binding rather than a
+ *  fabricated default. */
+const QZ_DUPLEX_BY_DUPLEX_MODE: Record<DuplexMode, string> = {
+  DUPLEX: 'long-edge',
+  SIMPLEX: 'one-sided',
+};
+
+/** Real, honest limit disclosed rather than papered over: unlike IPP's
+ *  registered 'tray-1'/'tray-2' `media-source` keywords (a real,
+ *  standardized IANA/PWG registry sendIppPrintJob.ts's own mapping
+ *  cites), QZ Tray's `printerTray` config value is passed straight
+ *  through to whatever the OS print driver itself expects — there is
+ *  no equivalent universal standard. These are best-effort, common
+ *  Windows/CUPS driver tray labels, not a guaranteed match for every
+ *  real printer driver — a real, deliberate judgment call, not a
+ *  false claim of certainty. A site whose driver expects a different
+ *  tray label can override by choosing PrintDestination protocols
+ *  other than NATIVE_QZ_TRAY when exact tray-name fidelity matters. */
+const QZ_TRAY_BY_PAPER_SOURCE: Record<PaperSourceTray, string> = {
+  TRAY_1_LETTERHEAD: 'Tray 1',
+  TRAY_2_PLAIN: 'Tray 2',
+};
+
+export interface QzTrayPresentation {
+  paperSource?: PaperSourceTray;
+  duplexMode?: DuplexMode;
+}
 
 export interface QzTrayResult<T> {
   ok: true;
@@ -150,19 +188,38 @@ export async function printZplViaQzTray(
  * (undefined) leaves QZ Tray's own real, existing default behavior
  * untouched — never a silent, invented fallback size on this app's
  * own part.
+ *
+ * Real, per PS-278/279 gap-closing follow-up: `presentation`, when
+ * given, passes QZ Tray's own real `duplex`/`printerTray` config
+ * fields — the same real §2.2.4 paper-source/duplex hints
+ * sendIppPrintJob.ts already forwards for DIRECT_NETWORK_PRINT jobs,
+ * now also reaching NATIVE_QZ_TRAY jobs instead of being silently
+ * dropped on this branch. See QZ_DUPLEX_BY_DUPLEX_MODE/
+ * QZ_TRAY_BY_PAPER_SOURCE above for the real mapping and this file's
+ * own honest disclosure about printerTray's lack of a universal
+ * standard. Omitted (undefined) leaves QZ Tray's own default
+ * behavior untouched, same as paperSize above.
  */
 export async function printPdfViaQzTray(
   printerName: string,
   pdfBase64: string,
   copies: number = 1,
   paperSize?: PaperSize,
+  presentation?: QzTrayPresentation,
 ): Promise<QzTrayResult<void> | QzTrayError> {
   if (!isQzTrayConnected()) {
     return { ok: false, message: 'Not connected to QZ Tray — call connectToQzTray() first.' };
   }
   try {
     const sizeConfig = paperSize ? { size: PAPER_SIZE_DIMENSIONS_MM[paperSize], units: 'mm' as const } : {};
-    const config = qz.configs.create(printerName, { copies, ...sizeConfig });
+    const presentationConfig: Record<string, unknown> = {};
+    if (presentation?.duplexMode) {
+      presentationConfig.duplex = QZ_DUPLEX_BY_DUPLEX_MODE[presentation.duplexMode];
+    }
+    if (presentation?.paperSource) {
+      presentationConfig.printerTray = QZ_TRAY_BY_PAPER_SOURCE[presentation.paperSource];
+    }
+    const config = qz.configs.create(printerName, { copies, ...sizeConfig, ...presentationConfig });
     await qz.print(config, [{ type: 'pixel', format: 'pdf', flavor: 'base64', data: pdfBase64 }]);
     return { ok: true, data: undefined };
   } catch (err) {

@@ -60,9 +60,15 @@ was needed for this part — it was already in scope and already built.
   contract a `pathscribe_agent` instance's own scale endpoint would
   need to satisfy (`GET {agentBaseUrl}/scale/weight` →
   `{ grams, stable }`). A `stable: false` reading (the scale still
-  settling) is honestly rejected, never accepted as a real weight. 6
-  real tests cover not-configured, unreachable, malformed, unstable,
-  and genuinely successful cases.
+  settling) is honestly rejected, never accepted as a real weight. 8
+  real tests cover not-configured, plain HTTP, unreachable, malformed,
+  unstable, and genuinely successful cases.
+  **HTTPS only (Batch 327):** `agentBaseUrl` must be `https://` (e.g.
+  `https://127.0.0.1:9100`, the same agent and certificate as label
+  printing, see `utils/labels/pathscribeAgent/README.md`). The mock
+  service refuses a plain-HTTP address on create and update, and the
+  capture returns `not_https` without fetching for any stored http://
+  address.
 
 - **`components/GrossingHardware/CameraCaptureControl.tsx`** — the
   real, working camera capture UI, using `getUserMedia()` directly.
@@ -108,7 +114,21 @@ bridge is ever installed at a given site.
 only, the more immediately requested case) and a settings screen for
 managing `GrossingHardwareProfile` records — the service layer is
 real and complete; an admin UI to create/edit profiles through
-Configuration was not built.
+Configuration was not built. *Built in Batch 359: see below.*
+
+## Batch 359: the settings screen, linked to the equipment register
+
+- **Screen:** Configuration → System → Workstation & Hardware → **Grossing Hardware** (`components/Config/System/GrossingHardwareSection.tsx`, new).
+  - Kind (camera or scale), name, connection, Agent address, station, and which **register device** it is.
+  - Edit, deactivate and reactivate. The shared facility selector shows that lab's stations' profiles, plus profiles set for any station.
+- **`grossingHardwareRules.ts`** (+ `.test.ts`), pure:
+  - which connections fit each kind: camera = browser or Agent; scale = Agent or manual entry, never the browser;
+  - draft validation with translated errors (label; connection for the kind; https:// Agent address; register device of the same kind);
+  - what gets saved, and the facility filter.
+- **`GrossingHardwareProfile.equipmentId`** (new, optional): the physical camera or scale in `services/equipment/`.
+  - The mock service refuses a link of the wrong kind (`EQUIPMENT_LINK_INVALID`).
+  - The two seeded default profiles stay unlinked, since they aren't a specific bench's device.
+- **Export:** `@/services` now exports `grossingHardwareProfileService`.
 
 ---
 *See [services/README.md](../README.md) for how this folder fits the whole services/ layer.*

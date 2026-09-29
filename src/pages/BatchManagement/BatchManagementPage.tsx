@@ -15,7 +15,7 @@ import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { toast } from 'react-toastify';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useAuth } from '@/contexts/AuthContext';
 import { useCurrentScanStation } from '@/hooks/useCurrentScanStation';
@@ -188,14 +188,10 @@ const BatchManagementPage: React.FC = () => {
               return (
                 <button
                   key={node}
-                  className="ps-wl-filter-tile"
+                  className={`ps-wl-filter-tile ps-wl-filter-tile--hued${isActive ? ' ps-wl-filter-tile--hued-active' : ''}`}
                   title={isActive ? t('batchManagement.filterTileTitleActive', { node: t(`batchManagement.nodes.${node}`) }) : t('batchManagement.filterTileTitle', { node: t(`batchManagement.nodes.${node}`) })}
                   onClick={() => setStageFilter(isActive ? null : node)}
-                  style={{
-                    '--tile-bg': isActive ? `${color}2e` : `${color}0d`,
-                    '--tile-border': isActive ? color : `${color}2e`,
-                    '--tile-shadow': isActive ? `0 0 12px ${color}66` : 'none',
-                  } as React.CSSProperties}
+                  style={{ '--ps-hue': color } as React.CSSProperties}
                 >
                   <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': isActive ? color : '#8899aa' } as React.CSSProperties}>
                     {t(`batchManagement.nodeTileLabel.${node}`)}
@@ -203,7 +199,7 @@ const BatchManagementPage: React.FC = () => {
                   <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': color } as React.CSSProperties}>
                     {count}
                   </div>
-                  <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': color, '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+                  <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': color } as React.CSSProperties}>
                     {'\u00A0'}
                   </div>
                 </button>
@@ -219,20 +215,17 @@ const BatchManagementPage: React.FC = () => {
                 longer runs through the batch/container model at all
                 (see IBatchService.ts's own header for why). */}
             <button
-              className="ps-wl-filter-tile"
+              className="ps-wl-filter-tile ps-batch-tile--disposal"
               title={t('batchManagement.disposalTitle')}
               onClick={() => navigate('/batch-management/disposal')}
-              style={{
-                '--tile-bg': '#DC26260d', '--tile-border': '#DC26262e', '--tile-shadow': 'none',
-              } as React.CSSProperties}
             >
-              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__label ps-batch-tile-label--muted">
                 {t('batchManagement.disposalTile')}
               </div>
-              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#DC2626' } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__count ps-batch-tile-count--disposal">
                 🗑️
               </div>
-              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#DC2626', '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__sublabel ps-batch-tile-count--disposal">
                 {'\u00A0'}
               </div>
             </button>
@@ -243,20 +236,17 @@ const BatchManagementPage: React.FC = () => {
                 items (DisposalReportPage.tsx), never the disposal
                 action itself. */}
             <button
-              className="ps-wl-filter-tile"
+              className="ps-wl-filter-tile ps-batch-tile--disposal-report"
               title={t('batchManagement.disposalReportTitle')}
               onClick={() => navigate('/batch-management/disposal-report')}
-              style={{
-                '--tile-bg': '#8B5CF60d', '--tile-border': '#8B5CF62e', '--tile-shadow': 'none',
-              } as React.CSSProperties}
             >
-              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__label ps-batch-tile-label--muted">
                 {t('batchManagement.disposalReportTile')}
               </div>
-              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#8B5CF6' } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__count ps-batch-tile-count--disposal-report">
                 📊
               </div>
-              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#8B5CF6', '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__sublabel ps-batch-tile-count--disposal-report">
                 {' '}
               </div>
             </button>
@@ -272,20 +262,17 @@ const BatchManagementPage: React.FC = () => {
                 tile: avoids a second, extra fetch on this page purely
                 to populate one tile's own number. */}
             <button
-              className="ps-wl-filter-tile"
+              className="ps-wl-filter-tile ps-batch-tile--pending-load"
               title={t('batchManagement.pendingLoadTitle')}
               onClick={() => navigate('/batch-management/pending-load')}
-              style={{
-                '--tile-bg': '#EAB3080d', '--tile-border': '#EAB3082e', '--tile-shadow': 'none',
-              } as React.CSSProperties}
             >
-              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__label ps-batch-tile-label--muted">
                 {t('batchManagement.pendingLoadTile')}
               </div>
-              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#EAB308' } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__count ps-batch-tile-count--pending-load">
                 📥
               </div>
-              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#EAB308', '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__sublabel ps-batch-tile-count--pending-load">
                 {'\u00A0'}
               </div>
             </button>
@@ -295,20 +282,17 @@ const BatchManagementPage: React.FC = () => {
                 Same real, distinct-tile-navigates-to-its-own-page
                 pattern as Disposal/Pending Load above. */}
             <button
-              className="ps-wl-filter-tile"
+              className="ps-wl-filter-tile ps-batch-tile--engraver-monitor"
               title={t('batchManagement.engraverMonitorTitle')}
               onClick={() => navigate('/batch-management/engraver-monitor')}
-              style={{
-                '--tile-bg': '#38bdf80d', '--tile-border': '#38bdf82e', '--tile-shadow': 'none',
-              } as React.CSSProperties}
             >
-              <div className="ps-wl-filter-tile__label" style={{ '--tile-label-color': '#8899aa' } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__label ps-batch-tile-label--muted">
                 {t('batchManagement.engraverMonitorTile')}
               </div>
-              <div className="ps-wl-filter-tile__count" style={{ '--tile-count-color': '#38bdf8' } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__count ps-batch-tile-count--engraver-monitor">
                 🖨️
               </div>
-              <div className="ps-wl-filter-tile__sublabel" style={{ '--tile-count-color': '#38bdf8', '--tile-sublabel-opacity': 0 } as React.CSSProperties}>
+              <div className="ps-wl-filter-tile__sublabel ps-batch-tile-count--engraver-monitor">
                 {'\u00A0'}
               </div>
             </button>
@@ -338,7 +322,7 @@ const BatchManagementPage: React.FC = () => {
                 <div className="ps-batch-list">
                   {activeBatches.map(b => (
                     <div key={b.id} className="ps-batch-row" onClick={() => setSelectedBatchId(b.id)}>
-                      <span className="ps-batch-row-status" style={{ background: `${STATUS_COLOR[b.status]}22`, color: STATUS_COLOR[b.status] }}>
+                      <span className="ps-batch-row-status ps-batch-row-status--hued" style={{ '--ps-hue': STATUS_COLOR[b.status] } as React.CSSProperties}>
                         {t(`batchManagement.status.${b.status}`)}
                       </span>
                       <span className="ps-batch-row-barcode">{b.masterBarcode}</span>
@@ -358,7 +342,7 @@ const BatchManagementPage: React.FC = () => {
                   <div className="ps-batch-list">
                     {closedBatches.map(b => (
                       <div key={b.id} className="ps-batch-row ps-batch-row--closed" onClick={() => setSelectedBatchId(b.id)}>
-                        <span className="ps-batch-row-status" style={{ background: `${STATUS_COLOR[b.status]}22`, color: STATUS_COLOR[b.status] }}>
+                        <span className="ps-batch-row-status ps-batch-row-status--hued" style={{ '--ps-hue': STATUS_COLOR[b.status] } as React.CSSProperties}>
                           {t(`batchManagement.status.${b.status}`)}
                         </span>
                         <span className="ps-batch-row-barcode">{b.masterBarcode}</span>

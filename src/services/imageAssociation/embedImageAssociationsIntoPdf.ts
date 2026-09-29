@@ -40,6 +40,7 @@ import { resolveImageAssociationEmbedKind } from './resolveImageAssociationEmbed
 import { resolveAndLogImageUrl } from './logImageFallbackTrigger';
 import { resolveImageUnavailablePlaceholder } from './resolveImageUnavailablePlaceholder';
 import type { UrlHealthCheckResult } from './resolveImageUrlWithFallback';
+import { checkEmbeddedImageResolution, MIN_REQUIRED_DPI } from '@/services/documentRendering/checkEmbeddedImageResolution';
 
 export type FetchAssetBytes = (url: string) => Promise<{ result: UrlHealthCheckResult; bytes?: Uint8Array }>;
 
@@ -77,12 +78,29 @@ async function addPlaceholderPage(doc: PDFDocument, message: string): Promise<vo
   page.drawText(message, { x: 50, y: 700, size: 12, font, color: rgb(0.6, 0.1, 0.1) });
 }
 
+export interface EmbedImageAssociationsResult {
+  bytes: Uint8Array;
+  /** Real, per PS-276 §1.1.3's minimum-300-DPI requirement for
+   *  embedded raster images (microphotographs, gross images) — one
+   *  entry per real association whose EFFECTIVE DPI at its actual
+   *  printed size (see checkEmbeddedImageResolution.ts) falls below
+   *  the minimum. A real, honest flag, never a silent drop or a
+   *  blocked embed — a below-minimum gross photo is still real,
+   *  useful clinical documentation; this only surfaces that it may
+   *  not hold up to full diagnostic-quality print scrutiny. Empty
+   *  when every embedded raster image meets the minimum (never
+   *  populated for a vector `pdf_page` merge, which has no DPI
+   *  concept at all). */
+  warnings: string[];
+}
+
 export async function embedImageAssociationsIntoPdf(
   baseReportBytes: Uint8Array,
   imageAssociations: ImageAssociation[],
   fetchAssetBytes: FetchAssetBytes = defaultFetchAssetBytes,
-): Promise<Uint8Array> {
+): Promise<EmbedImageAssociationsResult> {
   const doc = await PDFDocument.load(baseReportBytes);
+  const warnings: string[] = [];
 
   for (const assoc of imageAssociations) {
     const resolved = await resolveAssetBytes(assoc.id, assoc.imageUrl, assoc.fallbackUrl, fetchAssetBytes);
@@ -106,9 +124,21 @@ export async function embedImageAssociationsIntoPdf(
       const embedded = isPng ? await doc.embedPng(resolved) : await doc.embedJpg(resolved);
       const page = doc.addPage([612, 792]);
       const scale = Math.min(512 / embedded.width, 692 / embedded.height, 1);
-      page.drawImage(embedded, { x: 50, y: 50, width: embedded.width * scale, height: embedded.height * scale });
+      const printedWidthPt = embedded.width * scale;
+      page.drawImage(embedded, { x: 50, y: 50, width: printedWidthPt, height: embedded.height * scale });
+
+      // Real, per PS-276 §1.1.3 — checked against the WIDTH dimension:
+      // `scale` is applied uniformly to both dimensions, so effective
+      // DPI is identical along both; checking one is real, not a
+      // shortcut that skips the other.
+      const { dpi, meetsMinimum } = checkEmbeddedImageResolution(embedded.width, printedWidthPt);
+      if (!meetsMinimum) {
+        warnings.push(
+          `Image association ${assoc.id} embedded at ~${Math.round(dpi)} DPI, below the ${MIN_REQUIRED_DPI} DPI minimum for diagnostic-quality print (PS-276 §1.1.3).`,
+        );
+      }
     }
   }
 
-  return doc.save();
+  return { bytes: await doc.save(), warnings };
 }

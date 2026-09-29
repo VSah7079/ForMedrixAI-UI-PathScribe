@@ -144,6 +144,16 @@ here).
   or extended from here at all. The equivalent fidelity/merging work
   for that pipeline is real, separate backend work for whoever owns
   that function's source — see the Jira ticket filed alongside this.
+  **Updated (PS-276, Sep 2026)**: `embedImageAssociationsIntoPdf()`'s
+  own return shape changed from a bare `Uint8Array` to
+  `{ bytes, warnings }` — `warnings` is a real, per-association
+  below-300-DPI flag (see `services/documentRendering/
+  checkEmbeddedImageResolution.ts`), never a silent drop; the single
+  real call site (`generateCytologyReportPdf.ts`) logs each one via
+  `console.warn` rather than blocking the real output. The
+  determinism gap this same PS-276 batch closed
+  (`services/documentRendering/applyDeterministicPdfMetadata.ts`) is
+  applied on top of this function's own output, not inside it.
 - **§4.2 (ephemeral memory buffer, purge-on-completion)** and the
   actual real network fetch/auth-token resolution behind
   `resolveImageUrlWithFallback.ts`'s own pure decision logic are both

@@ -47,11 +47,12 @@ describe('ReportPreviewRenderer — section printHeading respects labelConfig', 
     expect(heading).not.toBeNull();
     expect(heading!.textContent).toBe('Test Section Heading');
 
+    // Batch 367 (PS-74): passed as custom properties the .rp-node-section-heading rule reads.
     const style = (heading as HTMLElement).style;
-    expect(style.fontSize).toBe('26px');
-    expect(style.fontWeight).toBe('700');
-    expect(style.textDecoration).toBe('underline');
-    expect(style.textTransform).toBe('uppercase');
+    expect(style.getPropertyValue('--rp-heading-size')).toBe('26px');
+    expect(style.getPropertyValue('--rp-heading-weight')).toBe('700');
+    expect(style.getPropertyValue('--rp-heading-decoration')).toBe('underline');
+    expect(style.getPropertyValue('--rp-heading-transform')).toBe('uppercase');
   });
 
   it('renders with the base CSS class alone, no inline overrides, when no labelConfig is set', () => {
@@ -79,13 +80,12 @@ describe('ReportPreviewRenderer — section printHeading respects labelConfig', 
     // No inline style properties set at all — base CSS class alone governs
     // appearance, exactly the pre-existing behavior for a template that
     // hasn't configured anything.
-    expect(heading.style.fontSize).toBe('');
-    expect(heading.style.fontWeight).toBe('');
+    expect(heading.getAttribute('style')).toBeNull();
   });
 });
 
 describe('ReportPreviewRenderer — documentStyle.body cascades from the report root', () => {
-  it('applies documentStyle.body as an inline style on the report root, so it naturally cascades via CSS inheritance', () => {
+  it('applies documentStyle.body on the report root (as custom properties), so it cascades via CSS inheritance', () => {
     const { container } = render(
       <ReportPreviewRenderer
         sections={[]} bodyAssembly={[]} structuredContext={null} caseData={makeCase()}
@@ -94,8 +94,8 @@ describe('ReportPreviewRenderer — documentStyle.body cascades from the report 
     );
     const root = container.querySelector('.rp-page') as HTMLElement;
     expect(root).not.toBeNull();
-    expect(root.style.fontFamily).toBe('Arial');
-    expect(root.style.fontSize).toBe('10px');
+    expect(root.style.getPropertyValue('--rp-body-family')).toBe('Arial');
+    expect(root.style.getPropertyValue('--rp-body-size')).toBe('10px');
   });
 
   it('a field-level labelConfig still wins over the cascaded body default — override, not replacement', () => {
@@ -114,15 +114,15 @@ describe('ReportPreviewRenderer — documentStyle.body cascades from the report 
     );
     // Root still carries the cascaded body default...
     const root = container.querySelector('.rp-page') as HTMLElement;
-    expect(root.style.fontFamily).toBe('Arial');
-    expect(root.style.fontSize).toBe('10px');
+    expect(root.style.getPropertyValue('--rp-body-family')).toBe('Arial');
+    expect(root.style.getPropertyValue('--rp-body-size')).toBe('10px');
     // ...but this specific field's own label keeps its own override,
     // exactly the "Final Diagnosis... all bold and capitalized" case.
     const label = container.querySelector('.rp-node-label') as HTMLElement;
     expect(label).not.toBeNull();
-    expect(label.style.fontWeight).toBe('700');
-    expect(label.style.textTransform).toBe('uppercase');
-    expect(label.style.fontSize).toBe('14px');
+    expect(label.style.getPropertyValue('--rp-label-weight')).toBe('700');
+    expect(label.style.getPropertyValue('--rp-label-transform')).toBe('uppercase');
+    expect(label.style.getPropertyValue('--rp-label-size')).toBe('14px');
   });
 
   it('the value span carries no inline font override of its own, so it is free to inherit the cascaded body default in a real browser', () => {
@@ -240,14 +240,12 @@ describe('ReportPreviewRenderer — header/footer render through the real pipeli
         }}
       />
     );
-    const wrappers = container.querySelectorAll('.rp-page > div');
-    // First styled wrapper is the header container
-    const headerWrapper = Array.from(wrappers).find(el => (el as HTMLElement).style.fontFamily === 'Georgia') as HTMLElement;
-    const footerWrapper = Array.from(wrappers).find(el => (el as HTMLElement).style.fontFamily === 'Verdana') as HTMLElement;
-    expect(headerWrapper).toBeDefined();
-    expect(headerWrapper.style.fontSize).toBe('14px');
-    expect(headerWrapper.style.fontWeight).toBe('700');
-    expect(footerWrapper).toBeDefined();
-    expect(footerWrapper.style.fontSize).toBe('8px');
+    const headerWrapper = container.querySelector('.rp-page > .rp-doc-header') as HTMLElement;
+    const footerWrapper = container.querySelector('.rp-page > .rp-doc-footer') as HTMLElement;
+    expect(headerWrapper.style.getPropertyValue('--rp-header-family')).toBe('Georgia');
+    expect(headerWrapper.style.getPropertyValue('--rp-header-size')).toBe('14px');
+    expect(headerWrapper.style.getPropertyValue('--rp-header-weight')).toBe('700');
+    expect(footerWrapper.style.getPropertyValue('--rp-footer-family')).toBe('Verdana');
+    expect(footerWrapper.style.getPropertyValue('--rp-footer-size')).toBe('8px');
   });
 });

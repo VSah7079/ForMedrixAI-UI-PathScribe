@@ -24,7 +24,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
-import { useSearchParams } from 'react-router-dom';
+import { useSearchParams } from 'react-router';
 import { useTranslation } from 'react-i18next';
 import '../pathscribe.css';
 import { caseRouter } from '@/services/cases/CaseRouter';
@@ -67,7 +67,7 @@ const MockWsiViewerPage: React.FC = () => {
       ) : !caseId ? (
         <div className="ps-wsi-viewer-error">{t('wsiViewer.noCaseSpecified')}</div>
       ) : !accessionNumber ? (
-        <div className="ps-wsi-viewer-error">{t('wsiViewer.noCaseFound', { caseId })}</div>
+        <div className="ps-wsi-viewer-error" data-phi="accession">{t('wsiViewer.noCaseFound', { caseId })}</div>
       ) : (
         <>
           <div className="ps-wsi-viewer-info">

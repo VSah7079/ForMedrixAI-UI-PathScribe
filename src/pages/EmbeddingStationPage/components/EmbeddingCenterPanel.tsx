@@ -63,7 +63,7 @@ const EmbeddingCenterPanel: React.FC<EmbeddingCenterPanelProps> = ({
 
   return (
     <>
-      <div className="ps-embedding-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-embedding-panel ps-mb-14">
         <p className="ps-embedding-panel-title">{t('embeddingStation.context.title')}</p>
 
         <div className="ps-embedding-alert-badges">
@@ -93,12 +93,12 @@ const EmbeddingCenterPanel: React.FC<EmbeddingCenterPanelProps> = ({
         </button>
       </div>
 
-      <div className="ps-embedding-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-embedding-panel ps-mb-14">
         <p className="ps-embedding-panel-title">{t('embeddingStation.pieceCount.title')}</p>
         <div className="ps-embedding-context-field">{t('embeddingStation.pieceCount.expected')}<strong>{block.pieceCount ?? '—'}</strong></div>
         <div className="ps-embedding-piece-count-row">
           <input
-            type="number" min={0} className="ps-embedding-field-input" style={{ maxWidth: 90 }}
+            type="number" min={0} className="ps-embedding-field-input ps-embedding-field-input--narrow"
             value={observedCount} onChange={e => setObservedCount(e.target.value)}
             disabled={isEmbedded}
           />
@@ -107,12 +107,12 @@ const EmbeddingCenterPanel: React.FC<EmbeddingCenterPanelProps> = ({
           </button>
         </div>
         {isEmbedded && (
-          <div className="ps-embedding-context-field" style={{ marginTop: 8 }}>
+          <div className="ps-embedding-context-field ps-mt-8">
             {t('embeddingStation.pieceCount.observed')}<strong>{block.pieceCountAtEmbedding}</strong>
           </div>
         )}
 
-        <p className="ps-embedding-panel-title" style={{ marginTop: 14 }}>{t('embeddingStation.discrepancy.title')}</p>
+        <p className="ps-embedding-panel-title ps-mt-14">{t('embeddingStation.discrepancy.title')}</p>
         <div className="ps-embedding-discrepancy-grid">
           {EMBEDDING_DISCREPANCY_REASONS.map(reason => (
             <button key={reason} type="button" className="ps-embedding-discrepancy-btn" onClick={() => onFlagDiscrepancy(reason)}>
@@ -127,7 +127,7 @@ const EmbeddingCenterPanel: React.FC<EmbeddingCenterPanelProps> = ({
         )}
       </div>
 
-      <div className="ps-embedding-panel" style={{ marginBottom: 14 }}>
+      <div className="ps-embedding-panel ps-mb-14">
         <p className="ps-embedding-panel-title">{t('embeddingStation.mold.title')}</p>
         <div className="ps-embedding-mold-grid">
           {EMBEDDING_MOLD_SIZES.map(size => (
@@ -141,7 +141,7 @@ const EmbeddingCenterPanel: React.FC<EmbeddingCenterPanelProps> = ({
           ))}
         </div>
 
-        <label className="ps-embedding-field-label" style={{ marginTop: 10 }}>{t('embeddingStation.orientation.title')}</label>
+        <label className="ps-embedding-field-label ps-mt-10">{t('embeddingStation.orientation.title')}</label>
         <textarea
           className="ps-embedding-comment-textarea"
           value={orientationText}
@@ -175,7 +175,7 @@ const EmbeddingCenterPanel: React.FC<EmbeddingCenterPanelProps> = ({
           <>
             <div className="ps-embedding-context-field">{t('embeddingStation.splitBlock.pickPrompt')}</div>
             {siblingCandidates.map(sib => (
-              <label key={sib.id} className="ps-embedding-checkbox-label" style={{ marginBottom: 4 }}>
+              <label key={sib.id} className="ps-embedding-checkbox-label ps-mb-4">
                 <input
                   type="checkbox" checked={groupPicker.has(sib.id)}
                   onChange={e => setGroupPicker(prev => { const next = new Set(prev); e.target.checked ? next.add(sib.id) : next.delete(sib.id); return next; })}
@@ -184,7 +184,7 @@ const EmbeddingCenterPanel: React.FC<EmbeddingCenterPanelProps> = ({
               </label>
             ))}
             <button
-              type="button" className="ps-btn-secondary" style={{ marginTop: 6 }}
+              type="button" className="ps-btn-secondary ps-mt-6"
               disabled={groupPicker.size === 0}
               onClick={() => { onGroupSplitBlocks(Array.from(groupPicker)); setGroupPicker(new Set()); }}
             >

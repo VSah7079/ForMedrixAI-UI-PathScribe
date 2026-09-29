@@ -21,6 +21,7 @@ import type { Facility } from '@/services/facilities/IFacilityService';
 import type { Physician }              from '@/services/physicians/IPhysicianService';
 import type { ReportTemplate }         from '@/types/reportPart';
 import type { AIModel }                from '@/services/models/IModelService';
+import { computeValidationStudyGrade } from '@/services/validationStudies/computeValidationStudyGrade';
 import { ModelStoreModal } from './ModelStoreModal';
 
 type SubTab = 'studies' | 'dashboard' | 'reports';
@@ -70,24 +71,13 @@ const boldSubstrings = (text: string, values: string[]): React.ReactNode => {
   return parts;
 };
 
-// NOTE: gradeResult()'s `description` field feeds only the printed/exported
-// validation report (buildReportHtml, below) and the persisted `finalGrade`
-// on the study record — never rendered as on-screen UI chrome — so, per this
-// codebase's established "exported/persisted data stays English" convention
-// (the same one CSV export headers and audit-log text follow), it stays a
-// plain English string rather than a translation key.
-function gradeResult(
-  acceptanceRate: number,
-  targetAcceptanceRate: number,
-  editRatio: number,
-  targetMaxEditRatio: number,
-): { grade: string; color: string; description: string } {
-  const passes = acceptanceRate >= targetAcceptanceRate && editRatio <= targetMaxEditRatio;
-  const partial = acceptanceRate >= targetAcceptanceRate * 0.85;
-  if (passes)  return { grade: 'PASS',             color: '#10b981', description: 'Performance meets study targets' };
-  if (partial) return { grade: 'CONDITIONAL PASS', color: '#f59e0b', description: 'Performance approaches targets — extended study recommended' };
-  return        { grade: 'FURTHER REVIEW',         color: '#ef4444', description: 'Performance below targets — review AI configuration' };
-}
+// Real fix, found by this app's own inline-CSS/business-logic sweep:
+// the PASS/CONDITIONAL PASS/FURTHER REVIEW grading rule now lives in
+// computeValidationStudyGrade.ts, a dedicated, tested module — real,
+// regulatory-relevant logic (persisted as ValidationStudy.finalGrade,
+// which resolveClientAiModel.ts/resolveVoiceAiModel.ts both gate
+// production AI model eligibility on) that had no backing service and
+// no tests. See that module's own header for the full rationale.
 
 // ── Studies Tab ───────────────────────────────────────────────────────────────
 
@@ -163,7 +153,7 @@ const StudiesTab: React.FC<{
             <div className="ps-vs-study-meta">
               <span
                 className="ps-vs-study-badge"
-                style={{ '--ps-vs-badge-color': STATUS_COLORS[s.status], '--ps-vs-badge-border': STATUS_COLORS[s.status] + '40', '--ps-vs-badge-bg': STATUS_COLORS[s.status] + '12' } as React.CSSProperties}
+                style={{ '--ps-vs-badge-color': STATUS_COLORS[s.status] } as React.CSSProperties}
               >
                 {STATUS_LABEL_KEY[s.status] ? t(STATUS_LABEL_KEY[s.status]) : s.status.toUpperCase()}
               </span>
@@ -755,7 +745,7 @@ const DashboardTab: React.FC<{
         {study && (
           <span
             className="ps-vs-study-badge"
-            style={{ '--ps-vs-badge-color': STATUS_COLORS[study.status], '--ps-vs-badge-border': STATUS_COLORS[study.status] + '40', '--ps-vs-badge-bg': STATUS_COLORS[study.status] + '12' } as React.CSSProperties}
+            style={{ '--ps-vs-badge-color': STATUS_COLORS[study.status] } as React.CSSProperties}
           >
             {STATUS_LABEL_KEY[study.status] ? t(STATUS_LABEL_KEY[study.status]) : study.status.toUpperCase()}
           </span>
@@ -863,7 +853,7 @@ const ReportsTab: React.FC<{ studies: ValidationStudy[]; onRefresh: () => void; 
     // Generate screen report — PDF export would use reportlab/pdfmake in production
     const avgEditRatio = Object.values(stats.bySection).reduce((sum, s) => sum + s.avgEditRatio, 0) /
       Math.max(Object.values(stats.bySection).length, 1);
-    const grade = gradeResult(stats.acceptanceRate, study.targetAcceptanceRate, avgEditRatio, study.targetMaxEditRatio);
+    const grade = computeValidationStudyGrade(stats.acceptanceRate, study.targetAcceptanceRate, avgEditRatio, study.targetMaxEditRatio);
 
     // Print-friendly report in new window
     const html = buildReportHtml(study, stats, caseCount, grade, avgEditRatio);
@@ -882,7 +872,7 @@ const ReportsTab: React.FC<{ studies: ValidationStudy[]; onRefresh: () => void; 
     await mockValidationStudyService.update(study.id, {
       status: 'reported',
       ...(alreadyGraded ? {} : {
-        finalGrade: grade.grade as 'PASS' | 'CONDITIONAL PASS' | 'FURTHER REVIEW',
+        finalGrade: grade.grade,
         finalGradedAt: new Date().toISOString(),
       }),
     });

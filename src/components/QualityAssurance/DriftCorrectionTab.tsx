@@ -28,20 +28,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useMemo, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { auditService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
 import { QaScopeSwitcher } from './QaScopeSwitcher';
-import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope } from './qaReportUtils';
+import { caseMatchesScope, exportQaReportRows, scopeLabel, QaScope, qaScopeContext } from './qaReportUtils';
 import type { AuditLog } from '@/services/auditlog/IAuditService';
-
-const DRIFT_EVENTS = [
-  'Post-Finalization Drift Detected',
-  'Post-Finalization Drift Auto-Corrected',
-  'Post-Finalization Drift Correction Deferred',
-  'Post-Finalization Drift Correction Failed',
-] as const;
+import { DRIFT_EVENTS, resolveUnresolvedDriftCorrections } from '@/services/auditlog/resolveUnresolvedDriftCorrections';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
 
 const EVENT_LABEL_KEY: Record<typeof DRIFT_EVENTS[number], string> = {
   'Post-Finalization Drift Detected':            'auditLog.statusLabels.driftDetected',
@@ -115,22 +110,18 @@ export const DriftCorrectionTab: React.FC = () => {
 
   const detected = scoped.filter(l => l.event === 'Post-Finalization Drift Detected');
   const corrected = scoped.filter(l => l.event === 'Post-Finalization Drift Auto-Corrected');
-  const deferred = scoped.filter(l => l.event === 'Post-Finalization Drift Correction Deferred');
-  const failed = scoped.filter(l => l.event === 'Post-Finalization Drift Correction Failed');
 
-  // The actionable list — a case with a deferred/failed correction that
-  // was never followed by a later successful correction for the same
-  // case. This is the "still sitting wrong right now" set, not just a
-  // historical failure count; deferred entries with a later
+  // Real fix, found by this app's own inline-CSS/business-logic sweep:
+  // delegates to resolveUnresolvedDriftCorrections.ts's shared,
+  // tested correlation rule — a case with a deferred/failed correction
+  // that was never followed by a later successful correction for the
+  // same case. This is the "still sitting wrong right now" set, not
+  // just a historical failure count; deferred entries with a later
   // auto-corrected entry (the retry succeeded) are resolved and
-  // deliberately excluded.
-  const unresolved = useMemo(() => {
-    const correctedCaseIdsAfter = (caseId: string, afterTs: string) =>
-      corrected.some(c => c.caseId === caseId && c.timestamp > afterTs);
-    return [...deferred, ...failed]
-      .filter(l => l.caseId && !correctedCaseIdsAfter(l.caseId, l.timestamp))
-      .sort((a, b) => b.timestamp.localeCompare(a.timestamp));
-  }, [deferred, failed, corrected]);
+  // deliberately excluded. Passes the already-scoped log set so the
+  // tile counts and this list stay consistent with the active
+  // QaScope filter.
+  const unresolved = useMemo(() => resolveUnresolvedDriftCorrections(scoped), [scoped]);
 
   const handleExport = () => {
     const rows = scoped.map(l => ({
@@ -139,7 +130,7 @@ export const DriftCorrectionTab: React.FC = () => {
       'Detail': l.detail,
       'Timestamp': l.timestamp,
     }));
-    exportQaReportRows(rows, `drift-correction-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`);
+    void exportQaReportRows('qa:drift-correction:export', rows, `drift-correction-${scopeLabel(scope)}-${new Date().toISOString().slice(0, 10)}.csv`, qaScopeContext(scope));
   };
 
   if (loading) return <div className="ps-conf-loading">{t('driftCorrectionTab.loading')}</div>;
@@ -148,7 +139,7 @@ export const DriftCorrectionTab: React.FC = () => {
     <div>
       <div className="ps-qa-tab-toolbar">
         <QaScopeSwitcher scope={scope} onChange={setScope} visibleClientIds={visibleClientIds} />
-        <button className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</button>
+        <CapabilityButton capability="qa:drift-correction:export" context={qaScopeContext(scope)} className="ps-conf-btn-secondary" onClick={handleExport}>{t('common.export')}</CapabilityButton>
       </div>
 
       <div className="ps-qa-summary-tiles">
@@ -184,7 +175,7 @@ export const DriftCorrectionTab: React.FC = () => {
             <tbody>
               {unresolved.map(l => (
                 <tr key={l.id}>
-                  <td>{l.caseId}</td>
+                  <td data-phi="accession">{l.caseId}</td>
                   <td>
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${l.event.includes('Deferred') ? 'ps-conf-status-dot--pending' : 'ps-conf-status-dot--open'}`} />
@@ -229,7 +220,7 @@ export const DriftCorrectionTab: React.FC = () => {
             <tbody>
               {[...scoped].sort((a, b) => b.timestamp.localeCompare(a.timestamp)).map(l => (
                 <tr key={l.id}>
-                  <td>{l.caseId}</td>
+                  <td data-phi="accession">{l.caseId}</td>
                   <td>{EVENT_LABEL_KEY[l.event as typeof DRIFT_EVENTS[number]] ? t(EVENT_LABEL_KEY[l.event as typeof DRIFT_EVENTS[number]]) : l.event.replace('Post-Finalization Drift ', '')}</td>
                   <td>{l.detail}</td>
                   <td>{new Date(l.timestamp).toLocaleString()}</td>

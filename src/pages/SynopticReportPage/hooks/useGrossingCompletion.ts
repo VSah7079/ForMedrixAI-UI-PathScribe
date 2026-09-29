@@ -54,7 +54,7 @@ import { validateChargeMetadata } from '@/services/billing/validateChargeMetadat
 interface UseGrossingCompletionParams {
   caseData: Case | null;
   setCaseData: React.Dispatch<React.SetStateAction<Case | null>>;
-  showToast: (message: string) => void;
+  showToast: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
   log: (event: string, detail: Record<string, unknown>) => void;
   knownVersionRef: MutableRefObject<number>;
   setConcurrencyConflict: SetConcurrencyConflict;
@@ -136,7 +136,7 @@ export function useGrossingCompletion({
     });
     if (specimensWithoutAnswers.length > 0) {
       const labels = specimensWithoutAnswers.map(sp => sp.label).join(', ');
-      showToast(t('useGrossingCompletion.toast.specimensMissingGrossing', { count: specimensWithoutAnswers.length, labels }));
+      showToast(t('useGrossingCompletion.toast.specimensMissingGrossing', { count: specimensWithoutAnswers.length, labels }), 'warning');
       return;
     }
 
@@ -152,7 +152,7 @@ export function useGrossingCompletion({
       // UI here, not a browser prompt.
       const entered = window.prompt(t('useGrossingCompletion.prompt.reasonForUpdate'));
       if (!entered || !entered.trim()) {
-        showToast(t('useGrossingCompletion.toast.updateCancelledReasonRequired'));
+        showToast(t('useGrossingCompletion.toast.updateCancelledReasonRequired'), 'warning');
         return;
       }
       reason = entered.trim();
@@ -552,7 +552,7 @@ export function useGrossingCompletion({
     } catch (err) {
       if (handleConcurrencyConflict(err, setConcurrencyConflict)) return;
       console.error('[Gross Complete] Failed:', err);
-      showToast(t(isUpdate ? 'useGrossingCompletion.toast.updateGrossFailed' : 'useGrossingCompletion.toast.grossCompleteFailed'));
+      showToast(t(isUpdate ? 'useGrossingCompletion.toast.updateGrossFailed' : 'useGrossingCompletion.toast.grossCompleteFailed'), 'warning');
     }
   }, [caseData, log, showToast, handleProtocolChangesDetected, setCaseData, knownVersionRef, setConcurrencyConflict, grossingSnapshotRef, orchSections, t]);
 

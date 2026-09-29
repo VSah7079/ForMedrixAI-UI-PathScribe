@@ -97,12 +97,38 @@ describe('publishReportReleasedEvent', () => {
       caseId: 'CASE-1', reportType: 'PRELIMINARY', releasedAt: '2026-09-16T00:00:00.000Z',
       performingFacilityId: 'FAC-A', generatePdf, priority: 'Urgent',
     });
-    expect(dispatchPrintJob).toHaveBeenCalledWith('CASE-1', 'FAC-A', 'PRELIMINARY', 'Urgent', generatePdf);
+    expect(dispatchPrintJob).toHaveBeenCalledWith('CASE-1', 'FAC-A', 'PRELIMINARY', 'Urgent', generatePdf, { source: undefined, userId: undefined, workstationId: undefined });
   });
 
   it('defaults priority to Routine when the event omits it', async () => {
     await publishReportReleasedEvent({ caseId: 'CASE-1', reportType: 'FINAL', releasedAt: '2026-09-16T00:00:00.000Z' });
-    expect(dispatchPrintJob).toHaveBeenCalledWith('CASE-1', undefined, 'FINAL', 'Routine', undefined);
+    expect(dispatchPrintJob).toHaveBeenCalledWith('CASE-1', undefined, 'FINAL', 'Routine', undefined, { source: undefined, userId: undefined, workstationId: undefined });
+  });
+
+  it('forwards the real, existing event.source straight through to dispatchPrintJob, per PS-278 — the real Cytology/Surg Path signal it already carries, reused for print routing’s own Specimen/Case Type criterion', async () => {
+    await publishReportReleasedEvent({
+      caseId: 'CASE-1', reportType: 'FINAL', releasedAt: '2026-09-16T00:00:00.000Z', performingFacilityId: 'FAC-A', source: 'CYTOLOGY',
+    });
+    expect(dispatchPrintJob).toHaveBeenCalledWith('CASE-1', 'FAC-A', 'FINAL', 'Routine', undefined, { source: 'CYTOLOGY', userId: undefined, workstationId: undefined });
+  });
+
+  it('PS-278/279 gap-closing: forwards the real releasedBy.id through as userId — a genuine signal from every real interactive sign-out/amendment call site, never fabricated', async () => {
+    await publishReportReleasedEvent({
+      caseId: 'CASE-1', reportType: 'FINAL', releasedAt: '2026-09-16T00:00:00.000Z', performingFacilityId: 'FAC-A',
+      releasedBy: { id: 'USER-42', name: 'Dr. Test' },
+    });
+    expect(dispatchPrintJob).toHaveBeenCalledWith(
+      'CASE-1', 'FAC-A', 'FINAL', 'Routine', undefined,
+      expect.objectContaining({ userId: 'USER-42' }),
+    );
+  });
+
+  it('PS-278/279 gap-closing: a real, non-human release path (no releasedBy at all) honestly forwards undefined for userId — never invents an actor', async () => {
+    await publishReportReleasedEvent({ caseId: 'CASE-1', reportType: 'FINAL', releasedAt: '2026-09-16T00:00:00.000Z', performingFacilityId: 'FAC-A' });
+    expect(dispatchPrintJob).toHaveBeenCalledWith(
+      'CASE-1', 'FAC-A', 'FINAL', 'Routine', undefined,
+      expect.objectContaining({ userId: undefined }),
+    );
   });
 
   it("the real print subscriber's own outcome is returned on the result, alongside the electronic result", async () => {

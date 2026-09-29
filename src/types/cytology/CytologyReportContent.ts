@@ -31,6 +31,7 @@
 
 import type { CisoeAScore } from './CisoeAScore';
 import type { ImageAssociation } from '@/types/imageAssociation/ImageAssociation';
+import type { ResolvedPrintBranding } from '@/types/config/FacilityBranding';
 
 export interface CytologyReportContent {
   // ── 1. Administrative & Patient Identifiers ─────────────────────────────
@@ -118,4 +119,31 @@ export interface CytologyReportContent {
    *  type never carries the binary payload itself, same reference-
    *  only posture as everywhere else in this app. */
   imageAssociations?: ImageAssociation[];
+
+  /** Real, per PS-277 §1.2.2 (Master Template Engine — conditional
+   *  branding & header overrides). A pre-resolved reference, same
+   *  posture as imageAssociations above — this type never resolves a
+   *  Facility/Department/Enterprise hierarchy itself
+   *  (services/facilities/resolveFacilityPrintBranding.ts is the real
+   *  caller's own job, same as this file's header comment's existing
+   *  "no formatting/letterhead... real caller decides" rule). Absent
+   *  = render the plain, no-branding header exactly as before this
+   *  batch — a real, honest "branding is optional" default, never a
+   *  hard requirement. */
+  printBranding?: ResolvedPrintBranding;
+  /** Real, per PS-277 §1.2.2's own architecture guidance #2 — the
+   *  case's own, already-existing component-split billing status
+   *  (types/billing/ServiceChargeRecord.ts's billingType), threaded
+   *  through so the renderer can toggle which branding fields actually
+   *  print (see resolveFacilityPrintBranding.ts's own doc comment for
+   *  the real, disclosed TC/26/Global distinction this drives).
+   *  Undefined behaves exactly like 'Global'/'26' — the common case,
+   *  full branding shown. */
+  componentSplitBillingType?: 'TC' | '26' | 'Global';
+  /** Real, per PS-277 §1.2.3 — this report's own performing lab's real,
+   *  admin-configured print policy (Facility.forceAddendumOnDedicatedPagePrintPolicy),
+   *  pre-resolved by the real caller. Only meaningful when addendumText
+   *  above is actually set — a report with no addendum has nothing to
+   *  force onto a page regardless of this flag. */
+  forceAddendumOnDedicatedPage?: boolean;
 }

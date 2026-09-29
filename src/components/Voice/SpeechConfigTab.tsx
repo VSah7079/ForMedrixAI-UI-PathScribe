@@ -162,7 +162,7 @@ const SpeechConfigTab: React.FC = () => {
             {isListening ? t('speechConfigTab.listening') : t('speechConfigTab.testVoice')}
           </button>
 
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" style={{ display: 'none' }} />
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="sct-file-input-hidden" />
           <button
             onClick={() => fileInputRef.current?.click()}
             className="ps-conf-btn-secondary sct-bulk-btn"

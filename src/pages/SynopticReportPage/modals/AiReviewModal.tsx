@@ -112,7 +112,7 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
         </div>
 
         <div className="ps-ai-review-progress-track">
-          <div className="ps-ai-review-progress-fill" style={{ width: `${progress}%` }} />
+          <div className="ps-ai-review-progress-fill" style={{ '--bar-pct': `${progress}%` } as React.CSSProperties} />
         </div>
 
         <div className="ps-ai-review-counter">
@@ -165,7 +165,7 @@ export const AiReviewModal: React.FC<AiReviewModalProps> = ({
             {([
               { key: 'Space / →', labelKey: 'common.confirm',                                 variant: 'confirm' },
               { key: 'O',         labelKey: 'billingReviewPanel.overrideButton',               variant: 'override' },
-              { key: 'S',         labelKey: 'orchestratorSectionEditor.spellCheck.skipButton', variant: 'skip' },
+              { key: 'S',         labelKey: 'common.skip',                                    variant: 'skip' },
               { key: 'Esc',       labelKey: 'common.cancel',                                   variant: 'cancel' },
             ] as const).map(h => (
               <div key={h.key} className={`ps-ai-review-hint ps-ai-review-hint--${h.variant}`}>

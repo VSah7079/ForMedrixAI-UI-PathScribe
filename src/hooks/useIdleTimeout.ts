@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { extractCaseIdFromPath } from '@/services/session/ISessionTimeoutService';
 import { mockSessionTimeoutService } from '@/services/session/mockSessionTimeoutService';

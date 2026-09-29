@@ -5,6 +5,10 @@ For exhaustive, file-level detail, every folder under `src/` has its
 own `README.md` — this document is the rollup: the real shape of the
 system, not a restatement of every file.
 
+## Production backend (decided Sep 2026)
+
+The production database is **Microsoft SQL Server**, behind a **PathScribe API server on ASP.NET Core**. **Live updates** (the OR Suite Live Board and the Intraop Queue first) come from a **SignalR** hub on that server. See [LIVE_UPDATES_SIGNALR.md](LIVE_UPDATES_SIGNALR.md), and the browser side in `src/services/liveUpdates/`. The Firestore sections below predate this decision; the Firestore code is to be replaced.
+
 ## The two operating modes
 
 PathScribe runs in one of two modes, decided per-case:

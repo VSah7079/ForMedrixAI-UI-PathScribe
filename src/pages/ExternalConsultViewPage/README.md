@@ -38,6 +38,11 @@ kiosk/device-identity substitute for one.
   whoever holds the link can submit as the token's own
   `consultantIdentifier`; there is no separate consultant-side login.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`ExternalConsultViewPage.tsx`: the patient line (name, date of birth) is tagged. The page reads the case through `@/services` (`caseService`), so it came off the mock-import baseline; its test mocks `@/services` accordingly.
+
 ---
 *See [pages/README.md](../README.md) for how this folder fits the whole pages/ layer.*
 *When this folder's contents change meaningfully, update THIS file.*

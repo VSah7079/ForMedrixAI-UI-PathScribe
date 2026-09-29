@@ -1,6 +1,7 @@
 // src/utils/isoDateForSearch.test.ts
 import { describe, it, expect } from 'vitest';
 import { isoDateForSearch, dobIncludesQuery, dobExactlyMatches } from './isoDateForSearch';
+import { JURISDICTION_LOCALE } from '../types/systemConfig';
 
 describe('isoDateForSearch — real fix, per direct follow-up: "Does the DOB take into account locality? UK vs. US."', () => {
   it('formats month-first for MM/DD/YYYY (US)', () => {
@@ -93,5 +94,26 @@ describe('dobIncludesQuery / dobExactlyMatches — shared "try every supported f
 
   it('dobExactlyMatches is false for a partial (non-exact) match', () => {
     expect(dobExactlyMatches('1990-07-23', '07/23')).toBe(false);
+  });
+});
+
+describe('every jurisdiction writes and finds dates its own way (Batch 365, PS-347)', () => {
+  it('writes each format JURISDICTION_LOCALE declares, never falling back to month first', () => {
+    const written = Object.fromEntries(
+      Object.entries(JURISDICTION_LOCALE).map(([j, l]) => [j, isoDateForSearch('1990-07-23', l.dateFormat)]),
+    );
+    expect(written).toMatchObject({ US: '07/23/1990', GB_EW: '23/07/1990', BE: '23/07/1990', FR: '23/07/1990', NL: '23-07-1990', DE: '23.07.1990', KR: '1990-07-23' });
+  });
+
+  it('finds a date typed the Dutch or German way', () => {
+    expect(dobExactlyMatches('1990-07-23', '23-07-1990')).toBe(true);
+    expect(dobExactlyMatches('1990-07-23', '23.07.1990')).toBe(true);
+    expect(dobIncludesQuery('1990-07-23', '23-07')).toBe(true);
+    expect(dobIncludesQuery('1990-07-23', '23.07.')).toBe(true);
+  });
+
+  it('the Netherlands hint matches what nl-NL formatting shows', () => {
+    const shown = new Date('1990-07-23T12:00:00Z').toLocaleDateString('nl-NL', { day: '2-digit', month: '2-digit', year: 'numeric' });
+    expect(isoDateForSearch('1990-07-23', JURISDICTION_LOCALE.NL.dateFormat)).toBe(shown);
   });
 });

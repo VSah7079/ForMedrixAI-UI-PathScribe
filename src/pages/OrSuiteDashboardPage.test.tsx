@@ -27,14 +27,8 @@ vi.mock('@/hooks/useCurrentOrTerminal', () => ({
 }));
 
 const { getById: terminalGetById, getActive: terminalGetActive } = vi.hoisted(() => ({ getById: vi.fn(), getActive: vi.fn() }));
-vi.mock('@/services/intraopDashboard/mockOrSuiteTerminalService', () => ({
-  mockOrSuiteTerminalService: { getById: terminalGetById, getActive: terminalGetActive },
-}));
 
 const { record } = vi.hoisted(() => ({ record: vi.fn() }));
-vi.mock('@/services/intraopDashboard/mockOrEventLogService', () => ({
-  mockOrEventLogService: { record },
-}));
 
 const { resolveStaffByQuickAuthPin } = vi.hoisted(() => ({ resolveStaffByQuickAuthPin: vi.fn() }));
 vi.mock('@/services/intraopDashboard/resolveStaffByQuickAuthPin', () => ({ resolveStaffByQuickAuthPin }));
@@ -43,9 +37,26 @@ const { intraopGetAll, dismissFromBoard, seedOrBoardDemoData, advanceDemoSpecime
   intraopGetAll: vi.fn(), dismissFromBoard: vi.fn(), seedOrBoardDemoData: vi.fn(), advanceDemoSpecimen: vi.fn(),
   locationGetById: vi.fn(), locationListForFacility: vi.fn(),
 }));
+// PS-262: the page reaches the terminal and event-log services through
+// '@/services' now, and subscribes to live updates there too. The fake
+// live service records subscriptions so the tests can push an event.
+const { liveSubscribers } = vi.hoisted(() => ({ liveSubscribers: [] as { scope: unknown; onEvent: (e: unknown) => void }[] }));
 vi.mock('@/services', () => ({
   intraoperativeService: { getAll: intraopGetAll, dismissFromBoard, seedOrBoardDemoData, advanceDemoSpecimen },
   locationService: { getById: locationGetById, listForFacility: locationListForFacility },
+  orSuiteTerminalService: { getById: terminalGetById, getActive: terminalGetActive },
+  orEventLogService: { record },
+  liveUpdateService: {
+    transport: 'local',
+    subscribeIntraop: (scope: unknown, onEvent: (e: unknown) => void) => {
+      const s = { scope, onEvent };
+      liveSubscribers.push(s);
+      return { unsubscribe: () => { liveSubscribers.splice(liveSubscribers.indexOf(s), 1); } };
+    },
+    getState: () => 'local',
+    onStateChange: () => () => {},
+    onResync: () => () => {},
+  },
 }));
 
 const TERMINAL = { id: 'term-1', name: 'OR-04 Wall Display', locationId: 'loc-1', facilityId: 'fac-1', canViewMultiSuite: false, active: true };
@@ -181,5 +192,38 @@ describe('OrSuiteDashboardPage — real render smoke test', () => {
 
     fireEvent.click(screen.getByText('orSuiteDashboard.stopDemo'));
     expect(screen.queryByText('orSuiteDashboard.demoModeActive')).toBeNull();
+  });
+});
+
+describe('OrSuiteDashboardPage — live updates (PS-262)', () => {
+  it("subscribes for the terminal's own location, shows the connection badge, and re-reads the board when a change arrives", async () => {
+    await renderBoard(inProgressEntry());
+    expect(liveSubscribers.map(s => s.scope)).toEqual([{ locationIds: ['loc-1'], all: false }]);
+    expect(screen.getByText('liveUpdates.status.local')).not.toBeNull();
+    expect(screen.queryByText('orSuiteDashboard.dismissCase')).toBeNull();
+
+    // Another device renders the diagnosis: the hub (here the fake) says so.
+    intraopGetAll.mockResolvedValue({ ok: true, data: [completedEntry()] });
+    await act(async () => {
+      liveSubscribers[0].onEvent({ v: 1, eventId: 'e1', kind: 'diagnosis.rendered', sessionId: 'intraop-1', specimenId: 'sp-1', locationId: 'loc-1', occurredAt: NOW.toISOString() });
+      await vi.advanceTimersByTimeAsync(150); // the 100 ms coalescing window
+    });
+    expect(screen.getByText('orSuiteDashboard.dismissCase')).not.toBeNull();
+  });
+
+  it('a refused dismissal shows the translated message, never the service text', async () => {
+    resolveStaffByQuickAuthPin.mockResolvedValue({ outcome: 'authenticated', staff: { id: 'staff-1', firstName: 'Sarah', lastName: 'Jenkins' } });
+    dismissFromBoard.mockResolvedValue({ ok: false, error: 'Specimen sp-1 has no rendered diagnosis' });
+    await renderBoard(completedEntry());
+    fireEvent.click(screen.getByText('orSuiteDashboard.dismissCase'));
+    fireEvent.change(document.querySelector('.ps-orboard-pin-input') as HTMLInputElement, { target: { value: '1234' } });
+    fireEvent.click(screen.getByText('orSuiteDashboard.continue'));
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    fireEvent.click(document.querySelector('.ps-orboard-readback-checkbox input') as HTMLInputElement);
+    fireEvent.click(screen.getByText('orSuiteDashboard.confirmAndDismiss').closest('button')!);
+    await act(async () => { await vi.runOnlyPendingTimersAsync(); });
+    expect(screen.getByText('orSuiteDashboard.dismissFailedGeneric')).not.toBeNull();
+    expect(screen.queryByText(/no rendered diagnosis/)).toBeNull();
+    expect(record).not.toHaveBeenCalled();
   });
 });

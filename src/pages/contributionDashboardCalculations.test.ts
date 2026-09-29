@@ -1,6 +1,6 @@
 // src/pages/contributionDashboardCalculations.test.ts
 import { describe, it, expect } from 'vitest';
-import { computeOverviewKpis, computeCaseMixData, computeOrgWideTatPerformance, computeRvu30, computeWeeklyDaily, type CaseForDashboardCalc } from './contributionDashboardCalculations';
+import { computeOverviewKpis, computeCaseMixData, computeOrgWideTatPerformance, computeRvu30, computeWeeklyDaily, computeTopQualityFlags, type CaseForDashboardCalc, type DeficiencyForQualityFlags, type DiscordanceRecordForQualityFlags, type CaseForQualityFlagsScoping } from './contributionDashboardCalculations';
 import type { RvuTableVersion } from '../services/billing/RvuTableVersion';
 
 function makeCase(over: Partial<CaseForDashboardCalc> = {}): CaseForDashboardCalc {
@@ -335,5 +335,158 @@ describe('computeCaseMixData — real fix: replaces the hardcoded mockCaseMixDat
     const cases = [makeCase({ order: { assignedTo: 'other-user' }, subspecialtyId: 'breast' })];
     const result = computeCaseMixData(cases, 'PATH-001');
     expect(result.breast).toBe(0);
+  });
+});
+
+describe('computeTopQualityFlags', () => {
+  const NOW = new Date('2026-04-01T00:00:00.000Z').getTime();
+  const MY_CASES: CaseForQualityFlagsScoping[] = [{ id: 'S26-1', order: { assignedTo: 'PATH-001' } }];
+  const TYPE_NAMES = { 'type-missing-req': 'Missing Requisition' };
+
+  function makeDeficiency(over: Partial<DeficiencyForQualityFlags> = {}): DeficiencyForQualityFlags {
+    return {
+      id: 'def-1', caseId: 'S26-1', status: 'open', deficiencyTypeId: 'type-missing-req', raisedAt: '2026-03-20T00:00:00.000Z',
+      ...over,
+    };
+  }
+  function makeDiscordance(over: Partial<DiscordanceRecordForQualityFlags> = {}): DiscordanceRecordForQualityFlags {
+    return {
+      id: 'disc-1', caseId: 'S26-1', activityTypeId: 'frozen-final', outcome: 'discordant', severity: 'high',
+      caseType: 'Breast Core Bx', recordedBy: { userId: 'PATH-001' }, recordedAt: '2026-03-20T00:00:00.000Z',
+      ...over,
+    };
+  }
+
+  it('scopes deficiencies to the pathologist’s OWN cases via order.assignedTo, not deficiency.raisedBy', () => {
+    const result = computeTopQualityFlags(
+      [makeDeficiency({ caseId: 'S26-OTHER' })], TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('excludes a closed deficiency, even on the pathologist’s own case', () => {
+    const result = computeTopQualityFlags(
+      [makeDeficiency({ status: 'closed' })], TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('an open deficiency grades as medium severity', () => {
+    const result = computeTopQualityFlags(
+      [makeDeficiency({ status: 'open' })], TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result[0].severity).toBe('medium');
+  });
+
+  it('an overdue pending-verification deficiency grades as high severity', () => {
+    const result = computeTopQualityFlags(
+      [makeDeficiency({ status: 'pending-verification', verificationDueDate: '2026-03-01T00:00:00.000Z' })],
+      TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result[0].severity).toBe('high');
+  });
+
+  it('a NON-overdue pending-verification deficiency grades as low severity', () => {
+    const result = computeTopQualityFlags(
+      [makeDeficiency({ status: 'pending-verification', verificationDueDate: '2026-05-01T00:00:00.000Z' })],
+      TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result[0].severity).toBe('low');
+  });
+
+  it('a reopened deficiency grades as high severity regardless of status', () => {
+    const result = computeTopQualityFlags(
+      [makeDeficiency({ status: 'pending-verification', reopenCount: 1, verificationDueDate: '2026-05-01T00:00:00.000Z' })],
+      TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result[0].severity).toBe('high');
+  });
+
+  it('the deficiency value text resolves the real type name and specimen label, or falls back to "case-level"', () => {
+    const withSpecimen = computeTopQualityFlags(
+      [makeDeficiency({ specimenLabel: 'A' })], TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(withSpecimen[0].value).toBe('Missing Requisition — Specimen A');
+
+    const caseLevel = computeTopQualityFlags(
+      [makeDeficiency({ specimenLabel: undefined })], TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(caseLevel[0].value).toBe('Missing Requisition — case-level');
+  });
+
+  it('a discordance only counts for the pathologist who actually recorded it', () => {
+    const result = computeTopQualityFlags(
+      [], TYPE_NAMES, [makeDiscordance({ recordedBy: { userId: 'other-user' } })], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('a discordance from a DIFFERENT activity type is excluded', () => {
+    const result = computeTopQualityFlags(
+      [], TYPE_NAMES, [makeDiscordance({ activityTypeId: 'some-other-activity' })], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('a concordant record is excluded even if it would otherwise match', () => {
+    const result = computeTopQualityFlags(
+      [], TYPE_NAMES, [makeDiscordance({ outcome: 'concordant' })], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('a low-severity discordance is excluded — not urgent enough for this short list', () => {
+    const result = computeTopQualityFlags(
+      [], TYPE_NAMES, [makeDiscordance({ severity: 'low' })], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result).toHaveLength(0);
+  });
+
+  it('a high-severity discordance surfaces with the real case-type text', () => {
+    const result = computeTopQualityFlags(
+      [], TYPE_NAMES, [makeDiscordance({ caseType: 'GI Biopsy' })], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result).toHaveLength(1);
+    expect(result[0].value).toBe('Frozen/Final discordance — GI Biopsy');
+    expect(result[0].kind).toBe('discordance');
+  });
+
+  it('results are sorted by score (overdue/reopened deficiencies and high-severity discordances first), then by recency', () => {
+    const lowScoreOld = makeDeficiency({ id: 'def-low', status: 'pending-verification', verificationDueDate: '2026-05-01T00:00:00.000Z', raisedAt: '2026-01-01T00:00:00.000Z' });
+    const highScoreNew = makeDeficiency({ id: 'def-high', status: 'open', reopenCount: 2, raisedAt: '2026-03-01T00:00:00.000Z' });
+    const mediumScore = makeDeficiency({ id: 'def-medium', status: 'open', raisedAt: '2026-02-01T00:00:00.000Z' });
+    const result = computeTopQualityFlags(
+      [lowScoreOld, highScoreNew, mediumScore], TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result.map(f => f.id)).toEqual(['def-high', 'def-medium', 'def-low']);
+  });
+
+  it('slices to the real top N (default 3), dropping lower-ranked entries past the limit', () => {
+    const deficiencies = [
+      makeDeficiency({ id: 'def-1', status: 'open', reopenCount: 1, raisedAt: '2026-03-04T00:00:00.000Z' }),
+      makeDeficiency({ id: 'def-2', status: 'open', reopenCount: 1, raisedAt: '2026-03-03T00:00:00.000Z' }),
+      makeDeficiency({ id: 'def-3', status: 'open', reopenCount: 1, raisedAt: '2026-03-02T00:00:00.000Z' }),
+      makeDeficiency({ id: 'def-4', status: 'open', reopenCount: 1, raisedAt: '2026-03-01T00:00:00.000Z' }),
+    ];
+    const result = computeTopQualityFlags([...deficiencies], TYPE_NAMES, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW);
+    expect(result).toHaveLength(3);
+    expect(result.map(f => f.id)).toEqual(['def-1', 'def-2', 'def-3']);
+  });
+
+  it('an unknown deficiency type id falls back to the raw id rather than throwing', () => {
+    const result = computeTopQualityFlags(
+      [makeDeficiency({ deficiencyTypeId: 'unknown-type' })], {}, [], 'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result[0].value).toBe('unknown-type — case-level');
+  });
+
+  it('combines deficiencies and discordances from the same pathologist in one ranked list', () => {
+    const result = computeTopQualityFlags(
+      [makeDeficiency({ id: 'def-1', status: 'open', reopenCount: 1 })],
+      TYPE_NAMES,
+      [makeDiscordance({ id: 'disc-1', severity: 'high' })],
+      'frozen-final', MY_CASES, 'PATH-001', 3, NOW,
+    );
+    expect(result.map(f => f.kind).sort()).toEqual(['deficiency', 'discordance']);
   });
 });

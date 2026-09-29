@@ -63,6 +63,6 @@ describe('applyVoiceMacroSubstitutions — real, per direct guidance (voice-trig
     const svc = new MockVoiceMacroService();
     await svc.addMacro({ spoken: 'normal colon', written: 'Sections show colonic mucosa.', isActive: true });
     const result = await svc.refineTranscript('The finding is normal colon today.');
-    expect(result.data).toBe('The finding is Sections show colonic mucosa. today.');
+    expect(result).toEqual({ ok: true, data: 'The finding is Sections show colonic mucosa. today.' }); // PS-67: the { ok, data } shape
   });
 });

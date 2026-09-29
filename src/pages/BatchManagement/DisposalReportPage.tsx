@@ -25,7 +25,7 @@ import { facilityService } from '@/services';
 import { computeDisposalReport } from '@/services/retentionPolicy/computeDisposalReport';
 import type { DisposalReportRow, DisposalReportFilters } from '@/services/retentionPolicy/computeDisposalReport';
 import type { RetainableMaterialType } from '@/services/retentionPolicy/RetentionPolicy';
-import { exportQaReportRows } from '@/components/QualityAssurance/qaReportUtils';
+import { toCsv, downloadCsv } from '@/utils/csv';
 import type { Facility } from '@/services/facilities/IFacilityService';
 
 const MATERIAL_TYPES: RetainableMaterialType[] = ['block', 'slide', 'wet_tissue'];
@@ -91,7 +91,9 @@ const DisposalReportPage: React.FC = () => {
       [t('disposalReport.export.disposedBy')]: r.disposedByName,
       [t('disposalReport.export.location')]: r.lastKnownLocation ?? '',
     }));
-    exportQaReportRows(exportRows, `waste-tracking-report-${new Date().toISOString().slice(0, 10)}.csv`);
+    // Not a QA report, so not one of the PS-355 QA export capabilities; this
+    // export isn't gated yet (listed for the PS-357 sweep).
+    downloadCsv(`waste-tracking-report-${new Date().toISOString().slice(0, 10)}`, toCsv(exportRows));
   }, [rows, t]);
 
   return (

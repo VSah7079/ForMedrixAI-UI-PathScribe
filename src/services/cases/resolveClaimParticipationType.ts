@@ -41,14 +41,28 @@ import { resolveParticipationTypeAuthority, type ParticipationTypeRecord } from 
 
 const DEFAULT_CLAIM_PARTICIPATION_TYPE_ID = 'primary';
 
+/**
+ * Real, shared "which participation type IDs can this staff member fill"
+ * computation — the Role → participationTypeIds mapping this module and
+ * CaseTeamModal.tsx's own drag-eligibility check, staff-directory badges,
+ * and relevant-types filter all need to agree on. Extracted here (rather
+ * than kept as three independent inline copies in CaseTeamModal.tsx, on
+ * top of this module's own pre-existing copy) by this app's own
+ * inline-CSS/business-logic sweep — this header comment already stated
+ * the intent that there be only one such mapping; now there actually is.
+ */
+export function resolveEligibleParticipationTypeIds(staffUserRoles: string[] | undefined, roles: Role[]): Set<string> {
+  const eligibleRoles = roles.filter(r => (staffUserRoles ?? []).includes(r.name));
+  return new Set(eligibleRoles.flatMap(r => r.participationTypeIds ?? []));
+}
+
 export function resolveClaimParticipationType(
   staffUserRoles: string[] | undefined,
   roles: Role[],
   participationTypes: ParticipationTypeRecord[],
   performingLabFacilityId?: string | null,
 ): string {
-  const eligibleRoles = roles.filter(r => (staffUserRoles ?? []).includes(r.name));
-  const allowedIds = new Set(eligibleRoles.flatMap(r => r.participationTypeIds ?? []));
+  const allowedIds = resolveEligibleParticipationTypeIds(staffUserRoles, roles);
   if (allowedIds.size === 0) return DEFAULT_CLAIM_PARTICIPATION_TYPE_ID;
 
   const eligibleTypes = participationTypes.filter(t => allowedIds.has(t.id));

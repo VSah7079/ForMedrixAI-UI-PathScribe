@@ -30,12 +30,25 @@ describe('mockGrossingHardwareProfileService — real, per the RFP-APLIS-2026-GL
 
   it('real, a new profile can be created and immediately retrieved', async () => {
     const created = await mockGrossingHardwareProfileService.create({
-      kind: 'scale', label: 'Test Scale', bridgeType: 'pathscribe_agent', agentBaseUrl: 'http://localhost:9191', isActive: true,
+      kind: 'scale', label: 'Test Scale', bridgeType: 'pathscribe_agent', agentBaseUrl: 'https://127.0.0.1:9100', isActive: true,
     });
     expect(created.ok).toBe(true);
     if (!created.ok) return;
     const fetched = await mockGrossingHardwareProfileService.getById(created.data.id);
     expect(fetched.ok && fetched.data?.label).toBe('Test Scale');
+  });
+
+  it('refuses a plain-HTTP agent address on create and update (Batch 327)', async () => {
+    const bad = await mockGrossingHardwareProfileService.create({
+      kind: 'scale', label: 'HTTP Scale', bridgeType: 'pathscribe_agent', agentBaseUrl: 'http://localhost:9191', isActive: true,
+    });
+    expect(bad).toEqual({ ok: false, error: expect.stringContaining('https://') });
+    const good = await mockGrossingHardwareProfileService.create({
+      kind: 'scale', label: 'HTTPS Scale', bridgeType: 'pathscribe_agent', agentBaseUrl: 'https://127.0.0.1:9100', isActive: true,
+    });
+    if (!good.ok) throw new Error('create failed');
+    expect((await mockGrossingHardwareProfileService.update(good.data.id, { agentBaseUrl: 'http://127.0.0.1:9100' })).ok).toBe(false);
+    expect((await mockGrossingHardwareProfileService.update(good.data.id, { agentBaseUrl: '' })).ok).toBe(true);
   });
 
   it('real, updating a genuinely unknown profile id fails honestly, never silently succeeds', async () => {

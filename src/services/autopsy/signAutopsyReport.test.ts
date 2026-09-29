@@ -11,10 +11,23 @@ const { releaseMock, countersignMock, getForCaseMock, getActiveAssignmentForUser
   getForCaseMock: vi.fn().mockResolvedValue({ ok: true, data: null }),
   getActiveAssignmentForUser: vi.fn().mockResolvedValue({ ok: true, data: null }),
 }));
+// Batch 331 (PS-327): signing authority. The signer's staff record (for a
+// forensic appointment) and the session are controlled per test.
+const { getStaffById, session } = vi.hoisted(() => ({
+  getStaffById: vi.fn(),
+  session: { current: { id: 'user-attending', role: 'superadmin' } as { id: string; role?: string } | null },
+}));
 vi.mock('@/services', () => ({
   countersignService: { release: releaseMock, countersign: countersignMock, getForCase: getForCaseMock },
   qaSupervisionAssignmentService: { getActiveAssignmentForUser },
+  userService: { getById: getStaffById },
+  facilityService: { getById: vi.fn().mockResolvedValue({ ok: false, error: 'not found' }) },
 }));
+vi.mock('@/services/auth/caseAccessControl', async importOriginal => ({
+  ...(await importOriginal<typeof import('@/services/auth/caseAccessControl')>()),
+  getSessionUser: () => session.current,
+}));
+const US_APPOINTMENT = { type: 'MEDICOLEGAL_APPOINTMENT', issuingBody: 'OCME', jurisdiction: 'US', effectiveDate: '2020-01-01' };
 vi.mock('@/services/quality/mockQaSupervisionAssignmentService', () => ({ FPPE_ACTIVITY_TYPE_ID: 'fppe-activity' }));
 
 const { publishReportReleasedEventMock } = vi.hoisted(() => ({
@@ -68,6 +81,9 @@ beforeEach(() => {
   getActiveAssignmentForUser.mockReset();
   getActiveAssignmentForUser.mockResolvedValue({ ok: true, data: null });
   publishReportReleasedEventMock.mockClear();
+  session.current = { id: 'user-attending', role: 'superadmin' };
+  getStaffById.mockReset();
+  getStaffById.mockResolvedValue({ ok: true, data: { providerCredentials: [US_APPOINTMENT] } });
 });
 
 describe('signAutopsyReport', () => {
@@ -243,5 +259,51 @@ describe('signAutopsyReport — Report_Released_Event wiring, per direct follow-
     getCase.mockResolvedValue(baseCase({} as any, [{ status: 'active', staffId: 'user-resident', participationTypeIds: ['resident'] }]));
     await signAutopsyReport('case-1', 'PAD', residentUser);
     expect(publishReportReleasedEventMock).not.toHaveBeenCalled();
+  });
+});
+
+describe('signAutopsyReport — signing authority (Batch 331, PS-327)', () => {
+  const hospitalCase = (participants: any[] = []) => baseCase({
+    autopsy: { jurisdiction: 'US', caseAuthority: 'hospital_consented', scope: 'full', addenda: [], ancillaryHold: { active: false } } as any,
+  }, participants);
+
+  it('refuses a signer who is neither an eligible participant nor an administrator', async () => {
+    session.current = { id: 'user-other', role: 'pathologist' };
+    getCase.mockResolvedValue(hospitalCase([{ staffId: 'user-attending', status: 'active', participationTypeIds: ['attending'] }]));
+    const result = await signAutopsyReport('case-1', 'PAD', { id: 'user-other', name: 'Dr. Other', isPathologist: true });
+    expect(result).toMatchObject({ ok: false, errorCode: 'NOT_AUTHORIZED' });
+    expect(updateCase).not.toHaveBeenCalled();
+  });
+
+  it('lets the assigned attending sign a hospital autopsy without any forensic appointment', async () => {
+    session.current = { id: 'user-attending', role: 'pathologist' };
+    getStaffById.mockResolvedValue({ ok: true, data: { providerCredentials: [] } });
+    getCase.mockResolvedValue(hospitalCase([{ staffId: 'user-attending', status: 'active', participationTypeIds: ['attending'] }]));
+    const result = await signAutopsyReport('case-1', 'PAD', attendingUser);
+    expect(result).toMatchObject({ ok: true, outcome: 'signed' });
+  });
+
+  it('requires an active appointment for the case jurisdiction on a forensic case, even for an administrator', async () => {
+    getStaffById.mockResolvedValue({ ok: true, data: { providerCredentials: [] } });
+    getCase.mockResolvedValue(baseCase());
+    expect(await signAutopsyReport('case-1', 'PAD', attendingUser)).toMatchObject({ ok: false, errorCode: 'NO_FORENSIC_APPOINTMENT' });
+
+    getStaffById.mockResolvedValue({ ok: true, data: { providerCredentials: [{ ...US_APPOINTMENT, jurisdiction: 'CA' }] } });
+    expect(await signAutopsyReport('case-1', 'PAD', attendingUser)).toMatchObject({ ok: false, errorCode: 'NO_FORENSIC_APPOINTMENT' });
+
+    getStaffById.mockResolvedValue({ ok: true, data: { providerCredentials: [{ ...US_APPOINTMENT, expirationDate: '2021-01-01' }] } });
+    expect(await signAutopsyReport('case-1', 'PAD', attendingUser)).toMatchObject({ ok: false, errorCode: 'NO_FORENSIC_APPOINTMENT' });
+    expect(updateCase).not.toHaveBeenCalled();
+
+    getStaffById.mockResolvedValue({ ok: true, data: { providerCredentials: [US_APPOINTMENT] } });
+    expect(await signAutopsyReport('case-1', 'PAD', attendingUser)).toMatchObject({ ok: true, outcome: 'signed' });
+  });
+
+  it('still routes a resident on a forensic case for countersign rather than refusing', async () => {
+    session.current = { id: 'user-resident', role: 'pathologist' };
+    getStaffById.mockResolvedValue({ ok: true, data: { providerCredentials: [] } });
+    getCase.mockResolvedValue(baseCase({}, [{ staffId: 'user-resident', status: 'active', participationTypeIds: ['resident'] }]));
+    const result = await signAutopsyReport('case-1', 'PAD', residentUser);
+    expect(result).toMatchObject({ ok: true, outcome: 'released_for_countersign' });
   });
 });

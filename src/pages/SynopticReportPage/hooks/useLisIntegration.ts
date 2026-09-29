@@ -48,7 +48,7 @@ interface UseLisIntegrationParams {
   caseData:   Case | null;
   setCaseData: Dispatch<SetStateAction<Case | null>>;
   signingUser: SigningUser;
-  showToast:  (message: string) => void;
+  showToast:  (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
 }
 
 export function useLisIntegration({ caseData, setCaseData, signingUser, showToast }: UseLisIntegrationParams) {
@@ -308,7 +308,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
       if (refreshed) setCaseData(refreshed);
       showToast(t('useLisIntegration.toast.middlewareEventApplied', { label: `${targetSpecimen.label}${targetBlock.label}` }));
     } else {
-      showToast(t('useLisIntegration.toast.middlewareEventNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }));
+      showToast(t('useLisIntegration.toast.middlewareEventNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }), 'warning');
     }
   }, [caseData, setCaseData, showToast, t]);
 
@@ -348,7 +348,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
       if (refreshed) setCaseData(refreshed);
       showToast(t('useLisIntegration.toast.middlewareLocationApplied', { targetDescription: result.targetDescription, location: 'Histology — Embedding Station 3' }));
     } else {
-      showToast(t('useLisIntegration.toast.middlewareLocationNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }));
+      showToast(t('useLisIntegration.toast.middlewareLocationNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }), 'warning');
     }
   }, [caseData, setCaseData, showToast, t]);
 
@@ -399,7 +399,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     });
 
     if (result.outcome !== 'notified') {
-      showToast(t('useLisIntegration.toast.dispatchOutcomeNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }));
+      showToast(t('useLisIntegration.toast.dispatchOutcomeNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }), 'warning');
     }
   }, [caseData, showToast, t]);
 
@@ -569,7 +569,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     if (refreshed) setCaseData(refreshed);
     showToast(failed > 0
       ? t('useLisIntegration.toast.materialTreeScanAppliedWithFailures', { count: applied, failed })
-      : t('useLisIntegration.toast.materialTreeScanApplied', { count: applied }));
+      : t('useLisIntegration.toast.materialTreeScanApplied', { count: applied }), failed > 0 ? 'warning' : 'success');
   }, [caseData, setCaseData, showToast, t]);
 
   const openCopilotReportView = useCallback(async () => {
@@ -666,7 +666,7 @@ export function useLisIntegration({ caseData, setCaseData, signingUser, showToas
     // stops being simulated.
     const result = await sendMaterialOrderToLis({ kind: 'stain', specimenId, label: stainName });
     if (!result.ok) {
-      showToast(t('useSpecimenBlockManagement.toast.lisNoAckStainOrder', { stainName }));
+      showToast(t('useSpecimenBlockManagement.toast.lisNoAckStainOrder', { stainName }), 'warning');
     }
     return result;
   }, [sendMaterialOrderToLis, showToast, t]);

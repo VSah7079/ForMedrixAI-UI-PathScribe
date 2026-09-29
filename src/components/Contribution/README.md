@@ -100,8 +100,9 @@ charts (recharts) and date-range filtering.
   existing "Delegated to Me" count (it could only ever grow). New, real
   `completeDelegation()` function and `completedAt` timestamp close that
   gap; new `InformalReviewBanner.tsx`
-  (`pages/SynopticReportPage/components/`) is the real, minimal UI that
-  triggers it — modeled directly on the existing `AmendmentStatusBanner`
+  (`pages/SynopticReportPage/components/`; deleted in Batch 355, PS-346,
+  after informal reviews moved to their own service) was the real, minimal UI that
+  triggered it — modeled directly on the existing `AmendmentStatusBanner`
   pattern. Caught two real mistakes of my own while building it: an
   early version invented CSS classes (`ps-banner`, `ps-btn--secondary`)
   that don't exist anywhere in `pathscribe.css` — checked directly and
@@ -303,6 +304,27 @@ charts (recharts) and date-range filtering.
   a possible fourth "Tile" candidate for consolidation and correctly
   ruled out — it's genuinely worklist-specific, not a contribution
   dashboard widget.
+
+## Batch 353
+
+**`QualityTab.tsx`:**
+- It gets delegations from `delegationService` and TAT targets from `tatTargetService`. It used to import the demo case service and read the TAT screen's storage.
+- Its joins (performing lab per case, facility names, delegations plus informal reviews) moved to `services/quality/qualityTatInputs.ts`.
+- Amendments now come through `amendmentService`.
+- Inline styles converted: the trend pill is `--ps-hue` with a `--hue` class, and the client bars use `--bar-pct` / `--peer-pct`.
+- It is off both deployment baselines.
+
+**`qualityCalculations.ts`:** the TAT target resolver moved to `services/tatConfig/tatTargetResolution.ts`. This file re-exports it.
+
+## Batch 367 (PS-74): no inline CSS
+
+`AIContributionTab.tsx`, `FlagRow.tsx`, `MentorTab.tsx`, `ProductivityTab.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+`ProductivityTab.tsx`: the theme tokens it uses are set once as `--prod-*` custom properties on `.ps-prodtab-main` (from `pathscribeTheme.ts`), and the `ps-prodtab-*` rules read them.
+
+## Batch 368
+
+`AIContributionTab`, `MentorTab` and `ProductivityTab` take their service or constant from `@/services`, and are off the deployment baseline.
 
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

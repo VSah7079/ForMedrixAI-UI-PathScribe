@@ -37,14 +37,14 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { printSettingsService } from '@/services';
 import { DEFAULT_SLIDE_LABEL_LAYOUT } from '@/services/printSettings/IPrintSettingsService';
 import type { SlideLabelLayoutConfig } from '@/services/printSettings/IPrintSettingsService';
 import { resolveSlideLabelFitWarnings } from '@/utils/labels/resolveSlideLabelFitWarnings';
 import type { PrinterProfile } from '@/services/printerProfiles/IPrinterProfileService';
-import { mockScanStationService } from '@/services/scanStations/mockScanStationService';
+import { scanStationService } from '@/services';
 import { printerProfileService } from '@/services';
 import type { StainOrder } from '@/types/case/Specimen';
 import { useFootPedal } from '@/hooks/useFootPedal';
@@ -86,7 +86,7 @@ const MicrotomyWorkstationPage: React.FC = () => {
 
   useEffect(() => {
     if (!w.effectiveStationId) { setPrinter(null); setPrinterError(t('microtomyWorkstation.hardware.noStation')); return; }
-    mockScanStationService.getById(w.effectiveStationId).then(async stationRes => {
+    scanStationService.getById(w.effectiveStationId).then(async stationRes => {
       if (!stationRes.ok || !stationRes.data.supportsPrinting || !stationRes.data.cassetteSlidePrinterProfileId) {
         setPrinter(null); setPrinterError(t('microtomyWorkstation.hardware.notConfigured'));
         return;
@@ -165,14 +165,14 @@ const MicrotomyWorkstationPage: React.FC = () => {
         <>
           <div className="ps-microtomy-context-bar">
             <span>{t('microtomyWorkstation.context.accession')} <strong data-phi="accession">{w.workItem.caseData.accession?.fullAccession ?? w.workItem.caseData.id}</strong></span>
-            <span>{t('microtomyWorkstation.context.patient')} <strong>{`${w.workItem.caseData.patient?.givenNames ?? ''} ${w.workItem.caseData.patient?.familyNames ?? ''}`.trim() || '—'}</strong></span>
+            <span>{t('microtomyWorkstation.context.patient')} <strong data-phi="name">{`${w.workItem.caseData.patient?.givenNames ?? ''} ${w.workItem.caseData.patient?.familyNames ?? ''}`.trim() || '—'}</strong></span>
             <span>{t('microtomyWorkstation.context.dob')} <strong data-phi="dob">{w.workItem.caseData.patient?.dateOfBirth ?? '—'}</strong></span>
             <span>
               {t('microtomyWorkstation.context.specimenBlock')}{' '}
               <strong>{w.workItem.specimen.label}{w.workItem.kind === 'block' ? w.workItem.block.label : w.workItem.decant.label}</strong>
             </span>
             <span>{t('microtomyWorkstation.context.specimenType')} <strong>{w.workItem.specimen.description ?? '—'}</strong></span>
-            <button type="button" className="ps-microtomy-row-btn" onClick={() => { setScanInput(''); w.clearWorkItem(); }} style={{ marginLeft: 'auto' }}>
+            <button type="button" className="ps-microtomy-row-btn ps-ml-auto" onClick={() => { setScanInput(''); w.clearWorkItem(); }}>
               {t('microtomyWorkstation.context.scanNext')}
             </button>
           </div>
@@ -184,7 +184,7 @@ const MicrotomyWorkstationPage: React.FC = () => {
                 const block = w.workItem.block;
                 const alertFlags = ['tinyTissue', 'fragile', 'requiresDecal'] as const;
                 return (
-                  <div className="ps-microtomy-panel" style={{ marginBottom: 14 }}>
+                  <div className="ps-microtomy-panel ps-mb-14">
                     <p className="ps-microtomy-panel-title">{t('microtomyWorkstation.context.title')}</p>
                     <div className="ps-microtomy-alert-badges">
                       {alertFlags.map(flag => (

@@ -140,3 +140,7 @@ you hit them yourself:
   shape depending on which pattern the real code uses — check the actual
   source before writing the assertion, not after debugging why it's
   wrong.
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`useSignOutWorkflow.test.ts` and `useSpecimenBlockManagement.test.ts` expect `showToast(message, 'info', { containsPhi: true })` for toasts that name the case.

@@ -25,7 +25,7 @@
 
 import React, { useEffect, useState, useCallback } from 'react';
 import { useTranslation } from 'react-i18next';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { useBreadcrumb } from '@/contexts/BreadcrumbContext';
 import { useSlideDistributionStation } from './hooks/useSlideDistributionStation';
 import QueuePanel from './components/QueuePanel';
@@ -126,7 +126,7 @@ const SlideDistributionStationPage: React.FC = () => {
         <span>{t('slideDistribution.context.tech')} <strong>{w.actor.name}</strong></span>
       </div>
 
-      <div className="ps-slidedist-panel" style={{ marginBottom: 16 }}>
+      <div className="ps-slidedist-panel ps-mb-16">
         <p className="ps-slidedist-panel-title">{t('slideDistribution.scanPrompt')}</p>
         <form className="ps-slidedist-scan-row" onSubmit={handleScanSubmit}>
           <input

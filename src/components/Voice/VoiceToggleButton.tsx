@@ -70,12 +70,8 @@ export const VoiceToggleButton: React.FC = () => {
         type="button"
         onClick={toggleVoice}
         title={(!aiAvailable && IS_DEV) ? undefined : title}
-        className="vtb-btn"
-        style={{
-          '--vtb-bg':     isStandby ? 'transparent' : `${color}18`,
-          '--vtb-border': isStandby ? 'rgba(255,255,255,0.1)' : color,
-          '--vtb-color':  color,
-        } as React.CSSProperties}
+        className={`vtb-btn${isStandby ? ' vtb-btn--standby' : ''}`}
+        style={{ '--vtb-color': color } as React.CSSProperties}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">

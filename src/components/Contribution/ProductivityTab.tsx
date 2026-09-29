@@ -8,7 +8,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useSystemConfig } from "@/contexts/SystemConfigContext";
 import { caseRouter } from "@/services/cases/CaseRouter";
 import { userService } from "@/services";
-import { mockRvuCodeMapService } from "@/services/billing/mockRvuCodeMapService";
+import { rvuCodeMapService } from "@/services";
 import { getFacilityDateParts } from "@/utils/facilityTime";
 import { computeMonthlyCaseCounts, canSeePeerComparison, computeRvuSummary, computeMonthlyRvu, computePeerRvuStats, type RealRvuSummary, type RealPeerRvuStats } from "./productivityCalculations";
 
@@ -30,7 +30,7 @@ type DateRange   = "ytd" | "6m" | "3m" | "1m";
 // now genuinely real (see productivityCalculations.ts -
 // computeMonthlyCaseCounts, computeRvuSummary, computeMonthlyRvu,
 // computePeerRvuStats), via the real, already-existing
-// services/billing/mockRvuCodeMapService.ts and services/users/. Two
+// services/billing/rvuCodeMapService.ts and services/users/. Two
 // separate, earlier versions of this comment claimed "no real RVU data
 // source" and "no real aggregated-peer backend" respectively - both were
 // stale/wrong, caught during a later audit in the same evening: the real
@@ -46,7 +46,14 @@ type DateRange   = "ytd" | "6m" | "3m" | "1m";
 // 'Pathologist', capitalized. Both silently matched zero real users until
 // verified directly against the real data and fixed.
 
-// Note (batch 33, i18n sweep): this file styles everything via inline
+// Batch 367 (PS-74): no inline CSS left. The theme tokens this file uses
+// are handed to CSS once, as custom properties on `.ps-prodtab-main`
+// (`productivityThemeVars` below), so pathscribeTheme.ts stays the one
+// source of truth; the `ps-prodtab-*` rules in pathscribe.css read them.
+// The Recharts line chart still takes theme values as props (SVG
+// attributes, not styles). The two notes below are history.
+//
+// Note (batch 33, i18n sweep): this file styled everything via inline
 // `style={{...}}` objects built from the shared `theme.colors.*` token
 // object, not the `pathscribe.css` class system most other components use.
 // That's a different, but not a worse, pattern — every value already
@@ -56,40 +63,60 @@ type DateRange   = "ytd" | "6m" | "3m" | "1m";
 // this file to `pathscribe.css` classes would mean duplicating the theme
 // as CSS custom properties for no real benefit, so it's left as-is; only
 // the hardcoded UI strings were in scope for this batch.
+//
+// Update (batch 250, inline-CSS cleanup sweep): the above still holds for
+// every `theme.colors.*`/`theme.gradients.*` reference in this file — none
+// of them were touched. What batch 250 DID extract into `ps-prodtab-*`
+// classes were the pure layout constants living alongside those theme
+// values (padding, margin, flex/grid, font-size) that have no theme
+// dependency at all and were just per-instance magic numbers — squarely
+// what the sweep rule targets. The two style-helper functions below,
+// `btn()`/`toggle()`, were deliberately left untouched too: they're
+// already a deduplicated, reusable abstraction over per-state theme
+// colors, not per-instance repeated inline style.
 
 // ─── Shared UI helpers ────────────────────────────────────────────────────────
 
-const Card: React.FC<{ children: React.ReactNode; style?: React.CSSProperties }> = ({ children, style }) => (
-  <div style={{
-    background: theme.colors.surfaceSubtle,
-    border: `1px solid ${theme.colors.border.subtle}`,
-    borderRadius: "16px",
-    padding: "20px",
-    ...style,
-  }}>
+/** The theme tokens this tab's CSS uses, as custom properties (set once on
+ *  `.ps-prodtab-main`; pathscribe.css `ps-prodtab-*` reads them). */
+const productivityThemeVars = {
+  '--prod-text-primary': theme.colors.text.primary,
+  '--prod-text-secondary': theme.colors.text.secondary,
+  '--prod-text-muted': theme.colors.text.muted,
+  '--prod-surface-subtle': theme.colors.surfaceSubtle,
+  '--prod-border-subtle': theme.colors.border.subtle,
+  '--prod-panel': theme.colors.background.panel,
+  '--prod-shadow': theme.colors.tile.shadow,
+  '--prod-cases': theme.colors.chart.cases,
+  '--prod-rvu': theme.colors.chart.rvu,
+  '--prod-rvu-gradient': theme.gradients.amberVertical,
+  '--prod-success': theme.colors.semantic.success,
+  '--prod-warning': theme.colors.semantic.warning,
+  '--prod-teal': theme.colors.accentTeal,
+  '--prod-teal-subtle': theme.colors.accentTealSubtle,
+  '--prod-teal-border': theme.colors.accentTealBorder,
+  '--prod-button-subtle': theme.colors.button.subtle,
+  '--prod-button-text': theme.colors.button.text,
+} as React.CSSProperties;
+
+const Card: React.FC<{ children: React.ReactNode }> = ({ children }) => (
+  <div className="ps-prodtab-card">
     {children}
   </div>
 );
 
 const SectionTitle: React.FC<{ title: string; sub?: string; badge?: React.ReactNode }> = ({ title, sub, badge }) => (
-  <div style={{ marginBottom: "16px" }}>
-    <div style={{ fontSize: "15px", fontWeight: 700, color: theme.colors.text.primary, display: "flex", alignItems: "center", gap: "8px" }}>
+  <div className="ps-mb-16">
+    <div className="ps-prodtab-section-title ps-prodtab-text--primary">
       {title}
       {badge}
     </div>
-    {sub && <div style={{ fontSize: "12px", color: theme.colors.text.muted, marginTop: "2px" }}>{sub}</div>}
+    {sub && <div className="ps-prodtab-section-sub ps-prodtab-text--muted">{sub}</div>}
   </div>
 );
 
 const Tooltip: React.FC<{ children: React.ReactNode }> = ({ children }) => (
-  <div style={{
-    position: "absolute", bottom: "calc(100% + 8px)", left: "50%", transform: "translateX(-50%)",
-    background: theme.colors.background.panel,
-    border: `1px solid ${theme.colors.border.subtle}`,
-    borderRadius: "8px", padding: "8px 12px", fontSize: "12px",
-    color: theme.colors.text.secondary, whiteSpace: "nowrap", zIndex: 10,
-    boxShadow: `0 4px 16px ${theme.colors.tile.shadow}`,
-  }}>
+  <div className="ps-prodtab-tooltip">
     {children}
   </div>
 );
@@ -103,40 +130,42 @@ const BarChart: React.FC<{ data: MonthlyData[]; metric: ChartMetric }> = ({ data
   const maxRvus  = Math.max(...data.map(d => d.rvus));
 
   return (
-    <div style={{ display: "flex", alignItems: "flex-end", gap: "6px", height: "200px" }}>
+    <div className="ps-prodtab-barchart-row">
       {data.map((d, i) => {
         const caseH = (d.cases / maxCases) * 160;
         const rvuH  = (d.rvus  / maxRvus)  * 160;
         const isHov = hovered === i;
+        const widthClass = metric === "combined" ? "ps-prodtab-metric-width--combined" : "ps-prodtab-metric-width--single";
+        const rectStateClass = isHov ? "ps-prodtab-bar-rect--hovered" : "ps-prodtab-bar-rect--idle";
 
         return (
-          <div key={d.month} style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", position: "relative", cursor: "pointer" }}
+          <div key={d.month} className="ps-prodtab-bar-col"
             onMouseEnter={() => setHovered(i)} onMouseLeave={() => setHovered(null)}>
             {isHov && (
               <Tooltip>
-                <div style={{ fontWeight: 700, color: theme.colors.text.primary, marginBottom: "4px" }}>{d.month}</div>
-                {(metric === "cases" || metric === "combined") && <div style={{ color: theme.colors.chart.cases }}>{t('productivityTab.tooltip.cases', { value: d.cases })}</div>}
-                {(metric === "rvus"  || metric === "combined") && <div style={{ color: theme.colors.chart.rvu   }}>{t('productivityTab.tooltip.rvus', { value: d.rvus })}</div>}
+                <div className="ps-prodtab-tooltip-month ps-prodtab-text--primary">{d.month}</div>
+                {(metric === "cases" || metric === "combined") && <div className="ps-prodtab-text--cases">{t('productivityTab.tooltip.cases', { value: d.cases })}</div>}
+                {(metric === "rvus"  || metric === "combined") && <div className="ps-prodtab-text--rvu">{t('productivityTab.tooltip.rvus', { value: d.rvus })}</div>}
               </Tooltip>
             )}
             {/* Count labels above bars */}
-            <div style={{ display: "flex", gap: "2px", marginBottom: "3px", justifyContent: "center", width: "100%" }}>
+            <div className="ps-prodtab-bar-labels-row">
               {(metric === "cases" || metric === "combined") && (
-                <div style={{ fontSize: "10px", fontWeight: 700, color: theme.colors.chart.cases, width: metric === "combined" ? "45%" : "70%", textAlign: "center" }}>{d.cases}</div>
+                <div className={`ps-prodtab-bar-label ${widthClass} ps-prodtab-text--cases`}>{d.cases}</div>
               )}
               {(metric === "rvus" || metric === "combined") && (
-                <div style={{ fontSize: "10px", fontWeight: 700, color: theme.colors.chart.rvu, width: metric === "combined" ? "45%" : "70%", textAlign: "center" }}>{d.rvus}</div>
+                <div className={`ps-prodtab-bar-label ${widthClass} ps-prodtab-text--rvu`}>{d.rvus}</div>
               )}
             </div>
-            <div style={{ width: "100%", height: "160px", display: "flex", alignItems: "flex-end", justifyContent: "center", gap: "2px" }}>
+            <div className="ps-prodtab-bars-row">
               {(metric === "cases" || metric === "combined") && (
-                <div style={{ width: metric === "combined" ? "45%" : "70%", height: `${caseH}px`, background: theme.colors.chart.cases, borderRadius: "4px 4px 0 0", opacity: isHov ? 1 : 0.85, transition: "height 0.3s ease, opacity 0.15s" }} />
+                <div className={`ps-prodtab-bar-rect ${widthClass} ${rectStateClass} ps-prodtab-bar-rect--cases`} style={{ '--bar-h': `${caseH}px` } as React.CSSProperties} />
               )}
               {(metric === "rvus" || metric === "combined") && (
-                <div style={{ width: metric === "combined" ? "45%" : "70%", height: `${rvuH}px`, background: theme.gradients.amberVertical, borderRadius: "4px 4px 0 0", opacity: isHov ? 1 : 0.85, transition: "height 0.3s ease, opacity 0.15s" }} />
+                <div className={`ps-prodtab-bar-rect ${widthClass} ${rectStateClass} ps-prodtab-bar-rect--rvu`} style={{ '--bar-h': `${rvuH}px` } as React.CSSProperties} />
               )}
             </div>
-            <div style={{ fontSize: "11px", color: theme.colors.text.muted, marginTop: "6px" }}>{d.month}</div>
+            <div className="ps-prodtab-bar-month-label ps-prodtab-text--muted">{d.month}</div>
           </div>
         );
       })}
@@ -223,32 +252,32 @@ const RvuTile: React.FC<{ summary: RealRvuSummary | null }> = ({ summary }) => {
   const { t } = useTranslation();
   return (
   <Card>
-    <div style={{ display: "flex", justifyContent: "space-between", alignItems: "flex-start" }}>
+    <div className="ps-prodtab-rvu-header">
       <div>
-        <div style={{ fontSize: "13px", color: theme.colors.text.muted, marginBottom: "6px" }}>
+        <div className="ps-prodtab-rvu-title ps-prodtab-text--muted">
           {t('productivityTab.rvu.title', { period: summary?.period ?? t('productivityTab.rvu.periodFallback') })}
         </div>
-        <div style={{ fontSize: "32px", fontWeight: 800, color: theme.colors.text.primary, lineHeight: 1 }}>
+        <div className="ps-prodtab-rvu-total ps-prodtab-text--primary">
           {summary ? summary.total.toLocaleString() : "—"}
         </div>
         {summary && (
-          <div style={{ fontSize: "12px", fontWeight: 600, marginTop: "6px", color: summary.up ? theme.colors.semantic.success : theme.colors.semantic.warning }}>
+          <div className={`ps-prodtab-rvu-delta ${summary.up ? 'ps-prodtab-text--success' : 'ps-prodtab-text--warning'}`}>
             {t('productivityTab.rvu.deltaVsLastYear', { arrow: summary.up ? "▲" : "▼", delta: summary.delta })}
           </div>
         )}
-        <div style={{ fontSize: "11px", color: theme.colors.text.muted, marginTop: "8px" }}>
+        <div className="ps-prodtab-rvu-subtitle ps-prodtab-text--muted">
           {t('productivityTab.rvu.subtitle')}
         </div>
         {!!summary?.unrecognizedCodeCount && (
-          <div style={{ fontSize: "10px", color: theme.colors.semantic.warning, marginTop: "4px" }}>
+          <div className="ps-prodtab-rvu-warning ps-prodtab-text--warning">
             {t('productivityTab.rvu.unrecognizedCode', { count: summary.unrecognizedCodeCount })}
           </div>
         )}
       </div>
-      <div style={{ textAlign: "right" }}>
-        <div style={{ fontSize: "11px", color: theme.colors.text.muted }}>{t('productivityTab.rvu.avgPerCase')}</div>
-        <div style={{ fontSize: "24px", fontWeight: 700, color: theme.colors.chart.rvu }}>{summary?.avgPerCase ?? "—"}</div>
-        <div style={{ fontSize: "10px", color: theme.colors.text.muted, marginTop: "2px" }}>{t('productivityTab.rvu.rvusUnit')}</div>
+      <div className="ps-prodtab-rvu-right">
+        <div className="ps-prodtab-rvu-caption ps-prodtab-text--muted">{t('productivityTab.rvu.avgPerCase')}</div>
+        <div className="ps-prodtab-rvu-avg ps-prodtab-text--rvu">{summary?.avgPerCase ?? "—"}</div>
+        <div className="ps-prodtab-rvu-unit ps-prodtab-text--muted">{t('productivityTab.rvu.rvusUnit')}</div>
       </div>
     </div>
   </Card>
@@ -263,7 +292,7 @@ const PeerComparison: React.FC<{ you: number; peer: RealPeerRvuStats | null; las
     return (
       <Card>
         <SectionTitle title={t('productivityTab.peer.title')} sub={t('productivityTab.peer.subtitle')} />
-        <div style={{ fontSize: "12px", color: theme.colors.text.muted, padding: "12px 0" }}>{t('productivityTab.peer.loading')}</div>
+        <div className="ps-prodtab-peer-loading ps-prodtab-text--muted">{t('productivityTab.peer.loading')}</div>
       </Card>
     );
   }
@@ -271,7 +300,7 @@ const PeerComparison: React.FC<{ you: number; peer: RealPeerRvuStats | null; las
     return (
       <Card>
         <SectionTitle title={t('productivityTab.peer.title')} sub={t('productivityTab.peer.subtitle')} />
-        <div style={{ fontSize: "12px", color: theme.colors.text.muted, padding: "12px 0" }}>
+        <div className="ps-prodtab-peer-loading ps-prodtab-text--muted">
           {t('productivityTab.peer.noPeers')}
         </div>
       </Card>
@@ -294,17 +323,17 @@ const PeerComparison: React.FC<{ you: number; peer: RealPeerRvuStats | null; las
   return (
     <Card>
       <SectionTitle title={t('productivityTab.peer.title')} sub={t('productivityTab.peer.subtitleWithCount', { count: peer.peerCount })} />
-      <div style={{ display: "flex", flexDirection: "column", gap: "14px" }}>
+      <div className="ps-prodtab-peer-rows">
         {rows.map(r => (
           <div key={r.label}>
-            <div style={{ display: "flex", justifyContent: "space-between", fontSize: "12px", marginBottom: "5px" }}>
-              <span style={{ color: r.label === youLabel ? theme.colors.text.secondary : theme.colors.text.muted }}>
+            <div className="ps-prodtab-peer-row-header">
+              <span className={r.label === youLabel ? 'ps-prodtab-text--secondary' : 'ps-prodtab-text--muted'}>
                 {r.label}
               </span>
-              <span style={{ color: r.color, fontWeight: 700 }}>{r.value.toLocaleString()}</span>
+              <span className="ps-prodtab-peer-row-value" style={{ '--ps-hue': r.color } as React.CSSProperties}>{r.value.toLocaleString()}</span>
             </div>
-            <div style={{ height: "6px", borderRadius: "99px", background: theme.colors.surfaceSubtle, border: `1px solid ${theme.colors.border.subtle}`, overflow: "hidden" }}>
-              <div style={{ height: "100%", width: `${(r.value / max) * 100}%`, background: r.color, borderRadius: "99px", transition: "width 0.6s ease" }} />
+            <div className="ps-prodtab-bar-track">
+              <div className="ps-prodtab-bar-fill" style={{ '--ps-hue': r.color, '--bar-pct': `${(r.value / max) * 100}%` } as React.CSSProperties} />
             </div>
           </div>
         ))}
@@ -347,7 +376,7 @@ const ProductivityTab: React.FC = () => {
   useEffect(() => {
     if (!user?.id) return;
     let cancelled = false;
-    Promise.all([caseRouter.listCasesForUser(user.id), mockRvuCodeMapService.getAllVersions()]).then(([cases, versionsRes]) => {
+    Promise.all([caseRouter.listCasesForUser(user.id), rvuCodeMapService.getAllVersions()]).then(([cases, versionsRes]) => {
       if (cancelled) return;
       setRealMonthly(computeMonthlyCaseCounts(cases, user.id, config.facilityTimezone));
       if (versionsRes.ok) {
@@ -370,7 +399,7 @@ const ProductivityTab: React.FC = () => {
   useEffect(() => {
     if (!user?.id || !canSeePeer) return;
     let cancelled = false;
-    Promise.all([userService.getAll(), caseRouter.getAll(), mockRvuCodeMapService.getAllVersions()]).then(([usersRes, allCasesRes, versionsRes]) => {
+    Promise.all([userService.getAll(), caseRouter.getAll(), rvuCodeMapService.getAllVersions()]).then(([usersRes, allCasesRes, versionsRes]) => {
       if (cancelled || !usersRes.ok || !allCasesRes.ok || !versionsRes.ok) return;
       const peerIds = usersRes.data
         .filter(u => u.status === 'Active' && u.roles.includes('Pathologist') && u.id !== user.id)
@@ -396,19 +425,8 @@ const ProductivityTab: React.FC = () => {
     dateRange === "3m"  ? availableMonthly.slice(-3) :
                           availableMonthly.slice(-1);
 
-  const btn = (active: boolean): React.CSSProperties => ({
-    padding: "5px 12px", fontSize: "12px", fontWeight: 600, borderRadius: "6px", cursor: "pointer",
-    border: `1px solid ${active ? theme.colors.accentTealBorder : theme.colors.border.subtle}`,
-    background: active ? theme.colors.accentTealSubtle : theme.colors.button.subtle,
-    color: active ? theme.colors.accentTeal : theme.colors.text.muted,
-    transition: "all 0.15s",
-  });
-
-  const toggle = (active: boolean): React.CSSProperties => ({
-    display: "flex", alignItems: "center", gap: "6px", cursor: "pointer",
-    fontSize: "12px", color: active ? theme.colors.text.secondary : theme.colors.text.muted,
-    userSelect: "none",
-  });
+  const btn = (active: boolean) => `ps-prodtab-btn${active ? ' ps-prodtab-btn--active' : ''}`;
+  const toggle = (active: boolean) => `ps-prodtab-toggle${active ? ' ps-prodtab-toggle--active' : ''}`;
 
   const dateRangeLabel = (r: DateRange) =>
     r === "1m" ? t('productivityTab.dateRange.oneMonth') :
@@ -417,17 +435,17 @@ const ProductivityTab: React.FC = () => {
                  t('productivityTab.dateRange.ytd');
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "20px" }}>
+    <div className="ps-prodtab-main" style={productivityThemeVars}>
 
       {/* ── RVU Tile + Peer Comparison ── */}
-      <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+      <div className="ps-prodtab-grid-2col">
         <RvuTile summary={realRvu} />
         {canSeePeer ? (
           <PeerComparison you={realRvu?.total ?? 0} peer={realPeer} lastYearTotal={realRvu?.lastYearTotal ?? 0} />
         ) : (
           <Card>
             <SectionTitle title={t('productivityTab.peer.title')} sub={t('productivityTab.peer.subtitle')} />
-            <div style={{ fontSize: "12px", color: theme.colors.text.muted, padding: "12px 0" }}>
+            <div className="ps-prodtab-peer-loading ps-prodtab-text--muted">
               {t('productivityTab.peer.disabled')}
             </div>
           </Card>
@@ -438,14 +456,14 @@ const ProductivityTab: React.FC = () => {
 
       {/* ── Monthly + YTD charts ── */}
       <Card>
-        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "20px" }}>
-          <div style={{ display: "flex", gap: "8px" }}>
-            <button style={btn(activeChart === "monthly")} onClick={() => setActiveChart("monthly")}>{t('productivityTab.nav.monthlyCases')}</button>
-            <button style={btn(activeChart === "ytd")}     onClick={() => setActiveChart("ytd")}>{t('productivityTab.nav.ytdAccumulation')}</button>
+        <div className="ps-prodtab-chart-header">
+          <div className="ps-prodtab-chart-nav-group">
+            <button className={btn(activeChart === "monthly")} onClick={() => setActiveChart("monthly")}>{t('productivityTab.nav.monthlyCases')}</button>
+            <button className={btn(activeChart === "ytd")}     onClick={() => setActiveChart("ytd")}>{t('productivityTab.nav.ytdAccumulation')}</button>
           </div>
-          <div style={{ display: "flex", gap: "6px" }}>
+          <div className="ps-prodtab-daterange-group">
             {(["1m", "3m", "6m", "ytd"] as DateRange[]).map(r => (
-              <button key={r} style={btn(dateRange === r)} onClick={() => setDateRange(r)}>
+              <button key={r} className={btn(dateRange === r)} onClick={() => setDateRange(r)}>
                 {dateRangeLabel(r)}
               </button>
             ))}
@@ -456,25 +474,25 @@ const ProductivityTab: React.FC = () => {
           <>
             <SectionTitle title={t('productivityTab.monthly.title')} sub={t('productivityTab.monthly.subtitle')} />
             <BarChart data={filteredMonthly} metric="cases" />
-            <div style={{ display: "flex", alignItems: "center", gap: "5px", marginTop: "12px" }}>
-              <div style={{ width: "12px", height: "12px", borderRadius: "3px", background: theme.colors.chart.cases }} />
-              <span style={{ fontSize: "11px", color: theme.colors.text.muted }}>{t('productivityTab.monthly.legend')}</span>
+            <div className="ps-prodtab-legend-row">
+              <div className="ps-prodtab-legend-swatch ps-prodtab-legend-swatch--cases" />
+              <span className="ps-prodtab-legend-label ps-prodtab-text--muted">{t('productivityTab.monthly.legend')}</span>
             </div>
           </>
         )}
 
         {activeChart === "ytd" && (
           <>
-            <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: "16px" }}>
+            <div className="ps-prodtab-ytd-header">
               <SectionTitle title={t('productivityTab.ytd.title')} sub={t('productivityTab.ytd.subtitle')} />
-              <div style={{ display: "flex", gap: "16px" }}>
+              <div className="ps-prodtab-toggle-group">
                 {[
                   { label: t('productivityTab.ytd.togglePeerAvg'),  state: showPeer,     set: setShowPeer     },
                   { label: t('productivityTab.ytd.toggleTopPerf'),  state: showTop,      set: setShowTop      },
                   { label: t('productivityTab.peer.rowLastYear'),   state: showLastYear, set: setShowLastYear },
                 ].map(({ label, state, set }) => (
-                  <label key={label} style={toggle(state)}>
-                    <input type="checkbox" checked={state} onChange={e => set(e.target.checked)} style={{ accentColor: theme.colors.accentTeal, width: "13px", height: "13px" }} />
+                  <label key={label} className={toggle(state)}>
+                    <input type="checkbox" checked={state} onChange={e => set(e.target.checked)} className="ps-prodtab-checkbox" />
                     {label}
                   </label>
                 ))}
@@ -486,13 +504,13 @@ const ProductivityTab: React.FC = () => {
       </Card>
 
       {/* ── Export row ── */}
-      <div style={{ display: "flex", justifyContent: "flex-end", gap: "10px" }}>
+      <div className="ps-prodtab-export-row">
         <button onClick={() => window.print()}
-          style={{ padding: "8px 18px", fontSize: "13px", fontWeight: 600, borderRadius: "8px", cursor: "pointer", border: `1px solid ${theme.colors.border.subtle}`, background: theme.colors.button.subtle, color: theme.colors.button.text }}>
+          className="ps-prodtab-export-btn ps-prodtab-export-btn--print">
           🖨 {t('productivityTab.export.print')}
         </button>
         <button onClick={() => alert(t('productivityTab.export.pdfStub'))}
-          style={{ padding: "8px 18px", fontSize: "13px", fontWeight: 600, borderRadius: "8px", cursor: "pointer", border: `1px solid ${theme.colors.accentTealBorder}`, background: theme.colors.accentTealSubtle, color: theme.colors.accentTeal }}>
+          className="ps-prodtab-export-btn ps-prodtab-export-btn--pdf">
           ↓ {t('productivityTab.export.exportPdf')}
         </button>
       </div>
