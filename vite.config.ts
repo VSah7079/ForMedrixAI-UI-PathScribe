@@ -28,6 +28,7 @@ export default defineConfig(({ mode }) => {
         '@components': path.resolve(__dirname, 'src/components'),
         '@pages':      path.resolve(__dirname, 'src/pages'),
         '@theme':      path.resolve(__dirname, 'src/theme'),
+        '@app-types':  path.resolve(__dirname, 'src/types'),
         '@':           path.resolve(__dirname, 'src'),
         '@hooks':      path.resolve(__dirname, 'src/hooks'),
         '@contexts':   path.resolve(__dirname, 'src/contexts'),
