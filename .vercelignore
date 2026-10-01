@@ -1,0 +1,9 @@
+api/**/*.test.ts
+api/**/*.integration.test.ts
+api/**/*.ps1
+api/**/*.txt
+api/**/*.json
+api/**/*.md
+docs/
+scripts/
+tests/
