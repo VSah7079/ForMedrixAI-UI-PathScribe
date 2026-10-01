@@ -1,6 +1,6 @@
 # services/grossingRoutingOverrides/
 
-Admin-managed per-client exceptions to a Specimen Category's default Grossing Template.
+Admin-managed per-client exceptions to a Department's default Grossing Template.
 
 **Pattern:** Standard interface/mock/firestore pattern.
 

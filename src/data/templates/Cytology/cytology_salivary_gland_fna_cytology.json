@@ -1,538 +1,608 @@
 {
-  "id": "salivary_gland_fna_cytology",
-  "name": "Salivary Gland FNA — The Milan System for Reporting Salivary Gland Cytopathology",
-  "source": "PathScribe",
-  "version": "1.0.0",
-  "category": "CYTOLOGY_NONGYN",
-  "standard": "Milan System for Reporting Salivary Gland Cytopathology (2018)",
-  "sections": [
-    {
-      "id": "specimen",
-      "title": "Specimen",
-      "fields": [
+    "id": "salivary_gland_fna_cytology",
+    "name": "Salivary Gland FNA — The Milan System for Reporting Salivary Gland Cytopathology",
+    "source": "PathScribe",
+    "version": "1.0.0",
+    "category": "CYTOLOGY_NONGYN",
+    "standard": "Milan System for Reporting Salivary Gland Cytopathology (2018)",
+    "sections": [
         {
-          "id": "procedure",
-          "label": "Procedure",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "us_guided_fna",
-              "label": "Ultrasound-guided fine needle aspiration",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "palpation_fna",
-              "label": "Palpation-guided fine needle aspiration",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "not_specified",
-              "label": "Not specified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "specimen",
+            "title": "Specimen",
+            "fields": [
+                {
+                    "id": "procedure",
+                    "label": "Procedure",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "us_guided_fna",
+                            "label": "Ultrasound-guided fine needle aspiration",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Ultrasound-guided fine needle aspiration"
+                        },
+                        {
+                            "id": "palpation_fna",
+                            "label": "Palpation-guided fine needle aspiration",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Palpation-guided fine needle aspiration"
+                        },
+                        {
+                            "id": "not_specified",
+                            "label": "Not specified",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Procedure: {value}."
+                },
+                {
+                    "id": "gland_site",
+                    "label": "Gland",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "parotid",
+                            "label": "Parotid",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "parotid"
+                        },
+                        {
+                            "id": "submandibular",
+                            "label": "Submandibular",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "submandibular"
+                        },
+                        {
+                            "id": "sublingual",
+                            "label": "Sublingual",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "sublingual"
+                        },
+                        {
+                            "id": "minor_salivary",
+                            "label": "Minor salivary gland",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "minor salivary gland"
+                        },
+                        {
+                            "id": "not_specified",
+                            "label": "Not specified",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Gland: {value}."
+                },
+                {
+                    "id": "laterality",
+                    "label": "Laterality",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "right",
+                            "label": "Right",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "right"
+                        },
+                        {
+                            "id": "left",
+                            "label": "Left",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "left"
+                        },
+                        {
+                            "id": "not_specified",
+                            "label": "Not specified",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Laterality: {value}."
+                },
+                {
+                    "id": "nodule_size",
+                    "label": "Target Lesion Size (cm, if provided)",
+                    "type": "text",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "Target lesion size: {value} cm."
+                },
+                {
+                    "id": "rose_performed",
+                    "label": "Rapid On-Site Evaluation (ROSE) Performed",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "performed"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "not performed"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Rapid on-site evaluation (ROSE) was {value}."
+                }
+            ]
         },
         {
-          "id": "gland_site",
-          "label": "Gland",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "parotid",
-              "label": "Parotid",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "submandibular",
-              "label": "Submandibular",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "sublingual",
-              "label": "Sublingual",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "minor_salivary",
-              "label": "Minor salivary gland",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "not_specified",
-              "label": "Not specified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "adequacy",
+            "title": "Specimen Adequacy",
+            "fields": [
+                {
+                    "id": "adequacy_status",
+                    "label": "Adequacy",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "satisfactory",
+                            "label": "Satisfactory for evaluation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "satisfactory for evaluation"
+                        },
+                        {
+                            "id": "nondiagnostic",
+                            "label": "Non-diagnostic",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "non-diagnostic"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "The specimen is {value}."
+                },
+                {
+                    "id": "nondiagnostic_reason",
+                    "label": "Reason for Non-diagnostic (if applicable)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "low_cellularity",
+                            "label": "Insufficient cellularity",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "insufficient cellularity"
+                        },
+                        {
+                            "id": "obscuring_blood",
+                            "label": "Obscuring blood",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "obscuring blood"
+                        },
+                        {
+                            "id": "cyst_fluid_only",
+                            "label": "Cyst fluid only, acellular or paucicellular",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "cyst fluid only, acellular or paucicellular"
+                        },
+                        {
+                            "id": "air_drying",
+                            "label": "Air-drying / fixation artifact",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "air-drying/fixation artifact"
+                        },
+                        {
+                            "id": "other",
+                            "label": "Other (specify)",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Reason for non-diagnostic assessment: {value}."
+                }
+            ]
         },
         {
-          "id": "laterality",
-          "label": "Laterality",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "right",
-              "label": "Right",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "left",
-              "label": "Left",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "not_specified",
-              "label": "Not specified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "diagnostic_category",
+            "title": "Milan Diagnostic Category",
+            "fields": [
+                {
+                    "id": "milan_category",
+                    "label": "Diagnostic Category",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "i_nondiagnostic",
+                            "label": "I — Non-diagnostic",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "I — Non-diagnostic",
+                            "lexiconTermKey": "milan.salivary_gland.category.i_nondiagnostic"
+                        },
+                        {
+                            "id": "ii_nonneoplastic",
+                            "label": "II — Non-neoplastic",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "II — Non-neoplastic",
+                            "lexiconTermKey": "milan.salivary_gland.category.ii_nonneoplastic"
+                        },
+                        {
+                            "id": "iii_aus",
+                            "label": "III — Atypia of Undetermined Significance (AUS)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "III — Atypia of Undetermined Significance (AUS)",
+                            "lexiconTermKey": "milan.salivary_gland.category.iii_aus"
+                        },
+                        {
+                            "id": "iva_benign",
+                            "label": "IVa — Neoplasm: Benign",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "IVa — Neoplasm: Benign",
+                            "lexiconTermKey": "milan.salivary_gland.category.iva_benign"
+                        },
+                        {
+                            "id": "ivb_sump",
+                            "label": "IVb — Neoplasm: Salivary Gland Neoplasm of Uncertain Malignant Potential (SUMP)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "IVb — Neoplasm: Salivary Gland Neoplasm of Uncertain Malignant Potential (SUMP)",
+                            "lexiconTermKey": "milan.salivary_gland.category.ivb_sump"
+                        },
+                        {
+                            "id": "v_suspicious",
+                            "label": "V — Suspicious for Malignancy (SM)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "V — Suspicious for Malignancy (SM)",
+                            "lexiconTermKey": "milan.salivary_gland.category.v_suspicious"
+                        },
+                        {
+                            "id": "vi_malignant",
+                            "label": "VI — Malignant",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "VI — Malignant",
+                            "lexiconTermKey": "milan.salivary_gland.category.vi_malignant"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Milan System Diagnostic Category: {value}.",
+                    "clinicalTier": "tier_1_diagnostic_category"
+                },
+                {
+                    "id": "estimated_risk_note",
+                    "label": "Estimated Risk of Malignancy (reference only)",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+) — informational, not a selectable data element: I ~20%, II ~5%, III ~15–20%, IVa <5%, IVb ~35%, V ~60%, VI ~90%. Cite local institutional data where available rather than these alone.",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
         },
         {
-          "id": "nodule_size",
-          "label": "Target Lesion Size (cm, if provided)",
-          "type": "text",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
+            "id": "cytologic_findings",
+            "title": "Cytologic Findings",
+            "fields": [
+                {
+                    "id": "cellularity",
+                    "label": "Cellularity",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "scant",
+                            "label": "Scant",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "scant"
+                        },
+                        {
+                            "id": "low",
+                            "label": "Low",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "low"
+                        },
+                        {
+                            "id": "moderate",
+                            "label": "Moderate",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "moderate"
+                        },
+                        {
+                            "id": "high",
+                            "label": "High",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "high"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Cellularity: {value}."
+                },
+                {
+                    "id": "background_pattern",
+                    "label": "Background / Stromal Pattern (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "chondromyxoid_stroma",
+                            "label": "Chondromyxoid / fibrillary stroma",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "chondromyxoid/fibrillary stroma"
+                        },
+                        {
+                            "id": "lymphoid_background",
+                            "label": "Lymphoid background",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "lymphoid background"
+                        },
+                        {
+                            "id": "oncocytic_epithelium",
+                            "label": "Oncocytic epithelium",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "oncocytic epithelium"
+                        },
+                        {
+                            "id": "mucinous_cystic",
+                            "label": "Mucinous / cystic background",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "mucinous/cystic background"
+                        },
+                        {
+                            "id": "basaloid_cells",
+                            "label": "Basaloid cell population",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "basaloid cell population"
+                        },
+                        {
+                            "id": "necrosis",
+                            "label": "Necrosis",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "necrosis"
+                        },
+                        {
+                            "id": "none_significant",
+                            "label": "No significant background pattern identified",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "no significant background pattern identified"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Background/stromal pattern: {value}."
+                },
+                {
+                    "id": "cytoarchitecture",
+                    "label": "Cytoarchitecture (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "sheets",
+                            "label": "Cohesive sheets",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "cohesive sheets"
+                        },
+                        {
+                            "id": "single_cells",
+                            "label": "Predominantly single cells",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "predominantly single cells"
+                        },
+                        {
+                            "id": "papillary",
+                            "label": "Papillary fragments",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "papillary fragments"
+                        },
+                        {
+                            "id": "cribriform",
+                            "label": "Cribriform / basaloid nests",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "cribriform/basaloid nests"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Cytoarchitecture: {value}."
+                },
+                {
+                    "id": "nuclear_features",
+                    "label": "Nuclear Features (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "enlargement",
+                            "label": "Nuclear enlargement",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "nuclear enlargement"
+                        },
+                        {
+                            "id": "pleomorphism",
+                            "label": "Nuclear pleomorphism",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "nuclear pleomorphism"
+                        },
+                        {
+                            "id": "prominent_nucleoli",
+                            "label": "Prominent nucleoli",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "prominent nucleoli"
+                        },
+                        {
+                            "id": "none_significant",
+                            "label": "No significant atypia identified",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "no significant atypia"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Nuclear features: {value}."
+                }
+            ]
         },
         {
-          "id": "rose_performed",
-          "label": "Rapid On-Site Evaluation (ROSE) Performed",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "ancillary_studies",
+            "title": "Ancillary Studies",
+            "fields": [
+                {
+                    "id": "cell_block_prepared",
+                    "label": "Cell Block Prepared",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "prepared"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Cell block: {value}."
+                },
+                {
+                    "id": "ihc_performed",
+                    "label": "Immunohistochemistry Performed",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes — see comment",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "performed, see comment"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Immunohistochemistry: {value}."
+                },
+                {
+                    "id": "molecular_result",
+                    "label": "Molecular / Fusion Testing Result (if performed)",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+) — most relevant for suspected mucoepidermoid carcinoma (MAML2 rearrangement) or adenoid cystic carcinoma (MYB rearrangement)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
+        },
+        {
+            "id": "comments",
+            "title": "Comment / Correlation",
+            "fields": [
+                {
+                    "id": "radiologic_correlation",
+                    "label": "Radiologic Correlation",
+                    "type": "text",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "Radiologic correlation: {value}."
+                },
+                {
+                    "id": "comment",
+                    "label": "Additional Comment",
+                    "type": "longtext",
+                    "required": false,
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
         }
-      ]
-    },
-    {
-      "id": "adequacy",
-      "title": "Specimen Adequacy",
-      "fields": [
-        {
-          "id": "adequacy_status",
-          "label": "Adequacy",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "satisfactory",
-              "label": "Satisfactory for evaluation",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "nondiagnostic",
-              "label": "Non-diagnostic",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "nondiagnostic_reason",
-          "label": "Reason for Non-diagnostic (if applicable)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "low_cellularity",
-              "label": "Insufficient cellularity",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "obscuring_blood",
-              "label": "Obscuring blood",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "cyst_fluid_only",
-              "label": "Cyst fluid only, acellular or paucicellular",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "air_drying",
-              "label": "Air-drying / fixation artifact",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "other",
-              "label": "Other (specify)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "diagnostic_category",
-      "title": "Milan Diagnostic Category",
-      "fields": [
-        {
-          "id": "milan_category",
-          "label": "Diagnostic Category",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "i_nondiagnostic",
-              "label": "I — Non-diagnostic",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "ii_nonneoplastic",
-              "label": "II — Non-neoplastic",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "iii_aus",
-              "label": "III — Atypia of Undetermined Significance (AUS)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "iva_benign",
-              "label": "IVa — Neoplasm: Benign",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "ivb_sump",
-              "label": "IVb — Neoplasm: Salivary Gland Neoplasm of Uncertain Malignant Potential (SUMP)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "v_suspicious",
-              "label": "V — Suspicious for Malignancy (SM)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "vi_malignant",
-              "label": "VI — Malignant",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "estimated_risk_note",
-          "label": "Estimated Risk of Malignancy (reference only)",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+) — informational, not a selectable data element: I ~20%, II ~5%, III ~15–20%, IVa <5%, IVb ~35%, V ~60%, VI ~90%. Cite local institutional data where available rather than these alone.",
-          "snomed": "",
-          "icd": ""
-        }
-      ]
-    },
-    {
-      "id": "cytologic_findings",
-      "title": "Cytologic Findings",
-      "fields": [
-        {
-          "id": "cellularity",
-          "label": "Cellularity",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "scant",
-              "label": "Scant",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "low",
-              "label": "Low",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "moderate",
-              "label": "Moderate",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "high",
-              "label": "High",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "background_pattern",
-          "label": "Background / Stromal Pattern (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "chondromyxoid_stroma",
-              "label": "Chondromyxoid / fibrillary stroma",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "lymphoid_background",
-              "label": "Lymphoid background",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "oncocytic_epithelium",
-              "label": "Oncocytic epithelium",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "mucinous_cystic",
-              "label": "Mucinous / cystic background",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "basaloid_cells",
-              "label": "Basaloid cell population",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "necrosis",
-              "label": "Necrosis",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "none_significant",
-              "label": "No significant background pattern identified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "cytoarchitecture",
-          "label": "Cytoarchitecture (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "sheets",
-              "label": "Cohesive sheets",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "single_cells",
-              "label": "Predominantly single cells",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "papillary",
-              "label": "Papillary fragments",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "cribriform",
-              "label": "Cribriform / basaloid nests",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "nuclear_features",
-          "label": "Nuclear Features (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "enlargement",
-              "label": "Nuclear enlargement",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "pleomorphism",
-              "label": "Nuclear pleomorphism",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "prominent_nucleoli",
-              "label": "Prominent nucleoli",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "none_significant",
-              "label": "No significant atypia identified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "ancillary_studies",
-      "title": "Ancillary Studies",
-      "fields": [
-        {
-          "id": "cell_block_prepared",
-          "label": "Cell Block Prepared",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "ihc_performed",
-          "label": "Immunohistochemistry Performed",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes — see comment",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "molecular_result",
-          "label": "Molecular / Fusion Testing Result (if performed)",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+) — most relevant for suspected mucoepidermoid carcinoma (MAML2 rearrangement) or adenoid cystic carcinoma (MYB rearrangement)",
-          "snomed": "",
-          "icd": ""
-        }
-      ]
-    },
-    {
-      "id": "comments",
-      "title": "Comment / Correlation",
-      "fields": [
-        {
-          "id": "radiologic_correlation",
-          "label": "Radiologic Correlation",
-          "type": "text",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        },
-        {
-          "id": "comment",
-          "label": "Additional Comment",
-          "type": "longtext",
-          "required": false,
-          "snomed": "",
-          "icd": ""
-        }
-      ]
+    ],
+    "applicability": {
+        "specimenSites": [
+            "Salivary Gland"
+        ],
+        "specimenTypes": [
+            "FNA"
+        ],
+        "note": "Fine-needle aspiration of a salivary gland mass (parotid, submandibular, sublingual, or minor salivary gland)"
     }
-  ],
-  "applicability": {
-    "specimenSites": [
-      "Salivary Gland"
-    ],
-    "specimenTypes": [
-      "FNA"
-    ],
-    "note": "Fine-needle aspiration of a salivary gland mass (parotid, submandibular, sublingual, or minor salivary gland)"
-  }
 }

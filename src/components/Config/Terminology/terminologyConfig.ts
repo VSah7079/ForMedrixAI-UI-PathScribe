@@ -106,38 +106,50 @@ export async function testTerminologyEndpoints(): Promise<
 
   // Use minimal params (terms + maxList only) to avoid invalid field name errors.
   // Each endpoint has different internal field names — omitting sf/df uses NLM defaults.
-  const checks: { key: string; name: string; url: string }[] = [
+  const checks: { key: string; name: string; url: string; isUts: boolean }[] = [
     {
       key:  'snomed',
       name: 'SNOMED CT',
-      url:  `https://uts-ws.nlm.nih.gov/rest/search/current?string=carcinoma&sabs=SNOMEDCT_US&returnIdType=code&pageSize=1&apiKey=a29978e5-905a-4b4e-af8d-2c7ec4bd90d7`,
+      // Real, per direct fix: routes through the same real, secure,
+      // server-side proxy searchSnomed()/searchIcdo() already use
+      // (vite.config.ts's own '/api/terminology/umls' route, which
+      // injects the real API key server-side from env.UMLS_API_KEY) —
+      // never a raw apiKey in a client-side URL, which this line
+      // previously had, hardcoded, shipped in the client bundle.
+      url:  `/api/terminology/umls/search/current?string=carcinoma&sabs=SNOMEDCT_US&returnIdType=code&pageSize=1`,
+      isUts: true,
     },
     {
       key:  'icd10',
       name: 'ICD-10-CM',
       url:  `${base}/icd10cm/v3/search?terms=malignant&maxList=1&sf=code,name&df=code,name`,
+      isUts: false,
     },
     {
       key:  'icd11',
       name: 'ICD-11',
       url:  `${base}/icd11_codes/v3/search?terms=malignant&maxList=1`,
+      isUts: false,
     },
     {
       key:  'loinc',
       name: 'LOINC',
       url:  `${base}/loinc_items/v3/search?terms=pathology&maxList=1&type=question`,
+      isUts: false,
     },
     {
       key:  'icdo',
       name: 'ICD-O',
-      url:  `https://uts-ws.nlm.nih.gov/rest/search/current?string=adenocarcinoma&sabs=SNOMEDCT_US&returnIdType=code&pageSize=1&apiKey=a29978e5-905a-4b4e-af8d-2c7ec4bd90d7`,
+      // Real, per direct fix — same real, secure proxy as SNOMED above.
+      url:  `/api/terminology/umls/search/current?string=adenocarcinoma&sabs=SNOMEDCT_US&returnIdType=code&pageSize=1`,
+      isUts: true,
     },
   ];
 
   const results: Record<string, TerminologyServiceStatus> = {};
 
   await Promise.all(
-    checks.map(async ({ key, name, url }) => {
+    checks.map(async ({ key, name, url, isUts }) => {
       const t0 = Date.now();
       try {
         const res       = await fetch(url, { mode: 'cors' });
@@ -147,7 +159,17 @@ export async function testTerminologyEndpoints(): Promise<
           return;
         }
         const data = await res.json();
-        const hasResults = Array.isArray(data) && (data[0] ?? 0) > 0;
+        // Real, per direct fix: two genuinely different real response
+        // shapes — NLM Clinical Tables returns a top-level array
+        // ([count, codes, ...]), UTS (SNOMED/ICD-O) returns
+        // {result: {results: [...]}}. The old, single Array.isArray
+        // check only ever matched the first shape — SNOMED/ICD-O
+        // always reported "degraded... returned no results" even when
+        // genuinely working, since a real UTS response is an object,
+        // never an array.
+        const hasResults = isUts
+          ? Array.isArray(data?.result?.results) && data.result.results.length > 0
+          : Array.isArray(data) && (data[0] ?? 0) > 0;
         results[key] = {
           name,
           status:    hasResults ? 'live' : 'degraded',

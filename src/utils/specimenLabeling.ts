@@ -1,7 +1,7 @@
 // src/utils/specimenLabeling.ts
 // ─────────────────────────────────────────────────────────────
 // Single source of truth for specimen/block label generation — see
-// Client.specimenLabelStyle's own doc comment (IClientService.ts) for
+// Facility.specimenLabelStyle's own doc comment (IFacilityService.ts) for
 // the full CAP/NSH reasoning behind why this is one alternating-pair
 // enum rather than two independent alpha/numeric toggles.
 //

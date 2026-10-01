@@ -1,17 +1,39 @@
 import React, { useEffect, useState } from "react";
-import { useNavigate, useParams, useLocation } from "react-router-dom";
+import { useNavigate, useParams, useLocation } from "react-router";
+import { useTranslation } from "react-i18next";
 import { useAuditLog } from "../components/Audit/useAuditLog";
 import {
   ProtocolDefinition,
   ProtocolSection,
-  ProtocolQuestion
+  ProtocolQuestion,
+  ProtocolQuestionType,
+  ProtocolLifecycleState
 } from "../types/ProtocolDefinition";
 import {
   loadProtocolRegistry,
   saveProtocolOverride
 } from "./protocolRegistry";
+import { buildProtocolChangeSummary } from "./protocolChangeSummary";
+
+// Persisted enum values — translate only the displayed label, not the
+// underlying value (established codebase pattern for lifecycle/status/
+// type-style fields).
+const LIFECYCLE_LABEL_KEY: Record<ProtocolLifecycleState, string> = {
+  draft: "protocolEditor.lifecycle.draft",
+  validated: "protocolEditor.lifecycle.validated",
+  published: "protocolEditor.lifecycle.published",
+  archived: "protocolEditor.lifecycle.archived",
+};
+
+const QUESTION_TYPE_LABEL_KEY: Record<ProtocolQuestionType, string> = {
+  choice: "protocolEditor.questionType.choice",
+  text: "protocolEditor.questionType.text",
+  number: "protocolEditor.questionType.number",
+  boolean: "protocolEditor.questionType.boolean",
+};
 
 const ProtocolEditor: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { protocolId } = useParams();
   const location = useLocation();
@@ -31,23 +53,14 @@ const ProtocolEditor: React.FC = () => {
 
   if (!protocol) {
     return (
-      <div style={{ minHeight: "100vh", background: "#0f172a", padding: 24, color: "#e2e8f0" }}>
+      <div className="ps-pe-notfound-page">
         <button
           onClick={() => navigate(`/configuration?tab=${returnTab}`)}
-          style={{
-            marginBottom: 16,
-            padding: "6px 14px",
-            borderRadius: 6,
-            border: "1px solid #334155",
-            background: "transparent",
-            color: "#94a3b8",
-            cursor: "pointer",
-            fontSize: 13
-          }}
+          className="ps-pe-notfound-back-btn"
         >
-          ← Back to Configuration
+          ← {t('protocolEditor.backToConfiguration')}
         </button>
-        <div style={{ color: "#94a3b8" }}>Protocol not found.</div>
+        <div className="ps-pe-notfound-text">{t('protocolEditor.notFound')}</div>
       </div>
     );
   }
@@ -114,7 +127,7 @@ const ProtocolEditor: React.FC = () => {
             ...prev,
             sections: [
               ...prev.sections,
-              { id, title: "New Section", questions: [] }
+              { id, title: t('protocolEditor.section.newTitle'), questions: [] }
             ]
           }
         : prev
@@ -129,7 +142,7 @@ const ProtocolEditor: React.FC = () => {
         ...section.questions,
         {
           id,
-          text: "New question",
+          text: t('protocolEditor.question.newText'),
           type: "text",
           required: false
         }
@@ -141,66 +154,9 @@ const ProtocolEditor: React.FC = () => {
     if (!protocol) return;
     saveProtocolOverride(protocol);
 
-    // ── Build human-readable diff ────────────────────────────────────────────
-    const orig = originalProtocol.current;
-    const changes: string[] = [];
-
-    if (orig) {
-      // Top-level field changes
-      if (orig.name !== protocol.name)
-        changes.push(`Name: "${orig.name}" → "${protocol.name}"`);
-      if (orig.lifecycle !== protocol.lifecycle)
-        changes.push(`Lifecycle: "${orig.lifecycle}" → "${protocol.lifecycle}"`);
-      if (orig.version !== protocol.version)
-        changes.push(`Version: "${orig.version}" → "${protocol.version}"`);
-
-      // Section-level changes
-      const origSections = new Map(orig.sections.map(s => [s.id, s]));
-      const newSections = new Map(protocol.sections.map(s => [s.id, s]));
-
-      // Added sections
-      protocol.sections.forEach(s => {
-        if (!origSections.has(s.id))
-          changes.push(`Added section: "${s.title}"`);
-      });
-
-      // Removed sections
-      orig.sections.forEach(s => {
-        if (!newSections.has(s.id))
-          changes.push(`Removed section: "${s.title}"`);
-      });
-
-      // Modified sections / questions
-      protocol.sections.forEach(newSection => {
-        const origSection = origSections.get(newSection.id);
-        if (!origSection) return;
-
-        if (origSection.title !== newSection.title)
-          changes.push(`Section renamed: "${origSection.title}" → "${newSection.title}"`);
-
-        const origQs = new Map(origSection.questions.map(q => [q.id, q]));
-        const newQs = new Map(newSection.questions.map(q => [q.id, q]));
-
-        newSection.questions.forEach(q => {
-          if (!origQs.has(q.id))
-            changes.push(`Added question in "${newSection.title}": "${q.text}"`);
-        });
-        origSection.questions.forEach(q => {
-          if (!newQs.has(q.id))
-            changes.push(`Removed question from "${newSection.title}": "${q.text}"`);
-        });
-        newSection.questions.forEach(q => {
-          const oq = origQs.get(q.id);
-          if (!oq) return;
-          if (oq.text !== q.text)
-            changes.push(`Question text: "${oq.text}" → "${q.text}"`);
-          if (oq.type !== q.type)
-            changes.push(`"${q.text}" type: ${oq.type} → ${q.type}`);
-          if (oq.required !== q.required)
-            changes.push(`"${q.text}" required: ${oq.required} → ${q.required}`);
-        });
-      });
-    }
+    // Audit-log change summary — persisted audit-trail text, deliberately
+    // left in English regardless of locale (see protocolChangeSummary.ts).
+    const changes = buildProtocolChangeSummary(originalProtocol.current, protocol);
 
     log("save_protocol", {
       name: protocol.name,
@@ -210,231 +166,98 @@ const ProtocolEditor: React.FC = () => {
     navigate(`/configuration?tab=${returnTab}`);
   };
 
-  // ── Shared input style ────────────────────────────────────────────────────
-  const inputStyle: React.CSSProperties = {
-    flex: 1,
-    padding: "6px 10px",
-    borderRadius: 6,
-    border: "1px solid #334155",
-    background: "#1e293b",
-    color: "#f1f5f9",
-    fontSize: 13,
-    outline: "none",
-  };
-
-  const selectStyle: React.CSSProperties = {
-    padding: "6px 8px",
-    borderRadius: 6,
-    border: "1px solid #334155",
-    background: "#1e293b",
-    color: "#f1f5f9",
-    fontSize: 12,
-    cursor: "pointer",
-  };
-
-  const arrowBtn = (disabled: boolean): React.CSSProperties => ({
-    padding: "3px 8px",
-    fontSize: 12,
-    borderRadius: 5,
-    border: "1px solid #334155",
-    background: disabled ? "transparent" : "#1e293b",
-    color: disabled ? "#475569" : "#94a3b8",
-    cursor: disabled ? "default" : "pointer",
-    opacity: disabled ? 0.4 : 1,
-  });
-
   return (
-    <div
-      style={{
-        minHeight: "100vh",
-        background: "#0f172a",
-        backgroundImage: "linear-gradient(to bottom, #0f172a 0%, #020617 100%)",
-        color: "#f1f5f9",
-        fontFamily: "'Inter', sans-serif",
-      }}
-    >
+    <div className="ps-pe-page">
       {/* ── Top nav bar ─────────────────────────────────────────────────── */}
-      <div
-        style={{
-          background: "rgba(0,0,0,0.4)",
-          backdropFilter: "blur(12px)",
-          borderBottom: "1px solid rgba(255,255,255,0.08)",
-          padding: "16px 40px",
-          display: "flex",
-          alignItems: "center",
-          gap: 16,
-        }}
-      >
+      <div className="ps-pe-navbar">
         <button
           onClick={() => navigate(`/configuration?tab=${returnTab}`)}
-          style={{
-            padding: "7px 16px",
-            borderRadius: 7,
-            border: "1px solid #334155",
-            background: "rgba(255,255,255,0.04)",
-            color: "#94a3b8",
-            cursor: "pointer",
-            fontSize: 13,
-            fontWeight: 500,
-            display: "flex",
-            alignItems: "center",
-            gap: 6,
-          }}
+          className="ps-pe-nav-back-btn"
         >
-          ← Back to Configuration
+          ← {t('protocolEditor.backToConfiguration')}
         </button>
       </div>
 
       {/* ── Main content ────────────────────────────────────────────────── */}
-      <div style={{ padding: "36px 40px 80px", maxWidth: 960, margin: "0 auto" }}>
+      <div className="ps-pe-content">
 
         {/* Header */}
-        <div style={{ marginBottom: 28 }}>
-          <h1
-            style={{
-              fontSize: 28,
-              fontWeight: 800,
-              color: "#f1f5f9",
-              marginBottom: 8,
-              lineHeight: 1.2,
-            }}
-          >
-            Protocol Editor: {protocol.name}
+        <div className="ps-pe-header">
+          <h1 className="ps-pe-title">
+            {t('protocolEditor.title', { name: protocol.name })}
           </h1>
-          <div
-            style={{
-              fontSize: 13,
-              color: "#64748b",
-              display: "flex",
-              gap: 8,
-              alignItems: "center",
-            }}
-          >
-            <span>Source: <span style={{ color: "#94a3b8" }}>{protocol.source}</span></span>
-            <span style={{ color: "#334155" }}>&bull;</span>
-            <span>Version: <span style={{ color: "#94a3b8" }}>{protocol.version}</span></span>
-            <span style={{ color: "#334155" }}>&bull;</span>
-            <span>Lifecycle:{" "}
+          <div className="ps-pe-meta-row">
+            <span>{t('protocolEditor.meta.source')}: <span className="ps-pe-meta-value">
+              {/* CAP/RCPath are governing-body abbreviations and stay literal;
+                  "Custom" is the one source value that's genuine UI copy. */}
+              {protocol.source === 'Custom' ? t('protocolEditor.source.custom') : protocol.source}
+            </span></span>
+            <span className="ps-pe-meta-sep">&bull;</span>
+            <span>{t('protocolEditor.meta.version')}: <span className="ps-pe-meta-value">{protocol.version}</span></span>
+            <span className="ps-pe-meta-sep">&bull;</span>
+            <span>{t('protocolEditor.meta.lifecycle')}:{" "}
               <span
-                style={{
-                  color: protocol.lifecycle === "validated" ? "#10b981"
-                    : protocol.lifecycle === "draft" ? "#f59e0b"
-                    : "#94a3b8",
-                  fontWeight: 600,
-                  textTransform: "capitalize",
-                }}
+                className={`ps-pe-lifecycle-value${
+                  protocol.lifecycle === "validated" ? " ps-pe-lifecycle-value--validated"
+                    : protocol.lifecycle === "draft" ? " ps-pe-lifecycle-value--draft"
+                    : ""
+                }`}
               >
-                {protocol.lifecycle}
+                {t(LIFECYCLE_LABEL_KEY[protocol.lifecycle])}
               </span>
             </span>
           </div>
         </div>
 
         {/* Add Section button */}
-        <div style={{ marginBottom: 20 }}>
-          <button
-            onClick={addSection}
-            style={{
-              padding: "8px 16px",
-              borderRadius: 7,
-              border: "1px solid #0891B2",
-              background: "rgba(8,145,178,0.12)",
-              color: "#38bdf8",
-              cursor: "pointer",
-              fontSize: 13,
-              fontWeight: 600,
-            }}
-          >
-            + Add Section
+        <div className="ps-pe-add-section-wrap">
+          <button onClick={addSection} className="ps-pe-add-section-btn">
+            + {t('protocolEditor.addSection')}
           </button>
         </div>
 
         {/* Sections */}
         {protocol.sections.map((section, sIdx) => (
-          <div
-            key={section.id}
-            style={{
-              marginBottom: 16,
-              borderRadius: 10,
-              border: "1px solid #1e293b",
-              background: "rgba(15,23,42,0.7)",
-              backdropFilter: "blur(8px)",
-              overflow: "hidden",
-            }}
-          >
+          <div key={section.id} className="ps-pe-section-card">
             {/* Section header row */}
-            <div
-              style={{
-                display: "flex",
-                justifyContent: "space-between",
-                alignItems: "center",
-                padding: "12px 14px",
-                background: "rgba(0,0,0,0.3)",
-                borderBottom: "1px solid #1e293b",
-                gap: 10,
-              }}
-            >
+            <div className="ps-pe-section-header">
               <input
                 type="text"
                 value={section.title}
                 onChange={e =>
                   updateSection(section.id, s => ({ ...s, title: e.target.value }))
                 }
-                style={{ ...inputStyle, fontSize: 14, fontWeight: 600, background: "#0f172a" }}
+                className="ps-pe-input ps-pe-section-title-input"
               />
-              <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+              <div className="ps-pe-arrow-group">
                 <button
                   onClick={() => moveSection(section.id, -1)}
                   disabled={sIdx === 0}
-                  style={arrowBtn(sIdx === 0)}
+                  className="ps-pe-arrow-btn"
                 >↑</button>
                 <button
                   onClick={() => moveSection(section.id, 1)}
                   disabled={sIdx === protocol.sections.length - 1}
-                  style={arrowBtn(sIdx === protocol.sections.length - 1)}
+                  className="ps-pe-arrow-btn"
                 >↓</button>
               </div>
             </div>
 
             {/* Section body */}
-            <div style={{ padding: "12px 14px" }}>
-              <div style={{ marginBottom: 10 }}>
+            <div className="ps-pe-section-body">
+              <div className="ps-pe-add-question-wrap">
                 <button
                   onClick={() => addQuestion(section.id)}
-                  style={{
-                    padding: "5px 12px",
-                    borderRadius: 6,
-                    border: "1px solid #0891B2",
-                    background: "transparent",
-                    color: "#38bdf8",
-                    fontSize: 12,
-                    fontWeight: 600,
-                    cursor: "pointer",
-                  }}
+                  className="ps-pe-add-question-btn"
                 >
-                  + Add Question
+                  + {t('protocolEditor.addQuestion')}
                 </button>
               </div>
 
               {section.questions.map((q, qIdx) => (
-                <div
-                  key={q.id}
-                  style={{
-                    marginBottom: 8,
-                    padding: "10px 12px",
-                    borderRadius: 7,
-                    border: "1px solid #1e293b",
-                    background: "rgba(30,41,59,0.6)",
-                  }}
-                >
+                <div key={q.id} className="ps-pe-question-card">
                   <div
-                    style={{
-                      display: "flex",
-                      justifyContent: "space-between",
-                      gap: 8,
-                      alignItems: "center",
-                      marginBottom: q.type === "choice" ? 8 : 0,
-                    }}
+                    className={`ps-pe-question-header-row${q.type === "choice" ? " ps-pe-question-header-row--spaced" : ""}`}
                   >
                     <input
                       type="text"
@@ -445,7 +268,7 @@ const ProtocolEditor: React.FC = () => {
                           text: e.target.value
                         }))
                       }
-                      style={inputStyle}
+                      className="ps-pe-input"
                     />
                     <select
                       value={q.type}
@@ -455,25 +278,13 @@ const ProtocolEditor: React.FC = () => {
                           type: e.target.value as any
                         }))
                       }
-                      style={selectStyle}
+                      className="ps-pe-select"
                     >
-                      <option value="choice">Choice</option>
-                      <option value="text">Text</option>
-                      <option value="number">Number</option>
-                      <option value="boolean">Yes/No</option>
+                      {(Object.keys(QUESTION_TYPE_LABEL_KEY) as ProtocolQuestionType[]).map(qt => (
+                        <option key={qt} value={qt}>{t(QUESTION_TYPE_LABEL_KEY[qt])}</option>
+                      ))}
                     </select>
-                    <label
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: 5,
-                        fontSize: 12,
-                        color: "#cbd5e1",
-                        flexShrink: 0,
-                        cursor: "pointer",
-                        userSelect: "none",
-                      }}
-                    >
+                    <label className="ps-pe-required-label">
                       <input
                         type="checkbox"
                         checked={q.required}
@@ -483,34 +294,27 @@ const ProtocolEditor: React.FC = () => {
                             required: e.target.checked
                           }))
                         }
-                        style={{ accentColor: "#0891B2", width: 14, height: 14 }}
+                        className="ps-pe-required-checkbox"
                       />
-                      Required
+                      {t('protocolEditor.required')}
                     </label>
-                    <div style={{ display: "flex", gap: 4, flexShrink: 0 }}>
+                    <div className="ps-pe-arrow-group">
                       <button
                         onClick={() => moveQuestion(section.id, q.id, -1)}
                         disabled={qIdx === 0}
-                        style={arrowBtn(qIdx === 0)}
+                        className="ps-pe-arrow-btn"
                       >↑</button>
                       <button
                         onClick={() => moveQuestion(section.id, q.id, 1)}
                         disabled={qIdx === section.questions.length - 1}
-                        style={arrowBtn(qIdx === section.questions.length - 1)}
+                        className="ps-pe-arrow-btn"
                       >↓</button>
                     </div>
                   </div>
 
                   {q.type === "choice" && (
-                    <div
-                      style={{
-                        fontSize: 12,
-                        color: "#64748b",
-                        fontStyle: "italic",
-                        paddingLeft: 4,
-                      }}
-                    >
-                      Choice options editing can be added next — structure is ready.
+                    <div className="ps-pe-choice-hint">
+                      {t('protocolEditor.choiceOptionsHint')}
                     </div>
                   )}
                 </div>
@@ -523,38 +327,19 @@ const ProtocolEditor: React.FC = () => {
         {(() => {
           const hasChanges = JSON.stringify(protocol) !== JSON.stringify(originalProtocol.current);
           return (
-        <div style={{ marginTop: 24, display: "flex", gap: 10, alignItems: "center" }}>
+        <div className="ps-pe-footer-row">
           <button
             onClick={save}
             disabled={!hasChanges}
-            style={{
-              padding: "10px 24px",
-              borderRadius: 8,
-              border: `1px solid ${hasChanges ? "#22c55e" : "#1e3a2a"}`,
-              background: hasChanges ? "rgba(34,197,94,0.12)" : "rgba(34,197,94,0.03)",
-              color: hasChanges ? "#22c55e" : "#2d5a3d",
-              fontWeight: 700,
-              fontSize: 14,
-              cursor: hasChanges ? "pointer" : "not-allowed",
-              opacity: hasChanges ? 1 : 0.45,
-              transition: "all 0.2s",
-            }}
+            className="ps-pe-save-btn"
           >
-            Save Protocol
+            {t('protocolEditor.saveProtocol')}
           </button>
           <button
             onClick={() => navigate(`/configuration?tab=${returnTab}`)}
-            style={{
-              padding: "10px 24px",
-              borderRadius: 8,
-              border: "1px solid #334155",
-              background: "transparent",
-              color: "#64748b",
-              fontSize: 14,
-              cursor: "pointer",
-            }}
+            className="ps-pe-cancel-btn"
           >
-            Cancel
+            {t('common.cancel')}
           </button>
         </div>
           );

@@ -25,6 +25,18 @@ export interface AuditLog {
    * be worse than not having the field at all.
    */
   facilityId?: string | null;
+  /**
+   * Real feature, per direct follow-up: "when we are tracking
+   * actions, I don't believe we include the physical location of
+   * that action, just the person - Correct?" Confirmed directly, then
+   * fixed here — same real, additive shape as facilityId immediately
+   * above, one level more granular (which bench/station WITHIN that
+   * facility, not just which building). Auto-populated by
+   * auditLogger.ts's own logEvent() bridge (getEffectiveScanStationId(),
+   * utils/effectiveScanStation.ts) — genuinely absent, not backfilled,
+   * for any audit entry recorded before this field existed.
+   */
+  stationId?: string | null;
 }
 
 export type NewAuditLog = Omit<AuditLog, 'id' | 'timestamp'>;

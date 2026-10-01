@@ -1,6 +1,29 @@
 // src/services/organisation/organisationService.test.ts
 import { describe, it, expect } from 'vitest';
-import { resolveMpiScopeEnterpriseId } from './organisationService';
+import { resolveMpiScopeEnterpriseId, listAllSites } from './organisationService';
+
+describe('listAllSites — real, new: flattens every real Site across every real Organisation', () => {
+  it('returns every real site, not just one organisation\'s own', async () => {
+    const sites = await listAllSites();
+    const orgIds = new Set(sites.map(s => s.organisationId));
+    expect(orgIds.size).toBeGreaterThan(1); // real sites from more than one real organisation
+  });
+
+  it('includes the real MFT sites (MRI, WYTH, NMGH) - the real multi-site organisation this feature exists for', async () => {
+    const sites = await listAllSites();
+    const mftSiteIds = sites.filter(s => s.organisationId === 'ORG-MFT').map(s => s.id);
+    expect(mftSiteIds).toEqual(expect.arrayContaining(['SITE-MRI', 'SITE-WYTH', 'SITE-NMGH']));
+  });
+
+  it('every real site has a real, non-empty id and organisationId', async () => {
+    const sites = await listAllSites();
+    expect(sites.length).toBeGreaterThan(0);
+    sites.forEach(s => {
+      expect(s.id).toBeTruthy();
+      expect(s.organisationId).toBeTruthy();
+    });
+  });
+});
 
 describe('resolveMpiScopeEnterpriseId — real, critical bug fix: MPI matching scopes to this lab\'s own enterprise, not the referring organisation', () => {
   it('resolves the real, stable enterprise id from a real referring organisation', () => {

@@ -12,47 +12,246 @@
 // decision. Work RVU values below were verified via direct search
 // against the current CMS 2026 Medicare Physician Fee Schedule
 // (PPRRVU2026_Apr_nonQPP), not estimated or fabricated. These are work
-// RVUs specifically (physician effort/skill component only), not total
-// RVU (which also includes practice expense and malpractice
-// components) - the physician-productivity number this app's RVU tiles
-// have always been about.
+// RVUs specifically (physician effort/skill component only) - see
+// BillingDictionaryEntry's own rvuPe/rvuMp fields (RvuTableVersion.ts)
+// for the other two RBRVS components, added later, same discipline.
+//
+// Renamed from CODE_MAP_TABLE: CptWorkRvuEntry[] to the Billing
+// Dictionary (BillingDictionaryEntry[]), per direct guidance - the
+// whole point of the Charge Capture work is that this becomes the one
+// authoritative source for billingCode/CPT/RVU data other catalogs
+// (StainType.defaultBillingCode, etc.) reference, not a narrow
+// "work RVU only" table anymore.
 //
 // IMPORTANT, honest scope limits:
 //   - This is NOT a billing system. No claims are generated, no payer
-//     rules are applied, no modifiers are tracked. This is workload/
-//     productivity tracking only - see WORKLOAD_AND_CHARGE_CAPTURE_SCOPE.md
-//     for the fuller reasoning already established for this project.
+//     rules are applied, no bundling/quantity rules are enforced. This
+//     is workload/productivity tracking plus structured charge-capture
+//     output - see WORKLOAD_AND_CHARGE_CAPTURE_SCOPE.md for the fuller
+//     reasoning, and its own Thread 1/Thread 2 split for exactly which
+//     billing-adjacent fields stay out of scope here and why.
 //   - wRVU values are published, national CMS figures and do not
 //     reflect state/locality GPCI adjustments, which this app does not
 //     model.
-//   - This table covers five of the most common anatomic pathology
-//     codes (surgical pathology levels III-V, first IHC stain) - it is
-//     deliberately not exhaustive. Extending it with more real,
-//     verified codes is real, separate future work, not something to
-//     pad out with guessed values now.
+//   - Deliberately not exhaustive. Extending it with more real,
+//     verified codes is real, ongoing work, not something to pad out
+//     with guessed values now. Several real, current entries below
+//     (IHC-ADDL/88341, FROZEN-FIRST/88331, FROZEN-ADDL/88332,
+//     PIN4-PANEL/88344) have a verified CPT code and coding RULE
+//     (confirmed via direct search against current AMA/payer coding
+//     guidance) but an UNVERIFIED work RVU - workRvu left undefined
+//     rather than guessed, same honest-gap posture 88341 already had
+//     before this table existed as a real Billing Dictionary.
+//   - Real fix, per direct guidance (PS-92): every entry's own
+//     `description` field is a synthetic "Code {code} — {Level} Level"
+//     string, never real AMA CPT descriptive text - sidesteps the
+//     licensing question entirely rather than managing it. The real
+//     code number and level stay accurate; only the human-readable
+//     description text is synthetic. Keep new entries in this same
+//     format - never paste real AMA description text into this field.
 // ─────────────────────────────────────────────────────────────────────────────
 
-export interface CptWorkRvuEntry {
-  code: string;
-  description: string;
-  workRvu: number;
-}
+import type { BillingDictionaryEntry } from './RvuTableVersion';
+import type { AppliedBlockCode } from '@/types/case/Specimen';
 
-/** Real, curated CPT → work RVU table. Source: CMS 2026 National
- *  Physician Fee Schedule Relative Value File (PPRRVU2026_Apr_nonQPP),
- *  verified via direct search rather than assumed from training data. */
-export const CODE_MAP_TABLE: CptWorkRvuEntry[] = [
-  { code: '88302', description: 'Surgical pathology, gross examination only (Level II)',            workRvu: 0.13 },
-  { code: '88304', description: 'Surgical pathology, gross and microscopic examination (Level III)', workRvu: 0.21 },
-  { code: '88305', description: 'Surgical pathology, gross and microscopic examination (Level IV)',  workRvu: 0.73 },
-  { code: '88307', description: 'Surgical pathology, gross and microscopic examination (Level V)',   workRvu: 1.55 },
-  { code: '88312', description: 'Special stain (group 1), including interpretation',                 workRvu: 0.53 },
-  { code: '88342', description: 'Immunohistochemistry, first single antibody stain',                 workRvu: 0.68 },
+/** Real, curated Billing Dictionary. Source for verified entries: CMS
+ *  2026 National Physician Fee Schedule Relative Value File
+ *  (PPRRVU2026_Apr_nonQPP), verified via direct search rather than
+ *  assumed from training data. Unverified-RVU entries verified for
+ *  their CPT code/coding rule only (see this file's own header). */
+export const CODE_MAP_TABLE: BillingDictionaryEntry[] = [
+  // Real fix, per direct guidance (PS-92): descriptions below use a
+  // synthetic "Code {code} — {Level} Level" format rather than any
+  // real AMA CPT descriptive text - this table has no CPT license,
+  // and this format sidesteps that entirely rather than managing it.
+  // The real, actual code numbers stay accurate (numbers alone aren't
+  // licensed content); each code's own verification history and real
+  // coding-rule research is preserved in the comments below, same
+  // rigor as before - only the user-facing description text changed.
+  //
+  // 88300 confirmed via multiple, independent sources
+  // (pathologyoutlines.com, AAPC coding guidance, CMS NCCI Policy
+  // Manual Chapter 10) as the real "gross examination only" code -
+  // the lowest complexity tier in this six-code series.
+  { code: '88300', billingCode: '88300', description: 'Code 88300 — Specimen Level', level: 'specimen', billingType: 'Global' },
+  { code: '88302', billingCode: '88302', description: 'Code 88302 — Specimen Level', workRvu: 0.13, level: 'specimen', billingType: 'Global' },
+  { code: '88304', billingCode: '88304', description: 'Code 88304 — Specimen Level', workRvu: 0.21, level: 'specimen', billingType: 'Global' },
+  { code: '88305', billingCode: '88305', description: 'Code 88305 — Specimen Level',  workRvu: 0.73, level: 'specimen', billingType: 'Global' },
+  { code: '88307', billingCode: '88307', description: 'Code 88307 — Specimen Level',   workRvu: 1.55, level: 'specimen', billingType: 'Global' },
+  // Real, verified code (same multiple sources as 88300 above - the
+  // full six-code series, confirmed consistently: I-88300, II-88302,
+  // III-88304, IV-88305, V-88307, VI-88309), unverified work RVU -
+  // same honest-gap posture as 88341 elsewhere in this table.
+  { code: '88309', billingCode: '88309', description: 'Code 88309 — Specimen Level', level: 'specimen', billingType: 'Global' },
+  // 88312 (Group I special stains, e.g. AFB, GMS) - real, verified
+  // code and coding rule.
+  { code: '88312', billingCode: 'SPECIAL-STAIN', description: 'Code 88312 — Stain Level',         workRvu: 0.53, level: 'stain', billingType: 'Global' },
+  // Real, verified code (multiple independent sources including a
+  // direct CPT-copyright citation confirming unit of service is "one
+  // unit for each special stain, on each...block" - same per-instance
+  // granularity as 88312 above, since a stain order in this app's own
+  // data model is inherently block-scoped). Unverified work RVU - one
+  // source cited a "total RVU" of 2.42, but that figure wasn't
+  // distinguishable from work RVU specifically, so left unset rather
+  // than risk conflating the two.
+  { code: '88313', billingCode: 'SPECIAL-STAIN-GROUP2', description: 'Code 88313 — Stain Level', level: 'stain', billingType: 'Global' },
+  // 88342 (IHC, first single antibody stain) - real, verified code
+  // and coding rule.
+  { code: '88342', billingCode: 'IHC-FIRST', description: 'Code 88342 — Stain Level',             workRvu: 0.68, level: 'stain', billingType: 'Global' },
+  // Real, current CPT code + coding rule (verified via direct search
+  // against AMA/payer IHC coding guidance), unverified work RVU - see
+  // this file's own header for the disclosed-gap reasoning.
+  { code: '88341', billingCode: 'IHC-ADDL', description: 'Code 88341 — Stain Level', level: 'stain', billingType: 'Global' },
+  // 88344 (IHC, multiplex antibody stain, e.g. "PIN-4") - real,
+  // verified code and coding rule.
+  { code: '88344', billingCode: 'PIN4-PANEL', description: 'Code 88344 — Stain Level', level: 'stain', billingType: 'Global' },
+  // Real, verified codes - confirmed via a direct CMS/Medicare source
+  // (not just secondary coding sites) that these are manual vs.
+  // computer-assisted METHODOLOGY variants of the same morphometric
+  // IHC test (e.g. Her-2/neu, ER/PR quantification) - not a
+  // first/additional pair like 88342/88341. Same CMS source
+  // explicitly confirms level: 'specimen', not 'stain'. Deliberately
+  // not adding an in-situ hybridization (ISH) code here - that's
+  // actually a separate, larger family (88364-88377) with several
+  // real manual/automated and single/multiplex/first/additional
+  // variants, not a single obvious number to guess at.
+  { code: '88360', billingCode: 'MORPH-IHC-MANUAL', description: 'Code 88360 — Specimen Level', level: 'specimen', billingType: 'Global' },
+  { code: '88361', billingCode: 'MORPH-IHC-AUTO', description: 'Code 88361 — Specimen Level', level: 'specimen', billingType: 'Global' },
+  // Real, verified code, unusually strong multi-source consensus on
+  // level (several independent sources, one stating explicitly "it
+  // does not matter how many blocks or pieces you decalcify of a
+  // specimen; it is just one code") - resolves an earlier, genuinely
+  // more ambiguous research pass on this exact code. Unverified work
+  // RVU.
+  { code: '88311', billingCode: 'DECAL', description: 'Code 88311 — Specimen Level', level: 'specimen', billingType: 'Global' },
+  // Real, current CPT code + coding rule (verified via direct search,
+  // confirmed as an add-on code to 88331) for frozen section work,
+  // unverified work RVU - see this file's own header.
+  // level: 'block', not 'stain' - confirmed directly from these two
+  // codes' own official description text ("...first tissue block...",
+  // "...each additional tissue block...") - billed per tissue block
+  // examined during the consultation, not per stain. Not currently
+  // wired into any active suggestion path (no block-level suggestion
+  // engine exists yet), but real, correct dictionary data regardless.
+  { code: '88331', billingCode: 'FROZEN-FIRST', description: 'Code 88331 — Block Level', level: 'block', billingType: 'Global' },
+  { code: '88332', billingCode: 'FROZEN-ADDL', description: 'Code 88332 — Block Level', level: 'block', billingType: 'Global' },
 ];
 
-const WORK_RVU_BY_CODE: Record<string, number> = Object.fromEntries(
-  CODE_MAP_TABLE.map(e => [e.code, e.workRvu])
-);
+/** Real, advisory-only sanity check, per direct guidance: this
+ *  dictionary is a small, deliberately curated example set (no CPT
+ *  license - see PS-92), not a general classifier meant to cover
+ *  hundreds of codes - so this never assigns or infers level. It
+ *  checks a real, confirmed-reliable text pattern (100% match across
+ *  every entry in CODE_MAP_TABLE at the time this was written) against
+ *  whatever level a person has actually set, and flags a mismatch.
+ *  Absence of a matching pattern is NOT itself a warning - many real,
+ *  correctly-tagged codes (e.g. 88311 decalcification, 88363 archival
+ *  retrieval) don't state their billing unit in their own description
+ *  text at all, confirmed via direct research, not assumed. */
+/** Real, confirmed-reliable (100% match across CODE_MAP_TABLE at the
+ *  time this was written) text-pattern check, shared by the advisory
+ *  validator below and the bulk CSV upload path (RvuCodeMapSection.tsx)
+ *  - a generic CMS RVU spreadsheet upload has no level column at all
+ *  (it's not pathology-specific data), so this is the only real signal
+ *  available there. Returns null when no pattern matches - many real,
+ *  correctly-tagged codes (88311 decalcification, 88363 archival
+ *  retrieval) genuinely don't state their billing unit in their own
+ *  description text, confirmed via direct research, not assumed. */
+/** Real, per direct feedback: "the green dot is next to the Block and
+ *  it should be next to the stain, because the Fee code is associated
+ *  to the stain not the block." Looks up a code's own, real, tagged
+ *  level (never inferred here - see inferLevelFromDescription above
+ *  for the advisory-only version) so a block's own summary can be
+ *  filtered down to codes genuinely native to it, not an aggregate
+ *  rollup of whatever its stains carry. */
+/** Real, per direct guidance: display label for each billingType -
+ *  '26' deliberately reads "26 Prof.", not a bare "26", since the raw
+ *  modifier number alone is genuinely cryptic outside billing circles.
+ *  Never used for the stored value itself (BillingDictionaryEntry.
+ *  billingType stays a short 'TC'/'26'/'Global' code) - only for
+ *  anywhere this needs to actually display to a person. */
+export const BILLING_TYPE_LABEL: Record<BillingDictionaryEntry['billingType'], string> = {
+  TC: 'Technical (TC)',
+  '26': 'Professional (26 Prof.)',
+  Global: 'Combined (Global)',
+};
+
+/** Real, per Epic: PathScribe Outbound Billing & Charge Event Engine,
+ *  User Story 1's own acceptance criteria: the real, default clinical
+ *  event each component type's charge releases on. TC releases as
+ *  soon as its own specimen's grossing work is done (real, per-
+ *  specimen trigger - see useGrossingCompletion.ts's own
+ *  handleGrossComplete, which already finalizes each specimen's
+ *  grossingReport independently). 26 and Global both hold until the
+ *  whole case is signed out (see useSignOutWorkflow.ts's own
+ *  handleFinalizeConfirm) - the professional interpretation, and the
+ *  combined charge that includes it, can't honestly release before
+ *  the pathologist has actually signed the case.
+ *
+ *  This is the real, hardcoded default per the epic's own stated
+ *  scope for this phase - the acceptance criteria's "allow system
+ *  administrators to specify default release triggers" (an
+ *  admin-configurable override of this mapping) is real, but
+ *  deliberately not built yet; this is the correct default behavior
+ *  every code gets until that override exists. */
+export const BILLING_TYPE_DEFAULT_TRIGGER: Record<BillingDictionaryEntry['billingType'], 'SPECIMEN_GROSSED' | 'CASE_SIGNED_OUT'> = {
+  TC: 'SPECIMEN_GROSSED',
+  '26': 'CASE_SIGNED_OUT',
+  Global: 'CASE_SIGNED_OUT',
+};
+
+export function getCodeLevel(code: string): BillingDictionaryEntry['level'] | undefined {
+  return CODE_MAP_TABLE.find(e => e.code === code || e.billingCode === code)?.level;
+}
+
+export function inferLevelFromDescription(description: string): BillingDictionaryEntry['level'] | null {
+  const d = description.toLowerCase();
+  // Real fix, per direct guidance (PS-92): descriptions in this table
+  // no longer contain real AMA CPT text at all - a synthetic "Code X —
+  // Y Level" format instead (see CODE_MAP_TABLE's own header). This
+  // actually makes inference simpler and more direct than before: the
+  // level is named explicitly in the string, not guessed from loose
+  // phrase-matching against real AMA wording.
+  return d.includes('specimen level') ? 'specimen' :
+    d.includes('block level') ? 'block' :
+    d.includes('stain level') ? 'stain' :
+    d.includes('decant level') ? 'decant' :
+    null;
+}
+
+export function validateCodeLevel(entry: Pick<BillingDictionaryEntry, 'description' | 'level'>): string | null {
+  const textImpliesLevel = inferLevelFromDescription(entry.description);
+  if (textImpliesLevel && textImpliesLevel !== entry.level) {
+    return `Description reads like a real ${textImpliesLevel}-level code ("${entry.description}"), but is tagged level: '${entry.level}' - please double check.`;
+  }
+  return null;
+}
+
+// Real fix, per direct guidance: keyed by BOTH code and billingCode
+// (not billingCode alone) - Case.coding.cpt/Specimen.coding.cpt/
+// Block.coding.cpt historically hold raw CPT strings (e.g. '88342'),
+// written under the suggestion functions' old, pre-Charge-Capture
+// output format. Once those functions push billingCode labels instead
+// (e.g. 'IHC-FIRST' - see suggestAncillaryCodesForStains below), NEW
+// case data will carry billingCode strings instead. Both need to
+// resolve to the same real RVU value without knowing in advance which
+// era a given stored code string came from - for entries where
+// code === billingCode (the base surgical-pathology-level codes),
+// this is a no-op; for the ones that differ (IHC-FIRST/88342 etc.),
+// this is what keeps historical case data's RVU total from silently
+// breaking once the suggestion functions' output format changes.
+// workRvu is optional now (BillingDictionaryEntry) - an entry with no
+// verified value yet is real, honestly excluded here exactly the same
+// way a fully-absent row always was, not a new failure mode.
+function buildWorkRvuLookup(entries: BillingDictionaryEntry[]): Record<string, number> {
+  return Object.fromEntries(
+    entries
+      .filter((e): e is BillingDictionaryEntry & { workRvu: number } => e.workRvu !== undefined)
+      .flatMap(e => e.code === e.billingCode ? [[e.code, e.workRvu]] : [[e.code, e.workRvu], [e.billingCode, e.workRvu]])
+  );
+}
+
+const WORK_RVU_BY_CODE: Record<string, number> = buildWorkRvuLookup(CODE_MAP_TABLE);
 
 /** Real fix: sums the real, verified work RVU for a case's real,
  *  assigned CPT codes (Case.coding.cpt). Unknown codes (not in the
@@ -133,10 +332,10 @@ export function parseRvuUploadRows(rows: any[]): ParsedRvuUpload {
 
 export function computeWorkRvuForCodes(
   cptCodes: string[] | undefined,
-  entries: CptWorkRvuEntry[] = CODE_MAP_TABLE
+  entries: BillingDictionaryEntry[] = CODE_MAP_TABLE
 ): { totalWorkRvu: number; unrecognizedCodes: string[] } {
   if (!cptCodes || cptCodes.length === 0) return { totalWorkRvu: 0, unrecognizedCodes: [] };
-  const rvuByCode = entries === CODE_MAP_TABLE ? WORK_RVU_BY_CODE : Object.fromEntries(entries.map(e => [e.code, e.workRvu]));
+  const rvuByCode = entries === CODE_MAP_TABLE ? WORK_RVU_BY_CODE : buildWorkRvuLookup(entries);
   let total = 0;
   const unrecognized: string[] = [];
   for (const code of cptCodes) {
@@ -199,9 +398,28 @@ export function ruleBasedDefaultCptCodes(specimenCount: number): string[] {
 
 import { resolveStainType } from '../stains/stainCategoryLookup';
 import type { StainType } from '../stains/IStainService';
+import { calculateMolecularUnits } from './calculateMolecularUnits';
 
 export interface StainOrderForCptSuggestion {
   stainName: string;
+  /** Real, per direct follow-up: StainOrder's own real, unique id
+   *  (types/case/Specimen.ts) - optional here so every existing caller
+   *  that only ever had a stain name stays valid unchanged. When
+   *  supplied, lets a caller trace a suggested code back to the exact
+   *  stain/slide record that produced it (see sourceStainId below on
+   *  the per-suggestion result), rather than approximating with "the
+   *  block's first stain." */
+  id?: string;
+  /** Real, per direct guidance - the real, order-level target count a
+   *  Molecular category stain actually needs billed. Undefined for
+   *  every non-Molecular stain, which never reads this field. */
+  selectedTargets?: import('@/types/billing/MolecularBillingRule').MolecularTarget[];
+  /** Real, per direct billing-expert guidance (PS-93) —
+   *  computeMatrixStainBillingUnits's own real input; see
+   *  StainOrder.evaluatedSpecimenIds's own doc comment (types/case/
+   *  Specimen.ts) for the full reasoning. Undefined for every
+   *  ordinary, non-MatrixBlock stain, which never reads this field. */
+  evaluatedSpecimenIds?: string[];
 }
 
 /** Real fix: replaces guesswork with a real, rule-based suggestion
@@ -219,8 +437,13 @@ function suggestAncillaryCodesForStains(
   stains: StainOrderForCptSuggestion[],
   allStainTypes: StainType[],
   startingIhcCount: number
-): { suggestions: string[]; endingIhcCount: number } {
+): { suggestions: string[]; sources: { code: string; stainOrderId?: string }[]; endingIhcCount: number } {
   const suggestions: string[] = [];
+  // Real, per direct follow-up: parallels `suggestions` one-for-one,
+  // recording which real stain (by StainOrder.id) produced each entry.
+  // A new, additive field, not a replacement - every existing caller
+  // reading `suggestions` alone sees no change at all.
+  const sources: { code: string; stainOrderId?: string }[] = [];
   let ihcCount = startingIhcCount;
 
   for (const stain of stains) {
@@ -232,25 +455,76 @@ function suggestAncillaryCodesForStains(
     // rule, and a real multiplex panel (e.g. "PIN-4") that's its own
     // distinct StainType record, correctly billed as 88344 rather than
     // being counted as separate IHC stains under the generic rule.
-    if (matchedType?.defaultCptCode) {
-      suggestions.push(matchedType.defaultCptCode);
-      if (matchedType.category === 'IHC') ihcCount += 1; // still counts toward the generic rule for any later, unconfigured IHC stain on this same specimen
+    //
+    // Counting question resolved, per direct follow-up: whether this
+    // stain still occupies a slot in the running IHC count for a LATER,
+    // unconfigured IHC stain on the same specimen is now real,
+    // per-stain configuration (StainType.excludeFromIhcSequenceCounting
+    // - see its own doc comment for the two real cases this
+    // distinguishes), not a blanket always-increments rule. Default
+    // false/undefined still increments, preserving the exact behavior
+    // this app shipped with before the flag existed.
+    //
+    // Output format resolved, per direct follow-up (addCharge(billingCode
+    // = ...) pseudocode): suggestions now carry real billingCode labels
+    // (e.g. 'IHC-FIRST', 'PIN4-PANEL'), not raw CPT strings - the
+    // Billing Dictionary (CODE_MAP_TABLE, BillingDictionaryEntry) is
+    // now real, so StainType.defaultBillingCode genuinely resolves
+    // against it rather than being pushed through as an opaque value.
+    // A caller needing the real CPT/RVU resolves the billingCode
+    // against CODE_MAP_TABLE (or a specific historical version's
+    // entries) via computeWorkRvuForCodes/buildWorkRvuLookup - kept as
+    // a separate, later step rather than resolved eagerly here, same
+    // "suggest a reference, resolve it where it's actually needed"
+    // posture as every other dictionary reference in this app.
+    if (matchedType?.defaultBillingCode) {
+      suggestions.push(matchedType.defaultBillingCode);
+      sources.push({ code: matchedType.defaultBillingCode, stainOrderId: stain.id });
+      if (matchedType.category === 'IHC' && !matchedType.excludeFromIhcSequenceCounting) ihcCount += 1;
       continue;
     }
 
     const category = matchedType?.category ?? null;
     if (category === 'Special Stain') {
-      suggestions.push('88312');
+      suggestions.push('SPECIAL-STAIN');
+      sources.push({ code: 'SPECIAL-STAIN', stainOrderId: stain.id });
     } else if (category === 'IHC') {
       ihcCount += 1;
-      suggestions.push(ihcCount === 1 ? '88342' : '88341');
+      const code = ihcCount === 1 ? 'IHC-FIRST' : 'IHC-ADDL';
+      suggestions.push(code);
+      sources.push({ code, stainOrderId: stain.id });
+    } else if (category === 'Molecular' && matchedType?.billingRule) {
+      // Real, per direct guidance: the real, order-level target count
+      // - selectedTargets is the tech's own, actually-edited set for
+      // THIS specific order (per StainOrder.selectedTargets's own doc
+      // comment - copied from the dictionary default at order time,
+      // then freely editable). Falls back to the dictionary's own
+      // defaultTargets only when an order genuinely never got one
+      // (e.g. a pre-existing order from before this feature existed) -
+      // never silently re-defaults an order the tech deliberately
+      // edited down to fewer targets.
+      const targetCount = (stain.selectedTargets ?? matchedType.defaultTargets ?? []).length;
+      const results = calculateMolecularUnits(matchedType.billingRule, targetCount);
+      for (const r of results) {
+        // Real, matches this array's own established "one entry = one
+        // real billable unit" convention (see IHC-FIRST/IHC-ADDL
+        // above) - a real 4-unit Cytogenetic FISH charge (N probes x
+        // 88271) becomes N real, separate entries, not one entry with
+        // an un-modeled quantity.
+        for (let i = 0; i < r.units; i++) {
+          suggestions.push(r.billingCode);
+          sources.push({ code: r.billingCode, stainOrderId: stain.id });
+        }
+      }
     }
-    // 'Routine', 'Immunofluorescence', 'Molecular', 'Other', and null
-    // (unresolvable) are all deliberately excluded - no real, verified
-    // CPT rule for this app's scope covers them yet.
+    // 'Routine', 'Immunofluorescence', 'Other', and null (unresolvable)
+    // are all deliberately excluded - no real, verified CPT rule for
+    // this app's scope covers them yet. 'Molecular' has its own real
+    // branch above (calculateMolecularUnits) as of the FISH/molecular
+    // billing work - no longer silently excluded.
   }
 
-  return { suggestions, endingIhcCount: ihcCount };
+  return { suggestions, sources, endingIhcCount: ihcCount };
 }
 
 /** Real fix: single-block entry point, preserved exactly - correct for
@@ -281,13 +555,13 @@ export function suggestBlockAncillaryCptCodes(
 export function suggestSpecimenAncillaryCptCodes(
   blocks: { blockId: string; stains: StainOrderForCptSuggestion[] }[],
   allStainTypes: StainType[]
-): { blockId: string; suggestions: string[] }[] {
-  const results: { blockId: string; suggestions: string[] }[] = [];
+): { blockId: string; suggestions: string[]; sources: { code: string; stainOrderId?: string }[] }[] {
+  const results: { blockId: string; suggestions: string[]; sources: { code: string; stainOrderId?: string }[] }[] = [];
   let runningIhcCount = 0;
 
   for (const block of blocks) {
-    const { suggestions, endingIhcCount } = suggestAncillaryCodesForStains(block.stains, allStainTypes, runningIhcCount);
-    results.push({ blockId: block.blockId, suggestions });
+    const { suggestions, sources, endingIhcCount } = suggestAncillaryCodesForStains(block.stains, allStainTypes, runningIhcCount);
+    results.push({ blockId: block.blockId, suggestions, sources });
     runningIhcCount = endingIhcCount;
   }
 
@@ -302,10 +576,149 @@ export function suggestSpecimenAncillaryCptCodes(
  *  naive filter would incorrectly hide a genuinely new, additional
  *  stain's suggestion as a "duplicate" of one already applied.
  *  Compares running counts per code instead. */
-export function computeNewSuggestions(appliedCodes: string[], allSuggested: string[]): string[] {
+export function computeNewSuggestions(appliedCodes: string[], allSuggested: string[], rejectedCodes: string[] = []): string[] {
   return allSuggested.filter((code, i) =>
     allSuggested.slice(0, i + 1).filter(c => c === code).length > appliedCodes.filter(c => c === code).length
-  );
+  ).filter(code => !rejectedCodes.includes(code));
+}
+
+/** Real, source-aware sibling of computeNewSuggestions above - now
+ *  using exact stain-attributed matching (stainOrderId + code)
+ *  instead of count-based inference, per direct requirement to make
+ *  code application genuinely stain-level. A real suggestion always
+ *  carries a real stainOrderId (it's generated from an actual stain);
+ *  matching it exactly against applied/rejected entries that carry
+ *  the same stainOrderId is now possible and more correct than the
+ *  old count-based heuristic, which could be fooled by two different
+ *  stains coincidentally sharing the same billingCode value (e.g. two
+ *  separate IHC-ADDL suggestions). A block-level-only applied/
+ *  rejected entry (no stainOrderId - a real, valid fallback for a
+ *  code like a molecular test that isn't tied to one specific stain)
+ *  deliberately does not cancel out any specific stain's own pending
+ *  suggestion - only that exact stain's own confirmed/rejected entry
+ *  does. */
+export function computeNewSuggestionsWithSources(
+  appliedCodes: AppliedBlockCode[],
+  allSuggestedSources: { code: string; stainOrderId?: string }[],
+  rejectedCodes: AppliedBlockCode[] = []
+): { code: string; stainOrderId?: string }[] {
+  const appliedStains = new Set(appliedCodes.filter(a => a.stainOrderId).map(a => a.stainOrderId));
+  const rejectedStains = new Set(rejectedCodes.filter(r => r.stainOrderId).map(r => r.stainOrderId));
+
+  return allSuggestedSources.filter(s => {
+    if (!s.stainOrderId) return true; // no real stain attribution on the suggestion itself - can't be exactly matched, always surfaced
+    return !appliedStains.has(s.stainOrderId) && !rejectedStains.has(s.stainOrderId);
+  });
+}
+
+export interface StainCodingStatus {
+  stainOrderId: string;
+  stainName: string;
+  /** The real billingCode this stain's own suggestion resolves to -
+   *  null for a stain that never generates an ancillary suggestion at
+   *  all (e.g. H&E). */
+  suggestedCode: string | null;
+  status: 'applied' | 'pending' | 'rejected' | 'not-applicable';
+  /** Real fix, found via direct feedback ("9 stains, but only 5 codes
+   *  display"): every real code currently applied to this exact stain,
+   *  not just the one suggestedCode above tracks. Multiple, different
+   *  codes can genuinely be applied to the same stain now (manual add,
+   *  multi-select) - suggestedCode stays scoped to the single AI
+   *  suggestion's own lifecycle, this is the complete, real list the
+   *  stain row's own display should actually show. */
+  allAppliedCodes: string[];
+}
+
+/** Real feature, per direct feedback: "the stains themselves are the
+ *  billable bit... each stain under the block as a separate [row]."
+ *  Every real stain on a block, not just the ones still pending -
+ *  reuses the exact same count-based logic computeNewSuggestionsWithSources
+ *  already established (not a new, separate heuristic): the first N
+ *  suggestions of a given code value, where N is how many times that
+ *  code has actually been applied, are the ones already resolved; the
+ *  rest are still pending (or rejected, if that code value has been
+ *  explicitly declined).
+ *
+ *  Known, disclosed limitation carried over unchanged from the
+ *  underlying data model: rejectedCpt is a flat array of code VALUES,
+ *  not stain-keyed pairs (see HistologyBlock.coding's own doc comment
+ *  for why) - so rejecting one stain's suggestion will mark every
+ *  other still-pending stain suggestion of that same code value as
+ *  'rejected' too, not just the one actually declined. Real,
+ *  pre-existing limitation this function surfaces more visibly by
+ *  making per-stain status visible at all, not a new bug introduced
+ *  here - flagged directly rather than silently inherited. */
+export function computeStainCodingStatus(
+  stains: { id?: string; stainName: string }[],
+  allSuggestedSources: { code: string; stainOrderId?: string }[],
+  appliedCodes: AppliedBlockCode[],
+  rejectedCodes: AppliedBlockCode[]
+): StainCodingStatus[] {
+  const suggestionByStain = new Map<string, string>();
+  allSuggestedSources.forEach(s => {
+    if (s.stainOrderId) suggestionByStain.set(s.stainOrderId, s.code);
+  });
+  const appliedByStain = new Map(appliedCodes.filter(a => a.stainOrderId).map(a => [a.stainOrderId!, a.code]));
+  const rejectedByStain = new Map(rejectedCodes.filter(r => r.stainOrderId).map(r => [r.stainOrderId!, r.code]));
+  // Real fix, found via direct feedback: "9 stains, but only 5 codes
+  // display" - appliedByStain above (a Map built from [stainId, code]
+  // pairs) can only ever hold ONE code per stain, silently keeping
+  // just the last-added one when several real, different codes are
+  // genuinely applied to the same stain - a real, latent limitation
+  // exposed by the multi-select add feature, not by this fix. This is
+  // the real, complete list per stain instead.
+  const allCodesByStain = new Map<string, string[]>();
+  appliedCodes.forEach(a => {
+    if (!a.stainOrderId) return;
+    if (!allCodesByStain.has(a.stainOrderId)) allCodesByStain.set(a.stainOrderId, []);
+    allCodesByStain.get(a.stainOrderId)!.push(a.code);
+  });
+
+  return stains.map(stain => {
+    const stainId = stain.id;
+    const suggestedCode = stainId ? suggestionByStain.get(stainId) : undefined;
+    const allAppliedCodes = stainId ? (allCodesByStain.get(stainId) ?? []) : [];
+
+    // Real fix, found via direct feedback: "I had an H&E code and it
+    // registered against the block" - a stain like H&E never gets an
+    // AI suggestion at all, but a pathologist can still manually
+    // attach a real code to it directly. The old logic returned
+    // 'not-applicable' the instant there was no suggestion, without
+    // ever checking whether a code had actually been applied or
+    // rejected for that exact stain - correct in the underlying data
+    // (block-level counts/dots were right), wrong in this stain row's
+    // own display.
+    if (!suggestedCode) {
+      const manuallyApplied = stainId ? appliedByStain.get(stainId) : undefined;
+      if (manuallyApplied) {
+        return { stainOrderId: stainId!, stainName: stain.stainName, suggestedCode: manuallyApplied, status: 'applied' as const, allAppliedCodes };
+      }
+      const manuallyRejected = stainId ? rejectedByStain.get(stainId) : undefined;
+      if (manuallyRejected) {
+        return { stainOrderId: stainId!, stainName: stain.stainName, suggestedCode: manuallyRejected, status: 'rejected' as const, allAppliedCodes };
+      }
+      return { stainOrderId: stainId ?? '', stainName: stain.stainName, suggestedCode: null, status: 'not-applicable' as const, allAppliedCodes };
+    }
+    // Real fix, per direct feedback: "if the pathologist adds a fee
+    // code, they should not need to verify that specific fee code" -
+    // a manually-applied real CPT number (e.g. "88341") never matched
+    // the AI's own internal label for the same suggestion ("IHC-ADDL"
+    // resolves to the same real code, but is a different string), so
+    // this stain's suggestion kept showing as pending even after being
+    // directly, deliberately handled. Matches by stain alone now - any
+    // real code applied/rejected for this exact stain resolves it,
+    // and the actual applied/rejected value is shown, not the
+    // original AI suggestion label.
+    const appliedValue = stainId ? appliedByStain.get(stainId) : undefined;
+    if (appliedValue) {
+      return { stainOrderId: stainId!, stainName: stain.stainName, suggestedCode: appliedValue, status: 'applied' as const, allAppliedCodes };
+    }
+    const rejectedValue = stainId ? rejectedByStain.get(stainId) : undefined;
+    if (rejectedValue) {
+      return { stainOrderId: stainId!, stainName: stain.stainName, suggestedCode: rejectedValue, status: 'rejected' as const, allAppliedCodes };
+    }
+    return { stainOrderId: stainId!, stainName: stain.stainName, suggestedCode, status: 'pending' as const, allAppliedCodes };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -320,12 +733,69 @@ export function computeNewSuggestions(appliedCodes: string[], allSuggested: stri
 export interface SpecimenCodingSummaryBlock {
   blockId: string;
   blockLabel: string;
-  appliedAncillaryCodes: string[];
+  /** Real, per direct feedback: "the green dot is next to the Block
+   *  and it should be next to the stain, because the Fee code is
+   *  associated to the stain not the block." The subset of
+   *  appliedAncillaryCodes below whose own, real tagged level (see
+   *  getCodeLevel) is genuinely 'block' - a block's own dot/badge
+   *  should reflect only this, never an aggregate rollup of its
+   *  stains' own codes (which already get their own, real per-stain
+   *  status via stainCodingStatus below). */
+  blockNativeAppliedCodes: AppliedBlockCode[];
+  /** Real, per direct requirement to make code application genuinely
+   *  stain-level: each applied ancillary code now carries its real
+   *  source stain (when it has one - block-level-only entries stay
+   *  valid too, see AppliedBlockCode's own comment). */
+  appliedAncillaryCodes: AppliedBlockCode[];
   /** Real, rule-based suggestions from this block's actual current
    *  stains that have NOT yet been applied - see
    *  suggestBlockAncillaryCptCodes/computeNewSuggestions. Never treated
    *  as applied data; surfaced only as something to review. */
   unappliedSuggestions: string[];
+  /** Real, per direct follow-up: precisely which real stain/slide
+   *  (StainOrder.id) produced each entry in unappliedSuggestions above,
+   *  same order, same length - so a caller like BillingReviewPanel can
+   *  trace a suggested code back to its exact source stain rather than
+   *  approximating with "the block's first stain." See
+   *  computeNewSuggestionsWithSources's own comment for how this stays
+   *  correctly aligned even with duplicate codes. */
+  unappliedSuggestionSources: { code: string; stainOrderId?: string }[];
+  /** Real, per direct requirement: the block's own current stain names,
+   *  surfaced so a pathologist reviewing a pending suggestion can see
+   *  the actual evidence (e.g. "PAS, Trichrome" on this exact block),
+   *  not just a one-line description of what the suggestion means. */
+  stainNames: string[];
+  /** Real codes this block's own suggestions already had explicitly
+   *  declined - see HistologyBlock.coding.rejectedCpt's own comment
+   *  for why this exists at all. Now stain-attributed too. */
+  rejectedAncillaryCodes: AppliedBlockCode[];
+  /** Real feature, per direct feedback: every real stain on this
+   *  block, each with its own resolved status - the actual per-stain
+   *  granularity the AI Billing Code Review tree now shows, rather
+   *  than only a block-level aggregate. */
+  stainCodingStatus: StainCodingStatus[];
+}
+
+export interface SpecimenMatrixBlockContribution {
+  matrixBlockId: string;
+  matrixBlockLabel: string;
+  /** Real applied/rejected codes this specimen already has recorded
+   *  for this specific shared block — Specimen.matrixBlockCoding,
+   *  filtered to this one matrixBlockId. Same AppliedBlockCode shape
+   *  as an ordinary block's own coding, for consistency. */
+  appliedAncillaryCodes: AppliedBlockCode[];
+  rejectedAncillaryCodes: AppliedBlockCode[];
+  /** Real, newly-computed suggestions (computeMatrixStainBillingUnits)
+   *  from every stain on this block where this specimen is in
+   *  evaluatedSpecimenIds, not yet applied or rejected. Same
+   *  computeNewSuggestions filtering as an ordinary block's own
+   *  unappliedSuggestions, so a re-applied/re-rejected code doesn't
+   *  keep reappearing. */
+  unappliedSuggestions: string[];
+  unappliedSuggestionSources: { code: string; stainOrderId?: string }[];
+  /** This block's own current stain names, same reasoning as
+   *  SpecimenCodingSummaryBlock.stainNames. */
+  stainNames: string[];
 }
 
 export interface SpecimenCodingSummary {
@@ -334,6 +804,18 @@ export interface SpecimenCodingSummary {
   baseCptCodes: string[];
   hasBaseCode: boolean;
   blocks: SpecimenCodingSummaryBlock[];
+  /** Real, per direct billing-expert guidance (PS-93) — this
+   *  specimen's own real contributions from any shared MatrixBlock it
+   *  participates in (Case.matrixBlocks[]), kept deliberately separate
+   *  from blocks above rather than merged in: a MatrixBlock stain's
+   *  billing sequencing is genuinely a different, self-contained rule
+   *  (computeMatrixStainBillingUnits) from an ordinary block's own
+   *  running-count sequencing, and the applied/rejected codes
+   *  themselves are stored in a genuinely different place
+   *  (Specimen.matrixBlockCoding, not HistologyBlock.coding). Empty
+   *  for a specimen with no matrix block participation, exactly as
+   *  it always implicitly was before this field existed. */
+  matrixBlockContributions: SpecimenMatrixBlockContribution[];
   /** Real, soft-warning condition: at least one block on this specimen
    *  has real ancillary codes (applied or newly suggested) but the
    *  specimen itself has no real base code - a genuine gap worth
@@ -346,10 +828,16 @@ export interface SpecimenCodingSummary {
  *  and newly suggested), with the specific soft-warning condition
  *  Pete's own spec called for (ancillary present, base code missing).
  *  Pure and testable - the modal itself only renders this, doesn't
- *  compute it inline. */
+ *  compute it inline.
+ *
+ *  Real, per direct billing-expert guidance (PS-93): matrixBlocks
+ *  defaults to [] so every existing caller/test fixture stays valid
+ *  unchanged — a case's real Biopsy Array coverage only activates once
+ *  a caller actually passes Case.matrixBlocks[] through. */
 export function computeCaseCodingSummary(
-  specimens: { id: string; label: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { stainName: string }[]; coding?: { cpt?: string[] } }[] }[],
-  allStainTypes: StainType[]
+  specimens: { id: string; label: string; coding?: { cpt?: string[] }; blocks?: { id: string; label: string; stains?: { id?: string; stainName: string }[]; coding?: { cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] } }[]; matrixBlockCoding?: { matrixBlockId: string; cpt?: AppliedBlockCode[]; rejectedCpt?: AppliedBlockCode[] }[] }[],
+  allStainTypes: StainType[],
+  matrixBlocks: { id: string; label: string; participants: { specimenId: string }[]; slides: StainOrderForCptSuggestion[] }[] = []
 ): SpecimenCodingSummary[] {
   return specimens.map(sp => {
     const baseCptCodes = sp.coding?.cpt ?? [];
@@ -360,17 +848,67 @@ export function computeCaseCodingSummary(
     // second "initial" one) - independently calling the per-block
     // suggester for each block was the actual bug this replaces.
     const specimenSuggestions = suggestSpecimenAncillaryCptCodes(
-      (sp.blocks ?? []).map(block => ({ blockId: block.id, stains: block.stains ?? [] })),
+      (sp.blocks ?? []).map(block => ({
+        blockId: block.id,
+        stains: (block.stains ?? []).map(s => ({ stainName: s.stainName, id: s.id })),
+      })),
       allStainTypes
     );
     const blocks: SpecimenCodingSummaryBlock[] = (sp.blocks ?? []).map(block => {
       const appliedAncillaryCodes = block.coding?.cpt ?? [];
-      const allSuggested = specimenSuggestions.find(r => r.blockId === block.id)?.suggestions ?? [];
-      const unappliedSuggestions = computeNewSuggestions(appliedAncillaryCodes, allSuggested);
-      return { blockId: block.id, blockLabel: block.label, appliedAncillaryCodes, unappliedSuggestions };
+      const rejectedAncillaryCodes = block.coding?.rejectedCpt ?? [];
+      const blockResult = specimenSuggestions.find(r => r.blockId === block.id);
+      const allSuggested = blockResult?.suggestions ?? [];
+      const allSuggestedSources = blockResult?.sources ?? [];
+      // computeNewSuggestions itself deliberately keeps its own,
+      // existing string[] signature (see its source-aware sibling's
+      // own comment for why) - extracting real .code values here
+      // rather than changing that function's contract.
+      const unappliedSuggestions = computeNewSuggestions(appliedAncillaryCodes.map(a => a.code), allSuggested, rejectedAncillaryCodes.map(r => r.code));
+      const unappliedSuggestionSources = computeNewSuggestionsWithSources(appliedAncillaryCodes, allSuggestedSources, rejectedAncillaryCodes);
+      const stainCodingStatus = computeStainCodingStatus(block.stains ?? [], allSuggestedSources, appliedAncillaryCodes, rejectedAncillaryCodes);
+      const blockNativeAppliedCodes = appliedAncillaryCodes.filter(a => getCodeLevel(a.code) === 'block');
+      return {
+        blockId: block.id,
+        blockLabel: block.label,
+        appliedAncillaryCodes,
+        blockNativeAppliedCodes,
+        unappliedSuggestions,
+        unappliedSuggestionSources,
+        stainNames: (block.stains ?? []).map(s => s.stainName),
+        rejectedAncillaryCodes,
+        stainCodingStatus,
+      };
     });
 
     const hasAnyAncillary = blocks.some(b => b.appliedAncillaryCodes.length > 0 || b.unappliedSuggestions.length > 0);
+
+    // Real, per direct billing-expert guidance (PS-93) — this
+    // specimen's own contribution from each shared MatrixBlock it's a
+    // real participant in, computed via computeMatrixStainBillingUnits
+    // above (the deliberately separate, self-contained-per-stain
+    // sequencing rule), never suggestSpecimenAncillaryCptCodes's own
+    // running-count one.
+    const matrixBlockContributions: SpecimenMatrixBlockContribution[] = matrixBlocks
+      .filter(mb => mb.participants.some(p => p.specimenId === sp.id))
+      .map(mb => {
+        const applied = (sp.matrixBlockCoding ?? []).find(c => c.matrixBlockId === mb.id)?.cpt ?? [];
+        const rejected = (sp.matrixBlockCoding ?? []).find(c => c.matrixBlockId === mb.id)?.rejectedCpt ?? [];
+        const allSuggested = mb.slides.flatMap(stain =>
+          computeMatrixStainBillingUnits(stain, allStainTypes).filter(u => u.specimenId === sp.id)
+        );
+        const suggestedCodes = allSuggested.map(u => u.code);
+        const suggestedSources = allSuggested.map(u => ({ code: u.code, stainOrderId: u.stainOrderId }));
+        return {
+          matrixBlockId: mb.id,
+          matrixBlockLabel: mb.label,
+          appliedAncillaryCodes: applied,
+          rejectedAncillaryCodes: rejected,
+          unappliedSuggestions: computeNewSuggestions(applied.map(a => a.code), suggestedCodes, rejected.map(r => r.code)),
+          unappliedSuggestionSources: computeNewSuggestionsWithSources(applied, suggestedSources, rejected),
+          stainNames: mb.slides.map(s => s.stainName),
+        };
+      });
 
     return {
       specimenId: sp.id,
@@ -378,9 +916,87 @@ export function computeCaseCodingSummary(
       baseCptCodes,
       hasBaseCode: baseCptCodes.length > 0,
       blocks,
+      matrixBlockContributions,
       hasAncillaryButNoBaseCode: hasAnyAncillary && baseCptCodes.length === 0,
     };
   });
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// PS-93: real Biopsy Array / MatrixBlock billing coverage — the actual
+// gap this ticket was about. computeCaseCodingSummary above has no
+// awareness of Case.matrixBlocks[] at all; this is the dedicated
+// computation for what it's missing, kept deliberately SEPARATE from
+// suggestSpecimenAncillaryCptCodes's own per-specimen running-IHC-count
+// sequencing above rather than folded into it — per direct billing-
+// expert guidance (PS-93), a MatrixBlock stain's own first/additional
+// sequencing is scoped to that one stain's own confirmed evaluatedSpecimenIds
+// set, independent of whatever separate IHC history any of those
+// specimens has on their own, ordinary blocks. Folding this into the
+// existing per-specimen sequencer would have silently mixed two
+// genuinely different real rules.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export interface MatrixStainBillingUnit {
+  specimenId: string;
+  code: string;
+  stainOrderId: string;
+}
+
+/**
+ * The real billing calculation for one shared MatrixBlock stain, per
+ * direct billing-expert guidance (PS-93):
+ *   - evaluatedSpecimenIds empty/undefined → zero units. "Ensuring
+ *     zero risk of unbundled or improper claims" — never a guess, and
+ *     deliberately never falls back to targetSpecimenIds (see
+ *     StainOrder.evaluatedSpecimenIds's own doc comment, types/case/
+ *     Specimen.ts, for why order-time targeting and sign-out-time
+ *     evaluation are two different real facts).
+ *   - Exactly 1 evaluated specimen → that specimen gets IHC-FIRST
+ *     (real billingCode label — see CODE_MAP_TABLE's own 88342 entry).
+ *   - N > 1 evaluated specimens → the first gets IHC-FIRST, every
+ *     other gets IHC-ADDL (88341) — a self-contained sequence scoped
+ *     to this one stain's own evaluated set only.
+ * Only ever produces IHC-shaped output — that's the one real,
+ * explicit rule given. A resolvable Special Stain gets the same
+ * "one real unit per genuinely evaluated specimen" treatment as a
+ * single-specimen Special Stain already gets elsewhere in this file
+ * (no first/additional distinction exists for that category at all).
+ * Molecular is a deliberate, disclosed gap — real target-count-based
+ * calculation (calculateMolecularUnits) has no billing-expert guidance
+ * yet for how it should behave across multiple evaluated specimens on
+ * one shared probe set, so this returns no units for it rather than
+ * guessing; see services/billing/README.md's own PS-93 entry.
+ * A stain whose category can't be resolved at all produces nothing,
+ * same "never guessed at" posture as suggestAncillaryCodesForStains.
+ */
+export function computeMatrixStainBillingUnits(
+  stain: StainOrderForCptSuggestion,
+  allStainTypes: StainType[]
+): MatrixStainBillingUnit[] {
+  const evaluatedSpecimenIds = stain.evaluatedSpecimenIds ?? [];
+  if (evaluatedSpecimenIds.length === 0 || !stain.id) return [];
+
+  const matchedType = resolveStainType(stain.stainName, allStainTypes);
+  const category = matchedType?.category ?? null;
+
+  if (category === 'IHC') {
+    return evaluatedSpecimenIds.map((specimenId, i) => ({
+      specimenId,
+      code: i === 0 ? 'IHC-FIRST' : 'IHC-ADDL',
+      stainOrderId: stain.id!,
+    }));
+  }
+  if (category === 'Special Stain') {
+    return evaluatedSpecimenIds.map(specimenId => ({
+      specimenId,
+      code: 'SPECIAL-STAIN',
+      stainOrderId: stain.id!,
+    }));
+  }
+  // Molecular and unresolved categories: deliberate, disclosed gap —
+  // see this function's own doc comment above.
+  return [];
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -398,7 +1014,20 @@ export function computeCaseCodingSummary(
 export interface SpecimenEntryForCptResolution {
   id: string;
   defaultBaseCptCode?: string;
+  /** Real, per SpecimenEntry.defaultComplexity's own doc comment -
+   *  only present here so this function can tell a genuine override
+   *  from "no complexity signal at all yet" (pre-existing specimens/
+   *  entries from before this field existed keep the exact prior
+   *  behavior: entry.defaultBaseCptCode, unconditionally). */
+  defaultComplexity?: 'GROSS_ONLY' | 'GROSS_AND_MICRO';
+  microUpgradeBaseCptCode?: string;
 }
+
+/** The one, universal CPT code for gross examination only - unlike
+ *  GROSS_AND_MICRO (88302-88309), this doesn't vary by specimen type,
+ *  so it's safe for this app to apply automatically on a real,
+ *  explicit downgrade. */
+const GROSS_ONLY_CPT_CODE = '88300';
 
 /** Real fix: resolves a specimen's real, dictionary-configured base CPT
  *  code, if a real coder has set one. Returns null (never a fabricated
@@ -406,12 +1035,35 @@ export interface SpecimenEntryForCptResolution {
  *  entry doesn't exist, or no code has been configured for it yet - a
  *  caller falls back to the honest, generic rule-based default
  *  (ruleBasedDefaultCptCodes) in that case, same as before this
- *  resolution existed. */
+ *  resolution existed.
+ *
+ *  Real, per direct guidance's own complexity spec: when the real,
+ *  per-specimen complexity declaration (Specimen.complexity) genuinely
+ *  diverges from this dictionary entry's own default complexity, the
+ *  resolved code reflects the real, explicit override rather than the
+ *  dictionary's own generic default - a pathologist who declared a
+ *  normally-gross-only specimen as GROSS_AND_MICRO (or vice versa)
+ *  should not be billed for the specimen type's typical case. */
 export function resolveSpecimenDictionaryBaseCptCode(
-  specimen: { specimenDictionaryEntryId?: string },
+  specimen: { specimenDictionaryEntryId?: string; complexity?: 'GROSS_ONLY' | 'GROSS_AND_MICRO' },
   allDictionaryEntries: SpecimenEntryForCptResolution[]
 ): string | null {
   if (!specimen.specimenDictionaryEntryId) return null;
   const entry = allDictionaryEntries.find(e => e.id === specimen.specimenDictionaryEntryId);
-  return entry?.defaultBaseCptCode || null;
+  if (!entry) return null;
+
+  // No real complexity signal on either side - exact prior behavior,
+  // unconditionally the dictionary's own configured code.
+  if (!specimen.complexity || !entry.defaultComplexity || specimen.complexity === entry.defaultComplexity) {
+    return entry.defaultBaseCptCode || null;
+  }
+
+  // Real, explicit downgrade to GROSS_ONLY - the one universal code,
+  // safe to apply automatically regardless of specimen type.
+  if (specimen.complexity === 'GROSS_ONLY') return GROSS_ONLY_CPT_CODE;
+
+  // Real, explicit upgrade to GROSS_AND_MICRO - only resolved when a
+  // real coder configured this specimen type's own upgrade code;
+  // otherwise honestly cleared for manual review rather than guessed.
+  return entry.microUpgradeBaseCptCode || null;
 }

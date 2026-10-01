@@ -84,7 +84,7 @@ describe('Event bus integration — real fix, the actual point of Phase 4: real 
 
     const listener = vi.fn();
     const unsub = mockPatientEventBus.subscribe('Patient.Linked', listener);
-    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'admin-1', 'Confirmed same patient');
+    await mockPatientIndexService.linkPatients(aRes.patientId, bRes.patientId, 'same_person', 'admin-1', 'Confirmed same patient');
     unsub();
 
     expect(listener).toHaveBeenCalledTimes(1);

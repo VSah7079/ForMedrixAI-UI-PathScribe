@@ -19,24 +19,29 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { grossingRoutingOverrideService, facilityService, specimenDictionaryService } from '../../../services';
 import type { GrossingRoutingOverrideEntry } from '../../../services/grossingRoutingOverrides/IGrossingRoutingOverrideService';
-import type { Facility as Client } from '../../../services/facilities/IFacilityService';
+import type { Facility } from '../../../services/facilities/IFacilityService';
 import type { SpecimenEntry } from '../../../services/specimenDictionary/specimenTypes';
 
-// Same three Gold Standard routes as SpecimenCategoriesSection.tsx —
-// same pragmatic hardcode-rather-than-fetch call, same reason.
-const GROSSING_TEMPLATES: { id: string; name: string }[] = [
-  { id: 'grossing_standard_tissue', name: 'Standard Tissue Grossing (Route A)' },
-  { id: 'grossing_fluid_cytology',  name: 'Fluid / Cell Block Grossing (Route B)' },
-  { id: 'grossing_histology_only',  name: 'Histology-Only / Direct Triage (Route C)' },
+// Same three Gold Standard routes as DepartmentsSection.tsx —
+// same pragmatic hardcode-rather-than-fetch call, same reason. Same
+// `{ id, labelKey }` conversion those files' own GROSSING_TEMPLATES
+// already went through (batch 71 / SpecimenCategoriesSection.tsx) —
+// a per-file namespace here rather than a shared one, consistent with
+// how each of those files keeps its own copy.
+const GROSSING_TEMPLATES: { id: string; labelKey: string }[] = [
+  { id: 'grossing_standard_tissue', labelKey: 'grossingRouteOverridesSection.grossingTemplates.standardTissue' },
+  { id: 'grossing_fluid_cytology',  labelKey: 'grossingRouteOverridesSection.grossingTemplates.fluidCytology' },
+  { id: 'grossing_histology_only',  labelKey: 'grossingRouteOverridesSection.grossingTemplates.histologyOnly' },
 ];
 
 type Draft = Omit<GrossingRoutingOverrideEntry, 'id' | 'createdAt' | 'updatedAt'>;
 
-const emptyDraft = (clients: Client[]): Draft => ({
-  clientId: clients[0]?.id ?? '',
+const emptyDraft = (facilities: Facility[]): Draft => ({
+  clientId: facilities[0]?.id ?? '',
   specimenType: '',
   grossingTemplateId: 'grossing_standard_tissue',
   active: true,
@@ -45,19 +50,20 @@ const emptyDraft = (clients: Client[]): Draft => ({
 interface OverrideModalProps {
   mode: 'add' | 'edit';
   entry?: GrossingRoutingOverrideEntry;
-  clients: Client[];
+  facilities: Facility[];
   knownSpecimenTypes: string[];
   onSave: (draft: Draft) => void;
   onClose: () => void;
 }
 
-const OverrideModal: React.FC<OverrideModalProps> = ({ mode, entry, clients, knownSpecimenTypes, onSave, onClose }) => {
-  const [draft, setDraft] = useState<Draft>(entry ?? emptyDraft(clients));
+const OverrideModal: React.FC<OverrideModalProps> = ({ mode, entry, facilities, knownSpecimenTypes, onSave, onClose }) => {
+  const { t } = useTranslation();
+  const [draft, setDraft] = useState<Draft>(entry ?? emptyDraft(facilities));
   const [error, setError] = useState('');
   const set = (k: keyof Draft, v: any) => setDraft(prev => ({ ...prev, [k]: v }));
 
   const handleSave = () => {
-    if (!draft.specimenType.trim()) { setError('Required'); return; }
+    if (!draft.specimenType.trim()) { setError(t('common.required')); return; }
     onSave(draft);
   };
 
@@ -65,54 +71,54 @@ const OverrideModal: React.FC<OverrideModalProps> = ({ mode, entry, clients, kno
     <div className="ps-ms-overlay">
       <div className="ps-ms-modal">
         <div className="ps-ms-header">
-          {mode === 'add' ? 'Add Grossing Route Override' : 'Edit Override'}
+          {mode === 'add' ? t('grossingRouteOverridesSection.modal.addTitle') : t('grossingRouteOverridesSection.modal.editTitle')}
         </div>
 
         <div className="ps-ms-body">
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="gro-client">Facility <span className="ps-conf-required">*</span></label>
-            <select id="gro-client" className="ps-conf-select" value={draft.clientId} onChange={e => set('clientId', e.target.value)}>
-              {clients.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
+            <label className="ps-conf-label" htmlFor="gro-facility">{t('grossingRouteOverridesSection.modal.facilityLabel')} <span className="ps-conf-required">*</span></label>
+            <select id="gro-facility" className="ps-conf-select" value={draft.clientId} onChange={e => set('clientId', e.target.value)}>
+              {facilities.map(c => <option key={c.id} value={c.id}>{c.name}</option>)}
             </select>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Specimen Type <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label">{t('grossingRouteOverridesSection.modal.specimenTypeLabel')} <span className="ps-conf-required">*</span></label>
             <input
               className={`ps-conf-input ${error ? 'ps-conf-input--error' : ''}`}
               list="ps-gro-known-types"
               value={draft.specimenType}
               onChange={e => { set('specimenType', e.target.value); setError(''); }}
-              placeholder="e.g. Kidney — must match the Specimen Dictionary's type field exactly"
+              placeholder={t('grossingRouteOverridesSection.modal.specimenTypePlaceholder')}
             />
             <datalist id="ps-gro-known-types">
-              {knownSpecimenTypes.map(t => <option key={t} value={t} />)}
+              {knownSpecimenTypes.map(st => <option key={st} value={st} />)}
             </datalist>
             {error && <span className="ps-conf-error-text">{error}</span>}
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label" htmlFor="gro-template">Override Route <span className="ps-conf-required">*</span></label>
+            <label className="ps-conf-label" htmlFor="gro-template">{t('grossingRouteOverridesSection.modal.overrideRouteLabel')} <span className="ps-conf-required">*</span></label>
             <select id="gro-template" className="ps-conf-select" value={draft.grossingTemplateId} onChange={e => set('grossingTemplateId', e.target.value)}>
-              {GROSSING_TEMPLATES.map(t => <option key={t.id} value={t.id}>{t.name}</option>)}
+              {GROSSING_TEMPLATES.map(gt => <option key={gt.id} value={gt.id}>{t(gt.labelKey)}</option>)}
             </select>
           </div>
 
           <div className="ps-conf-form-field">
-            <label className="ps-conf-label">Status</label>
+            <label className="ps-conf-label">{t('grossingRouteOverridesSection.modal.statusLabel')}</label>
             <div className="ps-conf-toggle-row">
               <div onClick={() => set('active', !draft.active)} className={`ps-conf-toggle-track ${draft.active ? 'ps-conf-toggle-track--active' : ''}`}>
                 <div className="ps-conf-toggle-thumb" />
               </div>
-              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? 'Active' : 'Inactive'}</span>
+              <span className={`ps-conf-toggle-label ${draft.active ? 'ps-conf-toggle-label--active' : ''}`}>{draft.active ? t('common.active') : t('common.inactive')}</span>
             </div>
           </div>
         </div>
 
         <div className="ps-ms-footer">
-          <button className="ps-ms-btn-cancel" onClick={onClose}>Cancel</button>
+          <button className="ps-ms-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
           <button className="ps-ms-btn-apply" onClick={handleSave}>
-            {mode === 'add' ? 'Add Override' : 'Save Changes'}
+            {mode === 'add' ? t('grossingRouteOverridesSection.modal.addButton') : t('grossingRouteOverridesSection.modal.saveChangesButton')}
           </button>
         </div>
       </div>
@@ -121,8 +127,9 @@ const OverrideModal: React.FC<OverrideModalProps> = ({ mode, entry, clients, kno
 };
 
 const GrossingRouteOverridesSection: React.FC = () => {
+  const { t } = useTranslation();
   const [overrides, setOverrides] = useState<GrossingRoutingOverrideEntry[]>([]);
-  const [clients,   setClients]   = useState<Client[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [knownSpecimenTypes, setKnownSpecimenTypes] = useState<string[]>([]);
   const [loading,   setLoading]   = useState(true);
   const [modal,     setModal]     = useState<{ mode: 'add' | 'edit'; entry?: GrossingRoutingOverrideEntry } | null>(null);
@@ -132,9 +139,9 @@ const GrossingRouteOverridesSection: React.FC = () => {
       grossingRoutingOverrideService.getAll(),
       facilityService.getAll(),
       specimenDictionaryService.getAll(),
-    ]).then(([overridesRes, clientsRes, entriesRes]) => {
+    ]).then(([overridesRes, facilitiesRes, entriesRes]) => {
       if (overridesRes.ok) setOverrides(overridesRes.data);
-      if (clientsRes.ok) setClients(clientsRes.data);
+      if (facilitiesRes.ok) setFacilities(facilitiesRes.data);
       if (entriesRes.ok) {
         const types = Array.from(new Set(entriesRes.data.map((e: SpecimenEntry) => e.type).filter(Boolean)));
         setKnownSpecimenTypes(types);
@@ -145,8 +152,8 @@ const GrossingRouteOverridesSection: React.FC = () => {
 
   useEffect(() => { loadAll(); }, []);
 
-  const clientName = (id: string) => clients.find(c => c.id === id)?.name ?? id;
-  const templateName = (id: string) => GROSSING_TEMPLATES.find(t => t.id === id)?.name ?? id;
+  const resolveFacilityName = (id: string) => facilities.find(c => c.id === id)?.name ?? id;
+  const templateName = (id: string) => { const tpl = GROSSING_TEMPLATES.find(gt => gt.id === id); return tpl ? t(tpl.labelKey) : id; };
 
   const handleSave = async (draft: Draft) => {
     if (modal?.mode === 'add') {
@@ -164,20 +171,24 @@ const GrossingRouteOverridesSection: React.FC = () => {
     setOverrides(prev => prev.filter(o => o.id !== id));
   };
 
-  if (loading) return <div className="ps-conf-loading">Loading grossing route overrides...</div>;
+  if (loading) return <div className="ps-conf-loading">{t('grossingRouteOverridesSection.loading')}</div>;
+
+  const headers: Array<{ key: string; label: string }> = [
+    { key: 'facility', label: t('grossingRouteOverridesSection.table.headers.facility') },
+    { key: 'specimenType', label: t('grossingRouteOverridesSection.table.headers.specimenType') },
+    { key: 'overrideRoute', label: t('grossingRouteOverridesSection.table.headers.overrideRoute') },
+    { key: 'status', label: t('grossingRouteOverridesSection.table.headers.status') },
+    { key: 'actions', label: t('grossingRouteOverridesSection.table.headers.actions') },
+  ];
 
   return (
     <div>
       <div className="ps-conf-section-header">
         <div>
-          <h3 className="ps-conf-section-title">Grossing Route Overrides</h3>
-          <p className="ps-conf-section-subtitle">
-            Per-client exceptions to which Grossing Route a specimen type gets — for a client whose actual handling
-            needs differ from the usual default. Specimen Type must match the Specimen Dictionary's own type field
-            exactly; everything not listed here uses the normal, unoverridden routing.
-          </p>
+          <h3 className="ps-conf-section-title">{t('grossingRouteOverridesSection.title')}</h3>
+          <p className="ps-conf-section-subtitle">{t('grossingRouteOverridesSection.subtitle')}</p>
         </div>
-        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>+ Add Override</button>
+        <button className="ps-conf-btn-primary" onClick={() => setModal({ mode: 'add' })}>{t('grossingRouteOverridesSection.addButton')}</button>
       </div>
 
       <div className="ps-conf-table-wrap">
@@ -185,33 +196,33 @@ const GrossingRouteOverridesSection: React.FC = () => {
           <table className="ps-conf-table">
             <thead className="ps-conf-thead-sticky">
               <tr>
-                {['Client', 'Specimen Type', 'Override Route', 'Status', 'Actions'].map(h => (
-                  <th key={h} className="ps-conf-th">{h}</th>
+                {headers.map(h => (
+                  <th key={h.key} className="ps-conf-th">{h.label}</th>
                 ))}
               </tr>
             </thead>
             <tbody>
               {overrides.map(o => (
                 <tr key={o.id} className="ps-conf-tr">
-                  <td className="ps-conf-td">{clientName(o.clientId)}</td>
+                  <td className="ps-conf-td">{resolveFacilityName(o.clientId)}</td>
                   <td className="ps-conf-td">{o.specimenType}</td>
                   <td className="ps-conf-td">{templateName(o.grossingTemplateId)}</td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-status-cell">
                       <span className={`ps-conf-status-dot ${o.active ? 'ps-conf-status-dot--active' : ''}`} />
-                      <span className={`ps-conf-status-text ${o.active ? 'ps-conf-status-text--active' : ''}`}>{o.active ? 'Active' : 'Inactive'}</span>
+                      <span className={`ps-conf-status-text ${o.active ? 'ps-conf-status-text--active' : ''}`}>{o.active ? t('common.active') : t('common.inactive')}</span>
                     </div>
                   </td>
                   <td className="ps-conf-td">
                     <div className="ps-conf-row-actions">
-                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: o })}>Edit</button>
-                      <button className="ps-conf-btn-row" onClick={() => handleRemove(o.id)}>Remove</button>
+                      <button className="ps-conf-btn-row" onClick={() => setModal({ mode: 'edit', entry: o })}>{t('common.edit')}</button>
+                      <button className="ps-conf-btn-row" onClick={() => handleRemove(o.id)}>{t('common.remove')}</button>
                     </div>
                   </td>
                 </tr>
               ))}
               {overrides.length === 0 && (
-                <tr><td className="ps-conf-empty-row" colSpan={5}>No overrides configured — every facility uses the normal, unoverridden routing.</td></tr>
+                <tr><td className="ps-conf-empty-row" colSpan={5}>{t('grossingRouteOverridesSection.table.emptyState')}</td></tr>
               )}
             </tbody>
           </table>
@@ -222,7 +233,7 @@ const GrossingRouteOverridesSection: React.FC = () => {
         <OverrideModal
           mode={modal.mode}
           entry={modal.entry}
-          clients={clients}
+          facilities={facilities}
           knownSpecimenTypes={knownSpecimenTypes}
           onSave={handleSave}
           onClose={() => setModal(null)}

@@ -19,3 +19,7 @@ scoped specifically to that page.
 No structural or naming issues in this folder as of this review
 (August 2026, part of the `src/pages/` review pass). Reviewed as part of
 the same pass that also covered `pages/system/`.
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`ManagementReviewModal.tsx`: each deficiency's case number is tagged.

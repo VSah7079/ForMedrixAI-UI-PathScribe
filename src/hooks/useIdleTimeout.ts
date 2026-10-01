@@ -1,6 +1,6 @@
 // src/hooks/useIdleTimeout.ts
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase 1 of the Inactivity Timeout & Draft Recovery spec (see PRIORITY_FIXES.md).
+// Phase 1 of the Inactivity Timeout & Draft Recovery spec.
 // Tracks real user activity (mouse, keyboard, scroll, touch) and exposes when
 // a warning should show and when the session should actually expire.
 //
@@ -18,7 +18,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useRef, useState, useCallback } from 'react';
-import { useLocation } from 'react-router-dom';
+import { useLocation } from 'react-router';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { extractCaseIdFromPath } from '@/services/session/ISessionTimeoutService';
 import { mockSessionTimeoutService } from '@/services/session/mockSessionTimeoutService';
@@ -94,8 +94,8 @@ export function useIdleTimeout(enabled: boolean): UseIdleTimeoutResult {
 
     caseRouter.getCase(caseId).then(async (caseData) => {
       if (cancelled) return;
-      const orderingClientId = caseData?.order?.clientId;
-      const res = await mockSessionTimeoutService.resolveEffectiveMinutes(orderingClientId);
+      const orderingFacilityId = caseData?.order?.facilityId;
+      const res = await mockSessionTimeoutService.resolveEffectiveMinutes(orderingFacilityId);
       if (!cancelled && res.ok) setEffectiveMinutes(res.data);
     }).catch(async () => {
       if (cancelled) return;

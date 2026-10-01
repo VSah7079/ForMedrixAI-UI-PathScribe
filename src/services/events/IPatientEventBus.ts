@@ -18,7 +18,7 @@
 // change, same pattern as every other service in this app.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import type { MasterPatientRecord } from '../patients/IPatientIndexService';
+import type { MasterPatientRecord, PatientLinkRelationshipType } from '../patients/IPatientIndexService';
 import type { Encounter } from '../encounters/IEncounterService';
 
 /** Real, honest event catalogue - one event per real state-change
@@ -29,7 +29,7 @@ export type PatientEvent =
   | { type: 'Patient.Created'; patient: MasterPatientRecord }
   | { type: 'Patient.Matched'; patient: MasterPatientRecord }
   | { type: 'Patient.Merged'; sourcePatientId: string; targetPatient: MasterPatientRecord; casesRepointed: number }
-  | { type: 'Patient.Linked'; patientIdA: string; patientIdB: string; linkedBy: string; reason?: string }
+  | { type: 'Patient.Linked'; patientIdA: string; patientIdB: string; relationshipType: PatientLinkRelationshipType; linkedBy: string; reason?: string }
   | { type: 'Patient.Updated'; patient: MasterPatientRecord }
   /** Real feature, per direct architecture confirmation: ADT^A43 —
    *  genuinely distinct from Patient.Merged. Neither identity is

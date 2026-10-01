@@ -27,7 +27,7 @@ describe('mockRvuCodeMapService — real fix: the versioned RVU table that never
     const created = await mockRvuCodeMapService.createVersion({
       label: 'Test 2027 update',
       effectiveDate: '2027-01-01T00:00:00.000Z',
-      entries: [{ code: '99999', description: 'Test code', workRvu: 1.0 }],
+      entries: [{ code: '99999', billingCode: '99999', description: 'Test code', workRvu: 1.0, level: 'specimen' as const, billingType: 'Global' as const }],
       uploadedBy: 'test-admin',
     });
     expect(created.ok).toBe(true);
@@ -48,7 +48,7 @@ describe('mockRvuCodeMapService — real fix: the versioned RVU table that never
   it('rejects an entry with a non-positive work RVU value - never silently accepted', async () => {
     const res = await mockRvuCodeMapService.createVersion({
       label: 'Bad data', effectiveDate: '2027-01-01T00:00:00.000Z',
-      entries: [{ code: '12345', description: 'x', workRvu: 0 }],
+      entries: [{ code: '12345', billingCode: '12345', description: 'x', workRvu: 0, level: 'specimen' as const, billingType: 'Global' as const }],
       uploadedBy: 'test-admin',
     });
     expect(res.ok).toBe(false);
@@ -57,7 +57,7 @@ describe('mockRvuCodeMapService — real fix: the versioned RVU table that never
   it('activating a version deactivates every other version - exactly one active at a time', async () => {
     const created = await mockRvuCodeMapService.createVersion({
       label: 'New version', effectiveDate: '2027-01-01T00:00:00.000Z',
-      entries: [{ code: '11111', description: 'x', workRvu: 1.0 }], uploadedBy: 'test-admin',
+      entries: [{ code: '11111', billingCode: '11111', description: 'x', workRvu: 1.0, level: 'specimen' as const, billingType: 'Global' as const }], uploadedBy: 'test-admin',
     });
     if (!created.ok) throw new Error('setup failed');
     await mockRvuCodeMapService.activateVersion(created.data.id);
@@ -76,7 +76,7 @@ describe('mockRvuCodeMapService — real fix: the versioned RVU table that never
 
     await mockRvuCodeMapService.createVersion({
       label: 'Another version', effectiveDate: '2027-06-01T00:00:00.000Z',
-      entries: [{ code: '22222', description: 'x', workRvu: 1.0 }], uploadedBy: 'test-admin',
+      entries: [{ code: '22222', billingCode: '22222', description: 'x', workRvu: 1.0, level: 'specimen' as const, billingType: 'Global' as const }], uploadedBy: 'test-admin',
     });
 
     const after = await mockRvuCodeMapService.getAllVersions();
@@ -88,7 +88,7 @@ describe('mockRvuCodeMapService — real fix: the versioned RVU table that never
       // Seed version effective 2026-01-01. Add a later version effective 2027-01-01.
       await mockRvuCodeMapService.createVersion({
         label: '2027 update', effectiveDate: '2027-01-01T00:00:00.000Z',
-        entries: [{ code: '88305', description: 'Updated 2027 value', workRvu: 0.80 }],
+        entries: [{ code: '88305', billingCode: '88305', description: 'Updated 2027 value', workRvu: 0.80, level: 'specimen' as const, billingType: 'Global' as const }],
         uploadedBy: 'test-admin',
       });
 
@@ -101,11 +101,17 @@ describe('mockRvuCodeMapService — real fix: the versioned RVU table that never
     });
 
     it('resolves to the newer version for a date after it took effect', async () => {
-      await mockRvuCodeMapService.createVersion({
+      const created = await mockRvuCodeMapService.createVersion({
         label: '2027 update', effectiveDate: '2027-01-01T00:00:00.000Z',
-        entries: [{ code: '88305', description: 'Updated 2027 value', workRvu: 0.80 }],
+        entries: [{ code: '88305', billingCode: '88305', description: 'Updated 2027 value', workRvu: 0.80, level: 'specimen' as const, billingType: 'Global' as const }],
         uploadedBy: 'test-admin',
       });
+      if (!created.ok) throw new Error('setup failed');
+      // Real, per direct follow-up: a version now genuinely requires
+      // approval before it's ever eligible for resolution - approve it
+      // here (as a different, real reviewer) so this test still
+      // exercises the real, intended date-based resolution behavior.
+      await mockRvuCodeMapService.approveVersion(created.data.id, 'reviewer-1');
 
       const result = await mockRvuCodeMapService.getVersionEffectiveAt('2027-03-01T00:00:00.000Z');
       expect(result.ok).toBe(true);
@@ -118,16 +124,30 @@ describe('mockRvuCodeMapService — real fix: the versioned RVU table that never
       if (result.ok) expect(result.data).toBeNull();
     });
 
-    it('resolving a date does not depend on which version happens to be marked active', async () => {
+    it('resolving a date does not depend on which version happens to be marked active - only on approval status', async () => {
       const created = await mockRvuCodeMapService.createVersion({
         label: '2027 update', effectiveDate: '2027-01-01T00:00:00.000Z',
-        entries: [{ code: '88305', description: 'x', workRvu: 0.80 }], uploadedBy: 'test-admin',
+        entries: [{ code: '88305', billingCode: '88305', description: 'x', workRvu: 0.80, level: 'specimen' as const, billingType: 'Global' as const }], uploadedBy: 'test-admin',
       });
       if (!created.ok) throw new Error('setup failed');
-      // Deliberately do NOT activate the 2027 version - it stays inactive.
+      // Real, per direct follow-up: approving is what makes a version
+      // eligible for resolution now - approveVersion also happens to
+      // set isActive, but the real point of this test (unchanged) is
+      // that date-based resolution itself never looks at isActive.
+      await mockRvuCodeMapService.approveVersion(created.data.id, 'reviewer-1');
       const result = await mockRvuCodeMapService.getVersionEffectiveAt('2027-06-01T00:00:00.000Z');
-      // Still resolves the real 2027 version by date, regardless of active flag.
       expect(result.ok && result.data?.id).toBe(created.data.id);
+    });
+
+    it('never resolves a version that is still PENDING_APPROVAL, even if its effectiveDate is the best match', async () => {
+      const created = await mockRvuCodeMapService.createVersion({
+        label: '2027 update (unapproved)', effectiveDate: '2027-01-01T00:00:00.000Z',
+        entries: [{ code: '88305', billingCode: '88305', description: 'x', workRvu: 0.80, level: 'specimen' as const, billingType: 'Global' as const }], uploadedBy: 'test-admin',
+      });
+      if (!created.ok) throw new Error('setup failed');
+      const result = await mockRvuCodeMapService.getVersionEffectiveAt('2027-06-01T00:00:00.000Z');
+      if (!result.ok) throw new Error('lookup failed');
+      expect(result.data?.id).not.toBe(created.data.id);
     });
   });
 });

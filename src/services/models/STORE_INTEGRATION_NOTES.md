@@ -9,32 +9,26 @@ integration work.
 
 ## The three things that are mocked right now
 
-### 1. The catalog itself (`STORE_CATALOG` constant)
+### 1. The catalog itself (`GLOBAL_MODEL_CATALOG`)
 
-**File:** `src/services/models/mockModelStoreService.ts`, top of file.
+**File:** `src/services/models/modelCatalog.ts` (moved out of the store
+service by PS-58).
 
-Right now this is a hardcoded array of two example `StoreListing`
-objects. A real implementation replaces this with an authenticated
-API call to ForMedrixAI — something like
-`GET /store/models?vendor=&subspecialty=` — returning whatever
-ForMedrixAI has published following their own internal
-regression-testing pass.
+Right now this is a hardcoded array of `ModelCatalogEntry` records. A real
+implementation reads the top-level `/modelCatalog` collection (vendor-staff
+write only in `firestore.rules`), or an authenticated ForMedrixAI API such
+as `GET /store/models?vendor=&subspecialty=` that ForMedrixAI publishes to
+after its own regression testing.
 
-**What has to stay the same:** the `StoreListing` shape itself is a
-reasonable contract to keep — `storeId`, `vendor`, `apiModelId`,
-`requestFormat`, `benchmarkAccuracy`, `releaseNotes`, etc. are all
-things a real catalog response would need to provide regardless of
-transport. The `getAvailable()` method's filtering logic (excluding
-anything already present locally, matched by `vendor` +
-`apiModelId` — the real identity of a model, not its display
-name/version) should also survive the swap unchanged; it's a local
-concern, not a store concern.
+**What has to stay the same:** the `ModelCatalogEntry` shape (`id`,
+`vendor`, `apiModelId`, `requestFormat`, `benchmarkAccuracy`,
+`releaseNotes`, `storeListed`, …), one entry per real model (vendor +
+`apiModelId`), and `availableForAdoption()` in `modelAdoption.ts` (store
+listings minus what this organisation has adopted).
 
-**What has to change:** everything about *how* the listings are
-fetched — real network call, real error handling for the store being
-unreachable (not just "unauthorized"), possibly pagination if the
-catalog grows, possibly server-side filtering by subspecialty/vendor
-instead of returning everything and filtering client-side.
+**What has to change:** how entries are fetched: a real network call,
+handling for the store being unreachable (not only unlicensed), possibly
+pagination and server-side filtering.
 
 ### 2. Authorization (`checkStoreAuthorization()` / `MOCK_ORG_HAS_STORE_LICENSE`)
 
@@ -58,71 +52,58 @@ either the whole catalog is visible or none of it is. If tiered access
 is a real product requirement, `getAvailable()` needs the tier/org
 context threaded through, not just a boolean.
 
-### 3. "Download" (`download()` method)
+### 3. "Download" / adopt (`download()` method)
 
 **File:** same file.
 
-Right now, downloading a store listing does exactly one thing: calls
-the local `modelService.create()` to make a new `AIModel` record.
-There's no real "transfer" happening — nothing is actually being
-downloaded from anywhere, since there's nowhere real to download from
-yet.
+Since PS-58, downloading a listing creates an **adoption record** for the
+organisation in session (`modelService.adopt()` →
+`/organisations/{orgId}/adoptedModels/{modelId}`). It no longer copies the
+model into a local list. Nothing is transferred; there is nowhere real to
+download from yet. The button is labelled **Adopt** on screen.
 
 **What a real implementation likely needs to add:**
-- A real API call to ForMedrixAI confirming the download/adoption
-  server-side (so ForMedrixAI's own systems know this org has taken
-  this model — likely relevant for their own support/billing/deprecation-notice
-  targeting, per the "Anthropic model deprecation → email to account
-  holders" pattern already discussed for how ForMedrixAI itself
-  gets notified of upstream vendor changes)
-- Real credential/config delivery if the model requires anything
-  beyond what's already in `AIModel` (e.g. if ForMedrixAI ever brokers
-  API keys on a customer's behalf rather than the customer bringing
-  their own vendor account)
-- Whatever error handling a real network operation needs that a local
-  `create()` call never has to worry about (timeout, partial failure,
-  retry)
+- A call to ForMedrixAI recording the adoption server-side, so ForMedrixAI
+  knows which organisations run which model (support, billing, deprecation
+  notices). With Option 2 this can simply read the adoption records; vendor
+  staff have read access to them in `firestore.rules`.
+- Credential or config delivery, if ForMedrixAI ever brokers vendor API keys
+  on a customer's behalf. The adoption's `configOverrides` field is the
+  tenant-side place for per-organisation parameters.
+- Error handling a network operation needs (timeout, partial failure,
+  retry).
 
-**What should stay the same:** the *local* half of `download()` — the
-"always Beta, always `isDefault: false`, always `casesProcessed: 0`
-regardless of what the store claims" logic — is a genuine product
-decision, not a mock shortcut. Keep it even after the real store call
-is wired in.
+**What should stay the same:** a new adoption is always Beta, never the
+default, with zero cases processed, whatever the catalog benchmark says
+(`buildAdoption()`; the `firestore.rules` create rule enforces the same).
+This is a product decision, not a mock shortcut.
 
-## The open architectural question this whole feature surfaced
+## Tenant scoping: decided (PS-58, Option 2)
 
-Raised in conversation while building this, not yet resolved: **is the
-local "adopted models" catalog itself supposed to be tenant-scoped?**
+This used to be the open question here: is the adopted-models list
+tenant-scoped? Pete decided it on PS-58: **a global model catalog with
+per-tenant adoption records.**
 
-Checked directly: `firestore.rules` already defines `organisationId`
-as the real tenant boundary for collections like cases, but currently
-says nothing about models at all — this isn't an oversight the mock
-introduced, it's a genuinely open design question at the schema level.
-
-The two live design options, worth deciding explicitly rather than
-defaulting into one by accident:
-1. **Fully tenant-scoped** — each organization has its own private
-   adopted-models list, `organisationId`-filtered like everything
-   else. Downloading in one tenant never affects another.
-2. **Global catalog, per-tenant subset** — the underlying model
-   records are shared/global (since "Claude Opus 5 exists and has
-   these vendor details" is true regardless of which hospital is
-   asking), but each org has its own list of *which* global models
-   it's adopted, closer to a join table than a filtered collection.
-
-Option 2 avoids duplicating identical vendor/API metadata across every
-tenant that happens to adopt the same model, but is more schema work
-up front. Neither is implemented in the mock right now — the mock's
-single global `localStorage` key is neither of these, it's simply
-unscoped, and shouldn't be read as an implicit vote for option 2.
+- Models are platform assets. They are published once in `/modelCatalog`
+  and never copied into tenants, so a catalog update reaches every
+  organisation without fan-out writes.
+- An organisation *adopts, validates and activates* a model. The
+  relationship is a record at `/organisations/{orgId}/adoptedModels/{modelId}`
+  holding everything tenant-internal: status, its default, case counts,
+  notes, config and threshold overrides.
+- Built in Batch 320: `modelAdoption.ts`, `mockModelService.ts` and
+  `firestore.rules`. See this folder's `README.md` for the full model and
+  what is still open.
 
 ## Quick-reference: files involved
 
-- `src/services/models/IModelService.ts` — the `create()` method
-  signature; stable, shouldn't need to change for the real store
-- `src/services/models/mockModelService.ts` — local catalog CRUD;
-  the eventual Firestore equivalent already has a place to go per the
-  existing `interface/mock/firestore` pattern this folder follows
+- `src/services/models/IModelService.ts` — catalog, adoption and joined
+  types; `adopt()` (which replaced `create()` in PS-58)
+- `src/services/models/modelCatalog.ts` — the global catalog
+- `src/services/models/modelAdoption.ts` — pure adoption rules
+- `src/services/models/mockModelService.ts` — this organisation's
+  adoptions, joined with the catalog; the Firestore equivalent reads the
+  two collections above
 - `src/services/models/mockModelStoreService.ts` — everything
   described above lives here; this is the file that gets rewritten,
   not extended, once a real store exists

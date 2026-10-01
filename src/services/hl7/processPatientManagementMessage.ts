@@ -272,8 +272,14 @@ export async function processPatientManagementMessage(raw: string, organisationI
     return { eventType: 'A40', patientId: target.patientId, casesRepointed };
   }
 
-  // A24 — link, never merge; both real identities stay independently active.
-  await mockPatientIndexService.linkPatients(source.patientId, target.patientId, SYSTEM_ACTOR, 'Real, inbound ADT^A24 link event');
+  // A24 — link, never merge; both real identities stay independently
+  // active. Real, per direct guidance: HL7 A24 (Link Patient
+  // Information) is specifically the "these two real, separate MRN
+  // records are the same real person" event — 'same_person' is the
+  // correct, real semantic here, never 'family_relation' (no real
+  // ADT event type represents "this newborn belongs to this mother"
+  // the way A24 represents identity linkage).
+  await mockPatientIndexService.linkPatients(source.patientId, target.patientId, 'same_person', SYSTEM_ACTOR, 'Real, inbound ADT^A24 link event');
   return { eventType: 'A24', patientId: target.patientId };
 }
 

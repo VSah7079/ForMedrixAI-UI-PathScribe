@@ -11,13 +11,34 @@ function withMirroredNames<T extends { givenNames: string; familyNames: string }
   return { ...p, firstName: p.givenNames, lastName: p.familyNames };
 }
 
+// physicianCode is required+unique (PS-73), but intake auto-create
+// (findOrCreateByNpi/findOrCreateByName) never has a real one to
+// assign — same real gap NPI already has at intake, which is exactly
+// why NPI stays optional. Since physicianCode can't be optional (every
+// dictionary's own required+unique field, e.g. DelegationType.id, is
+// non-optional at the type level too), auto-created records get a
+// system-generated placeholder — same 'ph' + Date.now() convention
+// already used for id immediately below — so the record satisfies the
+// constraint from creation and staff can replace it with a real code
+// once the physician is verified, same as they already do for every
+// other 'Unverified' auto-created field.
+//
+// Exported, per direct need: applyPhysicianMasterFileUpdate.ts (a
+// fourth real caller, alongside the three findOrCreateBy* methods
+// below) needs this too, for the same reason — a genuinely new
+// physician record needs a real placeholder code regardless of which
+// pipeline created it.
+export function generateAutoPhysicianCode(): string {
+  return 'AUTO-' + Date.now();
+}
+
 const SEED_PHYSICIANS: Physician[] = [
-  { id: 'ph1', namePrefix: 'Dr.', givenNames: 'Robert',   familyNames: 'Williams', firstName: 'Robert',   lastName: 'Williams', npi: '9876543210', specialty: 'Gastroenterology',    phone: '555-1001', fax: '555-1002', email: 'rwilliams@clinic.org',  preferredContact: 'Fax',   clientIds: ['c1', 'c2'], status: 'Active'     },
-  { id: 'ph2', namePrefix: 'Dr.', givenNames: 'Jennifer', familyNames: 'Davis',    firstName: 'Jennifer', lastName: 'Davis',    npi: '9876543211', specialty: 'Dermatology',         phone: '555-1003', fax: '555-1004', email: 'jdavis@clinic.org',     preferredContact: 'Email', clientIds: ['c1'],       status: 'Active'     },
-  { id: 'ph3', namePrefix: 'Dr.', givenNames: 'Michael',  familyNames: 'Brown',    firstName: 'Michael',  lastName: 'Brown',    npi: '9876543212', specialty: 'General Surgery',     phone: '555-1005', fax: '555-1006', email: 'mbrown@clinic.org',     preferredContact: 'Fax',   clientIds: ['c2'],       status: 'Active'     },
-  { id: 'ph4', namePrefix: 'Dr.', givenNames: 'Patricia', familyNames: 'Miller',   firstName: 'Patricia', lastName: 'Miller',   npi: '9876543213', specialty: 'Internal Medicine',   phone: '555-1007', fax: '',         email: 'pmiller@clinic.org',    preferredContact: 'Phone', clientIds: ['c3'],       status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-03-01' },
-  { id: 'ph5', namePrefix: 'Dr.', givenNames: 'David',    familyNames: 'Wilson',   firstName: 'David',    lastName: 'Wilson',   npi: '9876543214', specialty: 'Urology',             phone: '555-1009', fax: '555-1010', email: 'dwilson@clinic.org',    preferredContact: 'Fax',   clientIds: ['c1', 'c3'], status: 'Active'     },
-  { id: 'ph6', namePrefix: 'Dr.', givenNames: 'Susan',    familyNames: 'Taylor',   firstName: 'Susan',    lastName: 'Taylor',   npi: '9876543215', specialty: 'General',             phone: '',         fax: '',         email: '',                      preferredContact: 'Fax',   clientIds: [],           status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-03-02' },
+  { id: 'ph1', physicianCode: 'PHY-0001', namePrefix: 'Dr.', givenNames: 'Robert',   familyNames: 'Williams', firstName: 'Robert',   lastName: 'Williams', npi: '9876543210', specialty: 'Gastroenterology',    phone: '555-1001', fax: '555-1002', email: 'rwilliams@clinic.org',  preferredContact: 'Fax',   clientIds: ['c1', 'c2'], status: 'Active'     },
+  { id: 'ph2', physicianCode: 'PHY-0002', namePrefix: 'Dr.', givenNames: 'Jennifer', familyNames: 'Davis',    firstName: 'Jennifer', lastName: 'Davis',    npi: '9876543211', specialty: 'Dermatology',         phone: '555-1003', fax: '555-1004', email: 'jdavis@clinic.org',     preferredContact: 'Email', clientIds: ['c1'],       status: 'Active'     },
+  { id: 'ph3', physicianCode: 'PHY-0003', namePrefix: 'Dr.', givenNames: 'Michael',  familyNames: 'Brown',    firstName: 'Michael',  lastName: 'Brown',    npi: '9876543212', specialty: 'General Surgery',     phone: '555-1005', fax: '555-1006', email: 'mbrown@clinic.org',     preferredContact: 'Fax',   clientIds: ['c2'],       status: 'Active'     },
+  { id: 'ph4', physicianCode: 'PHY-0004', namePrefix: 'Dr.', givenNames: 'Patricia', familyNames: 'Miller',   firstName: 'Patricia', lastName: 'Miller',   npi: '9876543213', specialty: 'Internal Medicine',   phone: '555-1007', fax: '',         email: 'pmiller@clinic.org',    preferredContact: 'Phone', clientIds: ['c3'],       status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-03-01' },
+  { id: 'ph5', physicianCode: 'PHY-0005', namePrefix: 'Dr.', givenNames: 'David',    familyNames: 'Wilson',   firstName: 'David',    lastName: 'Wilson',   npi: '9876543214', specialty: 'Urology',             phone: '555-1009', fax: '555-1010', email: 'dwilson@clinic.org',    preferredContact: 'Fax',   clientIds: ['c1', 'c3'], status: 'Active'     },
+  { id: 'ph6', physicianCode: 'PHY-0006', namePrefix: 'Dr.', givenNames: 'Susan',    familyNames: 'Taylor',   firstName: 'Susan',    lastName: 'Taylor',   npi: '9876543215', specialty: 'General',             phone: '',         fax: '',         email: '',                      preferredContact: 'Fax',   clientIds: [],           status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-03-02' },
 
   // ── Backfilled from existing seed case data (2026-07-16) ──────────────
   // These 52 physicians were referenced as order.requestingProvider free
@@ -27,58 +48,58 @@ const SEED_PHYSICIANS: Physician[] = [
   // forward for NEW cases. This is a one-time catch-up for existing seed
   // data, which never goes through AccessionPage.tsx and so would never
   // have triggered that auto-create path.
-  { id: 'ph7', namePrefix: 'Dr.', givenNames: 'Amanda', familyNames: 'Chen', firstName: 'Amanda', lastName: 'Chen', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph8', namePrefix: 'Dr.', givenNames: 'Angela', familyNames: 'Brooks', firstName: 'Angela', lastName: 'Brooks', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph9', namePrefix: 'Dr.', givenNames: 'Anil', familyNames: 'Sharma', firstName: 'Anil', lastName: 'Sharma', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c4'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph10', namePrefix: 'Dr.', givenNames: 'Carol', familyNames: 'Simmons', firstName: 'Carol', lastName: 'Simmons', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph11', namePrefix: 'Dr.', givenNames: 'Carolyn', familyNames: 'Johnston', firstName: 'Carolyn', lastName: 'Johnston', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-hfhs-07'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph12', namePrefix: 'Dr.', givenNames: 'Felicity', familyNames: 'Adeyemi', firstName: 'Felicity', lastName: 'Adeyemi', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph13', namePrefix: 'Dr.', givenNames: 'Harvey', familyNames: 'Pass', firstName: 'Harvey', lastName: 'Pass', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-hfhs-01'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph14', namePrefix: 'Dr.', givenNames: 'Helen', familyNames: 'Marsden', firstName: 'Helen', lastName: 'Marsden', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mft-03'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph15', namePrefix: 'Dr.', givenNames: 'Helen', familyNames: 'Marsh', firstName: 'Helen', lastName: 'Marsh', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph16', namePrefix: 'Dr.', givenNames: 'Henry', familyNames: 'Okoye', firstName: 'Henry', lastName: 'Okoye', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph17', namePrefix: 'Dr.', givenNames: 'James', familyNames: 'Fowler', firstName: 'James', lastName: 'Fowler', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph18', namePrefix: 'Dr.', givenNames: 'James', familyNames: 'Nguyen', firstName: 'James', lastName: 'Nguyen', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c3'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph19', namePrefix: 'Dr.', givenNames: 'James', familyNames: 'Orringer', firstName: 'James', lastName: 'Orringer', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mpa-02'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph20', namePrefix: 'Dr.', givenNames: 'James', familyNames: 'Park', firstName: 'James', lastName: 'Park', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c3'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph21', namePrefix: 'Dr.', givenNames: 'Jennifer', familyNames: 'Moss', firstName: 'Jennifer', lastName: 'Moss', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph22', namePrefix: 'Dr.', givenNames: 'Karen', familyNames: 'Shapiro', firstName: 'Karen', lastName: 'Shapiro', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph23', namePrefix: 'Dr.', givenNames: 'Kevin', familyNames: 'Ng', firstName: 'Kevin', lastName: 'Ng', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph24', namePrefix: 'Dr.', givenNames: 'Lisa', familyNames: 'Fontaine', firstName: 'Lisa', lastName: 'Fontaine', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph25', namePrefix: 'Dr.', givenNames: 'Lisa', familyNames: 'Kaminski', firstName: 'Lisa', lastName: 'Kaminski', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mpa-01'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph26', namePrefix: 'Dr.', givenNames: 'Lisa', familyNames: 'Wong', firstName: 'Lisa', lastName: 'Wong', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph27', namePrefix: 'Dr.', givenNames: 'Mani', familyNames: 'Menon', firstName: 'Mani', lastName: 'Menon', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mpa-03'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph28', namePrefix: 'Dr.', givenNames: 'Martin', familyNames: 'Osei', firstName: 'Martin', lastName: 'Osei', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph29', namePrefix: 'Dr.', givenNames: 'Mazen', familyNames: 'Iskandar', firstName: 'Mazen', lastName: 'Iskandar', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-hfhs-03'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph30', namePrefix: 'Dr.', givenNames: 'Michael', familyNames: 'Torres', firstName: 'Michael', lastName: 'Torres', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c2'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph31', namePrefix: 'Dr.', givenNames: 'Michelle', familyNames: 'Foster', firstName: 'Michelle', lastName: 'Foster', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c_outreach_derm'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph32', namePrefix: 'Dr.', givenNames: 'Nancy', familyNames: 'Graves', firstName: 'Nancy', lastName: 'Graves', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph33', namePrefix: 'Dr.', givenNames: 'Nathan', familyNames: 'Briggs', firstName: 'Nathan', lastName: 'Briggs', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c_outreach_urology'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph34', namePrefix: 'Dr.', givenNames: 'Pamela', familyNames: 'Winters', firstName: 'Pamela', lastName: 'Winters', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph35', namePrefix: 'Dr.', givenNames: 'Patricia', familyNames: 'Moore', firstName: 'Patricia', lastName: 'Moore', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c2'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph36', namePrefix: 'Dr.', givenNames: 'Patricia', familyNames: 'Owens', firstName: 'Patricia', lastName: 'Owens', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph37', namePrefix: 'Dr.', givenNames: 'Priya', familyNames: 'Nair', firstName: 'Priya', lastName: 'Nair', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph38', namePrefix: 'Dr.', givenNames: 'Rachel', familyNames: 'Kim', firstName: 'Rachel', lastName: 'Kim', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph39', namePrefix: 'Dr.', givenNames: 'Samuel', familyNames: 'Ortega', firstName: 'Samuel', lastName: 'Ortega', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph40', namePrefix: 'Dr.', givenNames: 'Sandra', familyNames: 'Okafor', firstName: 'Sandra', lastName: 'Okafor', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph41', namePrefix: 'Dr.', givenNames: 'Sarah', familyNames: 'Chen', firstName: 'Sarah', lastName: 'Chen', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph42', namePrefix: 'Dr.', givenNames: 'Susan', familyNames: 'Park', firstName: 'Susan', lastName: 'Park', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c2'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph43', namePrefix: 'Dr.', givenNames: 'Thomas', familyNames: 'Walsh', firstName: 'Thomas', lastName: 'Walsh', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph44', namePrefix: 'Dr.', givenNames: 'Victor', familyNames: 'Anand', firstName: 'Victor', lastName: 'Anand', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph45', namePrefix: 'Dr.', givenNames: 'Wendy', familyNames: 'Castillo', firstName: 'Wendy', lastName: 'Castillo', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph46', namePrefix: 'Miss', givenNames: 'Fiona', familyNames: 'Radcliffe', firstName: 'Fiona', lastName: 'Radcliffe', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph47', namePrefix: 'Mr.', givenNames: 'Alistair', familyNames: 'Drummond', firstName: 'Alistair', lastName: 'Drummond', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph48', namePrefix: 'Mr.', givenNames: 'Andrew', familyNames: 'Pearce', firstName: 'Andrew', lastName: 'Pearce', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph49', namePrefix: 'Mr.', givenNames: 'David', familyNames: 'Holloway', firstName: 'David', lastName: 'Holloway', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph50', namePrefix: 'Mr.', givenNames: 'David', familyNames: 'Whitmore', firstName: 'David', lastName: 'Whitmore', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mft-02'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph51', namePrefix: 'Mr.', givenNames: 'Edward', familyNames: 'Kingsley', firstName: 'Edward', lastName: 'Kingsley', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph52', namePrefix: 'Mr.', givenNames: 'Gavin', familyNames: 'Fletcher', firstName: 'Gavin', lastName: 'Fletcher', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph53', namePrefix: 'Mr.', givenNames: 'James', familyNames: 'Caldwell', firstName: 'James', lastName: 'Caldwell', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph54', namePrefix: 'Mr.', givenNames: 'James', familyNames: 'Whitfield', firstName: 'James', lastName: 'Whitfield', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: [], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph55', namePrefix: 'Mr.', givenNames: 'Nicholas', familyNames: 'Farrow', firstName: 'Nicholas', lastName: 'Farrow', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph56', namePrefix: 'Mr.', givenNames: 'Oliver', familyNames: 'Bancroft', firstName: 'Oliver', lastName: 'Bancroft', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph57', namePrefix: 'Mr.', givenNames: 'Peter', familyNames: 'Thornton', firstName: 'Peter', lastName: 'Thornton', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mft-01'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
-  { id: 'ph58', namePrefix: 'Mr.', givenNames: 'Simon', familyNames: 'Hartley', firstName: 'Simon', lastName: 'Hartley', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph7', physicianCode: 'PHY-0007', namePrefix: 'Dr.', givenNames: 'Amanda', familyNames: 'Chen', firstName: 'Amanda', lastName: 'Chen', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph8', physicianCode: 'PHY-0008', namePrefix: 'Dr.', givenNames: 'Angela', familyNames: 'Brooks', firstName: 'Angela', lastName: 'Brooks', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph9', physicianCode: 'PHY-0009', namePrefix: 'Dr.', givenNames: 'Anil', familyNames: 'Sharma', firstName: 'Anil', lastName: 'Sharma', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c4'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph10', physicianCode: 'PHY-0010', namePrefix: 'Dr.', givenNames: 'Carol', familyNames: 'Simmons', firstName: 'Carol', lastName: 'Simmons', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph11', physicianCode: 'PHY-0011', namePrefix: 'Dr.', givenNames: 'Carolyn', familyNames: 'Johnston', firstName: 'Carolyn', lastName: 'Johnston', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-hfhs-07'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph12', physicianCode: 'PHY-0012', namePrefix: 'Dr.', givenNames: 'Felicity', familyNames: 'Adeyemi', firstName: 'Felicity', lastName: 'Adeyemi', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph13', physicianCode: 'PHY-0013', namePrefix: 'Dr.', givenNames: 'Harvey', familyNames: 'Pass', firstName: 'Harvey', lastName: 'Pass', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-hfhs-01'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph14', physicianCode: 'PHY-0014', namePrefix: 'Dr.', givenNames: 'Helen', familyNames: 'Marsden', firstName: 'Helen', lastName: 'Marsden', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mft-03'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph15', physicianCode: 'PHY-0015', namePrefix: 'Dr.', givenNames: 'Helen', familyNames: 'Marsh', firstName: 'Helen', lastName: 'Marsh', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph16', physicianCode: 'PHY-0016', namePrefix: 'Dr.', givenNames: 'Henry', familyNames: 'Okoye', firstName: 'Henry', lastName: 'Okoye', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph17', physicianCode: 'PHY-0017', namePrefix: 'Dr.', givenNames: 'James', familyNames: 'Fowler', firstName: 'James', lastName: 'Fowler', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph18', physicianCode: 'PHY-0018', namePrefix: 'Dr.', givenNames: 'James', familyNames: 'Nguyen', firstName: 'James', lastName: 'Nguyen', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c3'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph19', physicianCode: 'PHY-0019', namePrefix: 'Dr.', givenNames: 'James', familyNames: 'Orringer', firstName: 'James', lastName: 'Orringer', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mpa-02'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph20', physicianCode: 'PHY-0020', namePrefix: 'Dr.', givenNames: 'James', familyNames: 'Park', firstName: 'James', lastName: 'Park', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c3'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph21', physicianCode: 'PHY-0021', namePrefix: 'Dr.', givenNames: 'Jennifer', familyNames: 'Moss', firstName: 'Jennifer', lastName: 'Moss', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph22', physicianCode: 'PHY-0022', namePrefix: 'Dr.', givenNames: 'Karen', familyNames: 'Shapiro', firstName: 'Karen', lastName: 'Shapiro', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph23', physicianCode: 'PHY-0023', namePrefix: 'Dr.', givenNames: 'Kevin', familyNames: 'Ng', firstName: 'Kevin', lastName: 'Ng', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph24', physicianCode: 'PHY-0024', namePrefix: 'Dr.', givenNames: 'Lisa', familyNames: 'Fontaine', firstName: 'Lisa', lastName: 'Fontaine', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph25', physicianCode: 'PHY-0025', namePrefix: 'Dr.', givenNames: 'Lisa', familyNames: 'Kaminski', firstName: 'Lisa', lastName: 'Kaminski', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mpa-01'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph26', physicianCode: 'PHY-0026', namePrefix: 'Dr.', givenNames: 'Lisa', familyNames: 'Wong', firstName: 'Lisa', lastName: 'Wong', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph27', physicianCode: 'PHY-0027', namePrefix: 'Dr.', givenNames: 'Mani', familyNames: 'Menon', firstName: 'Mani', lastName: 'Menon', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mpa-03'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph28', physicianCode: 'PHY-0028', namePrefix: 'Dr.', givenNames: 'Martin', familyNames: 'Osei', firstName: 'Martin', lastName: 'Osei', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph29', physicianCode: 'PHY-0029', namePrefix: 'Dr.', givenNames: 'Mazen', familyNames: 'Iskandar', firstName: 'Mazen', lastName: 'Iskandar', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-hfhs-03'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph30', physicianCode: 'PHY-0030', namePrefix: 'Dr.', givenNames: 'Michael', familyNames: 'Torres', firstName: 'Michael', lastName: 'Torres', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c2'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph31', physicianCode: 'PHY-0031', namePrefix: 'Dr.', givenNames: 'Michelle', familyNames: 'Foster', firstName: 'Michelle', lastName: 'Foster', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c_outreach_derm'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph32', physicianCode: 'PHY-0032', namePrefix: 'Dr.', givenNames: 'Nancy', familyNames: 'Graves', firstName: 'Nancy', lastName: 'Graves', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph33', physicianCode: 'PHY-0033', namePrefix: 'Dr.', givenNames: 'Nathan', familyNames: 'Briggs', firstName: 'Nathan', lastName: 'Briggs', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c_outreach_urology'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph34', physicianCode: 'PHY-0034', namePrefix: 'Dr.', givenNames: 'Pamela', familyNames: 'Winters', firstName: 'Pamela', lastName: 'Winters', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph35', physicianCode: 'PHY-0035', namePrefix: 'Dr.', givenNames: 'Patricia', familyNames: 'Moore', firstName: 'Patricia', lastName: 'Moore', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c2'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph36', physicianCode: 'PHY-0036', namePrefix: 'Dr.', givenNames: 'Patricia', familyNames: 'Owens', firstName: 'Patricia', lastName: 'Owens', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph37', physicianCode: 'PHY-0037', namePrefix: 'Dr.', givenNames: 'Priya', familyNames: 'Nair', firstName: 'Priya', lastName: 'Nair', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph38', physicianCode: 'PHY-0038', namePrefix: 'Dr.', givenNames: 'Rachel', familyNames: 'Kim', firstName: 'Rachel', lastName: 'Kim', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph39', physicianCode: 'PHY-0039', namePrefix: 'Dr.', givenNames: 'Samuel', familyNames: 'Ortega', firstName: 'Samuel', lastName: 'Ortega', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph40', physicianCode: 'PHY-0040', namePrefix: 'Dr.', givenNames: 'Sandra', familyNames: 'Okafor', firstName: 'Sandra', lastName: 'Okafor', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph41', physicianCode: 'PHY-0041', namePrefix: 'Dr.', givenNames: 'Sarah', familyNames: 'Chen', firstName: 'Sarah', lastName: 'Chen', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c1'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph42', physicianCode: 'PHY-0042', namePrefix: 'Dr.', givenNames: 'Susan', familyNames: 'Park', firstName: 'Susan', lastName: 'Park', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c2'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph43', physicianCode: 'PHY-0043', namePrefix: 'Dr.', givenNames: 'Thomas', familyNames: 'Walsh', firstName: 'Thomas', lastName: 'Walsh', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph44', physicianCode: 'PHY-0044', namePrefix: 'Dr.', givenNames: 'Victor', familyNames: 'Anand', firstName: 'Victor', lastName: 'Anand', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-westside'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph45', physicianCode: 'PHY-0045', namePrefix: 'Dr.', givenNames: 'Wendy', familyNames: 'Castillo', firstName: 'Wendy', lastName: 'Castillo', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph46', physicianCode: 'PHY-0046', namePrefix: 'Miss', givenNames: 'Fiona', familyNames: 'Radcliffe', firstName: 'Fiona', lastName: 'Radcliffe', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph47', physicianCode: 'PHY-0047', namePrefix: 'Mr.', givenNames: 'Alistair', familyNames: 'Drummond', firstName: 'Alistair', lastName: 'Drummond', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph48', physicianCode: 'PHY-0048', namePrefix: 'Mr.', givenNames: 'Andrew', familyNames: 'Pearce', firstName: 'Andrew', lastName: 'Pearce', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph49', physicianCode: 'PHY-0049', namePrefix: 'Mr.', givenNames: 'David', familyNames: 'Holloway', firstName: 'David', lastName: 'Holloway', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph50', physicianCode: 'PHY-0050', namePrefix: 'Mr.', givenNames: 'David', familyNames: 'Whitmore', firstName: 'David', lastName: 'Whitmore', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mft-02'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph51', physicianCode: 'PHY-0051', namePrefix: 'Mr.', givenNames: 'Edward', familyNames: 'Kingsley', firstName: 'Edward', lastName: 'Kingsley', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph52', physicianCode: 'PHY-0052', namePrefix: 'Mr.', givenNames: 'Gavin', familyNames: 'Fletcher', firstName: 'Gavin', lastName: 'Fletcher', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph53', physicianCode: 'PHY-0053', namePrefix: 'Mr.', givenNames: 'James', familyNames: 'Caldwell', firstName: 'James', lastName: 'Caldwell', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph54', physicianCode: 'PHY-0054', namePrefix: 'Mr.', givenNames: 'James', familyNames: 'Whitfield', firstName: 'James', lastName: 'Whitfield', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: [], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph55', physicianCode: 'PHY-0055', namePrefix: 'Mr.', givenNames: 'Nicholas', familyNames: 'Farrow', firstName: 'Nicholas', lastName: 'Farrow', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph56', physicianCode: 'PHY-0056', namePrefix: 'Mr.', givenNames: 'Oliver', familyNames: 'Bancroft', firstName: 'Oliver', lastName: 'Bancroft', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-royal-manchester'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph57', physicianCode: 'PHY-0057', namePrefix: 'Mr.', givenNames: 'Peter', familyNames: 'Thornton', firstName: 'Peter', lastName: 'Thornton', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-mft-01'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
+  { id: 'ph58', physicianCode: 'PHY-0058', namePrefix: 'Mr.', givenNames: 'Simon', familyNames: 'Hartley', firstName: 'Simon', lastName: 'Hartley', npi: '', specialty: 'General', phone: '', fax: '', email: '', preferredContact: 'Fax', clientIds: ['c-stcatherines'], status: 'Unverified', autoCreated: true, autoCreatedAt: '2026-07-16' },
 ];
 
 const load = () => storageGet<Physician[]>('pathscribe_physicians', SEED_PHYSICIANS);
@@ -159,7 +180,7 @@ export const mockPhysicianService: IPhysicianService = {
     const existing = MOCK_PHYSICIANS.find(p => p.npi === npi);
     if (existing) return ok({ ...existing });
     const newP: Physician = withMirroredNames({
-      id: 'ph' + Date.now(), givenNames: name.first, familyNames: name.last,
+      id: 'ph' + Date.now(), physicianCode: generateAutoPhysicianCode(), givenNames: name.first, familyNames: name.last,
       npi, specialty: 'General', phone: '', fax: '', email: '',
       preferredContact: 'Fax', clientIds: [], status: 'Unverified',
       autoCreated: true, autoCreatedAt: new Date().toISOString().split('T')[0],
@@ -198,8 +219,56 @@ export const mockPhysicianService: IPhysicianService = {
     }
 
     const newP: Physician = withMirroredNames({
-      id: 'ph' + Date.now(), namePrefix, givenNames, familyNames,
+      id: 'ph' + Date.now(), physicianCode: generateAutoPhysicianCode(), namePrefix, givenNames, familyNames,
       npi: '', specialty: 'General', phone: '', fax: '', email: '',
+      preferredContact: 'Fax', clientIds: clientId ? [clientId] : [], status: 'Unverified',
+      autoCreated: true, autoCreatedAt: new Date().toISOString().split('T')[0],
+    } as Physician);
+    MOCK_PHYSICIANS = [...MOCK_PHYSICIANS, newP];
+    persist(MOCK_PHYSICIANS);
+    return ok({ ...newP });
+  },
+
+  async findOrCreateByStructuredName(name, clientId) {
+    await delay();
+    const givenNames = name.givenNames.trim();
+    const familyNames = name.familyNames.trim();
+    if (!familyNames) return err('Cannot resolve a provider with no real family name');
+
+    // Real, per direct guidance: only the first real identifier tagged
+    // type: 'NPI' (if any) is used to populate Physician.npi — this
+    // app's own Physician type has one dedicated npi field, not a
+    // generic identifiers array, so any other real identifier
+    // (PRN/DN/MD/DEA/MCR/MCD/SL/TAX/GMC/LOCAL/OTHER) is captured for
+    // matching purposes below but doesn't have a dedicated field to
+    // land in.
+    const npiIdentifier = name.identifiers?.find(i => i.type === 'NPI')?.value;
+
+    // Real, structured match — prefers a real NPI match first (the
+    // one real, unambiguous identifier XCN/ORC-12-equivalent
+    // structured data can carry), falling back to a real,
+    // case-insensitive given+family match, same as findOrCreateByName's
+    // own matching logic but WITHOUT re-deriving given/family from a
+    // pre-flattened string first - this is the real fix for the
+    // format-mismatch findOrCreateByName alone can't close.
+    const existing = npiIdentifier
+      ? MOCK_PHYSICIANS.find(p => p.npi && p.npi === npiIdentifier)
+      : undefined;
+    const matched = existing ?? MOCK_PHYSICIANS.find(p =>
+      p.givenNames.trim().toLowerCase() === givenNames.toLowerCase() &&
+      p.familyNames.trim().toLowerCase() === familyNames.toLowerCase()
+    );
+    if (matched) {
+      if (clientId && !matched.clientIds.includes(clientId)) {
+        return mockPhysicianService.update(matched.id, { clientIds: [...matched.clientIds, clientId] });
+      }
+      return ok({ ...matched });
+    }
+
+    const newP: Physician = withMirroredNames({
+      id: 'ph' + Date.now(), physicianCode: generateAutoPhysicianCode(),
+      namePrefix: name.namePrefix, givenNames, familyNames, nameSuffix: name.nameSuffix,
+      npi: npiIdentifier ?? '', specialty: 'General', phone: '', fax: '', email: '',
       preferredContact: 'Fax', clientIds: clientId ? [clientId] : [], status: 'Unverified',
       autoCreated: true, autoCreatedAt: new Date().toISOString().split('T')[0],
     } as Physician);

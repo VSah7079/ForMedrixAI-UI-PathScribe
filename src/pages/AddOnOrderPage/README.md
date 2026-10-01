@@ -1,0 +1,58 @@
+# pages/AddOnOrderPage/
+
+**NEW (Sep 2026)** — PS-287, fourth of the PS-284→285→286→287→288 workstation-build sequence, and the first one genuinely different in shape from the other three: this is **case-scoped** (search or scan an accession to open the whole case), not block/slide-scoped, and it's **pathologist-initiated**, not tech-scan-to-open. A pathologist reviewing a case places one or more add-on orders (recuts/deep levels, special stains, IHC — single-stain or panel — and molecular/send-out) against any of that case's own real blocks, with real routing, priority, slide media, auto-control pairing, a real-time order tracking dashboard, and a real block-exhaustion exception + pathologist notification loop.
+
+**Route**: `/add-on-orders`. Reachable from a new tile on `Home.tsx`.
+
+## Scope confirmed before building
+
+The ticket's own text covers five sub-areas (§1–§5) plus an Epic-level dashboard piece (PS-288). Before starting, the ambiguity between "narrow PS-287's own scope" and "build PS-288 in the same pass" (referenced in this session's own prior context) was resolved directly with the user via a scoping question. Answer: **PS-287 built in full** — order builder + routing (§1–§3), block-exhaustion exception + pathologist notification loop (§5), and the real-time order tracking dashboard (§4) — and **PS-288 deferred entirely to its own, later pass**, not bundled in here. Nothing in this folder attempts PS-288's own Embedding & Microtomy dashboard or Diagnostic Sign-Out/Scanner View.
+
+## Investigation done before building (confirmed, not assumed)
+
+- `StainOrderStatus`'s real, existing lifecycle (`Pending Cut → Cut & Placed → Staining → Coverslipped → Ready for Review`, plus `Recut Requested`/`QC Failed`/`Cancelled`) is reused as-is for every add-on order — no new status value was added anywhere. The spec's own five-stage tracking dashboard ("Requested → Block Retrieved → Cut/Pending Stain → Stained/QC → Checked Out/Scanned") is instead **derived fresh** from this real status plus two new, purely additive fields (`blockRetrievedAt`) and PS-286's own real `distributionStatus` — see `computeAddOnTrackingStage` in `utils/addOnOrderOperations.ts`.
+- `HistologyBlock.status`'s real, existing `'Exhausted'`/`'Lost'`/`'Damaged'`/`'Cancelled'` values (`utils/blockExceptionStates.ts`'s `isExhausted`/`isLost`/`isDamaged`) are reused directly: a new add-on order is refused against a block already in one of these states, and the §5 "Block exhausted" exception reason is the one real, existing way `'Exhausted'` gets set in the first place.
+- `StainType.category` (`Routine`/`Special Stain`/`IHC`/`Immunofluorescence`/`Molecular`/…) is real and already load-bearing elsewhere — reused directly to drive §3's own "Automatic Order Splitting" (`resolveAddOnRouting`), rather than a second, parallel classification.
+- `StainType.requiresTargetControl`/`allowControlAutoAppend` are real, existing, already-load-bearing flags (`shouldAutoAppendControl.ts`'s own batch/QC-level control mechanism) — reused as the real, per-stain **default** for §1's own Auto-Control Pairing, rather than a blind "every IHC/Special Stain gets a control" rule that would misfire on the real, documented exceptions those flags exist to carry. The actual Separate-Control slide creation reuses PS-284's own same-block sibling-slide pattern (`addMicrotomyStain`'s `pairWithControl` option in `utils/microtomyOperations.ts`) — replicated, not re-imported, since this ticket's own creation function needs to stamp several additional fields onto each created order as it builds them (same "write your own small, local helper" precedent PS-286 already set).
+- Per this ticket's own direct Jira follow-up comment: routing resolves through the real, existing `SCAN_STATION_WORKFLOW_STAGES`/`ScanStation.facilityId` backbone (`services/scanStations/`), scoped to the case's own real performing lab via `resolveCasePerformingLab()` (`services/cases/casePoolAssignmentService.ts`) — never a single, enterprise-wide queue. Confirmed this is the same real pattern Case Pool Routing already established (`RoutingRule.performingLabFacilityId`'s own Global/scoped, most-specific-wins convention).
+- `services/facilities/`'s real `FacilityRole` already includes `'reference_lab'` ("Somewhere your lab sends specimens TO for outsourced, specialized testing") — reused directly for the Reference/Send-Out Lab picker. **Real, honest scope note**: no per-performing-lab "preferred reference lab" mapping exists anywhere in this app, so the ordering pathologist picks explicitly from active `reference_lab` facilities each time, rather than this system silently defaulting one.
+- `MolecularOrderOutboundQueueEntry`'s real dispatch queue (QUEUED/SENT/FAILED, retry tracking) is confirmed genuinely scoped to `'protocol_configured'`/`'hpv_reflex_genotyping'` triggers only — a pathologist-initiated add-on order is **not** wired into it; a Molecular/Send-Out add-on order instead records a real, chosen `reference_lab` Facility on the `StainOrder` itself. Whether a third `MolecularOrderReason` should exist for this is real, separate follow-up work, not decided here.
+- `def-insufficient-volume` (the closest existing deficiency type) is confirmed scoped to receipt-time volume, not recut-time block exhaustion — genuinely the wrong fit. **Deliberate decision**: no new `SpecimenDeficiency` type was added either. The order's own new `exception`/`exceptionEvents` fields (see Types below) already give a complete, real, append-only audit trail of exactly this event without duplicating into the deficiency engine, and bumping `DEFICIENCY_TYPE_VERSION` has a real, app-wide cost (wipes every site's own custom deficiency types back to seed). Worth revisiting if cross-page QA-dashboard visibility is ever specifically asked for.
+- No IHC panel-grouping concept existed anywhere (`StainOrderMacro` is real but a genuinely different thing — ONE stain + ONE sectioning protocol, not a multi-stain group). `types/case/AddOnOrder.ts`'s `IHC_PANEL_PRESETS` is a real, small, honest starter set (Breast/Lynch-MMR/Renal-IF), built from real, existing seed `StainType.id`s, not a fabricated catalog — a full, admin-manageable panel dictionary is real, separate follow-up work.
+
+## Files
+
+- **`AddOnOrderPage.tsx`** — the page itself: a search/scan-an-accession landing state (genuinely new for this series — every sibling scans a block/slide directly), the header/context bar (Accession, Patient, Case Status, Primary Pathologist), the three-panel layout, and the Order Tracking dashboard below it.
+- **`components/BlockContextPanel.tsx`** — the left panel: every real block on the case, grouped by specimen, with levels-already-cut count, Tiny Tissue/Fragile flags, and a real status badge (Exhausted/Lost/Damaged/Cancelled) that also disables selection.
+- **`components/OrderBuilderPanel.tsx`** — the center panel: the Quick-Add Order Matrix (Recut/Special Stain/IHC/Molecular kind toggle, category-filtered stain search, IHC panel picker, level-depth input, control-pairing mode).
+- **`components/OrderSummaryRoutingPanel.tsx`** — the right panel: the active cart, priority selector, slide media/charge selector, cutting instructions, the routing preview (which real stations this order would actually reach, from `stationsForRouting`), the Reference/Send-Out Lab picker (shown only when the cart has a molecular line), and submit.
+- **`components/OrderTrackingDashboard.tsx`** — the full-width dashboard: every real add-on order on the case with its live, derived stage; "Mark Block Retrieved"; "Flag Exception" (§5's own tech-side trigger); and, for an order with an open exception, the real Cancel/Modify/Approve-Destructive-Cutting response actions.
+- **`hooks/useAddOnOrderStation.ts`** — case load/persist (real accession search via `caseRouter.getCase`, same lookup every other case-scoped page already uses), order submission across every selected block, the tracking-dashboard aggregation, the exception flag/resolve wrappers (including the real, transport-only pathologist-notification email), and routing-station resolution.
+
+## Related files elsewhere
+
+- **`utils/addOnOrderOperations.ts`** (+ `.test.ts`, 33 tests) — the pure, tested business logic: `resolveAddOnRouting`, `resolveRoutingStations`, `createAddOnOrder`, `stampPerformingLab`, `computeAddOnTrackingStage`, `markBlockRetrieved`, `flagBlockExhaustion`, `resolvePathologistException`.
+- **`types/case/AddOnOrder.ts`** — shared constants/small types: `ADD_ON_ORDER_PRIORITIES`, `SLIDE_MEDIA_TYPES`, `ADD_ON_ROUTE_QUEUES`, `BLOCK_EXCEPTION_REASONS`, `IHC_PANEL_PRESETS`.
+- **`types/case/Specimen.ts`** — `StainOrder` extended: `addOnPriority`, `orderedByPathologistId`/`Name`/`orderedAt`, `addOnPanelId`/`Name`, `slideMediaType`, `cuttingInstructions`, `onSlideControlTissue`, `routedQueueLabel`/`routedWorkflowStage`, `performingLabFacilityId`, `sendOutReferenceLabFacilityId`/`Name`, `blockRetrievedAt`/`By`, `exception` (new `AddOnOrderException`), `exceptionEvents` (new, append-only `AddOnOrderExceptionEvent[]`).
+
+## i18n
+
+Built with `useTranslation()`/`t()` from the start. New `addOnOrder.*` namespace (73 leaf keys) plus `home.addOnOrderTile.*` (2 keys), across all five locale files (en/fr/de/nl/ko) — verified programmatically: all five parse as valid JSON, all five have identical key sets, 810 total leaf keys per file.
+
+## Deliberate scope cuts
+
+- **§5's own "tech flags at microtome" step is real and working, but surfaced on THIS page**, not wired into the already-shipped `MicrotomyWorkstationPage` (PS-284)'s own live cutting flow — that cross-page integration is real, separate follow-up work. The pathologist's own response (cancel/modify/approve destructive cut) lives in this page's own Order Tracking dashboard, which doubles as the spec's own "LIS inbox" — this app has no separate, general notification-center UI to route into instead.
+- Approving destructive cutting records the real, attributable decision (`exception.status = 'approved_destructive_cut'`) but does not itself reverse the block's own `'Exhausted'` status (a factual statement about the block) or push a live gate into `MicrotomyWorkstationPage`'s own cutting flow — same cross-page follow-up note as above.
+- No new `SpecimenDeficiency` type — see Investigation above.
+- No admin-manageable IHC panel dictionary — a real, small starter set only (see Investigation above).
+- No per-performing-lab preferred reference lab default — the ordering pathologist always picks explicitly.
+- "Digital signature" in the spec's own Right Panel is the real, authenticated actor identity already stamped on submission (`orderedByPathologistId`/`Name`) — this app has no separate e-signature capture mechanism to reuse or fabricate one for.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`AddOnOrderPage.tsx`: the accession in the context bar is tagged.
+
+---
+*See [pages/README.md](../README.md) for how this folder fits the whole pages/ layer.*
+*When this folder's contents change meaningfully, update THIS file.*

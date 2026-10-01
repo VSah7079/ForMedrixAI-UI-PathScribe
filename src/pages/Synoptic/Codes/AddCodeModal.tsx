@@ -5,16 +5,18 @@
 // Right panel: system tabs + hierarchy filters + live search.
 
 import React, { useState, useCallback, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { callAi } from '@/services/aiIntegration/aiProviderService';
 import { resolveAiConfigOverrideForClient } from '@/components/Config/AI/resolveClientAiModel';
 import '../../../pathscribe.css';
 import type { MedicalCode } from '../synopticTypes';
-import { searchCodes, type CodeResult, type SnomedFilter } from '../../../services/terminologySearch/codeSearchService';
+import { searchCodes, filterToVerifiedCodes, type CodeResult, type SnomedFilter } from '../../../services/terminologySearch/codeSearchService';
 import { getOrganisationByHospitalId, type CodingSystem } from '@/services/organisation/organisationService';
+import { CODE_MAP_TABLE, resolveSpecimenDictionaryBaseCptCode } from '@/services/billing/codeMapTable';
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
-interface SpecimenOption { index: number; id: number; specimenId?: string | null; name: string; }
+interface SpecimenOption { index: number; id: number; specimenId?: string | null; name: string; specimenDictionaryEntryId?: string; complexity?: 'GROSS_ONLY' | 'GROSS_AND_MICRO'; }
 
 export interface AiCodeSuggestion {
   code: string;
@@ -28,6 +30,14 @@ export interface AiCodeSuggestion {
 export interface AddCodeModalProps {
   existingCodes: MedicalCode[];
   allSpecimens: SpecimenOption[];
+  /** Real feature, per direct feedback: the Specimen Dictionary already
+   *  has a real, coder-entered "Default Base CPT Code" per specimen
+   *  type - a genuinely verified value, not a guess. When available
+   *  for the currently-targeted specimen's own type, this is shown as
+   *  a real, high-confidence default rather than relying on the AI's
+   *  own narrative-text estimate for something a real coder has
+   *  already, deliberately determined. */
+  specimenDictionary?: { id: string; defaultBaseCptCode?: string }[];
   activeSpecimenIndex?: number;  // reserved for future per-specimen default targeting
   /** Real fix: which coding-system tab to open on - e.g. 'CPT' when
    *  launched from a specimen's own "+Code" contextual button, so the
@@ -46,21 +56,58 @@ export interface AddCodeModalProps {
   synopticDerivedCodes?: AiCodeSuggestion[];
   /** Whether Orchestrator/narrative mode is active */
   narrativeText?: string;
-  /** The case's ordering client — needed to resolve which AI model this
-   *  specific client is actually approved to use for AI code
-   *  suggestions. Optional so callers without a resolvable client
+  /** The case's ordering facility — needed to resolve which AI model this
+   *  specific facility is actually approved to use for AI code
+   *  suggestions. Optional so callers without a resolvable facility
    *  still fall back safely to the org-wide default. */
-  clientId?: string;
+  facilityId?: string;
+  /** Real, per direct requirement: "the Pathologist has the right to
+   *  update all billing, even those that are deterministic ... LIS
+   *  will handle the billing in assist mode" alongside a real,
+   *  separate follow-up ("can we still keep RVU... useful to track
+   *  Pathologist performance"). A CPT code added here in orchestration
+   *  mode is a real billing decision; in assist mode it's honestly
+   *  relabeled as RVU/productivity tracking only - never hidden
+   *  entirely, since contributionDashboardCalculations.ts genuinely
+   *  prefers a specimen's own real, applied CPT code over its generic
+   *  fallback estimate. Optional, defaulting to false (assist-style
+   *  labeling) so no existing caller needs to change to keep working -
+   *  a real caller should pass this explicitly rather than rely on
+   *  the default. */
+  isOrchestrationMode?: boolean;
 }
 
 type CodeSystem = 'SNOMED' | 'ICD10' | 'ICD11' | 'LOINC' | 'ICDO' | 'CPT' | 'OPCS4';
 
-interface PendingCode {
+export interface PendingCode {
+  /** Real, per direct feedback ("if an IHC interp was done on 4
+   *  slides, they have to enter the code 4 times?"): a stable,
+   *  per-instance identifier - the old code+specimenIndex matching
+   *  throughout this file couldn't tell two real, separate instances
+   *  of the same code apart, so deleting/moving/restoring "one" of
+   *  them actually affected every instance at once. */
+  id: string;
   code: string;
   display: string;
   system: string;
   specimenIndex: number | null;
   pendingDelete: boolean;
+}
+
+/**
+ * Real, per direct guidance: "if the code exists already it is
+ * flagged so the Pathologist knows it has been applied. From there
+ * the Pathologist can assign the code to a different case specimen or
+ * maybe they want it at the case level." Finds every real, active
+ * (non-pending-delete) application of this exact code to a target
+ * OTHER than the one currently selected — the real, cross-target
+ * awareness this app's own existing "applied to THIS target" check
+ * never had. Extracted as its own, pure, testable function since the
+ * same real logic is needed in both the search-results list and the
+ * AI-suggestions panel.
+ */
+export function findAppliedElsewhere(applied: PendingCode[], code: string, currentTarget: number | null): PendingCode[] {
+  return applied.filter(c => c.code === code && c.specimenIndex !== currentTarget && !c.pendingDelete);
 }
 
 // ─── Constants ────────────────────────────────────────────────────────────────
@@ -76,6 +123,26 @@ const ALL_SYSTEMS: { id: CodeSystem; label: string; accent: string }[] = [
   { id: 'CPT',    label: 'CPT',      accent: '#7c3aed' },
   { id: 'OPCS4',  label: 'OPCS-4',   accent: '#0891B2' },
 ];
+
+// Real, label-key-maps — SYSTEM_LABEL_KEY covers the official coding-
+// standard names (SNOMED CT, ICD-10, etc.), which stay identical across
+// every locale as proper nouns (same established precedent as the
+// existing synopticReportPage.snomedCt/snomedTitle keys elsewhere in
+// this app) but are still wrapped in a translation key for structural
+// consistency. SNOMED_FILTER_LABEL_KEY/HINT_KEY cover the plain-English
+// hierarchy-filter names, which DO vary per locale.
+const SYSTEM_LABEL_KEY: Record<CodeSystem, string> = {
+  SNOMED: 'addCodeModal.systemLabel.SNOMED', ICD10: 'addCodeModal.systemLabel.ICD10', ICD11: 'addCodeModal.systemLabel.ICD11',
+  LOINC: 'addCodeModal.systemLabel.LOINC', ICDO: 'addCodeModal.systemLabel.ICDO', CPT: 'addCodeModal.systemLabel.CPT', OPCS4: 'addCodeModal.systemLabel.OPCS4',
+};
+const SNOMED_FILTER_LABEL_KEY: Record<SnomedFilter, string> = {
+  all: 'addCodeModal.snomedFilter.all.label', morphology: 'addCodeModal.snomedFilter.morphology.label',
+  anatomy: 'addCodeModal.snomedFilter.anatomy.label', specimen: 'addCodeModal.snomedFilter.specimen.label', organism: 'addCodeModal.snomedFilter.organism.label',
+};
+const SNOMED_FILTER_HINT_KEY: Record<SnomedFilter, string> = {
+  all: 'addCodeModal.snomedFilter.all.hint', morphology: 'addCodeModal.snomedFilter.morphology.hint',
+  anatomy: 'addCodeModal.snomedFilter.anatomy.hint', specimen: 'addCodeModal.snomedFilter.specimen.hint', organism: 'addCodeModal.snomedFilter.organism.hint',
+};
 
 const SNOMED_FILTERS: { id: SnomedFilter; label: string; hint: string }[] = [
   { id: 'all',       label: 'All',        hint: 'All SNOMED concepts' },
@@ -131,10 +198,11 @@ const IcoUndo = () => (
 // ─── Component ────────────────────────────────────────────────────────────────
 
 export const AddCodeModal: React.FC<AddCodeModalProps> = ({
-  existingCodes, allSpecimens, onAddToSpecimens, onClose,
+  existingCodes, allSpecimens, specimenDictionary = [], onAddToSpecimens, onClose,
   caseText, synopticAnswers, templateName, synopticDerivedCodes, narrativeText,
-  originHospitalId, activeSpecimenIndex, initialSystem, clientId,
+  originHospitalId, activeSpecimenIndex, initialSystem, facilityId, isOrchestrationMode = false,
 }) => {
+  const { t } = useTranslation();
   // ── Site coding config ────────────────────────────────────────────────────
   // Coding systems shown are driven by site config from organisationService.
   // This replaces any hardcoded locale/country checks.
@@ -146,18 +214,19 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
     const systems = siteOrg?.sites?.[0]?.codingSystems;
     return systems?.length ? systems : ['SNOMED', 'ICD10', 'ICD11', 'LOINC', 'ICDO', 'CPT'] as CodingSystem[];
   }, [siteOrg]);
-  const SYSTEMS = ALL_SYSTEMS.filter(s => siteCodingSystems.includes(s.id));
+  const SYSTEMS = ALL_SYSTEMS.filter(s => siteCodingSystems.includes(s.id) && !(s.id === 'CPT' && isOrchestrationMode));
   const isUK = siteOrg?.sites?.[0]?.defaultLocale === 'en-GB';
 
   const [system,       setSystem]       = useState<CodeSystem>(initialSystem ?? 'SNOMED');
   const [snomedFilter, setSnomedFilter] = useState<SnomedFilter>('morphology');
   const [query,        setQuery]        = useState('');
   const [results,      setResults]      = useState<CodeResult[]>([]);
+  const [searchError,  setSearchError]  = useState<string | null>(null);
   const [loading,      setLoading]      = useState(false);
   const [focused,      setFocused]      = useState(-1);
   const [target,       setTarget]       = useState<number | null>(activeSpecimenIndex ?? null);
-  const [applied,      setApplied]      = useState<PendingCode[]>(() =>
-    existingCodes
+  const [applied,      setApplied]      = useState<PendingCode[]>(() => {
+    const fromExisting = existingCodes
       // Guards against malformed entries with an empty/missing code --
       // these were rendering as blank rows (grabber + trash icon, no
       // visible text) with no indication anything was wrong. Filtering
@@ -168,26 +237,87 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
       // case's codes are saved for any reason -- no separate cleanup
       // migration needed.
       .filter(c => !!c.code)
-      .map(c => {
+      .map((c, idx) => {
         // Resolve specimenId back to specimenIndex so left panel groups correctly
         const specOption = (c as any).specimenId
           ? allSpecimens.find(s => s.specimenId === (c as any).specimenId)
           : null;
         return {
+          id:            `existing-${idx}-${c.code}-${c.system}`,
           code:          c.code,
           display:       c.display,
           system:        c.system,
           specimenIndex: specOption ? specOption.index : null,
           pendingDelete: false,
         };
-      })
-  );
+      });
+    // Real fix, per direct clarification: "something that defaults from
+    // maintenance/configuration doesn't need to be verified, it should
+    // automatically get applied." A Specimen Dictionary default base
+    // CPT code is a real, deliberate, prior coder determination, not a
+    // guess - matches how AccessionPage.tsx already auto-populates
+    // this same field right at specimen creation. This is the same
+    // real default, applied here too, for any specimen that doesn't
+    // already have a CPT code - backfills cases created before a
+    // dictionary default existed, or where the dictionary was updated
+    // after the specimen was already accessioned. Scoped to Assist
+    // mode only - orchestration mode's own real rule engine already
+    // resolves this far more precisely from structured stain data.
+    const autoDefaults: PendingCode[] = !isOrchestrationMode
+      ? allSpecimens
+        .filter(sp => !fromExisting.some(c => c.specimenIndex === sp.index && c.system === 'CPT'))
+        .map(sp => {
+          const defaultCode = sp.specimenDictionaryEntryId
+            ? resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: sp.specimenDictionaryEntryId, complexity: sp.complexity }, specimenDictionary)
+            : null;
+          if (!defaultCode) return null;
+          const entry = CODE_MAP_TABLE.find(e => e.code === defaultCode);
+          return {
+            id: `dictionary-default-${sp.index}-${defaultCode}`,
+            code: defaultCode,
+            display: entry?.description ?? defaultCode,
+            system: 'CPT',
+            specimenIndex: sp.index,
+            pendingDelete: false,
+          };
+        })
+        .filter((c): c is PendingCode => c !== null)
+      : [];
+    if (autoDefaults.length > 0) setTimeout(() => setIsDirty(true), 0);
+    return [...fromExisting, ...autoDefaults];
+  });
   const [isDirty, setIsDirty] = useState(false);
   const [aiSuggestions,    setAiSuggestions]    = useState<AiCodeSuggestion[]>([]);
   const [aiLoading,        setAiLoading]        = useState(false);
   const [aiError,          setAiError]          = useState<string | null>(null);
   const [aiRan,            setAiRan]            = useState(false);
   const [aiPanelCollapsed, setAiPanelCollapsed] = useState(false);
+
+  // Real fix, found via direct feedback: "should just show the
+  // recommended codes based on the selected pill." The AI suggestion
+  // list previously showed every real suggestion across every coding
+  // system at once (SNOMED, ICD-10, ICD-O, LOINC all mixed together),
+  // regardless of which system tab was actually active - this is the
+  // real, shared filter both the panel's own count and its list use,
+  // so they can never drift out of sync with each other.
+  // Real fix, per direct feedback: "I couldn't add it to two
+  // specimens." The old check only compared code+system against
+  // existingCodes - a code already saved for ONE specimen made the
+  // suggestion disappear for every specimen, not just that one, since
+  // the check never looked at which real specimen the existing code
+  // actually belonged to. Resolves the currently-selected target
+  // (an index) to its real specimenId once, then only treats a
+  // suggestion as "already applied" when an existing code genuinely
+  // matches this exact target - a different specimen, or the case
+  // level, no longer hides it.
+  const targetSpecimenId = target !== null ? (allSpecimens.find(s => s.index === target)?.specimenId ?? null) : null;
+
+  const visibleSuggestions = React.useMemo(() => (
+    aiSuggestions
+      .filter((s, i, a) => a.findIndex(x => x.code === s.code) === i)
+      .filter(s => !existingCodes.some(ec => ec.code === s.code && ec.system === s.system && ((ec as any).specimenId ?? null) === targetSpecimenId))
+      .filter(s => s.system === system)
+  ), [aiSuggestions, existingCodes, system, targetSpecimenId]);
 
 
   const [saving,       setSaving]       = useState(false);
@@ -214,16 +344,27 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
     if (!query.trim() && system !== 'CPT') { setResults([]); setLoading(false); return; }
 
     setLoading(true);
+    setSearchError(null);
     debounceRef.current = setTimeout(async () => {
       const filter = system === 'SNOMED' ? snomedFilter : 'all';
-      const data = await searchCodes(system, query, filter);
-      setResults(data);
+      try {
+        const data = await searchCodes(system, query, filter);
+        setResults(data);
+      } catch (err: any) {
+        // Real fix, per direct feedback: a failed search (missing API
+        // key, network error, CORS) previously looked identical to a
+        // genuine "no matches" result. Distinct state here so the UI
+        // can tell the person their search backend is unavailable,
+        // not that the term itself has no matches.
+        setResults([]);
+        setSearchError(err?.message ?? t('addCodeModal.searchFailedDefault'));
+      }
       setLoading(false);
       setFocused(-1);
     }, 300);
 
     return () => { if (debounceRef.current) clearTimeout(debounceRef.current); };
-  }, [query, system, snomedFilter]);
+  }, [query, system, snomedFilter, t]);
 
   // ── Applied code helpers ──────────────────────────────────────────────────
 
@@ -236,17 +377,24 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
   // ── Add / remove / undo ───────────────────────────────────────────────────
 
   const addCode = useCallback((r: CodeResult) => {
-    const alreadyActive = applied.some(
-      c => c.code === r.code && c.specimenIndex === target && !c.pendingDelete
-    );
-    if (alreadyActive) return;
-    const existing = applied.find(c => c.code === r.code && c.specimenIndex === target);
-    if (existing) {
+    // Real fix, per direct feedback: "if an IHC interp was done on 4
+    // slides, they have to enter the code 4 times?" - the old logic
+    // hard-blocked re-adding an already-active code, silently
+    // undercounting a real, repeated procedure with no error or
+    // feedback at all. If a pending-delete instance of this exact
+    // code exists, restore that one first (matches the original
+    // "oops, didn't mean to remove that" intent behind this branch);
+    // otherwise, always add a new, genuinely separate instance - a
+    // real, repeatable procedure needs a real, separate count, not a
+    // single toggle.
+    const pendingDeleteInstance = applied.find(c => c.code === r.code && c.specimenIndex === target && c.pendingDelete);
+    if (pendingDeleteInstance) {
       setApplied(prev => prev.map(c =>
-        c.code === r.code && c.specimenIndex === target ? { ...c, pendingDelete: false } : c
+        c.id === pendingDeleteInstance.id ? { ...c, pendingDelete: false } : c
       ));
     } else {
       setApplied(prev => [...prev, {
+        id: `new-${r.code}-${Date.now()}-${Math.random().toString(36).slice(2, 8)}`,
         code: r.code, display: r.display, system: r.system,
         specimenIndex: target, pendingDelete: false,
       }]);
@@ -254,16 +402,16 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
     setIsDirty(true);
   }, [applied, target]);
 
-  const removeCode = useCallback((code: string, specimenIndex: number | null) => {
+  const removeCode = useCallback((id: string) => {
     setApplied(prev => prev.map(c =>
-      c.code === code && c.specimenIndex === specimenIndex ? { ...c, pendingDelete: true } : c
+      c.id === id ? { ...c, pendingDelete: true } : c
     ));
     setIsDirty(true);
   }, []);
 
-  const undoRemove = useCallback((code: string, specimenIndex: number | null) => {
+  const undoRemove = useCallback((id: string) => {
     setApplied(prev => prev.map(c =>
-      c.code === code && c.specimenIndex === specimenIndex ? { ...c, pendingDelete: false } : c
+      c.id === id ? { ...c, pendingDelete: false } : c
     ));
     setIsDirty(true);
   }, []);
@@ -272,7 +420,7 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
   const moveCode = useCallback((entry: PendingCode, toSpecimenIndex: number | null) => {
     if (entry.specimenIndex === toSpecimenIndex) return; // already there
     setApplied(prev => prev.map(c =>
-      c.code === entry.code && c.specimenIndex === entry.specimenIndex
+      c.id === entry.id
         ? { ...c, specimenIndex: toSpecimenIndex, pendingDelete: false }
         : c
     ));
@@ -297,7 +445,7 @@ export const AddCodeModal: React.FC<AddCodeModalProps> = ({
       const { text: raw } = await callAi({
         system: isUK
           ? 'You are a pathology coding specialist with expertise in NHS surgical pathology coding — SNOMED CT, ICD-10, ICD-O, and OPCS-4. Return only valid JSON — no markdown, no preamble.'
-          : 'You are a pathology coding specialist with expertise in surgical pathology CPT, ICD-10, SNOMED CT, and ICD-O coding. Return only valid JSON — no markdown, no preamble.',
+          : 'You are a pathology coding specialist with expertise in ICD-10, SNOMED CT, and ICD-O diagnostic coding. Return only valid JSON — no markdown, no preamble.',
         prompt: isUK
           ? `Suggest appropriate medical codes for this NHS pathology case. Include diagnostic codes and OPCS-4 procedure codes.
 
@@ -345,7 +493,7 @@ Rules:
 - Do NOT include CPT codes — not used in NHS
 - confidence 0-100, rationale ≤12 words
 - Return 4-8 codes total — MUST include at least one SNOMED morphology code`
-          : `Suggest appropriate medical codes for this pathology case. Include BOTH diagnostic codes AND procedure (CPT) codes.
+          : `Suggest appropriate diagnostic codes for this pathology case.
 
 TEMPLATE: ${templateName ?? 'Unknown'}
 ${narrativeText ? `NARRATIVE REPORT (primary source):
@@ -364,14 +512,21 @@ DIAGNOSTIC CODES (ICD-10, SNOMED CT, ICD-O):
 - Primary diagnosis ICD-10 code
 - SNOMED CT morphology code
 - ICD-O topography and morphology codes if applicable
-
-PROCEDURE CODES (CPT):
-- Surgical pathology level (88300-88309) based on specimen complexity
-- Special stains (88312-88314) if mentioned in ancillary
-- IHC codes (88342 per antibody, 88341 for each additional) if IHC performed
-- Molecular/genomic codes (81275, 81479 etc.) if molecular studies performed
-- Include RVU value for each CPT code
-
+${!isOrchestrationMode ? `
+SPECIMEN-LEVEL BILLING CODE (RVU ESTIMATE ONLY — Assist mode):
+- This case is in Assist mode: your LIS owns real billing, this is
+  read-only, internal RVU/productivity tracking - never a real charge.
+- Pick at most ONE code from this exact, real, verified list, based
+  on the overall complexity of the gross/microscopic work described -
+  never invent a code outside this list:
+${CODE_MAP_TABLE.filter(e => e.level === 'specimen').map(e => `  - ${e.code}: ${e.description}`).join('\n')}
+- Do NOT suggest ancillary/stain-level codes (special stains, IHC) -
+  those need an exact stain count this prompt cannot reliably judge
+  from narrative text alone, and are already handled by this app's
+  own real, structured rule engine in orchestration mode.
+- Mark confidence honestly lower for this one (it's a rough estimate,
+  not a precision determination) and say so in rationale.
+` : ''}
 Format:
 [
   {
@@ -381,43 +536,91 @@ Format:
     "confidence": 95,
     "rationale": "Left breast invasive carcinoma upper outer quadrant",
     "rvu": null
-  },
+  }${!isOrchestrationMode ? `,
   {
-    "code": "88307",
-    "display": "Surgical pathology, gross and microscopic examination — Breast, mastectomy",
+    "code": "88305",
+    "display": "Code 88305 — Specimen Level",
     "system": "CPT",
-    "confidence": 97,
-    "rationale": "Total mastectomy specimen with lymph node dissection",
-    "rvu": 4.44
-  }
+    "confidence": 65,
+    "rationale": "Estimate only - moderate complexity specimen, Assist mode",
+    "rvu": null
+  }` : ''}
 ]
 
 Rules:
-- system must be one of: ICD10, SNOMED, ICDO, LOINC, CPT
+- system must be one of: ICD10, SNOMED, ICDO, LOINC${!isOrchestrationMode ? ', CPT' : ''}
+${isOrchestrationMode ? '- Do NOT include CPT codes — surgical pathology level, special stain, and IHC billing codes are resolved by this app\'s own real, verified rule engine from structured stain data, not guessed from narrative text' : '- At most ONE CPT code, only from the real, verified list above, only for the specimen-level base code - never a stain-level ancillary code'}
 - confidence 0-100
 - rationale ≤12 words
-- rvu: include the standard RVU value for CPT codes, null for others
-- Return 6-12 codes total — MUST include at least one SNOMED morphology code
+- rvu: always null - this prompt no longer suggests billable procedure codes
+- Return 4-8 codes total — MUST include at least one SNOMED morphology code
 - SNOMED morphology example: {"code":"413448000","display":"Invasive carcinoma of breast, no special type","system":"SNOMED","confidence":95,"rationale":"Primary diagnosis morphology","rvu":null}
-- Only include codes you are highly confident are correct
-- For CPT 88307 vs 88309: mastectomy with lymph nodes = 88307, complex cases = 88309`,
+- Only include codes you are highly confident are correct`,
         maxTokens: 1200,
-        configOverride: await resolveAiConfigOverrideForClient(clientId),
+        configOverride: await resolveAiConfigOverrideForClient(facilityId),
       });
 
       const clean = raw.replace(/```json|```/g, '').trim();
-      const parsed: AiCodeSuggestion[] = JSON.parse(clean);
+      // Real fix, per direct report: a raw JSON.parse error message
+      // ("Unexpected non-whitespace character after JSON...") was
+      // surfacing straight to the user - the LLM had added trailing
+      // content after the real JSON array that the markdown-fence
+      // strip above didn't catch. Extracting the array by its
+      // outermost [ ] rather than trusting the whole cleaned string
+      // is pure JSON survives that regardless of what the extra
+      // content actually was.
+      const arrayStart = clean.indexOf('[');
+      const arrayEnd = clean.lastIndexOf(']');
+      if (arrayStart === -1 || arrayEnd === -1 || arrayEnd < arrayStart) {
+        throw new Error('AI response did not contain a recognizable code list — please try again.');
+      }
+      const parsed: AiCodeSuggestion[] = JSON.parse(clean.slice(arrayStart, arrayEnd + 1));
+      // Real, defensive filter, per direct requirement: CPT is no
+      // longer part of what this prompt asks for (see the prompt's own
+      // header comment on this whole function for why), but an LLM
+      // doesn't always perfectly follow an instruction - explicitly
+      // dropping any CPT suggestion here too, rather than relying on
+      // the prompt change alone, since a wrong CPT guess with a false
+      // sense of confidence is a real billing risk, not just noise.
+      const specimenLevelCptCodes = new Set(CODE_MAP_TABLE.filter(e => e.level === 'specimen').map(e => e.code));
+      let cptSeen = false;
       const filtered = Array.isArray(parsed)
-        ? parsed.filter(s => siteCodingSystems.includes(s.system as CodeSystem))
+        ? parsed.filter(s => {
+            if (!siteCodingSystems.includes(s.system as CodeSystem)) return false;
+            if (s.system !== 'CPT') return true;
+            // Real fix: CPT suggestions are only ever real here in
+            // Assist mode (see the prompt's own conditional block
+            // above) - defensively re-verify even then, since the
+            // model is only asked, not guaranteed, to stay inside the
+            // real, verified specimen-level list this app actually
+            // knows about. A wrong or hallucinated code showing up
+            // with a confident-looking percentage is the real risk
+            // this guards against, not just noise to filter later.
+            if (isOrchestrationMode || cptSeen || !specimenLevelCptCodes.has(s.code)) return false;
+            cptSeen = true;
+            return true;
+          })
         : [];
-      setAiSuggestions(filtered);
+      // Real, per direct guidance: "before any suggestion is [shown],
+      // verify that code actually exists and is a real code. Machine
+      // verified. Then the Practitioner makes the medical decision to
+      // use or not use that code" — applies to every real system this
+      // modal presents (SNOMED, ICD-10, ICD-11, ICD-O, LOINC — CPT
+      // already got its own, separate re-verification just above,
+      // short-circuited to true inside filterToVerifiedCodes rather
+      // than checked twice). A hallucinated code is dropped here,
+      // silently, before the practitioner ever sees it as an option —
+      // their own review still decides whether a genuinely-real code
+      // is the medically right one for this case, exactly as before.
+      const verified = await filterToVerifiedCodes(filtered);
+      setAiSuggestions(verified);
       setAiRan(true);
     } catch (e: any) {
-      setAiError(e?.message ?? 'AI suggestion failed');
+      setAiError(e?.message ?? t('addCodeModal.aiSuggestionFailedDefault'));
     } finally {
       setAiLoading(false);
     }
-  }, [caseText, synopticAnswers, templateName, isUK, narrativeText, siteCodingSystems]);
+  }, [caseText, synopticAnswers, templateName, isUK, narrativeText, siteCodingSystems, isOrchestrationMode, t]);
 
   // Auto-run on open — after generateAiCodes is defined
   // Tier 1: use pre-derived synoptic codes immediately
@@ -479,7 +682,7 @@ Rules:
         await onAddToSpecimens(allActiveCodes, specimenIndices);
         onClose();
       } catch (err: any) {
-        setSaveError(err?.message ?? 'Failed to save — please try again.');
+        setSaveError(err?.message ?? t('addCodeModal.saveFailedDefault'));
       } finally {
         setSaving(false);
       }
@@ -487,15 +690,32 @@ Rules:
       setSaving(false);
       onClose();
     }
-  }, [applied, existingCodes, allSpecimens, onAddToSpecimens, onClose]);
+  }, [applied, existingCodes, allSpecimens, onAddToSpecimens, onClose, t]);
 
   // ── Keyboard ──────────────────────────────────────────────────────────────
+
+  // Real fix, found ahead of a live demo: selecting a code in this
+  // modal only updates the local, staged `applied` list - real
+  // persistence to specimen.coding.cpt only happens via the separate
+  // Save button below (see handleSave). All three ways to leave this
+  // modal (X button, Cancel, Escape) previously called onClose
+  // directly with zero check for unsaved changes, so a code that felt
+  // "added" the moment it was clicked could be silently discarded if
+  // the modal was closed before Save - exactly what happened when a
+  // base code was picked here but never showed up as applied anywhere
+  // else in the app.
+  const handleCloseAttempt = () => {
+    if (isDirty && !window.confirm(t('addCodeModal.unsavedChangesConfirm'))) {
+      return;
+    }
+    onClose();
+  };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === 'ArrowDown') { e.preventDefault(); setFocused(f => Math.min(f + 1, results.length - 1)); }
     if (e.key === 'ArrowUp')   { e.preventDefault(); setFocused(f => Math.max(f - 1, 0)); }
     if (e.key === 'Enter' && focused >= 0 && results[focused]) addCode(results[focused]);
-    if (e.key === 'Escape') onClose();
+    if (e.key === 'Escape') handleCloseAttempt();
   };
 
   // ── Pending counts for footer ─────────────────────────────────────────────
@@ -518,10 +738,9 @@ Rules:
   );
 
   const CodeChip: React.FC<{ entry: PendingCode }> = ({ entry }) => {
-    const [hovered, setHovered] = React.useState(false);
     return (
       <div
-        className={`fm-flag-chip${entry.pendingDelete ? ' deleted' : ''}`}
+        className={`fm-flag-chip acd-code-chip${entry.pendingDelete ? ' deleted' : ''}`}
         draggable={!entry.pendingDelete}
         onDragStart={e => {
           setDragCode(entry);
@@ -532,14 +751,6 @@ Rules:
           e.preventDefault();
           if (!entry.pendingDelete) setContextMenu({ entry, x: e.clientX, y: e.clientY });
         }}
-        onMouseEnter={() => setHovered(true)}
-        onMouseLeave={() => setHovered(false)}
-        style={{
-          cursor:     entry.pendingDelete ? 'default' : 'grab',
-          background: hovered && !entry.pendingDelete ? 'rgba(56,189,248,0.08)' : undefined,
-          borderColor: hovered && !entry.pendingDelete ? 'rgba(56,189,248,0.3)' : undefined,
-          transition: 'background 0.12s, border-color 0.12s',
-        }}
       >
         {/* Grabber — only shown when not deleted */}
         {!entry.pendingDelete && (
@@ -548,20 +759,82 @@ Rules:
           </span>
         )}
         <span className={`fm-flag-chip-name${entry.pendingDelete ? ' strikethrough' : ''}`}>
-          <span className="acd-code-mono">{entry.code}</span>
+          <span className="acd-code-mono" title={`${entry.code} — ${entry.display}`}>{entry.code}</span>
           {entry.display}
         </span>
         {entry.pendingDelete ? (
-          <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.code, entry.specimenIndex)} title="Undo removal">
+          <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.id)} title={t('addCodeModal.undoRemoval')}>
             <IcoUndo />
           </button>
         ) : (
-          <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.code, entry.specimenIndex)} title="Remove code">
+          <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.id)} title={t('addCodeModal.removeCode')}>
             <IcoTrash />
           </button>
         )}
       </div>
     );
+  };
+
+  // Real feature, per direct feedback ("if an IHC interp was done on 4
+  // slides, they have to enter the code 4 times?" / "use the same
+  // display approach ... used in the Billing review pane"): when the
+  // same real code has more than one genuine instance for this
+  // specimen (e.g. a real, repeated ancillary procedure), shows them
+  // as one compact row - the description once, then each instance's
+  // code comma-separated with its own "code — definition" tooltip,
+  // matching BillingReviewPanel.tsx's own stain/block row treatment
+  // exactly, rather than N redundant, full-size chips each repeating
+  // the same description text. A single instance (the common case)
+  // still renders as the existing, full CodeChip - drag-and-drop and
+  // the right-click context menu stay exactly as they were.
+  const GroupedCodeRow: React.FC<{ entries: PendingCode[] }> = ({ entries }) => {
+    const first = entries[0];
+    return (
+      <div className="fm-flag-chip acd-grouped-chip">
+        <span className="acd-grouped-display">{first.display}</span>
+        <span className="acd-grouped-codes">
+          {entries.map((entry, i) => (
+            <span key={entry.id} className="acd-grouped-code-item">
+              {i > 0 && <span className="acd-grouped-comma">,</span>}
+              <span
+                className={`acd-code-mono${entry.pendingDelete ? ' strikethrough' : ''}`}
+                title={`${entry.code} — ${entry.display}`}
+              >
+                {entry.code}
+              </span>
+              {entry.pendingDelete ? (
+                <button className="fm-chip-undo-btn" onClick={() => undoRemove(entry.id)} title={t('addCodeModal.undoRemoval')}>
+                  <IcoUndo />
+                </button>
+              ) : (
+                <button className="fm-chip-remove-btn" onClick={() => removeCode(entry.id)} title={t('addCodeModal.removeThisInstance')}>
+                  <IcoTrash />
+                </button>
+              )}
+            </span>
+          ))}
+        </span>
+      </div>
+    );
+  };
+
+  // Groups a specimen's (or the case level's) own applied entries by
+  // real code value, preserving first-seen order - a group of one
+  // renders as the existing, full CodeChip; a group of several
+  // renders compactly via GroupedCodeRow above.
+  const renderAppliedGroups = (entries: PendingCode[]) => {
+    const order: string[] = [];
+    const groups = new Map<string, PendingCode[]>();
+    entries.forEach(e => {
+      if (!groups.has(e.code)) { groups.set(e.code, []); order.push(e.code); }
+      groups.get(e.code)!.push(e);
+    });
+    return order.map(code => {
+      const group = groups.get(code)!;
+      return group.length > 1
+        ? <GroupedCodeRow key={code} entries={group} />
+        : <CodeChip key={group[0].id} entry={group[0]} />;
+    });
   };
 
   // ── Drop target wrapper ───────────────────────────────────────────────────
@@ -578,14 +851,7 @@ Rules:
           if (dragCode && !isSame) moveCode(dragCode, specimenIndex);
           setDragOverTarget('none');
         }}
-        style={{
-          borderRadius: 8,
-          border: isOver && !isSame ? '1.5px dashed #38bdf8' : '1.5px solid transparent',
-          background: isOver && !isSame ? 'rgba(8,145,178,0.08)' : 'transparent',
-          transition: 'all 0.12s',
-          padding: '2px 0',
-          marginBottom: 4,
-        }}
+        className={`acd-drop-zone${isOver && !isSame ? ' acd-drop-zone--over' : ''}`}
       >
         {children}
       </div>
@@ -597,25 +863,18 @@ Rules:
   const ContextMenu = contextMenu ? (
     <div
       onClick={() => setContextMenu(null)}
-      style={{ position: 'fixed', inset: 0, zIndex: 9000 }}
+      className="acd-ctx-backdrop"
     >
       <div
         onClick={e => e.stopPropagation()}
+        className="acd-ctx-menu"
         style={{
-          position: 'fixed',
-          left: Math.min(contextMenu.x, window.innerWidth - 220),
-          top:  Math.min(contextMenu.y, window.innerHeight - 200),
-          width: 210,
-          background: '#1e293b',
-          border: '1px solid #334155',
-          borderRadius: 8,
-          boxShadow: '0 8px 24px rgba(0,0,0,0.5)',
-          overflow: 'hidden',
-          zIndex: 9001,
-        }}
+          '--ctx-x': `${Math.min(contextMenu.x, window.innerWidth - 220)}px`,
+          '--ctx-y': `${Math.min(contextMenu.y, window.innerHeight - 200)}px`,
+        } as React.CSSProperties}
       >
         <div className="acd-ctx-menu-label">
-          Move to
+          {t('addCodeModal.moveTo')}
         </div>
 
         {/* Case Level */}
@@ -623,11 +882,9 @@ Rules:
           <button
             onClick={() => moveCode(contextMenu.entry, null)}
             className="acd-ctx-menu-btn"
-            onMouseEnter={e => (e.currentTarget.style.background = 'rgba(8,145,178,0.15)')}
-            onMouseLeave={e => (e.currentTarget.style.background = 'none')}
           >
             <IcoCase />
-            Case Level
+            {t('addCodeModal.caseLevel')}
           </button>
         )}
 
@@ -639,12 +896,10 @@ Rules:
               key={sp.index}
               onClick={() => moveCode(contextMenu.entry, sp.index)}
               className="acd-ctx-menu-btn"
-              onMouseEnter={e => (e.currentTarget.style.background = 'rgba(8,145,178,0.15)')}
-              onMouseLeave={e => (e.currentTarget.style.background = 'none')}
             >
               <IcoSpec />
               <span className="acd-sp-label">
-                <span className="acd-sp-label-prefix">Sp {sp.id}:</span> {sp.name}
+                <span className="acd-sp-label-prefix">{t('addCodeModal.specimenPrefix', { id: sp.id })}</span> {sp.name}
               </span>
             </button>
           ))
@@ -664,29 +919,26 @@ Rules:
         {/* ── HEADER ── */}
         <div className="ps-research-header">
           <div>
-            <div className="fm-eyebrow">Code Manager</div>
+            <div className="fm-eyebrow">{t('addCodeModal.eyebrow')}</div>
             <div className="fm-title-row">
               <IcoCode />
-              <h2 className="fm-title">Codes</h2>
+              <h2 className="fm-title">{t('addCodeModal.title')}</h2>
               {totalActive > 0 && (
-                <span className="fm-active-badge">{totalActive} active</span>
+                <span className="fm-active-badge">{t('addCodeModal.activeCount', { count: totalActive })}</span>
               )}
             </div>
           </div>
-          <button className="acd-close-btn" aria-label="Close" onClick={onClose}
-            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.35)'; }}
-          >✕</button>
+          <button className="acd-close-btn" aria-label={t('addCodeModal.close')} onClick={handleCloseAttempt}>✕</button>
         </div>
 
         <div className="acd-body">
 
           {/* ── LEFT PANEL ── */}
           <div className="fm-left-panel acd-left">
-            <div className="acd-left-title">Applied Codes</div>
+            <div className="acd-left-title">{t('addCodeModal.appliedCodes')}</div>
             {dragCode && (
               <div className="acd-left-hint">
-                Drop on a target to move · Right-click for menu
+                {t('addCodeModal.dragHint')}
               </div>
             )}
 
@@ -697,14 +949,14 @@ Rules:
                 onClick={() => setTarget(null)}
               >
                 <IcoCase />
-                <span className="acd-case-label-flex">Case Level</span>
+                <span className="acd-case-label-flex">{t('addCodeModal.caseLevel')}</span>
                 {activeCaseApplied.length > 0 && (
                   <span className="fm-count-badge">{activeCaseApplied.length}</span>
                 )}
               </button>
-              {caseApplied.map(entry => <CodeChip key={`case-${entry.code}`} entry={entry} />)}
+              {renderAppliedGroups(caseApplied)}
               {caseApplied.length === 0 && (
-                <div className="fm-no-flags-note">No case-level codes</div>
+                <div className="fm-no-flags-note">{t('addCodeModal.noCaseLevelCodes')}</div>
               )}
             </DropZone>
 
@@ -722,15 +974,15 @@ Rules:
                   >
                     <IcoSpec />
                     <span className="acd-sp-row-label">
-                      <span className="acd-sp-label-prefix">Sp {sp.id}:</span>{'  '}{sp.name}
+                      <span className="acd-sp-label-prefix">{t('addCodeModal.specimenPrefix', { id: sp.id })}</span>{'  '}{sp.name}
                     </span>
                     {activeCount > 0 && (
                       <span className="fm-count-badge">{activeCount}</span>
                     )}
                   </button>
-                  {spApplied.map(entry => <CodeChip key={`sp${sp.index}-${entry.code}`} entry={entry} />)}
+                  {renderAppliedGroups(spApplied)}
                   {spApplied.length === 0 && (
-                    <div className="fm-no-flags-note">No codes applied — drag here or click row to add</div>
+                    <div className="fm-no-flags-note">{t('addCodeModal.noCodesAppliedDragHint')}</div>
                   )}
                 </DropZone>
               );
@@ -746,22 +998,15 @@ Rules:
                 <button
                   onClick={generateAiCodes}
                   disabled={aiLoading}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 6,
-                    padding: '7px 14px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-                    border: '1.5px solid rgba(8,145,178,0.5)',
-                    background: aiLoading ? 'rgba(8,145,178,0.08)' : 'rgba(8,145,178,0.15)',
-                    color: aiLoading ? '#64748b' : '#38bdf8',
-                    cursor: aiLoading ? 'wait' : 'pointer', transition: 'all 0.15s',
-                  }}
+                  className={`acd-ai-suggest-btn${aiLoading ? ' acd-ai-suggest-btn--loading' : ''}`}
                 >
                   <span className="acd-ai-sparkle">✦</span>
-                  {aiLoading ? 'AI thinking…'
-                    : aiRan && synopticDerivedCodes?.length ? '↻ Re-run (Synoptic)'
-                    : aiRan && narrativeText ? '↻ Re-run (Narrative)'
-                    : aiRan ? '↻ Re-run AI Suggestions'
-                    : narrativeText ? '✦ AI Suggest (Narrative)'
-                    : '✦ AI Suggest Codes'}
+                  {aiLoading ? t('addCodeModal.aiThinking')
+                    : aiRan && synopticDerivedCodes?.length ? `↻ ${t('addCodeModal.rerunSynoptic')}`
+                    : aiRan && narrativeText ? `↻ ${t('addCodeModal.rerunNarrative')}`
+                    : aiRan ? `↻ ${t('addCodeModal.rerunAiSuggestions')}`
+                    : narrativeText ? `✦ ${t('addCodeModal.aiSuggestNarrative')}`
+                    : `✦ ${t('addCodeModal.aiSuggestCodes')}`}
                 </button>
                 {aiError && <span className="acd-ai-error">⚠ {aiError}</span>}
               </div>
@@ -775,33 +1020,27 @@ Rules:
                   className="acd-ai-panel-header"
                 >
                   <span>✦</span>
-                  <span className="acd-ai-panel-label">AI Suggested Codes — review and apply</span>
+                  <span className="acd-ai-panel-label">{t('addCodeModal.aiSuggestedCodesHeader')}</span>
                   <span className="acd-ai-panel-count">
-                    {aiSuggestions
-                      .filter((s, i, a) => a.findIndex(x => x.code === s.code) === i)
-                      .filter(s => !existingCodes.some(ec => ec.code === s.code && ec.system === s.system))
-                      .length} suggestions
+                    {t('addCodeModal.suggestionsCount', { count: visibleSuggestions.length })}
                   </span>
-                  <span style={{ fontSize: 14, transition: 'transform 0.2s', transform: aiPanelCollapsed ? 'rotate(-90deg)' : 'rotate(0deg)' }}>▾</span>
+                  <span className={`acd-ai-panel-chevron${aiPanelCollapsed ? ' acd-ai-panel-chevron--collapsed' : ''}`}>▾</span>
                 </div>
-                {!aiPanelCollapsed && aiSuggestions
-                  .filter((sug, idx, arr) => arr.findIndex(s => s.code === sug.code) === idx)
-                  .filter(sug => !existingCodes.some(ec => ec.code === sug.code && ec.system === sug.system))
+                {!aiPanelCollapsed && visibleSuggestions
                   .map((sug) => {
-                  const isActive = applied.some(c => c.code === sug.code && !c.pendingDelete);
+                  const activeCount = applied.filter(c => c.code === sug.code && c.specimenIndex === target && !c.pendingDelete).length;
+                  // Real, per direct guidance — same real fix as the
+                  // search results list above: a suggestion for a code
+                  // already applied to a DIFFERENT specimen previously
+                  // showed as if entirely fresh here too.
+                  const elsewhere = activeCount === 0
+                    ? findAppliedElsewhere(applied, sug.code, target)
+                    : [];
                   return (
                     <div
                       key={sug.code}
-                      onClick={() => !isActive && addCode({ code: sug.code, display: sug.display, system: sug.system })}
-                      style={{
-                        display: 'flex', alignItems: 'center', gap: 8,
-                        padding: '10px 14px', cursor: isActive ? 'default' : 'pointer',
-                        background: isActive ? 'rgba(16,185,129,0.05)' : 'rgba(255,255,255,0.02)',
-                        borderTop: '1px solid rgba(255,255,255,0.05)',
-                        transition: 'background 0.15s',
-                      }}
-                      onMouseEnter={e => { if (!isActive) e.currentTarget.style.background = 'rgba(8,145,178,0.08)'; }}
-                      onMouseLeave={e => { if (!isActive) e.currentTarget.style.background = 'rgba(255,255,255,0.02)'; }}
+                      onClick={() => elsewhere.length === 0 && addCode({ code: sug.code, display: sug.display, system: sug.system })}
+                      className={`acd-ai-suggestion-row${activeCount > 0 ? ' acd-ai-suggestion-row--active' : ''}`}
                     >
                       <span className="acd-code-badge">
                         {sug.code}
@@ -809,21 +1048,42 @@ Rules:
                       <span className="acd-system-badge">
                         {sug.system}
                       </span>
-                      <span style={{ flex: 1, fontSize: 13, color: isActive ? '#64748b' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                      {sug.system === 'CPT' && (
+                        <span
+                          className="acd-estimate-badge"
+                          title={t('addCodeModal.estimateTooltip')}
+                        >
+                          {t('addCodeModal.estimate')}
+                        </span>
+                      )}
+                      <span className={`acd-sug-desc ${activeCount > 0 ? 'acd-sug-desc--active' : 'acd-sug-desc--default'}`}>
                         {sug.display}
                       </span>
-                      <span style={{ fontSize: 12, color: sug.confidence >= 85 ? '#34d399' : '#fbbf24', fontWeight: 700, flexShrink: 0 }}>
+                      <span className={sug.confidence >= 85 ? 'acd-confidence-hi' : 'acd-confidence-lo'}>
                         {sug.confidence}%
                       </span>
                       {sug.rvu != null && (
                         <span className="acd-already-added">
-                          {sug.rvu} RVU
+                          {t('addCodeModal.rvuValue', { rvu: sug.rvu })}
                         </span>
                       )}
-                      {isActive ? (
-                        <span className="acd-added-check">✓</span>
+                      {activeCount > 0 ? (
+                        <span className="acd-added-check" title={t('addCodeModal.appliedNTimes', { count: activeCount })}>✓ ×{activeCount}</span>
+                      ) : elsewhere.length > 0 ? (
+                        <span
+                          className="acd-elsewhere-hint"
+                          title={t('addCodeModal.alreadyAppliedTo', { targets: elsewhere.map(e => e.specimenIndex === null ? t('addCodeModal.caseLevel') : (allSpecimens.find(s => s.index === e.specimenIndex)?.name ?? t('addCodeModal.anotherSpecimen'))).join(', ') })}
+                        >
+                          {t('addCodeModal.elsewhere')}
+                          <button
+                            className="ps-conf-btn-row"
+                            onClick={(e) => { e.stopPropagation(); moveCode(elsewhere[0], target); }}
+                          >
+                            {t('addCodeModal.moveHere')}
+                          </button>
+                        </span>
                       ) : (
-                        <span className="acd-add-btn" title="Apply code"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
+                        <span className="acd-add-btn" title={t('addCodeModal.applyCode')}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
                       )}
                     </div>
                   );
@@ -835,13 +1095,9 @@ Rules:
             <div className="acd-filter-row">
               {SYSTEMS.map(s => (
                 <button key={s.id} onClick={() => { setSystem(s.id); setQuery(''); setFocused(-1); inputRef.current?.focus(); }}
-                  style={{
-                    padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 700,
-                    border: 'none', cursor: 'pointer', transition: 'all 0.15s',
-                    background: system === s.id ? s.accent : 'rgba(255,255,255,0.06)',
-                    color: system === s.id ? 'white' : '#94a3b8',
-                  }}
-                >{s.label}</button>
+                  className={`acd-system-tab-btn${system === s.id ? ' acd-system-tab-btn--active' : ''}`}
+                  style={{ '--ps-hue': s.accent } as React.CSSProperties}
+                >{s.id === 'CPT' ? (isOrchestrationMode ? t('addCodeModal.billingCode') : t('addCodeModal.cptRvu')) : t(SYSTEM_LABEL_KEY[s.id])}</button>
               ))}
             </div>
 
@@ -849,27 +1105,36 @@ Rules:
             {system === 'SNOMED' && (
               <div className="acd-filter-row">
                 {SNOMED_FILTERS.map(f => (
-                  <button key={f.id} onClick={() => setSnomedFilter(f.id)} title={f.hint}
-                    style={{
-                      padding: '3px 10px', borderRadius: 20, fontSize: 11, fontWeight: 600,
-                      border: `1px solid ${snomedFilter === f.id ? '#0891B2' : 'rgba(100,116,139,0.4)'}`,
-                      background: snomedFilter === f.id ? 'rgba(8,145,178,0.15)' : 'transparent',
-                      color: snomedFilter === f.id ? '#38bdf8' : '#64748b',
-                      cursor: 'pointer', transition: 'all 0.12s',
-                    }}
-                  >{f.label}</button>
+                  <button key={f.id} onClick={() => setSnomedFilter(f.id)} title={t(SNOMED_FILTER_HINT_KEY[f.id])}
+                    className={`acd-snomed-filter-btn${snomedFilter === f.id ? ' acd-snomed-filter-btn--active' : ''}`}
+                  >{t(SNOMED_FILTER_LABEL_KEY[f.id])}</button>
                 ))}
               </div>
             )}
 
             {/* Target indicator */}
             <div className="acd-hint-text">
-              Applying to:{' '}
+              {t('addCodeModal.applyingTo')}{' '}
               <strong className="acd-hint-strong">
-                {target === null ? 'Case Level' : `Specimen ${allSpecimens.find(s => s.index === target)?.id ?? target + 1}`}
+                {target === null ? t('addCodeModal.caseLevel') : t('addCodeModal.specimenTarget', { id: allSpecimens.find(s => s.index === target)?.id ?? target + 1 })}
               </strong>
-              <span className="acd-hint-muted">— click a row on the left to change</span>
+              <span className="acd-hint-muted">{t('addCodeModal.clickToChange')}</span>
             </div>
+
+            {/* Real, honest note, per direct requirement: "the
+                Pathologist has the right to update all billing, even
+                those that are deterministic ... LIS will handle the
+                billing in assist mode" alongside the real, separate
+                follow-up on keeping RVU tracking useful. Only shown on
+                the CPT tab, only in assist mode - never hidden, since
+                the code itself still needs to be added for RVU
+                tracking to work, just honestly labeled as not a real
+                charge here. */}
+            {system === 'CPT' && !isOrchestrationMode && (
+              <div className="acd-hint-text acd-assist-mode-note">
+                ⓘ {t('addCodeModal.assistModeNote')}
+              </div>
+            )}
 
             {/* Search */}
             <div className="fm-search-wrap acd-search-mb">
@@ -881,7 +1146,7 @@ Rules:
                 value={query}
                 onChange={e => { setQuery(e.target.value); setFocused(-1); }}
                 onKeyDown={handleKeyDown}
-                placeholder={`Search ${sysInfo.label} — code or term…`}
+                placeholder={t('addCodeModal.searchPlaceholder', { system: t(SYSTEM_LABEL_KEY[sysInfo.id]) })}
               />
               {query && (
                 <button className="fm-search-clear" onClick={() => { setQuery(''); setResults([]); inputRef.current?.focus(); }}>✕</button>
@@ -892,47 +1157,82 @@ Rules:
             <div className="acd-list-scroll">
               {loading ? (
                 <div className="fm-empty">
-                  <div className="fm-empty-hint">Searching {sysInfo.label}…</div>
+                  <div className="fm-empty-hint">{t('addCodeModal.searchingSystem', { system: t(SYSTEM_LABEL_KEY[sysInfo.id]) })}</div>
                 </div>
               ) : !query.trim() ? (
                 <div className="fm-empty">
                   <IcoSearch />
-                  <div className="fm-empty-heading">Search {sysInfo.label}</div>
+                  <div className="fm-empty-heading">{t('addCodeModal.searchSystemHeading', { system: t(SYSTEM_LABEL_KEY[sysInfo.id]) })}</div>
                   <div className="fm-empty-hint">
-                    {system === 'SNOMED' ? 'Type a diagnosis, site, specimen type, or organism' :
-                     system === 'ICD10'  ? 'Type a code (e.g. C50) or description' :
-                     system === 'LOINC'  ? 'Type a test name or LOINC number' :
-                     system === 'ICD11'  ? 'ICD-11 requires backend proxy — coming soon' :
-                     'ICD-O search requires backend proxy — coming soon'}
+                    {system === 'SNOMED' ? t('addCodeModal.searchHint.snomed') :
+                     system === 'ICD10'  ? t('addCodeModal.searchHint.icd10') :
+                     system === 'LOINC'  ? t('addCodeModal.searchHint.loinc') :
+                     system === 'ICD11'  ? t('addCodeModal.searchHint.icd11') :
+                     t('addCodeModal.searchHint.icdo')}
                   </div>
+                </div>
+              ) : searchError ? (
+                <div className="fm-empty">
+                  <IcoSearch />
+                  <div className="fm-empty-heading acd-empty-heading--warning">{t('addCodeModal.searchUnavailable')}</div>
+                  <div className="fm-empty-hint">{searchError}</div>
                 </div>
               ) : results.length === 0 ? (
                 <div className="fm-empty">
                   <IcoSearch />
-                  <div className="fm-empty-heading">No results for "{query}"</div>
-                  <div className="fm-empty-hint">Try a different term or switch filters</div>
+                  <div className="fm-empty-heading">{t('addCodeModal.noResultsFor', { query })}</div>
+                  <div className="fm-empty-hint">{t('addCodeModal.tryDifferentTerm')}</div>
                 </div>
               ) : results.map((r, i) => {
-                const isActive = applied.some(c => c.code === r.code && c.specimenIndex === target && !c.pendingDelete);
+                const activeCount = applied.filter(c => c.code === r.code && c.specimenIndex === target && !c.pendingDelete).length;
+                // Real, per direct guidance: "if the code exists
+                // already it is flagged so the Pathologist knows it
+                // has been applied. From there the Pathologist can
+                // assign the code to a different case specimen or
+                // maybe they want it at the case level." The existing
+                // activeCount check above only ever looked at the
+                // CURRENTLY-selected target — a code applied to a
+                // different specimen showed as if it had never been
+                // applied at all anywhere on the case. This surfaces
+                // that real, cross-target state and reuses the
+                // already-existing, already-working moveCode() (the
+                // same real reassignment this app's own drag-and-drop
+                // already performs) rather than building a second,
+                // separate reassignment mechanism.
+                const elsewhere = activeCount === 0
+                  ? findAppliedElsewhere(applied, r.code, target)
+                  : [];
                 const isFocus  = focused === i;
                 return (
                   <div
                     key={r.code}
-                    className={`fm-flag-card${isActive ? ' applied' : ''}`}
-                    style={{ background: isFocus && !isActive ? 'rgba(255,255,255,0.05)' : undefined }}
+                    className={`fm-flag-card acd-result-card${activeCount > 0 ? ' applied' : ''}${isFocus && activeCount === 0 ? ' acd-result-card--focused' : ''}`}
                     onMouseEnter={() => setFocused(i)}
-                    onClick={() => !isActive && addCode(r)}
+                    onClick={() => elsewhere.length === 0 && addCode(r)}
                   >
-                    <span className={`fm-code-chip${isActive ? ' applied' : ''}`} style={{ fontFamily: 'monospace', fontSize: 11 }}>
+                    <span className={`fm-code-chip${activeCount > 0 ? ' applied' : ''}`}>
                       {r.code}
                     </span>
-                    <span style={{ fontSize: 13, color: isActive ? '#64748b' : '#e2e8f0', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
+                    <span className={`acd-sug-desc ${activeCount > 0 ? 'acd-sug-desc--active' : 'acd-sug-desc--default'}`}>
                       {r.display}
                     </span>
-                    {isActive ? (
-                      <span className="acd-added-text">✓ Applied</span>
+                    {activeCount > 0 ? (
+                      <span className="acd-added-text" title={t('addCodeModal.appliedNTimes', { count: activeCount })}>✓ {t('addCodeModal.appliedTimesLabel', { count: activeCount })}</span>
+                    ) : elsewhere.length > 0 ? (
+                      <span
+                        className="acd-elsewhere-hint"
+                        title={t('addCodeModal.alreadyAppliedTo', { targets: elsewhere.map(e => e.specimenIndex === null ? t('addCodeModal.caseLevel') : (allSpecimens.find(s => s.index === e.specimenIndex)?.name ?? t('addCodeModal.anotherSpecimen'))).join(', ') })}
+                      >
+                        {t('addCodeModal.appliedElsewhere')}
+                        <button
+                          className="ps-conf-btn-row"
+                          onClick={(e) => { e.stopPropagation(); moveCode(elsewhere[0], target); }}
+                        >
+                          {t('addCodeModal.moveHere')}
+                        </button>
+                      </span>
                     ) : (
-                      <span className="fm-apply-btn acd-apply-btn-right" title="Apply code"><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
+                      <span className="fm-apply-btn acd-apply-btn-right" title={t('addCodeModal.applyCode')}><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><line x1="8" y1="6" x2="21" y2="6"/><line x1="8" y1="12" x2="21" y2="12"/><line x1="8" y1="18" x2="21" y2="18"/><line x1="3" y1="6" x2="3.01" y2="6"/><line x1="3" y1="12" x2="3.01" y2="12"/><line x1="3" y1="18" x2="3.01" y2="18"/><line x1="19" y1="3" x2="19" y2="9"/><line x1="16" y1="6" x2="22" y2="6"/></svg></span>
                     )}
                   </div>
                 );
@@ -946,23 +1246,25 @@ Rules:
 
         {/* ── FOOTER ── */}
         <div className="fm-footer">
-          <span className={`fm-footer-status${isDirty ? ' dirty' : ''}`} style={saveError ? { color: '#f87171' } : undefined}>
+          <span className={`fm-footer-status${isDirty ? ' dirty' : ''}${saveError ? ' acd-footer-status--error' : ''}`}>
             {saveError
               ? saveError
               : isDirty
-              ? `${toAddCount > 0 ? `${toAddCount} to add` : ''}${toAddCount > 0 && toRemoveCount > 0 ? ' · ' : ''}${toRemoveCount > 0 ? `${toRemoveCount} to remove` : ''}`
-              : 'No changes'
+              ? [
+                  toAddCount > 0 ? t('addCodeModal.toAddCount', { count: toAddCount }) : null,
+                  toRemoveCount > 0 ? t('addCodeModal.toRemoveCount', { count: toRemoveCount }) : null,
+                ].filter(Boolean).join(' · ')
+              : t('addCodeModal.noChanges')
             }
           </span>
           <div className="acd-footer-row">
-            <button className="fm-btn-cancel" onClick={onClose}>Cancel</button>
+            <button className="fm-btn-cancel" onClick={handleCloseAttempt}>{t('addCodeModal.cancel')}</button>
             <button
               className="fm-btn-save"
               disabled={saving || !isDirty}
               onClick={handleSave}
-              style={{ opacity: saving || !isDirty ? 0.5 : 1 }}
             >
-              {saving ? 'Saving…' : 'Save'}
+              {saving ? t('addCodeModal.saving') : t('addCodeModal.save')}
             </button>
           </div>
         </div>

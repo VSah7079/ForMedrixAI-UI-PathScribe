@@ -13,6 +13,9 @@ import type { IReportVersionService } from './IReportVersionService';
 import { caseRouter } from '../cases/CaseRouter';
 import { mockPatientIndexService } from '../patients/mockPatientIndexService';
 import { mockEncounterService } from '../encounters/mockEncounterService';
+import { getEffectiveScanStationId } from '@/utils/effectiveScanStation';
+import { mockOutboundResultQueueService } from './mockOutboundResultQueueService';
+import type { OruResultState } from '@/types/case/OutboundResultQueueEntry';
 
 const STORAGE_KEY = 'report_version_records';
 
@@ -83,8 +86,63 @@ export const mockReportVersionService: IReportVersionService = {
       versionNumber: existing.length + 1,
       createdAt: new Date().toISOString(),
       patientEncounterSnapshot,
+      // Real feature, per direct follow-up: "Stamp every saved
+      // draft... with... station_id captured at the exact moment of
+      // saving." Same real capture-at-creation moment as
+      // patientEncounterSnapshot immediately above.
+      createdFromStation: getEffectiveScanStationId(),
     };
     persist([...load(), newRecord]);
+
+    // Real, per direct guidance (Pathology HL7 Outbound Feature Spec,
+    // ORU^R01) and direct confirmation of the exact real inference:
+    // every real finalization/amendment path in this app funnels
+    // through this one, single, narrow function — hooking here
+    // catches all of them, present and future, rather than scattering
+    // enqueue calls across useSignOutWorkflow.ts's own many entry
+    // points. Real, deliberate scope, confirmed directly:
+    //  - mode !== 'orchestration' (i.e. 'assist'): never enqueued —
+    //    an external LIS owns that report, not PathScribe.
+    //  - instanceId absent (the case-level, whole-case PDF snapshot
+    //    from finalizeSignOut): never enqueued — a composite summary
+    //    document isn't a discrete OBR/OBX observation the way one
+    //    specific synoptic instance's own result is. Confirmed
+    //    directly: skip it entirely rather than force it into this
+    //    per-instance queue.
+    //  - trigger 'initial_signout': FINAL.
+    //  - trigger 'amendment', a prior version already exists for THIS
+    //    SAME instanceId: CORRECTED (real HL7 intent — updating an
+    //    already-signed result/specimen instance).
+    //  - trigger 'amendment', no prior version for THIS instanceId,
+    //    but the case has other, real prior versions: ADDENDUM (a new
+    //    result block being appended to an already-signed case).
+    // Fire-and-forget, same posture as every other real enqueue in
+    // this app — this must never block or fail the real sign-out
+    // action it's attached to.
+    if (newRecord.mode === 'orchestration' && newRecord.instanceId) {
+      const resultState: OruResultState = newRecord.trigger === 'initial_signout'
+        ? 'FINAL'
+        : existing.some(e => e.instanceId === newRecord.instanceId)
+          ? 'CORRECTED'
+          : 'ADDENDUM';
+      (async () => {
+        try {
+          const caseData = await caseRouter.getCase(newRecord.caseId);
+          const patientId = (caseData as any)?.patient?.id;
+          const patient = patientId ? await mockPatientIndexService.getById(patientId) : null;
+          if (!patient) return; // Honest, non-blocking skip — no real organisationId to enqueue against.
+          await mockOutboundResultQueueService.enqueue({
+            caseId: newRecord.caseId,
+            instanceId: newRecord.instanceId!,
+            resultState,
+            organisationId: patient.organisationId,
+          });
+        } catch (e) {
+          console.error('[mockReportVersionService] Real, non-blocking failure enqueueing ORU^R01 result:', e);
+        }
+      })();
+    }
+
     return ok(newRecord);
   },
 };

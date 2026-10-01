@@ -29,6 +29,37 @@ export type EncounterClass = 'Inpatient' | 'Outpatient' | 'Emergency' | 'Ambulat
 
 export type EncounterStatus = 'Planned' | 'Arrived' | 'In-Progress' | 'Discharged' | 'Cancelled';
 
+/** Real fix, per direct, detailed correction: DG1 is its own,
+ *  dedicated HL7 segment — not part of OBR, and not exclusively an
+ *  "order-level" concept the way an earlier pass of this codebase's
+ *  own documentation briefly, incorrectly implied. DG1 legitimately
+ *  rides with ADT (A01/A04/A08 — an admission/registration/update
+ *  diagnosis), among other real message types. This app's own,
+ *  already-existing outbound DG1 builder (services/hl7/
+ *  segmentBuilders.ts's buildDG1) already, correctly, structures
+ *  DG1-3 as code^description^codingSystem — mirrored here exactly for
+ *  the inbound/parsing direction, rather than inventing a different
+ *  shape for the same real field. */
+export interface EncounterDiagnosis {
+  /** DG1-3.1 — the real ICD code itself (e.g. "E11.9"). */
+  code: string;
+  /** DG1-3.2 — the real, human-readable description of the code. */
+  description?: string;
+  /** DG1-3.3 — real coding system designation (e.g. "I10" for
+   *  ICD-10-CM). Kept as a raw string, same "guided free text, not a
+   *  closed enum" posture as this file's own locationStatus/
+   *  personLocationType fields — a real inbound message could
+   *  legitimately carry a coding system this app hasn't seen before,
+   *  and that shouldn't fail the whole diagnosis. */
+  codingSystem?: string;
+  /** DG1-6 (HL7 Table 0052) — real, standard diagnosis type
+   *  distinction: 'A' (Admitting), 'W' (Working), 'F' (Final). Kept
+   *  as the raw HL7 code rather than expanded to a friendlier label
+   *  here — display formatting is a real UI concern, not this data
+   *  layer's. */
+  diagnosisType?: string;
+}
+
 export interface Encounter {
   id: string;
   organisationId: string;
@@ -76,6 +107,18 @@ export interface Encounter {
    *  transferred. */
   previousLocationId?: string;
   attendingProvider?: string;
+  /** Real, new field, per PS-81 (Jira) — the real, resolved Physician
+   *  (services/physicians/) this encounter's own free-text
+   *  attendingProvider string was matched or auto-created against, via
+   *  the real, shared resolveProviderName (services/physicians/
+   *  resolveProviderName.ts). Undefined when attendingProvider itself
+   *  is absent (no real name to resolve), or for an encounter created
+   *  before this field existed. attendingProvider (the free-text
+   *  string) is kept unchanged alongside this — real, deliberate
+   *  redundancy, not replaced by it, since the string is the permanent
+   *  record of what the inbound message actually said, independent of
+   *  whichever Physician record it happened to resolve against. */
+  attendingProviderPhysicianId?: string;
   /** Real feature, per direct confirmation: working through the full
    *  list of ADT trigger events — A08's real, previously-missing
    *  metadata fields. PV1-10 (HL7 Table 0069). */
@@ -84,6 +127,18 @@ export interface Encounter {
   admitSource?: string;
   /** PV1-20 (HL7 Table 0064). */
   financialClass?: string;
+  /** Real feature, per direct, detailed correction: a real DG1
+   *  segment can legitimately ride along with an inbound A01/A04/A08
+   *  — every diagnosis captured on that message, in the order it
+   *  arrived (real DG1-1 set-id order, not re-sorted). Genuinely
+   *  distinct from IncomingOrder.icd10Codes/Case's own coding.icd10 —
+   *  those represent why a specific order/specimen was requested; this
+   *  represents the visit-level diagnosis captured at admission or
+   *  update time, a real, different HL7 concept even when the two
+   *  happen to overlap in practice. Undefined for an encounter whose
+   *  creating/updating message carried no real DG1 at all — most real
+   *  ADT traffic won't. */
+  diagnoses?: EncounterDiagnosis[];
   /** The accession number of a case created during this encounter, if
    *  any - same real, non-PHI reasoning as MasterPatientRecord's own
    *  sourceAccession field. */
@@ -99,20 +154,17 @@ export interface Encounter {
    *  timestamp must never revert a genuinely newer status (e.g. a
    *  stale, delayed "in progress" update arriving after a real,
    *  newer discharge). Optional: an encounter never updated via a
-   *  real ADT status event genuinely has none yet.
-   *
-   *  Real bug found and fixed, per direct confirmation while working
-   *  through the full list of ADT trigger events: this used to only
-   *  ever be set by updateStatus()/updateLocation()/etc, never at
-   *  creation time — meaning a brand-new encounter's very first
-   *  follow-up event, even a genuinely stale/out-of-order one, was
-   *  silently ALWAYS accepted, since every sequence-control check
-   *  below only fires once this field is already set.
-   *  resolveOrCreateEncounter() now accepts a real, optional
-   *  eventTimestamp (the creating A01/A04/A05's own real EVN-2) and
-   *  stamps this baseline immediately, closing that gap. */
+   *  real ADT status event genuinely has none yet. */
   lastEventAt?: string;
 }
+
+/** Real, shared structured shape for PV1-7 input, per PS-81 (Jira) —
+ *  matches adtParser.ts's own real, structured ParsedAdtMessage
+ *  ['encounter']['attendingProvider'] shape exactly (never a
+ *  flattened string here anymore — see that file's own header for
+ *  why). Used by both resolveOrCreateEncounter and updateMetadata
+ *  below, the two real places PV1-7 data enters this service. */
+export type AttendingProviderInput = { id?: string; lastName?: string; firstName?: string };
 
 export interface IEncounterService {
   getById(encounterId: string): Promise<ServiceResult<Encounter | null>>;
@@ -137,15 +189,18 @@ export interface IEncounterService {
    *  an earlier one).
    *
    *  Real bug found and fixed, per direct confirmation while working
-   *  through the full list of ADT trigger events: `eventTimestamp`
-   *  (the real, source-system EVN-2 of the creating A01/A04/A05)
-   *  establishes this encounter's real sequence-control baseline
-   *  (Encounter.lastEventAt) at creation — see that field's own doc
-   *  comment for the real gap this closes. Optional: `AccessionPage.tsx`'s
-   *  manual accessioning call has no real ADT event timestamp to
-   *  provide, and genuinely doesn't need one — the out-of-order-
-   *  network-message risk this guards against is specific to real
-   *  inbound ADT ingestion. */
+   *  through the full list of ADT trigger events: a newly-created
+   *  encounter never got a real `lastEventAt` baseline, so its very
+   *  first follow-up update (updateStatus/updateLocation/updateClass/
+   *  updateMetadata) — even a genuinely stale/out-of-order one — was
+   *  silently ALWAYS accepted, since the sequence-control check on
+   *  every one of those methods only fires when `current.lastEventAt`
+   *  is already set. `eventTimestamp` (the real, source-system EVN-2
+   *  of the creating A01/A04/A05) establishes that baseline. Optional:
+   *  `AccessionPage.tsx`'s manual accessioning call has no real ADT
+   *  event timestamp to provide, and genuinely doesn't need one — the
+   *  out-of-order-network-message risk this guards against is
+   *  specific to real inbound ADT ingestion. */
   resolveOrCreateEncounter(input: {
     organisationId: string;
     patientId: string;
@@ -159,7 +214,12 @@ export interface IEncounterService {
     room?: string;
     bed?: string;
     locationId?: string;
-    attendingProvider?: string;
+    attendingProvider?: AttendingProviderInput;
+    /** Real feature, per direct, detailed correction: a real DG1
+     *  segment riding with the creating A01/A04/A05 — see
+     *  Encounter.diagnoses's own doc comment. Genuinely absent for
+     *  most real messages, which won't carry one. */
+    diagnoses?: EncounterDiagnosis[];
     sourceAccession?: string;
     eventTimestamp?: string;
   }): Promise<ServiceResult<Encounter>>;
@@ -229,7 +289,28 @@ export interface IEncounterService {
    */
   updateMetadata(
     encounterId: string,
-    changes: { attendingProvider?: string; hospitalService?: string; admitSource?: string; financialClass?: string },
+    changes: { attendingProvider?: AttendingProviderInput; hospitalService?: string; admitSource?: string; financialClass?: string },
+    eventTimestamp: string
+  ): Promise<ServiceResult<{ encounter: Encounter; applied: boolean }>>;
+
+  /**
+   * Real feature, per direct, detailed correction: a real DG1 segment
+   * can legitimately ride with an A08 too, not only the creating A01/
+   * A04/A05 — an updated/corrected diagnosis on an already-open visit.
+   * Deliberately separate from updateMetadata above rather than
+   * folded into it: diagnoses are a real, different HL7 segment (DG1,
+   * not PV1) and a different shape (an array, not scalar fields) —
+   * kept as its own narrow method for the same "one real concept per
+   * method" reasoning already applied throughout this interface.
+   * Same sequence-control discipline as every other update method
+   * here: a genuinely stale/out-of-order event is honestly rejected,
+   * never silently applied over newer state. Replaces the full
+   * diagnoses list (real DG1 sets are sent complete, not as an
+   * incremental diff, in real practice) rather than merging.
+   */
+  updateDiagnoses(
+    encounterId: string,
+    diagnoses: EncounterDiagnosis[],
     eventTimestamp: string
   ): Promise<ServiceResult<{ encounter: Encounter; applied: boolean }>>;
 
@@ -246,4 +327,30 @@ export interface IEncounterService {
     encounterId: string,
     eventTimestamp: string
   ): Promise<ServiceResult<{ encounter: Encounter; applied: boolean }>>;
+
+  /**
+   * Real, per direct guidance: the real fix for a genuine, found gap —
+   * mergeIntoExistingPatient() and moveCaseToPatient()
+   * (services/patients/) both used to repoint Case.patient.id only,
+   * silently leaving any real Encounter records still pointing at the
+   * old, deprecated/incorrect patient id. This is that real, dedicated
+   * reassignment, deliberately its own narrow method (same "one real
+   * concept per method" reasoning as every other update method here) —
+   * not folded into updateMetadata, since patient identity isn't
+   * encounter metadata. No sequence-control staleness rejection the
+   * way updateStatus/updateLocation/updateClass have — this isn't a
+   * sequence of real-time events for one encounter's own evolving
+   * clinical state, it's a discrete, administrative identity
+   * correction, same real shape as moveCaseToPatient() itself (which
+   * also takes eventTimestamp only for the audit trail, not a
+   * staleness gate). Real, load-bearing safety check: never blindly
+   * repoints an encounter that doesn't actually belong to the claimed
+   * source patient.
+   */
+  reassignPatient(
+    encounterId: string,
+    sourcePatientId: string,
+    targetPatientId: string,
+    eventTimestamp: string
+  ): Promise<ServiceResult<{ encounter: Encounter; reassigned: boolean; reason?: string }>>;
 }

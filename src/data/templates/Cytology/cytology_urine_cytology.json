@@ -1,470 +1,530 @@
 {
-  "id": "urine_cytology",
-  "name": "Urine Cytology — The Paris System for Reporting Urinary Cytology",
-  "source": "PathScribe",
-  "version": "1.0.0",
-  "category": "CYTOLOGY_NONGYN",
-  "standard": "The Paris System for Reporting Urinary Cytology, 2nd Edition (2022)",
-  "sections": [
-    {
-      "id": "specimen",
-      "title": "Specimen",
-      "fields": [
+    "id": "urine_cytology",
+    "name": "Urine Cytology — The Paris System for Reporting Urinary Cytology",
+    "source": "PathScribe",
+    "version": "1.0.0",
+    "category": "CYTOLOGY_NONGYN",
+    "standard": "The Paris System for Reporting Urinary Cytology, 2nd Edition (2022)",
+    "sections": [
         {
-          "id": "specimen_type",
-          "label": "Specimen Type",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "voided_urine",
-              "label": "Voided urine",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "catheterized_urine",
-              "label": "Catheterized urine",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "bladder_washing",
-              "label": "Bladder washing",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "ileal_conduit",
-              "label": "Ileal conduit urine",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "upper_tract",
-              "label": "Upper tract washing / brushing",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "not_specified",
-              "label": "Not specified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "specimen",
+            "title": "Specimen",
+            "fields": [
+                {
+                    "id": "specimen_type",
+                    "label": "Specimen Type",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "voided_urine",
+                            "label": "Voided urine",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "voided urine"
+                        },
+                        {
+                            "id": "catheterized_urine",
+                            "label": "Catheterized urine",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "catheterized urine"
+                        },
+                        {
+                            "id": "bladder_washing",
+                            "label": "Bladder washing",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "bladder washing"
+                        },
+                        {
+                            "id": "ileal_conduit",
+                            "label": "Ileal conduit urine",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "ileal conduit urine"
+                        },
+                        {
+                            "id": "upper_tract",
+                            "label": "Upper tract washing / brushing",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "upper tract washing/brushing"
+                        },
+                        {
+                            "id": "not_specified",
+                            "label": "Not specified",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Specimen type: {value}."
+                },
+                {
+                    "id": "clinical_indication",
+                    "label": "Clinical Indication",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "hematuria",
+                            "label": "Hematuria",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "hematuria"
+                        },
+                        {
+                            "id": "surveillance",
+                            "label": "Surveillance — known urothelial carcinoma",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "surveillance for known urothelial carcinoma"
+                        },
+                        {
+                            "id": "screening",
+                            "label": "Screening — risk factors",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "screening based on risk factors"
+                        },
+                        {
+                            "id": "other",
+                            "label": "Other (specify)",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Clinical indication: {value}."
+                }
+            ]
         },
         {
-          "id": "clinical_indication",
-          "label": "Clinical Indication",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "hematuria",
-              "label": "Hematuria",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "surveillance",
-              "label": "Surveillance — known urothelial carcinoma",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "screening",
-              "label": "Screening — risk factors",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "other",
-              "label": "Other (specify)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "adequacy",
+            "title": "Specimen Adequacy",
+            "fields": [
+                {
+                    "id": "adequacy_status",
+                    "label": "Adequacy",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "satisfactory",
+                            "label": "Satisfactory for evaluation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "satisfactory for evaluation"
+                        },
+                        {
+                            "id": "unsatisfactory",
+                            "label": "Unsatisfactory for evaluation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "unsatisfactory for evaluation"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "The specimen is {value}."
+                },
+                {
+                    "id": "urothelial_cell_count_note",
+                    "label": "Well-Preserved Urothelial Cells Present",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+) — Paris System benchmark for voided urine is approximately 30 well-preserved urothelial cells needed for adequacy",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "adequate_count",
+                            "label": "Adequate for evaluation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "adequate for evaluation"
+                        },
+                        {
+                            "id": "low_count",
+                            "label": "Low, below conventional benchmark",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "low, below the conventional benchmark"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Well-preserved urothelial cells: {value}."
+                },
+                {
+                    "id": "unsatisfactory_reason",
+                    "label": "Reason for Unsatisfactory (if applicable)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "low_cellularity",
+                            "label": "Insufficient urothelial cellularity",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "insufficient urothelial cellularity"
+                        },
+                        {
+                            "id": "obscuring_blood",
+                            "label": "Obscuring blood or inflammation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "obscuring blood or inflammation"
+                        },
+                        {
+                            "id": "degenerative_change",
+                            "label": "Extensive degenerative change / poor preservation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "extensive degenerative change/poor preservation"
+                        },
+                        {
+                            "id": "other",
+                            "label": "Other (specify)",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Reason for unsatisfactory assessment: {value}."
+                }
+            ]
+        },
+        {
+            "id": "diagnostic_category",
+            "title": "Paris System Diagnostic Category",
+            "fields": [
+                {
+                    "id": "paris_category",
+                    "label": "Diagnostic Category",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "unsatisfactory",
+                            "label": "Unsatisfactory",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Unsatisfactory",
+                            "lexiconTermKey": "paris.urine.category.unsatisfactory"
+                        },
+                        {
+                            "id": "nhguc",
+                            "label": "Negative for High-Grade Urothelial Carcinoma (NHGUC)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Negative for High-Grade Urothelial Carcinoma (NHGUC)",
+                            "lexiconTermKey": "paris.urine.category.nhguc"
+                        },
+                        {
+                            "id": "auc",
+                            "label": "Atypical Urothelial Cells (AUC)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Atypical Urothelial Cells (AUC)",
+                            "lexiconTermKey": "paris.urine.category.auc"
+                        },
+                        {
+                            "id": "shguc",
+                            "label": "Suspicious for High-Grade Urothelial Carcinoma (SHGUC)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Suspicious for High-Grade Urothelial Carcinoma (SHGUC)",
+                            "lexiconTermKey": "paris.urine.category.shguc"
+                        },
+                        {
+                            "id": "hguc",
+                            "label": "High-Grade Urothelial Carcinoma (HGUC)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "High-Grade Urothelial Carcinoma (HGUC)",
+                            "lexiconTermKey": "paris.urine.category.hguc"
+                        },
+                        {
+                            "id": "lgun",
+                            "label": "Low-Grade Urothelial Neoplasm (LGUN)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "Low-Grade Urothelial Neoplasm (LGUN)",
+                            "lexiconTermKey": "paris.urine.category.lgun"
+                        },
+                        {
+                            "id": "other_malignancy",
+                            "label": "Other malignancy (specify in comment)",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Paris System Diagnostic Category: {value}.",
+                    "clinicalTier": "tier_1_diagnostic_category"
+                },
+                {
+                    "id": "category_note",
+                    "label": "Category Notes (reference only)",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+) — informational: the Paris System is deliberately built around detecting high-grade urothelial carcinoma specifically; LGUN is a distinct, separate category since low-grade lesions are frequently not reliably distinguishable from reactive change on cytology alone. Cite local institutional risk data where available.",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
+        },
+        {
+            "id": "cytologic_findings",
+            "title": "Cytologic Findings",
+            "fields": [
+                {
+                    "id": "cellularity",
+                    "label": "Cellularity",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "scant",
+                            "label": "Scant",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "scant"
+                        },
+                        {
+                            "id": "low",
+                            "label": "Low",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "low"
+                        },
+                        {
+                            "id": "moderate",
+                            "label": "Moderate",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "moderate"
+                        },
+                        {
+                            "id": "high",
+                            "label": "High",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "high"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Cellularity: {value}."
+                },
+                {
+                    "id": "cell_pattern",
+                    "label": "Cell Pattern (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "single_cells",
+                            "label": "Predominantly single, dyshesive cells",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "predominantly single, dyshesive cells"
+                        },
+                        {
+                            "id": "papillary_fragments",
+                            "label": "Papillary fragments",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "papillary fragments"
+                        },
+                        {
+                            "id": "sheets",
+                            "label": "Cohesive sheets",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "cohesive sheets"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Cell pattern: {value}."
+                },
+                {
+                    "id": "nc_ratio",
+                    "label": "Nuclear-to-Cytoplasmic (N:C) Ratio",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+) — the Paris System's core quantitative criterion for high-grade atypia",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "normal",
+                            "label": "Not increased",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "not increased"
+                        },
+                        {
+                            "id": "mildly_increased",
+                            "label": "Mildly increased",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "mildly increased"
+                        },
+                        {
+                            "id": "markedly_increased",
+                            "label": "Markedly increased (>0.7)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "markedly increased"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Nuclear-to-cytoplasmic (N:C) ratio: {value}."
+                },
+                {
+                    "id": "nuclear_features",
+                    "label": "Nuclear Features (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "hyperchromasia",
+                            "label": "Nuclear hyperchromasia",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "nuclear hyperchromasia"
+                        },
+                        {
+                            "id": "irregular_membrane",
+                            "label": "Irregular nuclear membrane / contour",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "irregular nuclear membrane/contour"
+                        },
+                        {
+                            "id": "coarse_chromatin",
+                            "label": "Coarse, clumped chromatin",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "coarse, clumped chromatin"
+                        },
+                        {
+                            "id": "none_significant",
+                            "label": "No significant atypia identified",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "no significant atypia"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Nuclear features: {value}."
+                }
+            ]
+        },
+        {
+            "id": "ancillary_studies",
+            "title": "Ancillary Studies",
+            "fields": [
+                {
+                    "id": "fish_ordered",
+                    "label": "UroVysion FISH Ordered",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+) — most relevant for AUC or when cytology and cystoscopy are discordant",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "ordered"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": ""
+                        },
+                        {
+                            "id": "pending",
+                            "label": "Pending",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "ordered, results pending"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "UroVysion FISH: {value}."
+                },
+                {
+                    "id": "fish_result",
+                    "label": "Result (if resulted)",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
+        },
+        {
+            "id": "comments",
+            "title": "Comment / Correlation",
+            "fields": [
+                {
+                    "id": "cystoscopy_correlation",
+                    "label": "Cystoscopy Correlation",
+                    "type": "text",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "Cystoscopy correlation: {value}."
+                },
+                {
+                    "id": "prior_cytology_comparison",
+                    "label": "Comparison to Prior Cytology, if applicable",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                },
+                {
+                    "id": "comment",
+                    "label": "Additional Comment",
+                    "type": "longtext",
+                    "required": false,
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
         }
-      ]
-    },
-    {
-      "id": "adequacy",
-      "title": "Specimen Adequacy",
-      "fields": [
-        {
-          "id": "adequacy_status",
-          "label": "Adequacy",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "satisfactory",
-              "label": "Satisfactory for evaluation",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "unsatisfactory",
-              "label": "Unsatisfactory for evaluation",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "urothelial_cell_count_note",
-          "label": "Well-Preserved Urothelial Cells Present",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+) — Paris System benchmark for voided urine is approximately 30 well-preserved urothelial cells needed for adequacy",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "adequate_count",
-              "label": "Adequate for evaluation",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "low_count",
-              "label": "Low, below conventional benchmark",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "unsatisfactory_reason",
-          "label": "Reason for Unsatisfactory (if applicable)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "low_cellularity",
-              "label": "Insufficient urothelial cellularity",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "obscuring_blood",
-              "label": "Obscuring blood or inflammation",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "degenerative_change",
-              "label": "Extensive degenerative change / poor preservation",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "other",
-              "label": "Other (specify)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "diagnostic_category",
-      "title": "Paris System Diagnostic Category",
-      "fields": [
-        {
-          "id": "paris_category",
-          "label": "Diagnostic Category",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "unsatisfactory",
-              "label": "Unsatisfactory",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "nhguc",
-              "label": "Negative for High-Grade Urothelial Carcinoma (NHGUC)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "auc",
-              "label": "Atypical Urothelial Cells (AUC)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "shguc",
-              "label": "Suspicious for High-Grade Urothelial Carcinoma (SHGUC)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "hguc",
-              "label": "High-Grade Urothelial Carcinoma (HGUC)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "lgun",
-              "label": "Low-Grade Urothelial Neoplasm (LGUN)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "other_malignancy",
-              "label": "Other malignancy (specify in comment)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "category_note",
-          "label": "Category Notes (reference only)",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+) — informational: the Paris System is deliberately built around detecting high-grade urothelial carcinoma specifically; LGUN is a distinct, separate category since low-grade lesions are frequently not reliably distinguishable from reactive change on cytology alone. Cite local institutional risk data where available.",
-          "snomed": "",
-          "icd": ""
-        }
-      ]
-    },
-    {
-      "id": "cytologic_findings",
-      "title": "Cytologic Findings",
-      "fields": [
-        {
-          "id": "cellularity",
-          "label": "Cellularity",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "scant",
-              "label": "Scant",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "low",
-              "label": "Low",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "moderate",
-              "label": "Moderate",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "high",
-              "label": "High",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "cell_pattern",
-          "label": "Cell Pattern (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "single_cells",
-              "label": "Predominantly single, dyshesive cells",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "papillary_fragments",
-              "label": "Papillary fragments",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "sheets",
-              "label": "Cohesive sheets",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "nc_ratio",
-          "label": "Nuclear-to-Cytoplasmic (N:C) Ratio",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+) — the Paris System's core quantitative criterion for high-grade atypia",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "normal",
-              "label": "Not increased",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "mildly_increased",
-              "label": "Mildly increased",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "markedly_increased",
-              "label": "Markedly increased (>0.7)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "nuclear_features",
-          "label": "Nuclear Features (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "hyperchromasia",
-              "label": "Nuclear hyperchromasia",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "irregular_membrane",
-              "label": "Irregular nuclear membrane / contour",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "coarse_chromatin",
-              "label": "Coarse, clumped chromatin",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "none_significant",
-              "label": "No significant atypia identified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "ancillary_studies",
-      "title": "Ancillary Studies",
-      "fields": [
-        {
-          "id": "fish_ordered",
-          "label": "UroVysion FISH Ordered",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+) — most relevant for AUC or when cytology and cystoscopy are discordant",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "pending",
-              "label": "Pending",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "fish_result",
-          "label": "Result (if resulted)",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        }
-      ]
-    },
-    {
-      "id": "comments",
-      "title": "Comment / Correlation",
-      "fields": [
-        {
-          "id": "cystoscopy_correlation",
-          "label": "Cystoscopy Correlation",
-          "type": "text",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        },
-        {
-          "id": "prior_cytology_comparison",
-          "label": "Comparison to Prior Cytology, if applicable",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        },
-        {
-          "id": "comment",
-          "label": "Additional Comment",
-          "type": "longtext",
-          "required": false,
-          "snomed": "",
-          "icd": ""
-        }
-      ]
+    ],
+    "applicability": {
+        "specimenSites": [
+            "Bladder",
+            "Urinary Tract"
+        ],
+        "specimenTypes": [
+            "Cytology"
+        ],
+        "note": "Voided, catheterized, or washing urine specimen for urothelial carcinoma screening/surveillance"
     }
-  ],
-  "applicability": {
-    "specimenSites": [
-      "Bladder",
-      "Urinary Tract"
-    ],
-    "specimenTypes": [
-      "Cytology"
-    ],
-    "note": "Voided, catheterized, or washing urine specimen for urothelial carcinoma screening/surveillance"
-  }
 }

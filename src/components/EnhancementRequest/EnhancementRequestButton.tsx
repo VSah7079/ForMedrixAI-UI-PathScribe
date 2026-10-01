@@ -18,6 +18,8 @@
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../pathscribe.css';
 import { EnhancementRequestModal } from './EnhancementRequestModal';
 
 export type EnhancementButtonMode = 'enhancement' | 'qa';
@@ -33,6 +35,7 @@ export const EnhancementRequestButton: React.FC<Props> = ({
   mode = 'enhancement',
   showInProd = false,
 }) => {
+  const { t }            = useTranslation();
   const [open, setOpen] = useState(false);
 
   // QA button hides in production unless explicitly enabled
@@ -40,7 +43,7 @@ export const EnhancementRequestButton: React.FC<Props> = ({
 
   const isQA    = mode === 'qa';
   const icon    = isQA ? '🐛' : '💡';
-  const tooltip = isQA ? 'Submit QA / Testing Feedback' : 'Submit Enhancement Request';
+  const tooltip = isQA ? t('enhancementRequestButton.qaTooltip') : t('enhancementRequestButton.enhancementTooltip');
 
   const handleClick = () => setOpen(true);
   const handleClose = () => setOpen(false);
@@ -50,22 +53,7 @@ export const EnhancementRequestButton: React.FC<Props> = ({
       <button
         onClick={handleClick}
         title={tooltip}
-        style={{
-          background:  'none',
-          border:      'none',
-          padding:     '4px 8px',
-          fontSize:    '22px',
-          cursor:      'pointer',
-          lineHeight:  '30px',
-          // fontSize (dup):    '16px',
-          opacity:     0.75,
-          transition:  'opacity 0.2s ease',
-          flexShrink:  0,
-          position:    'relative',
-          zIndex:      2,
-        }}
-        onMouseEnter={e => e.currentTarget.style.opacity = '1'}
-        onMouseLeave={e => e.currentTarget.style.opacity = '0.75'}
+        className="erb-trigger-btn"
       >
         {icon}
       </button>

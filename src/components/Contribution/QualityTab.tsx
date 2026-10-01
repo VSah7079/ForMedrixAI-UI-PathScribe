@@ -1,19 +1,22 @@
 // src/components/Contribution/QualityTab.tsx
 import React, { useState, useEffect } from "react";
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
-import { reconciliationService, facilityService, intraoperativeService } from '@/services';
-import { mockAmendmentService } from '@/services/reports/mockAmendmentService';
+import {
+  qaActivityRecordService, facilityService, intraoperativeService, amendmentService, informalReviewService,
+  delegationService, tatTargetService,
+} from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { getDelegations } from '@/services/cases/mockCaseService';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
-import { TAT_STORAGE_KEY, SYSTEM_DEFAULTS as TAT_SYSTEM_DEFAULTS } from '@/components/Config/System/TATConfigSection';
+import { FROZEN_FINAL_ACTIVITY_TYPE_ID } from '@/services/quality/reconciliationRecordMapping';
+import { withPerformingLabs, facilityNamesById, consultationRecords } from '@/services/quality/qualityTatInputs';
 import {
   reconciliationRecordsToDiscordantCases, amendmentRecordsToAmendedCases,
   computeTotalCaseTatOutliers, computeFirstTouchOutliers, computeGrossingOutliers, computeSignOutOutliers,
   computeFrozenSectionOutliers, computeColdIschemiaOutliers,
   computeConsultResponseOutliers, computeConsultAwaitingOutliers, computeTatByClient,
   type RealDiscordantCase, type RealAmendedCase, type RealTotalTatOutlier, type RealFirstTouchOutlier,
-  type RealGenericTatOutlier, type TatEntryForResolution, type RealClientTatRow,
+  type RealGenericTatOutlier, type RealClientTatRow,
 } from './qualityCalculations';
 import {
   LineChart, Line, XAxis, YAxis, CartesianGrid, Tooltip,
@@ -54,7 +57,7 @@ interface TatTrendMonth {
 }
 // ─── Mock Data ────────────────────────────────────────────────────────────────
 // mockDiscordant/mockAmended removed - real fix, now sourced from
-// reconciliationService/mockAmendmentService via qualityCalculations.ts.
+// qaActivityRecordService/mockAmendmentService via qualityCalculations.ts.
 // The four TAT-outlier arrays below remain demo data - see this file's
 // header comment in qualityCalculations.ts for why, and the DemoDataBadge
 // on each of their sections below for honest, visible disclosure.
@@ -116,6 +119,9 @@ const TAT_TYPE_TARGETS: Record<TatTileKey, TatTypeTarget> = {
   consultAwaiting: { target: 48,  peer: 40   },  // 48h before chasing
 };
 
+// TREND_DATA is illustrative demo data (see comments above/below) — its
+// own month labels ("Sep '24" etc.) are data values, not UI chrome, so
+// they're deliberately left as-is rather than run through i18n.
 const TREND_DATA: TatTrendMonth[] = [
   { month: "Sep '24", cases: 310, firstTouch: 3.2, totalCase: 22.4, frozenSection: 0.41, grossing: 3.1, signOut: 20.8, coldIschemia: 0.44, consultResponse: 38.2, consultAwaiting: 42.1 },
   { month: "Oct '24", cases: 334, firstTouch: 3.6, totalCase: 24.1, frozenSection: 0.38, grossing: 3.4, signOut: 22.6, coldIschemia: 0.41, consultResponse: 41.5, consultAwaiting: 45.2 },
@@ -135,6 +141,12 @@ const TREND_DATA: TatTrendMonth[] = [
 // trending from last month's value toward this month's, anchored to real
 // calendar dates computed from "today" (so labels stay current automatically).
 function formatWeekLabel(d: Date): string {
+  // Real, separate gap (flagged, not fixed this batch): this locale is
+  // hardcoded to 'en-US' regardless of the active UI language, so these
+  // weekly chart-axis labels don't follow i18n language switching the way
+  // the surrounding chrome now does. Left as-is because TREND_DATA (the
+  // data these labels are synthesized from) is itself entirely hardcoded
+  // demo data, not live computed values — see README.
   return d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
 }
 
@@ -171,22 +183,58 @@ function generateLast4Weeks(): TatTrendMonth[] {
 const severityClass = (s: Severity) =>
   `ps-severity-badge ps-severity-badge--${s}`;
 
-const barColor = (pct: number) =>
-  pct < 70 ? '#10b981' : pct < 90 ? '#f59e0b' : '#ef4444';
+// Real fix (batch 32): was a hex-returning function driving a per-render
+// inline `style={{ color }}`/`style={{ background }}`; now returns a fixed
+// three-state class suffix so the actual colors live in pathscribe.css
+// (`.ps-tat-client__bar-fill--good/--warn/--bad` etc.) instead of being
+// computed in JS on every render.
+const barColorClass = (pct: number): 'good' | 'warn' | 'bad' =>
+  pct < 70 ? 'good' : pct < 90 ? 'warn' : 'bad';
 
+// Real fix (batch 32): returns a class suffix + the raw parts for the
+// translated "{{arrow}} {{diff}}h vs peers" string, instead of a hardcoded
+// English sentence and a raw hex color.
 const deltaLabel = (mine: number, peer: number) => {
   const diff   = mine - peer;
   const faster = diff < 0;
-  return { text: `${faster ? '↓' : '↑'} ${Math.abs(diff).toFixed(1)}h vs peers`, color: faster ? '#10b981' : '#f59e0b' };
+  return { diff: Math.abs(diff).toFixed(1), arrow: faster ? '↓' : '↑', cls: faster ? 'good' as const : 'warn' as const };
+};
+
+// Discordant-diagnosis delta → icon / i18n-key / CSS-class lookups.
+// Real fix (batch 32): the old className ternary only branched on
+// Concordant/Minor Variance vs. "everything else", so "Downgraded" was
+// silently given the same ps-delta--upgraded class as "Upgraded" — those
+// classes never matched any CSS rule before this batch (see the file's own
+// long-standing comment below), so the mismatch was invisible. Now that
+// real .ps-delta--* rules exist, each of the four real delta values gets
+// its own class.
+const DELTA_KEY: Record<string, string> = {
+  Concordant:       'concordant',
+  'Minor Variance': 'variance',
+  Downgraded:       'downgraded',
+  Upgraded:         'upgraded',
+};
+const DELTA_ICON: Record<string, string> = {
+  Concordant:       '✓',
+  'Minor Variance': '≈',
+  Downgraded:       '↓',
+  Upgraded:         '↑',
+};
+const DELTA_CLASS: Record<string, string> = {
+  Concordant:       'ps-delta--concordant',
+  'Minor Variance': 'ps-delta--variance',
+  Downgraded:       'ps-delta--downgraded',
+  Upgraded:         'ps-delta--upgraded',
 };
 
 // ─── Enabled TAT types — in production from ITATConfigService ────────────────
 // One entry per type configured in TAT Configuration for this pathologist.
 // Comment out any type not yet enabled to demo a partial configuration.
+// Labels are resolved via t(`qualityTab.tat.${key}.label`) at each usage
+// site rather than stored here, so this stays a module-level constant.
 
 interface TatTypeConfig {
   key:        TatTileKey;
-  label:      string;
   icon:       string;
   color:      string;
   summaryKey: keyof typeof mockSummary;
@@ -194,21 +242,22 @@ interface TatTypeConfig {
 }
 
 const ENABLED_TAT_TYPES: TatTypeConfig[] = [
-  { key: "firstTouch",    label: "1st Touch",      icon: "⚡", color: "#f59e0b", summaryKey: "firstTouchBreaches",    dataKey: "firstTouch"    },
-  { key: "totalCase",     label: "Total Case",      icon: "✓",  color: "#f97316", summaryKey: "totalCaseBreaches",     dataKey: "totalCase"     },
-  { key: "frozenSection", label: "Frozen Section",  icon: "🧊", color: "#7dd3fc", summaryKey: "frozenSectionBreaches", dataKey: "frozenSection" },
-  { key: "grossing",      label: "Grossing",        icon: "🔬", color: "#a78bfa", summaryKey: "grossingBreaches",      dataKey: "grossing"      },
-  { key: "signOut",       label: "Sign-out",        icon: "📋", color: "#34d399", summaryKey: "signOutBreaches",       dataKey: "signOut"       },
-  { key: "coldIschemia",  label: "Cold Ischemia",   icon: "❄️", color: "#93c5fd", summaryKey: "coldIschemiaBreaches",  dataKey: "coldIschemia"    },
-  { key: "consultResponse", label: "My Response Time", icon: "💬", color: "#f472b6", summaryKey: "consultResponseBreaches", dataKey: "consultResponse" },
-  { key: "consultAwaiting", label: "Awaiting Response", icon: "⏳", color: "#fb923c", summaryKey: "consultAwaitingBreaches", dataKey: "consultAwaiting" },
+  { key: "firstTouch",      icon: "⚡", color: "#f59e0b", summaryKey: "firstTouchBreaches",      dataKey: "firstTouch"      },
+  { key: "totalCase",       icon: "✓",  color: "#f97316", summaryKey: "totalCaseBreaches",       dataKey: "totalCase"       },
+  { key: "frozenSection",   icon: "🧊", color: "#7dd3fc", summaryKey: "frozenSectionBreaches",   dataKey: "frozenSection"   },
+  { key: "grossing",        icon: "🔬", color: "#a78bfa", summaryKey: "grossingBreaches",        dataKey: "grossing"        },
+  { key: "signOut",         icon: "📋", color: "#34d399", summaryKey: "signOutBreaches",         dataKey: "signOut"         },
+  { key: "coldIschemia",    icon: "❄️", color: "#93c5fd", summaryKey: "coldIschemiaBreaches",    dataKey: "coldIschemia"    },
+  { key: "consultResponse", icon: "💬", color: "#f472b6", summaryKey: "consultResponseBreaches", dataKey: "consultResponse" },
+  { key: "consultAwaiting", icon: "⏳", color: "#fb923c", summaryKey: "consultAwaitingBreaches", dataKey: "consultAwaiting" },
 ];
 
-// Fixed (non-TAT) summary tiles — always present
+// Fixed (non-TAT) summary tiles — always present. Labels resolved via
+// t(`qualityTab.tiles.${key}`) at each usage site.
 const FIXED_SUMMARY_TILES = [
-  { label: "Discordant Cases", key: "discordant"      as const, unit: "", color: "#f97316", icon: "⚠️" },
-  { label: "Amended Reports",  key: "amended"         as const, unit: "", color: "#FDD663", icon: "✏️" },
-  { label: "Concordance Rate", key: "concordanceRate" as const, unit: "%",color: "#10b981", icon: "✓"  },
+  { key: "discordant"      as const, unit: "", color: "#f97316", icon: "⚠️" },
+  { key: "amended"         as const, unit: "", color: "#FDD663", icon: "✏️" },
+  { key: "concordanceRate" as const, unit: "%",color: "#10b981", icon: "✓"  },
 ];
 
 // ─── Custom Reference Line Label — callout with leader line ──────────────────
@@ -255,12 +304,7 @@ const RefLineLabel: React.FC<RefLabelProps> = ({
         fontFamily="system-ui, -apple-system, sans-serif"
         fill={color}
         textAnchor={isLeft ? 'start' : 'end'}
-        style={{
-          paintOrder:      'stroke fill',
-          stroke:          '#0a1628',
-          strokeWidth:     '3.5px',
-          strokeLinejoin:  'round',
-        } as React.CSSProperties}
+        className="ps-tat-refline-label"
       >
         {value}
       </text>
@@ -286,6 +330,7 @@ const RefLineLabel: React.FC<RefLabelProps> = ({
 // this component to honestly disclose.
 
 const QualityTab: React.FC = () => {
+  const { t } = useTranslation();
   const [section,     setSection]     = useState<Section>("discordant");
   const [dateRange,   setDateRange]   = useState<DateRange>("30d");
 
@@ -309,12 +354,24 @@ const QualityTab: React.FC = () => {
   const [realConsultResponse, setRealConsultResponse] = useState<RealGenericTatOutlier[]>([]);
   const [realConsultAwaiting, setRealConsultAwaiting] = useState<RealGenericTatOutlier[]>([]);
   const [realTatByClient, setRealTatByClient] = useState<RealClientTatRow[]>([]);
+  // Real, per direct follow-up ("show a frequency of confirmed
+  // discordance to all AI flagged") — this modal only ever opens via
+  // the real, automatic detection (confirmed directly: no other
+  // trigger exists anywhere in this app), so every real
+  // QaActivityRecord for this activity type already IS "AI flagged"
+  // by definition — the frequency is just discordant / total for this
+  // one activity type, no new "flaggedBySystem" field needed.
+  const [realReconciliationTotal, setRealReconciliationTotal] = useState(0);
   useEffect(() => {
     let cancelled = false;
-    reconciliationService.getAll().then(res => {
-      if (!cancelled && res.ok) setRealDiscordant(reconciliationRecordsToDiscordantCases(res.data));
+    qaActivityRecordService.getAll().then(res => {
+      if (!cancelled && res.ok) {
+        const frozenFinalRecords = res.data.filter(r => r.activityTypeId === FROZEN_FINAL_ACTIVITY_TYPE_ID);
+        setRealDiscordant(reconciliationRecordsToDiscordantCases(frozenFinalRecords));
+        setRealReconciliationTotal(frozenFinalRecords.length);
+      }
     });
-    mockAmendmentService.getAll().then(async res => {
+    amendmentService.getAll().then(async res => {
       if (cancelled || !res.ok) return;
       const caseIds = Array.from(new Set(res.data.map(r => r.caseId)));
       const cases = await Promise.all(caseIds.map(id => caseRouter.getCase(id)));
@@ -325,36 +382,42 @@ const QualityTab: React.FC = () => {
       });
       if (!cancelled) setRealAmended(amendmentRecordsToAmendedCases(res.data, caseTypeByCaseId));
     });
+    const currentUser = getSessionUser();
+    // Batch 353: delegations and TAT targets come from their services (this
+    // read the demo case service and the TAT screen's browser storage); the
+    // joins below are services/quality/qualityTatInputs.ts. Informal review
+    // requests replaced CASUAL_REVIEW delegations, so both are counted for
+    // consultation response / awaiting TAT.
     Promise.all([
       caseRouter.getAll(),
       facilityService.getAll(),
       intraoperativeService.getAll(),
-      getDelegations(),
-    ]).then(([allCasesRes, clientRes, intraopRes, allDelegations]) => {
+      delegationService.list(),
+      currentUser ? informalReviewService.getAllForUser(currentUser.id) : Promise.resolve({ ok: true as const, data: [] }),
+      tatTargetService.getAll(),
+    ]).then(([allCasesRes, clientRes, intraopRes, delegationsRes, informalReviewsRes, tatRes]) => {
       if (cancelled) return;
       const allCases = allCasesRes.ok ? allCasesRes.data : [];
-      const tatEntries = (() => {
-        try {
-          const raw = localStorage.getItem(TAT_STORAGE_KEY);
-          return raw ? JSON.parse(raw) : TAT_SYSTEM_DEFAULTS;
-        } catch { return TAT_SYSTEM_DEFAULTS; }
-      })() as TatEntryForResolution[];
-      const clientNameById: Record<string, string> = {};
-      if (clientRes.ok) clientRes.data.forEach(c => { clientNameById[c.id] = c.name; });
-      setRealTotalTAT(computeTotalCaseTatOutliers(allCases, tatEntries, clientNameById));
-      setRealFirstTouch(computeFirstTouchOutliers(allCases, tatEntries, clientNameById));
-      setRealGrossing(computeGrossingOutliers(allCases, tatEntries, clientNameById));
-      setRealSignOut(computeSignOutOutliers(allCases, tatEntries, clientNameById));
-      setRealColdIschemia(computeColdIschemiaOutliers(allCases, tatEntries, clientNameById));
+      const facilities = clientRes.ok ? clientRes.data : [];
+      const combinedDelegations = consultationRecords(
+        delegationsRes.ok ? delegationsRes.data : [], informalReviewsRes.ok ? informalReviewsRes.data : [],
+      );
+      const tatEntries = tatRes.ok ? tatRes.data : [];
+      const clientNameById = facilityNamesById(facilities);
+      const casesWithPerformingLab = withPerformingLabs(allCases, facilities);
+      setRealTotalTAT(computeTotalCaseTatOutliers(casesWithPerformingLab, tatEntries, clientNameById));
+      setRealFirstTouch(computeFirstTouchOutliers(casesWithPerformingLab, tatEntries, clientNameById));
+      setRealGrossing(computeGrossingOutliers(casesWithPerformingLab, tatEntries, clientNameById));
+      setRealSignOut(computeSignOutOutliers(casesWithPerformingLab, tatEntries, clientNameById));
+      setRealColdIschemia(computeColdIschemiaOutliers(casesWithPerformingLab, tatEntries, clientNameById));
       if (intraopRes.ok) {
-        setRealFrozenSection(computeFrozenSectionOutliers(intraopRes.data, allCases, tatEntries, clientNameById));
+        setRealFrozenSection(computeFrozenSectionOutliers(intraopRes.data, casesWithPerformingLab, tatEntries, clientNameById));
       }
-      const currentUser = getSessionUser();
       if (currentUser) {
-        setRealConsultResponse(computeConsultResponseOutliers(allDelegations, allCases, currentUser.id, tatEntries, clientNameById));
-        setRealConsultAwaiting(computeConsultAwaitingOutliers(allDelegations, allCases, currentUser.id, tatEntries, clientNameById));
+        setRealConsultResponse(computeConsultResponseOutliers(combinedDelegations, casesWithPerformingLab, currentUser.id, tatEntries, clientNameById));
+        setRealConsultAwaiting(computeConsultAwaitingOutliers(combinedDelegations, casesWithPerformingLab, currentUser.id, tatEntries, clientNameById));
         if (clientRes.ok) {
-          setRealTatByClient(computeTatByClient(allCases, tatEntries, clientRes.data, currentUser.id));
+          setRealTatByClient(computeTatByClient(casesWithPerformingLab, tatEntries, clientRes.data, currentUser.id));
         }
       }
     });
@@ -380,11 +443,23 @@ const QualityTab: React.FC = () => {
     ? generateLast4Weeks()
     : trendSlice !== undefined ? TREND_DATA.slice(trendSlice) : TREND_DATA;
 
+  // Real, per direct follow-up — real, live rate rather than
+  // mockSummary's own static placeholder: discordant / total for every
+  // real QaActivityRecord of this activity type. Deliberately
+  // all-time (realDiscordant, not the date-filtered
+  // filteredDiscordant) — realReconciliationTotal is itself all-time,
+  // so mixing a filtered numerator against an unfiltered denominator
+  // would produce a real, misleading rate. 0 total is a real, honest
+  // "no data yet" case, not a divide-by-zero NaN shown to a user.
+  const realConcordanceRate = realReconciliationTotal > 0
+    ? Math.round(((realReconciliationTotal - realDiscordant.length) / realReconciliationTotal) * 1000) / 10
+    : mockSummary.concordanceRate;
+
   // Reactive summary counts that update with the date filter
   const summaryData = {
     discordant:            filteredDiscordant.length,
     amended:               filteredAmended.length,
-    concordanceRate:       mockSummary.concordanceRate,
+    concordanceRate:       realConcordanceRate,
     firstTouchBreaches:    filteredFirstTouch.length,
     totalCaseBreaches:     filteredTotalTAT.length,
     frozenSectionBreaches: filteredFrozenSection.length,
@@ -402,11 +477,17 @@ const QualityTab: React.FC = () => {
   React.useEffect(() => {
     const handler = (e: Event) => {
       const key = (e as CustomEvent).detail?.key as TatTileKey;
-      if (key && ENABLED_TAT_TYPES.some(t => t.key === key)) setActiveTatTile(key);
+      if (key && ENABLED_TAT_TYPES.some(tt => tt.key === key)) setActiveTatTile(key);
     };
     window.addEventListener('PATHSCRIBE_TAT_TILE', handler);
     return () => window.removeEventListener('PATHSCRIBE_TAT_TILE', handler);
   }, []);
+
+  // Date-range button/period labels — three fixed values, resolved via t()
+  // here so both the range selector buttons and the summary-tile "Last …"
+  // period text stay in sync.
+  const rangeButtonLabel = (r: DateRange) =>
+    r === "30d" ? t('qualityTab.dateRange.thirtyDays') : r === "90d" ? t('qualityTab.dateRange.ninetyDays') : t('qualityTab.dateRange.oneYear');
 
   return (
     <div className="ps-quality-container">
@@ -416,42 +497,43 @@ const QualityTab: React.FC = () => {
 
         {/* Fixed tiles — Discordant, Amended, Concordance */}
         {FIXED_SUMMARY_TILES.map(s => (
-          <div key={s.label} className="ps-quality-summary-tile">
+          <div key={s.key} className="ps-quality-summary-tile">
             <div className="ps-quality-summary-tile__header">
-              <span className="ps-quality-summary-tile__label">{s.label}</span>
+              <span className="ps-quality-summary-tile__label">{t(`qualityTab.tiles.${s.key}`)}</span>
               <span>{s.icon}</span>
             </div>
             <div className="ps-quality-summary-tile__value-row">
-              <span className="ps-quality-summary-tile__value" style={{ color: s.color }}>
+              <span className="ps-quality-summary-tile__value" style={{ '--tile-color': s.color } as React.CSSProperties}>
                 {summaryData[s.key]}
               </span>
               {s.unit && <span className="ps-quality-summary-tile__unit">{s.unit}</span>}
             </div>
-            <div className="ps-quality-summary-tile__period">Last {dateRange}</div>
+            <div className="ps-quality-summary-tile__period">{t('qualityTab.summary.period', { range: dateRange })}</div>
           </div>
         ))}
 
         {/* TAT tiles — one per enabled TAT type, clickable to drill into trend */}
-        {ENABLED_TAT_TYPES.map(t => {
-          const isActive = activeTatTile === t.key;
+        {ENABLED_TAT_TYPES.map(tt => {
+          const isActive = activeTatTile === tt.key;
+          const tatLabel = t(`qualityTab.tat.${tt.key}.label`);
           return (
             <div
-              key={t.key}
+              key={tt.key}
               className={`ps-quality-summary-tile ps-quality-summary-tile--clickable${isActive ? " ps-quality-summary-tile--active" : ""}`}
-              onClick={() => setActiveTatTile(prev => prev === t.key ? null : t.key)}
+              onClick={() => setActiveTatTile(prev => prev === tt.key ? null : tt.key)}
             >
               <div className="ps-quality-summary-tile__header">
-                <span className="ps-quality-summary-tile__label">{t.label}</span>
-                <span>{t.icon}</span>
+                <span className="ps-quality-summary-tile__label">{tatLabel}</span>
+                <span>{tt.icon}</span>
               </div>
               <div className="ps-quality-summary-tile__value-row">
-                <span className="ps-quality-summary-tile__value" style={{ color: t.color }}>
-                  {summaryData[t.summaryKey]}
+                <span className="ps-quality-summary-tile__value" style={{ '--tile-color': tt.color } as React.CSSProperties}>
+                  {summaryData[tt.summaryKey]}
                 </span>
               </div>
               <div className="ps-quality-summary-tile__period">
-                <span className={`ps-quality-summary-tile__hint${isActive ? ' ps-quality-summary-tile__hint--active' : ''}`} style={isActive ? { '--accent': t.color } as React.CSSProperties : undefined}>
-                  {isActive ? '▲ Showing trend' : 'Click for trend'}
+                <span className={`ps-quality-summary-tile__hint${isActive ? ' ps-quality-summary-tile__hint--active' : ''}`} style={isActive ? { '--accent': tt.color } as React.CSSProperties : undefined}>
+                  {isActive ? `▲ ${t('qualityTab.summary.showingTrend')}` : t('qualityTab.summary.clickForTrend')}
                 </span>
               </div>
             </div>
@@ -462,27 +544,30 @@ const QualityTab: React.FC = () => {
 
       {/* ── TAT trend date range selector ── */}
       <div className="ps-quality-tat-range">
-        <span className="ps-quality-tat-range__label">Trend period:</span>
+        <span className="ps-quality-tat-range__label">{t('qualityTab.trendRange.label')}</span>
         {(["30d", "90d", "ytd"] as DateRange[]).map(r => (
           <button key={r} className={`ps-quality-btn${dateRange === r ? " active" : ""}`} onClick={() => setDateRange(r)}>
-            {r === "30d" ? "30 Days" : r === "90d" ? "90 Days" : "1 Year"}
+            {rangeButtonLabel(r)}
           </button>
         ))}
       </div>
 
       {/* ── TAT Trend — shown when a TAT tile is selected ── */}
       {activeTatTile !== null && (() => {
-        const tatCfg  = ENABLED_TAT_TYPES.find(t => t.key === activeTatTile)!;
+        const tatCfg   = ENABLED_TAT_TYPES.find(tt => tt.key === activeTatTile)!;
+        const tatLabel = t(`qualityTab.tat.${tatCfg.key}.label`);
         const targets = TAT_TYPE_TARGETS[activeTatTile];
         const dataKey = tatCfg.dataKey;
         const isMin   = activeTatTile === 'frozenSection' || activeTatTile === 'coldIschemia';
         const fmt     = (v: number) => isMin ? `${Math.round(v * 60)}m` : `${v}h`;
         const yMax    = Math.ceil(Math.max(targets.target, ...trendRows.map(d => d[dataKey] as number)) * 1.35);
-        const periodLabel      = dateRange === "30d" ? "4-week" : dateRange === "90d" ? "90-day" : "12-mo";
-        const periodTitleLabel = dateRange === "30d" ? "Last 4 Weeks" : dateRange === "90d" ? "Last 90 Days" : "Last 12 Months";
+        const periodLabel      = dateRange === "30d" ? t('qualityTab.trend.periodShort.thirtyDays') : dateRange === "90d" ? t('qualityTab.trend.periodShort.ninetyDays') : t('qualityTab.trend.periodShort.oneYear');
+        const periodTitleLabel = dateRange === "30d" ? t('qualityTab.trend.periodTitle.thirtyDays') : dateRange === "90d" ? t('qualityTab.trend.periodTitle.ninetyDays') : t('qualityTab.trend.periodTitle.oneYear');
         const avg12   = +(trendRows.reduce((s, d) => s + (d[dataKey] as number), 0) / trendRows.length).toFixed(2);
         const vsTarget = +(avg12 - targets.target).toFixed(2);
         const vsPeer   = +(avg12 - targets.peer).toFixed(2);
+        const vsTargetCls = vsTarget < 0 ? 'good' : 'bad';
+        const vsPeerCls   = vsPeer < 0 ? 'good' : 'warn';
 
         const YBTick = ({ x, y, payload }: { x?: number; y?: number; payload?: { value?: string | number } }) => {
           if (!payload?.value) return null;
@@ -500,29 +585,29 @@ const QualityTab: React.FC = () => {
             <div className="ps-tat-trend__header">
               <div>
                 <div className="ps-tat-trend__title">
-                  {tatCfg.icon} {tatCfg.label} TAT Trend — {periodTitleLabel}
+                  {t('qualityTab.trend.title', { icon: tatCfg.icon, label: tatLabel, period: periodTitleLabel })}
                 </div>
                 <div className="ps-tat-trend__subtitle">
-                  Monthly average vs target {fmt(targets.target)} and peer avg {fmt(targets.peer)}
+                  {t('qualityTab.trend.subtitle', { target: fmt(targets.target), peer: fmt(targets.peer) })}
                 </div>
                 <div className="ps-tat-trend__summary-row">
                   <span className="ps-tat-trend__summary-group">
-                    <span className="ps-tat-trend__summary-label">{periodLabel} avg</span>
-                    <span className="ps-tat-trend__summary-pill" style={{ background: `${tatCfg.color}1a`, color: tatCfg.color, border: `1px solid ${tatCfg.color}44` }}>
+                    <span className="ps-tat-trend__summary-label">{t('qualityTab.trend.periodAvg', { period: periodLabel })}</span>
+                    <span className="ps-tat-trend__summary-pill ps-tat-trend__summary-pill--hue" style={{ '--ps-hue': tatCfg.color } as React.CSSProperties}>
                       {tatCfg.icon} {fmt(avg12)}
                     </span>
                   </span>
                   <span className="ps-tat-trend__summary-divider">|</span>
                   <span className="ps-tat-trend__summary-group">
-                    <span className="ps-tat-trend__summary-label">vs target</span>
-                    <span className="ps-tat-trend__summary-delta" style={{ color: vsTarget < 0 ? '#10b981' : '#ef4444' }}>
+                    <span className="ps-tat-trend__summary-label">{t('qualityTab.trend.vsTarget')}</span>
+                    <span className={`ps-tat-trend__summary-delta ps-tat-trend__summary-delta--${vsTargetCls}`}>
                       {vsTarget < 0 ? '↓' : '↑'} {fmt(Math.abs(vsTarget))}
                     </span>
                   </span>
                   <span className="ps-tat-trend__summary-divider">|</span>
                   <span className="ps-tat-trend__summary-group">
-                    <span className="ps-tat-trend__summary-label">vs peers</span>
-                    <span className="ps-tat-trend__summary-delta" style={{ color: vsPeer < 0 ? '#10b981' : '#f59e0b' }}>
+                    <span className="ps-tat-trend__summary-label">{t('qualityTab.trend.vsPeers')}</span>
+                    <span className={`ps-tat-trend__summary-delta ps-tat-trend__summary-delta--${vsPeerCls}`}>
                       {vsPeer < 0 ? '↓' : '↑'} {fmt(Math.abs(vsPeer))}
                     </span>
                   </span>
@@ -531,24 +616,24 @@ const QualityTab: React.FC = () => {
                     onClick={() => setActiveTatTile(null)}
                     className="ps-tat-trend__close-btn"
                   >
-                    ✕ Close
+                    {t('qualityTab.trend.close')}
                   </button>
                 </div>
               </div>
             </div>
 
             <div className="ps-tat-trend__legend">
-              <div className="ps-tat-trend__legend-item" style={{ color: tatCfg.color }}>
+              <div className="ps-tat-trend__legend-item ps-tat-trend__legend-item--dynamic" style={{ '--accent': tatCfg.color } as React.CSSProperties}>
                 <svg width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" stroke={tatCfg.color} strokeWidth="2" /></svg>
-                {tatCfg.label} avg
+                {t('qualityTab.trend.legendAvg', { label: tatLabel })}
               </div>
               <div className="ps-tat-trend__legend-item ps-tat-trend__legend-item--red">
                 <svg width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" stroke="#ef4444" strokeWidth="1.5" strokeDasharray="4 3" /></svg>
-                Target ({fmt(targets.target)})
+                {t('qualityTab.trend.legendTarget', { value: fmt(targets.target) })}
               </div>
               <div className="ps-tat-trend__legend-item ps-tat-trend__legend-item--purple">
                 <svg width="24" height="4"><line x1="0" y1="2" x2="24" y2="2" stroke="#a78bfa" strokeWidth="1.5" strokeDasharray="2 3" /></svg>
-                Peer avg ({fmt(targets.peer)})
+                {t('qualityTab.trend.legendPeer', { value: fmt(targets.peer) })}
               </div>
             </div>
 
@@ -565,18 +650,18 @@ const QualityTab: React.FC = () => {
                   const over  = val > targets.target;
                   return (
                     <div className="ps-tat-trend__tooltip">
-                      <div className="ps-tat-trend__tooltip-header">{label} · {cases} cases</div>
-                      <div style={{ color: tatCfg.color }}>{tatCfg.label}: {fmt(val)}</div>
-                      <div className="ps-tat-trend__tooltip-footer" style={{ color: over ? '#ef4444' : '#10b981' }}>
-                        {over ? `▲ ${fmt(+(val - targets.target).toFixed(2))} over target` : '✓ Within target'}
+                      <div className="ps-tat-trend__tooltip-header">{t('qualityTab.trend.tooltipHeader', { label, count: cases })}</div>
+                      <div className="ps-tat-trend__tooltip-line" style={{ '--accent': tatCfg.color } as React.CSSProperties}>{t('qualityTab.trend.tooltipValue', { label: tatLabel, value: fmt(val) })}</div>
+                      <div className={`ps-tat-trend__tooltip-footer ps-tat-trend__tooltip-footer--${over ? 'bad' : 'good'}`}>
+                        {over ? t('qualityTab.trend.tooltipOver', { delta: fmt(+(val - targets.target).toFixed(2)) }) : t('qualityTab.trend.tooltipWithin')}
                       </div>
                     </div>
                   );
                 }} />
                 <ReferenceLine y={targets.target} stroke="#ef4444" strokeDasharray="4 3" strokeWidth={1.5}
-                  label={<RefLineLabel value={`target ${fmt(targets.target)}`} color="#ef4444" side="left" nudge={-18} />} />
+                  label={<RefLineLabel value={t('qualityTab.trend.refLineTarget', { value: fmt(targets.target) })} color="#ef4444" side="left" nudge={-18} />} />
                 <ReferenceLine y={targets.peer} stroke="#a78bfa" strokeDasharray="2 3" strokeWidth={1.5}
-                  label={<RefLineLabel value={`peer ${fmt(targets.peer)}`} color="#a78bfa" side="right" nudge={8} />} />
+                  label={<RefLineLabel value={t('qualityTab.trend.refLinePeer', { value: fmt(targets.peer) })} color="#a78bfa" side="right" nudge={8} />} />
                 <Line type="monotone" dataKey={dataKey as string} stroke={tatCfg.color} strokeWidth={2.5}
                   dot={{ r: 3, fill: tatCfg.color, strokeWidth: 0 }} activeDot={{ r: 5, fill: tatCfg.color }} />
               </LineChart>
@@ -588,10 +673,10 @@ const QualityTab: React.FC = () => {
       {/* ── Section nav (date range moved above TAT trend) ── */}
       <div className="ps-quality-nav">
         <div className="ps-quality-nav__left">
-          <button className={`ps-quality-btn${section === "discordant" ? " active" : ""}`} onClick={() => setSection("discordant")}>Frozen vs Final</button>
-          <button className={`ps-quality-btn${section === "amended"    ? " active" : ""}`} onClick={() => setSection("amended")}>Amended Reports</button>
-          <button className={`ps-quality-btn${section === "tat"        ? " active" : ""}`} onClick={() => setSection("tat")}>TAT Outliers</button>
-          <button className={`ps-quality-btn${section === "tatClient"  ? " active" : ""}`} onClick={() => setSection("tatClient")}>TAT by Client</button>
+          <button className={`ps-quality-btn${section === "discordant" ? " active" : ""}`} onClick={() => setSection("discordant")}>{t('qualityTab.nav.frozenVsFinal')}</button>
+          <button className={`ps-quality-btn${section === "amended"    ? " active" : ""}`} onClick={() => setSection("amended")}>{t('qualityTab.nav.amendedReports')}</button>
+          <button className={`ps-quality-btn${section === "tat"        ? " active" : ""}`} onClick={() => setSection("tat")}>{t('qualityTab.nav.tatOutliers')}</button>
+          <button className={`ps-quality-btn${section === "tatClient"  ? " active" : ""}`} onClick={() => setSection("tatClient")}>{t('qualityTab.nav.tatByFacility')}</button>
         </div>
       </div>
 
@@ -599,12 +684,17 @@ const QualityTab: React.FC = () => {
       {section === "discordant" && (
         <div className="ps-quality-card">
           <div className="ps-quality-card__header">
-            <div className="ps-quality-card__title">Discordant Diagnoses</div>
-            <div className="ps-quality-card__subtitle">Cases where frozen section and final diagnosis differ</div>
+            <div className="ps-quality-card__title">{t('qualityTab.discordant.title')}</div>
+            <div className="ps-quality-card__subtitle">{t('qualityTab.discordant.subtitle')}</div>
           </div>
           <table className="ps-quality-table">
             <thead>
-              <tr>{["Case", "Type", "Frozen Dx", "Final Dx", "Delta", "Date", "Severity"].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
+              <tr>{[
+                t('qualityTab.discordant.headers.case'), t('qualityTab.discordant.headers.type'),
+                t('qualityTab.discordant.headers.frozenDx'), t('qualityTab.discordant.headers.finalDx'),
+                t('qualityTab.discordant.headers.delta'), t('qualityTab.discordant.headers.date'),
+                t('qualityTab.discordant.headers.severity'),
+              ].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
             </thead>
             <tbody>
               {filteredDiscordant.map(c => (
@@ -618,12 +708,11 @@ const QualityTab: React.FC = () => {
                         "Concordant" - ReconciliationRecord.delta genuinely
                         has a third value (minor_variance/"Minor Variance")
                         that needs its own icon, not silently falling into
-                        the "upgraded" bucket. Note: the ps-delta--* classes
-                        below appear to have no matching rules anywhere in
-                        pathscribe.css - a separate, pre-existing styling
-                        gap, not addressed here. */}
-                    <span className={c.delta === "Concordant" ? "ps-delta--concordant" : c.delta === "Minor Variance" ? "ps-delta--variance" : "ps-delta--upgraded"}>
-                      {c.delta === "Concordant" ? "✓" : c.delta === "Minor Variance" ? "≈" : c.delta === "Downgraded" ? "↓" : "↑"} {c.delta}
+                        the "upgraded" bucket. The ps-delta--* classes below
+                        now have real matching rules in pathscribe.css
+                        (batch 32) - previously a pre-existing styling gap. */}
+                    <span className={DELTA_CLASS[c.delta]}>
+                      {DELTA_ICON[c.delta]} {t(`qualityTab.discordant.delta.${DELTA_KEY[c.delta]}`)}
                     </span>
                   </td>
                   <td className="ps-quality-td ps-quality-td--muted">{c.date}</td>
@@ -639,12 +728,16 @@ const QualityTab: React.FC = () => {
       {section === "amended" && (
         <div className="ps-quality-card">
           <div className="ps-quality-card__header">
-            <div className="ps-quality-card__title">Amended Reports</div>
-            <div className="ps-quality-card__subtitle">Reports modified after initial sign-out</div>
+            <div className="ps-quality-card__title">{t('qualityTab.amended.title')}</div>
+            <div className="ps-quality-card__subtitle">{t('qualityTab.amended.subtitle')}</div>
           </div>
           <table className="ps-quality-table">
             <thead>
-              <tr>{["Case", "Type", "Reason for Amendment", "Date", "Severity"].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
+              <tr>{[
+                t('qualityTab.amended.headers.case'), t('qualityTab.amended.headers.type'),
+                t('qualityTab.amended.headers.reason'), t('qualityTab.amended.headers.date'),
+                t('qualityTab.amended.headers.severity'),
+              ].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
             </thead>
             <tbody>
               {filteredAmended.map(c => (
@@ -669,14 +762,14 @@ const QualityTab: React.FC = () => {
           subtitle: string;
           isMin: boolean;
         }> = {
-          firstTouch:      { data: filteredFirstTouch,         valueLabel: "First Opened",        subtitle: "Cases not opened within the client's first-touch TAT threshold", isMin: false },
-          totalCase:       { data: filteredTotalTAT,           valueLabel: "Actual TAT",           subtitle: "Cases where receivedDate \u2192 finalizedAt exceeded the client's total TAT target", isMin: false },
-          frozenSection:   { data: filteredFrozenSection,      valueLabel: "Frozen Section TAT",   subtitle: "Intraoperative frozen section results exceeding the turnaround target", isMin: true  },
-          grossing:        { data: filteredGrossing,           valueLabel: "Grossing TAT",         subtitle: "Specimens exceeding the gross-to-description turnaround target", isMin: false },
-          signOut:         { data: filteredSignOut,            valueLabel: "Sign-out TAT",         subtitle: "Cases exceeding the gross-to-final-signout turnaround target", isMin: false },
-          coldIschemia:    { data: filteredColdIschemia,       valueLabel: "Cold Ischemia Time",   subtitle: "Vessel-clamp-to-fixation time exceeding the target window", isMin: true  },
-          consultResponse: { data: filteredConsultResponse,    valueLabel: "Response Time",        subtitle: "Consult / review requests you took longer than target to respond to", isMin: false },
-          consultAwaiting: { data: filteredConsultAwaiting,    valueLabel: "Wait Time",             subtitle: "Consult / review requests where you're still waiting on a colleague's response", isMin: false },
+          firstTouch:      { data: filteredFirstTouch,         valueLabel: t('qualityTab.tat.firstTouch.valueLabel'),      subtitle: t('qualityTab.tat.firstTouch.subtitle'),      isMin: false },
+          totalCase:       { data: filteredTotalTAT,           valueLabel: t('qualityTab.tat.totalCase.valueLabel'),       subtitle: t('qualityTab.tat.totalCase.subtitle'),       isMin: false },
+          frozenSection:   { data: filteredFrozenSection,      valueLabel: t('qualityTab.tat.frozenSection.valueLabel'),   subtitle: t('qualityTab.tat.frozenSection.subtitle'),   isMin: true  },
+          grossing:        { data: filteredGrossing,           valueLabel: t('qualityTab.tat.grossing.valueLabel'),        subtitle: t('qualityTab.tat.grossing.subtitle'),        isMin: false },
+          signOut:         { data: filteredSignOut,            valueLabel: t('qualityTab.tat.signOut.valueLabel'),         subtitle: t('qualityTab.tat.signOut.subtitle'),         isMin: false },
+          coldIschemia:    { data: filteredColdIschemia,       valueLabel: t('qualityTab.tat.coldIschemia.valueLabel'),    subtitle: t('qualityTab.tat.coldIschemia.subtitle'),    isMin: true  },
+          consultResponse: { data: filteredConsultResponse,    valueLabel: t('qualityTab.tat.consultResponse.valueLabel'),subtitle: t('qualityTab.tat.consultResponse.subtitle'), isMin: false },
+          consultAwaiting: { data: filteredConsultAwaiting,    valueLabel: t('qualityTab.tat.consultAwaiting.valueLabel'),subtitle: t('qualityTab.tat.consultAwaiting.subtitle'), isMin: false },
         };
         const getActual = (row: Record<string, any>) => row.actualHrs ?? row.firstTouchHrs ?? row.tatHrs;
         const fmtVal = (v: number, isMin: boolean) => isMin ? `${Math.round(v * 60)}m` : `${v}h`;
@@ -684,29 +777,38 @@ const QualityTab: React.FC = () => {
         return (
           <div className="ps-quality-tat-outliers">
             <div className="ps-quality-sub-toggle">
-              {ENABLED_TAT_TYPES.map(t => (
-                <button key={t.key} className={`ps-quality-sub-btn${tatSubView === t.key ? " active" : ""}`} onClick={() => setTatSubView(t.key)}>
-                  {t.icon} {t.label} Breaches
-                  {OUTLIER_CONFIG[t.key].data.length > 0 && <span className="ps-quality-sub-btn__badge">{OUTLIER_CONFIG[t.key].data.length}</span>}
-                </button>
-              ))}
+              {ENABLED_TAT_TYPES.map(tt => {
+                const tatLabel = t(`qualityTab.tat.${tt.key}.label`);
+                return (
+                  <button key={tt.key} className={`ps-quality-sub-btn${tatSubView === tt.key ? " active" : ""}`} onClick={() => setTatSubView(tt.key)}>
+                    {tt.icon} {t('qualityTab.outliers.breachesLabel', { label: tatLabel })}
+                    {OUTLIER_CONFIG[tt.key].data.length > 0 && <span className="ps-quality-sub-btn__badge">{OUTLIER_CONFIG[tt.key].data.length}</span>}
+                  </button>
+                );
+              })}
             </div>
 
-            {ENABLED_TAT_TYPES.map(t => {
-              if (tatSubView !== t.key) return null;
-              const cfg = OUTLIER_CONFIG[t.key];
+            {ENABLED_TAT_TYPES.map(tt => {
+              if (tatSubView !== tt.key) return null;
+              const cfg = OUTLIER_CONFIG[tt.key];
+              const tatLabel = t(`qualityTab.tat.${tt.key}.label`);
               return (
-                <div className="ps-quality-card" key={t.key}>
+                <div className="ps-quality-card" key={tt.key}>
                   <div className="ps-quality-card__header">
-                    <div className="ps-quality-card__title">{t.icon} {t.label} Breaches</div>
+                    <div className="ps-quality-card__title">{tt.icon} {t('qualityTab.outliers.breachesLabel', { label: tatLabel })}</div>
                     <div className="ps-quality-card__subtitle">{cfg.subtitle}</div>
                   </div>
                   {cfg.data.length === 0
-                    ? <div className="ps-quality-empty">✓ No {t.label.toLowerCase()} breaches this period</div>
+                    ? <div className="ps-quality-empty">{t('qualityTab.outliers.emptyState', { label: tatLabel.toLowerCase() })}</div>
                     : (
                       <table className="ps-quality-table">
                         <thead>
-                          <tr>{["Case", "Type", "Client", cfg.valueLabel, "Target", "Over By", "Date"].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
+                          <tr>{[
+                            t('qualityTab.outliers.headers.case'), t('qualityTab.outliers.headers.type'),
+                            t('qualityTab.outliers.headers.facility'), cfg.valueLabel,
+                            t('qualityTab.outliers.headers.target'), t('qualityTab.outliers.headers.overBy'),
+                            t('qualityTab.outliers.headers.date'),
+                          ].map(h => <th key={h} className="ps-quality-th">{h}</th>)}</tr>
                         </thead>
                         <tbody>
                           {cfg.data.map(c => (
@@ -731,24 +833,24 @@ const QualityTab: React.FC = () => {
         );
       })()}
 
-      {/* ── TAT by Client ── */}
+      {/* ── TAT by Facility ── */}
       {section === "tatClient" && (
         <div className="ps-quality-tat-client">
 
           <div className="ps-tat-client__section-header">
             <div>
-              <div className="ps-tat-client__title">TAT by Client</div>
-              <div className="ps-tat-client__subtitle">Your performance vs client targets · peer group overlay (anonymised, same subspecialty)</div>
+              <div className="ps-tat-client__title">{t('qualityTab.byFacility.title')}</div>
+              <div className="ps-tat-client__subtitle">{t('qualityTab.byFacility.subtitle')}</div>
             </div>
             <div className="ps-tat-client__metric-toggle">
-              <button className={`ps-quality-sub-btn${metric === "firstTouch" ? " active" : ""}`} onClick={() => setMetric("firstTouch")}>⚡ First Touch</button>
-              <button className={`ps-quality-sub-btn${metric === "total"      ? " active" : ""}`} onClick={() => setMetric("total")}>✓ Total TAT</button>
+              <button className={`ps-quality-sub-btn${metric === "firstTouch" ? " active" : ""}`} onClick={() => setMetric("firstTouch")}>⚡ {t('qualityTab.byFacility.metricFirstTouch')}</button>
+              <button className={`ps-quality-sub-btn${metric === "total"      ? " active" : ""}`} onClick={() => setMetric("total")}>✓ {t('qualityTab.byFacility.metricTotalTat')}</button>
             </div>
           </div>
 
           <div className="ps-tat-client__cards">
             {realTatByClient.length === 0 && (
-              <div className="ps-cmnt-thread-empty">No real cases with a resolvable client and target found yet for your own sign-outs.</div>
+              <div className="ps-cmnt-thread-empty">{t('qualityTab.byFacility.noCasesFound')}</div>
             )}
             {realTatByClient.map(client => {
               const myVal      = client.mine[metric];
@@ -768,7 +870,7 @@ const QualityTab: React.FC = () => {
                     </div>
                     <div className="ps-tat-client__legend-row">
                       <span className="ps-tat-client__pct-label">
-                        {target === null ? 'No target configured for this facility in Facility Configuration yet.' : 'No completed cases with both real timestamps yet.'}
+                        {target === null ? t('qualityTab.byFacility.noTargetConfigured') : t('qualityTab.byFacility.noCompletedCases')}
                       </span>
                     </div>
                   </div>
@@ -776,7 +878,7 @@ const QualityTab: React.FC = () => {
               }
               const pct        = Math.min(100, (myVal   / target) * 100);
               const peerPct    = Math.min(100, (peerVal / target) * 100);
-              const color      = barColor(pct);
+              const colorCls   = barColorClass(pct);
               const delta      = deltaLabel(myVal, peerVal);
               const breachCount = client.breaches[metric];
 
@@ -790,31 +892,31 @@ const QualityTab: React.FC = () => {
                     <div className="ps-tat-client__card-right">
                       {breachCount > 0 && (
                         <span className="ps-tat-client__breach-badge">
-                          {breachCount} breach{breachCount !== 1 ? "es" : ""}
+                          {t('qualityTab.byFacility.breachBadge', { count: breachCount })}
                         </span>
                       )}
-                      <span className="ps-tat-client__delta" style={{ color: delta.color }}>{delta.text}</span>
+                      <span className={`ps-tat-client__delta ps-tat-client__delta--${delta.cls}`}>{t('qualityTab.byFacility.deltaVsPeers', { arrow: delta.arrow, diff: delta.diff })}</span>
                     </div>
                   </div>
 
                   <div className="ps-tat-client__bar-track">
-                    <div className="ps-tat-client__bar-fill"    style={{ width: `${pct}%`,     background: color }} />
-                    <div className="ps-tat-client__peer-marker" style={{ left:  `${peerPct}%` }} />
+                    <div className={`ps-tat-client__bar-fill ps-tat-client__bar-fill--${colorCls}`} style={{ '--bar-pct': `${pct}%` } as React.CSSProperties} />
+                    <div className="ps-tat-client__peer-marker" style={{ '--peer-pct': `${peerPct}%` } as React.CSSProperties} />
                     <div className="ps-tat-client__target-marker" />
                   </div>
 
                   <div className="ps-tat-client__legend-row">
                     <div className="ps-tat-client__legend-left">
                       <div className="ps-tat-client__legend-item">
-                        <div className="ps-tat-client__legend-dot" style={{ background: color }} />
-                        <span className="ps-tat-client__you-label" style={{ color }}>You: {myVal}h</span>
+                        <div className={`ps-tat-client__legend-dot ps-tat-client__legend-dot--${colorCls}`} />
+                        <span className={`ps-tat-client__you-label ps-tat-client__you-label--${colorCls}`}>{t('qualityTab.byFacility.youLabel', { value: myVal })}</span>
                       </div>
                       <div className="ps-tat-client__legend-item">
                         <div className="ps-tat-client__legend-peer-mark" />
-                        <span className="ps-tat-client__peer-label">Peers: {peerVal}h (est.)</span>
+                        <span className="ps-tat-client__peer-label">{t('qualityTab.byFacility.peersLabel', { value: peerVal })}</span>
                       </div>
                     </div>
-                    <span className="ps-tat-client__pct-label">{pct.toFixed(0)}% of {target}h target used · {client.caseCount} case{client.caseCount === 1 ? '' : 's'}</span>
+                    <span className="ps-tat-client__pct-label">{t('qualityTab.byFacility.pctLabel', { pct: pct.toFixed(0), target, count: client.caseCount })}</span>
                   </div>
                 </div>
               );
@@ -822,8 +924,8 @@ const QualityTab: React.FC = () => {
           </div>
 
           <div className="ps-tat-client__footer">
-            <span>Peer figures are estimated (no real cross-pathologist aggregation service yet) · your own figures and targets are real</span>
-            <span>Targets configured per facility in Facility Configuration</span>
+            <span>{t('qualityTab.byFacility.footerEstimate')}</span>
+            <span>{t('qualityTab.byFacility.footerTargets')}</span>
           </div>
         </div>
       )}

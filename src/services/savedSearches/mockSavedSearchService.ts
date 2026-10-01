@@ -1,6 +1,7 @@
 import { ISavedSearchService, SavedSearch, SearchContext } from './ISavedSearchService';
 import { ServiceResult, ID } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
+import { emptyCaseSearchDraft } from '../caseSearch/caseSearchTypes';
 
 // Seed data — realistic examples across all three contexts for user '1'
 const SEED_SEARCHES: SavedSearch[] = [
@@ -19,14 +20,18 @@ const SEED_SEARCHES: SavedSearch[] = [
     filters: { status: ['On Hold'] },
     createdAt: '2026-01-20', lastUsedAt: '2026-03-02', useCount: 8,
   },
+  // Batch 350: Search page saved searches store the page's draft (CaseSearchDraft).
   {
     id: 'ss4', userId: '1', name: 'Malignant Colon Cases', context: 'caseSearch',
-    filters: { diagnosisContains: 'adenocarcinoma', subspecialtyIds: ['gi'], snomedCodes: ['363346000'] },
+    filters: {
+      ...emptyCaseSearchDraft('', ''), datesChosen: true, diagnosisTerms: ['adenocarcinoma'],
+      snomedCodes: [{ code: '363346000', display: 'Malignant neoplastic disease', system: 'SNOMED', jurisdiction: 'ALL', active: true }],
+    },
     createdAt: '2026-02-10', lastUsedAt: '2026-03-01', useCount: 5,
   },
   {
     id: 'ss5', userId: '1', name: 'Breast — Dr. Williams', context: 'caseSearch',
-    filters: { subspecialtyIds: ['breast'], physicianIds: ['ph1'] } as any,
+    filters: { ...emptyCaseSearchDraft('', ''), datesChosen: true, specimenTerms: ['breast'], orderingPhysicianIds: ['ph1'] },
     createdAt: '2026-02-20', lastUsedAt: '2026-02-28', useCount: 3,
   },
   {

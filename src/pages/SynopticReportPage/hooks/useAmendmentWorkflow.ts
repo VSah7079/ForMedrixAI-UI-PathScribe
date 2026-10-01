@@ -51,19 +51,21 @@
 // from this hook, the same cross-hook pattern used throughout tonight.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useCallback } from 'react';
-import { mockAuditService } from '@/services/auditlog/mockAuditService';
+import { useState, useCallback, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
-import { userService } from '@/services';
+import { userService, auditService } from '@/services';
 import type { StaffUser } from '@/services/users/IUserService';
 import { sendEmail } from '@/services/communications/notificationService';
 import { amendmentService, reportVersionService } from '@/services';
 import { aiBehaviorService } from '@/services';
 import { lisAmendmentNoticeService } from '@/services';
 import { caseRouter } from '@/services/cases/CaseRouter';
+import { publishReportReleasedEvent } from '@/services/reports/publishReportReleasedEvent';
+import { resolveFinalDiagnosisText } from '@/services/reportTemplates/resolveFinalDiagnosisText';
 import type { VersionHistoryEntry, FieldOverride } from '../modals/AmendmentModal';
 import type { NotificationMethod } from '@/types/reports/AmendmentRecord';
-import type { Case, SynopticReportInstance, ProtocolChange, AiFieldSuggestion } from '@/types/case/Case';
+import type { Case, SynopticReportInstance, ProtocolChange, AiFieldSuggestion, GrossingReportInstance } from '@/types/case/Case';
 import type { CaseStatus } from '@/types/case/CaseStatus';
 import type { MutableRefObject } from 'react';
 import type { SigningUser, SetConcurrencyConflict, SendSynopticReportToLisFn, GenerateReportPdfSnapshotFn } from './sharedHookTypes';
@@ -73,7 +75,7 @@ interface UseAmendmentWorkflowParams {
   caseData: Case | null;
   setCaseData: React.Dispatch<React.SetStateAction<Case | null>>;
   signingUser: SigningUser;
-  showToast: (message: string) => void;
+  showToast: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
   activeReportInstanceId: string;
   knownVersionRef: MutableRefObject<number>;
   setConcurrencyConflict: SetConcurrencyConflict;
@@ -96,6 +98,8 @@ export function useAmendmentWorkflow({
   amendmentMode, amendmentText, setAmendmentText, setAmendmentMode,
   setShowAmendmentModal, log,
 }: UseAmendmentWorkflowParams) {
+  const { t } = useTranslation();
+
   const releasePendingAmendmentOrAddendum = useCallback(async (): Promise<string | undefined> => {
     if (!caseData?.id || !activeReportInstanceId) return undefined;
     const activeInstance = (caseData.synopticReports ?? []).find((r: SynopticReportInstance) => r.instanceId === activeReportInstanceId);
@@ -110,6 +114,17 @@ export function useAmendmentWorkflow({
         body: `Addendum synoptic instance ${activeInstance.instanceId} finalized.`,
       });
       const releasedAddendumType = addendumReleaseRes.ok ? addendumReleaseRes.data.type : 'addendum';
+      // Real, per direct guidance's own follow-up on provenance &
+      // auditability: found via direct check to have zero real audit
+      // trail anywhere in this flow - this is the actual, genuine
+      // release/transmission moment, not just a draft being opened.
+      log('amendment_released', {
+        caseId: caseData.id,
+        amendmentId: activeInstance.pendingAddendumId,
+        type: releasedAddendumType,
+        reportInstanceId: activeInstance.instanceId,
+        specimenId: activeInstance.specimenId,
+      });
       setCaseData(prev => prev ? {
         ...prev,
         lastRevisionType: releasedAddendumType,
@@ -131,13 +146,37 @@ export function useAmendmentWorkflow({
         if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return undefined;
         console.error(e);
       }
-      sendSynopticReportToLis({
-        kind: hasConcurrentAmendment ? 'corrected_with_addition' : 'new_instance',
-        caseId: caseData.id, instanceId: activeInstance.instanceId,
-        sequenceNumber: (caseData.synopticReports ?? []).length,
-        addendumTitle: activeInstance.templateName,
-        payloadBody: `Addendum synoptic instance ${activeInstance.instanceId} finalized.`,
-      });
+      // Real, per direct follow-up ("wire that in" — replacing
+      // sendSynopticReportToLis entirely for orchestration-mode
+      // amendments): buildOruR01Payload.ts (and therefore
+      // publishReportReleasedEvent.ts) only ever works for a real
+      // orchestrator-mode case — confirmed directly, it returns null
+      // otherwise. CoPilot/assist-mode has no real, separate ORU^R01
+      // pipeline of its own, so it keeps its own, real, established
+      // mechanism (sendSynopticReportToLis, mockOutboundLisSyncQueueService)
+      // completely unchanged — same real, existing gate
+      // useSignOutWorkflow.ts's own handleSignOutConfirm already
+      // draws between the two modes for its own, separate "re-sign
+      // the whole case" path.
+      if (caseData.reportingMode === 'assist') {
+        sendSynopticReportToLis({
+          kind: hasConcurrentAmendment ? 'corrected_with_addition' : 'new_instance',
+          caseId: caseData.id, instanceId: activeInstance.instanceId,
+          sequenceNumber: (caseData.synopticReports ?? []).length,
+          addendumTitle: activeInstance.templateName,
+          payloadBody: `Addendum synoptic instance ${activeInstance.instanceId} finalized.`,
+        });
+      } else {
+        publishReportReleasedEvent({
+          caseId: caseData.id,
+          instanceId: activeInstance.instanceId,
+          reportType: 'ADDENDUM',
+          releasedAt: new Date().toISOString(),
+          releasedBy: signingUser?.id ? { id: signingUser.id, name: signingUser.name ?? signingUser.id } : undefined,
+          performingFacilityId: (caseData as any)?.order?.facilityId,
+          generatePdf: generateReportPdfSnapshot,
+        }).catch(e => console.error('[useAmendmentWorkflow] Real, non-blocking failure publishing ADDENDUM event:', e));
+      }
     }
 
     if (activeInstance?.pendingAmendmentId) {
@@ -150,6 +189,39 @@ export function useAmendmentWorkflow({
       // (Amended)/(Corrected) display label. Falls back to 'amendment'
       // only if the release call itself failed to return the record.
       const releasedRevisionType = amendmentReleaseRes.ok ? amendmentReleaseRes.data.type : 'amendment';
+      // Real, per direct correction ("a text field on the report
+      // should be declared as the final diagnosis... we need to
+      // audit those changes") — resolves the real, prior text from
+      // whichever field a real template author explicitly designated
+      // as the Final Diagnosis (resolveFinalDiagnosisText.ts), never
+      // instance.comment directly — confirmed via direct
+      // investigation that field has no real, dedicated editing UI
+      // at all and cannot be relied on to hold the real diagnosis.
+      // Read against originalReportSnapshot.answers (the real,
+      // pre-edit snapshot captured at Stage 1, before any editing
+      // happened) for "before", and the current, live answers for
+      // "after" — same real template for both, since a correction
+      // never changes which template an instance uses.
+      const originalAnswers = amendmentReleaseRes.ok
+        ? (amendmentReleaseRes.data.originalReportSnapshot as any)?.answers as Record<string, unknown> | undefined
+        : undefined;
+      const previouslyReportedAs = originalAnswers
+        ? await resolveFinalDiagnosisText(activeInstance.templateId, originalAnswers)
+        : undefined;
+      const correctedTo = await resolveFinalDiagnosisText(activeInstance.templateId, activeInstance.answers ?? {});
+      // Real, per direct guidance's own follow-up on provenance &
+      // auditability - same real gap, same fix, as the addendum path
+      // above. Now carries the real, explicit before/after Final
+      // Diagnosis text, not just the fact that a correction happened.
+      log('amendment_released', {
+        caseId: caseData.id,
+        amendmentId: activeInstance.pendingAmendmentId,
+        type: releasedRevisionType,
+        reportInstanceId: activeInstance.instanceId,
+        specimenId: activeInstance.specimenId,
+        previouslyReportedAs,
+        correctedTo,
+      });
       setCaseData(prev => prev ? {
         ...prev,
         status: 'finalized' as CaseStatus,
@@ -178,10 +250,25 @@ export function useAmendmentWorkflow({
         if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return undefined;
         console.error(e);
       }
-      sendSynopticReportToLis({
-        kind: 'corrected', caseId: caseData.id, instanceId: activeInstance.instanceId,
-        payloadBody: `Synoptic instance ${activeInstance.instanceId} corrected and re-signed out.`,
-      });
+      // Real, per this function's own header above (the addendum
+      // path) — same real, mode-gated reasoning applies here too.
+      if (caseData.reportingMode === 'assist') {
+        sendSynopticReportToLis({
+          kind: 'corrected', caseId: caseData.id, instanceId: activeInstance.instanceId,
+          payloadBody: `Synoptic instance ${activeInstance.instanceId} corrected and re-signed out.`,
+        });
+      } else {
+        publishReportReleasedEvent({
+          caseId: caseData.id,
+          instanceId: activeInstance.instanceId,
+          reportType: 'CORRECTED',
+          releasedAt: new Date().toISOString(),
+          releasedBy: signingUser?.id ? { id: signingUser.id, name: signingUser.name ?? signingUser.id } : undefined,
+          performingFacilityId: (caseData as any)?.order?.facilityId,
+          generatePdf: generateReportPdfSnapshot,
+          previouslyReportedAs,
+        }).catch(e => console.error('[useAmendmentWorkflow] Real, non-blocking failure publishing CORRECTED event:', e));
+      }
     }
 
     // CoPilot's real completion moment — version record, tagged correctly
@@ -189,7 +276,7 @@ export function useAmendmentWorkflow({
     // first-time finalize.
     if (caseData?.reportingMode === 'assist' && activeInstance) {
       const { pdfBase64, generationError } = await generateReportPdfSnapshot();
-      if (generationError) showToast(`Version saved, but PDF snapshot failed to generate: ${generationError}`);
+      if (generationError) showToast(t('useSignOutWorkflow.toast.versionSavedPdfSnapshotFailed', { error: generationError }), 'warning');
       await reportVersionService.create({
         caseId: caseData.id,
         mode: 'assist',
@@ -203,7 +290,7 @@ export function useAmendmentWorkflow({
     }
 
     return releasedAmendmentId;
-  }, [caseData, activeReportInstanceId, signingUser, generateReportPdfSnapshot, showToast, setCaseData, sendSynopticReportToLis, knownVersionRef, setConcurrencyConflict]);
+  }, [caseData, activeReportInstanceId, signingUser, generateReportPdfSnapshot, showToast, setCaseData, sendSynopticReportToLis, knownVersionRef, setConcurrencyConflict, log, t]);
 
   const alertAdminsOfUnresolvedDrift = useCallback(async (caseId: string, count: number, outcome: string) => {
     try {
@@ -231,7 +318,7 @@ export function useAmendmentWorkflow({
         bodyHtml: `<p><strong>${count}</strong> finalized grossing report(s) on case <strong>${caseId}</strong> were detected as edited after finalization. The automatic correction <strong>${outcome}</strong> and has not been applied. This case may currently show finalized content that doesn't match what was actually signed out — please review directly.</p>`,
         metadata: { caseId, action: 'drift_correction_unresolved', outcome, organisationId: org.id },
       });
-      mockAuditService.logEvent({
+      auditService.logEvent({
         type: 'system',
         event: 'Drift Alert Sent To Admins',
         detail: `Notified ${adminEmails.length} admin(s) in organisation ${org.id} of unresolved drift correction (${outcome})`,
@@ -255,6 +342,36 @@ export function useAmendmentWorkflow({
     if (!changes.length) return;
     setProtoChanges(changes);
     setShowProtoReview(true);
+  }, []);
+
+  // Real feature, per direct follow-up: "there is kind of a workflow that
+  // allows the Gross to be dictated and on submission, the AI reads the
+  // Text, and updates the template... Not sure if there is bearing here."
+  // Real bearing, confirmed — see evaluateGrossingTemplateFit's own header
+  // comment (mockCaseService.ts) and useGrossingCompletion.ts's own real
+  // call site for the full design. Deliberately separate, parallel state
+  // from the Synoptic review above — a single Gross Complete can propose
+  // real changes to BOTH the Grossing Template (this) and the diagnostic
+  // Synoptic Template (above) independently; conflating them into one
+  // review would either force the pathologist through irrelevant
+  // Synoptic rows to reach a real Grossing change or vice versa.
+  const [showGrossingProtoReview, setShowGrossingProtoReview] = useState(false);
+  const [grossingProtoChanges, setGrossingProtoChanges] = useState<ProtocolChange[]>([]);
+  // Real, deliberate capture — NOT re-derived from caseData.diagnostic.
+  // grossDescription at commit time, since Gross Complete's own real
+  // patch (useGrossingCompletion.ts) never actually writes that field;
+  // the dictated text this evaluation used only ever existed locally,
+  // synchronously, at the point of evaluation. Captured here so
+  // handleGrossingProtoCommit below uses the exact same text a
+  // pathologist could still be reviewing minutes later, not a
+  // potentially-stale or entirely absent re-read.
+  const [grossingProtoDictatedText, setGrossingProtoDictatedText] = useState('');
+
+  const handleGrossingProtocolChangesDetected = useCallback((changes: ProtocolChange[], dictatedText: string) => {
+    if (!changes.length) return;
+    setGrossingProtoChanges(changes);
+    setGrossingProtoDictatedText(dictatedText);
+    setShowGrossingProtoReview(true);
   }, []);
 
   const handleProtoCommit = useCallback(async (acceptedIds: string[]) => {
@@ -293,7 +410,7 @@ export function useAmendmentWorkflow({
         if (!microAiEnabled || !templateId) return {};
         try {
           const templateModule = await import('@/services/templates/templateService');
-          const { generateAiSuggestionsForReport } = await import('@/services/cases/mockCaseService');
+          const { generateAiSuggestionsForReport } = await import('@/services');
           const detail = await templateModule.getTemplate(templateId);
           const allFields = detail.template.sections.flatMap(s => s.fields);
           const suggestions = await generateAiSuggestionsForReport(caseData, templateId, allFields);
@@ -374,6 +491,106 @@ export function useAmendmentWorkflow({
     }
   }, [protoChanges, caseData, log, knownVersionRef, setCaseData, setConcurrencyConflict]);
 
+  // Real feature, per direct follow-up: "there is kind of a workflow that
+  // allows the Gross to be dictated and on submission, the AI reads the
+  // Text, and updates the template... Not sure if there is bearing here."
+  // Mirrors handleProtoCommit directly above, with two real differences:
+  // (1) operates on grossingReports, not synopticReports; (2) instead of
+  // regenerating suggestions from the case's diagnostic text
+  // (generateAiSuggestionsForReport), reuses the SAME real, already-built
+  // dictation-reading capability the Gross Complete workflow itself
+  // already has (generateGrossingFieldSuggestionsFromDictation) — the
+  // real answer to "can it just read the narrative and apply that to the
+  // new template so you don't really lose any information": yes,
+  // targeted at the newly-accepted template's own fields, using the
+  // exact same dictated text the evaluation itself was based on
+  // (grossingProtoDictatedText, captured at evaluation time — see that
+  // state's own comment for why it's not re-derived here).
+  const handleGrossingProtoCommit = useCallback(async (acceptedIds: string[]) => {
+    setShowGrossingProtoReview(false);
+    if (acceptedIds.length === 0 || !caseData) return;
+
+    const accepted = grossingProtoChanges.filter(c => acceptedIds.includes(c.id));
+    const nowIso = new Date().toISOString();
+
+    const matchesExisting = (change: ProtocolChange, g: GrossingReportInstance) =>
+      change.currentInstanceId
+        ? g.instanceId === change.currentInstanceId
+        : g.specimenId === change.specimenId && g.templateId === change.currentTemplateId;
+
+    let reports = [...(caseData.grossingReports ?? [])];
+
+    for (const change of accepted) {
+      // evaluateGrossingTemplateFit only ever proposes 'replace' — a
+      // Grossing Template always has one pre-assigned at accession (see
+      // evaluateGrossingTemplateAssignment's own real fallback default),
+      // so there's no real 'add'/'remove' concept here the way a
+      // diagnostic Synoptic can genuinely have zero assigned.
+      if ((change.action ?? 'replace') !== 'replace' || !change.proposedTemplateId) continue;
+
+      let newFieldSuggestions: Record<string, AiFieldSuggestion> = {};
+      try {
+        const templateModule = await import('@/services/templates/templateService');
+        const { generateGrossingFieldSuggestionsFromDictation } = await import('@/services');
+        const detail = await templateModule.getTemplate(change.proposedTemplateId);
+        const allFields = detail.template.sections.flatMap(s => s.fields);
+        const targetReport = reports.find(g => matchesExisting(change, g));
+        if (targetReport && grossingProtoDictatedText.trim()) {
+          const bySpecimen = await generateGrossingFieldSuggestionsFromDictation(
+            grossingProtoDictatedText,
+            [{ specimenId: change.specimenId, specimenLabel: change.specimenLabel, specimenDesc: change.specimenDesc, fields: allFields }],
+            caseData.order?.facilityId,
+          );
+          newFieldSuggestions = bySpecimen[change.specimenId] ?? {};
+        }
+      } catch (e) {
+        // Non-blocking, same real posture as the original Gross Complete
+        // dictation pass — the template still switches below even if
+        // re-deriving fresh suggestions for it fails; a PA can fill the
+        // new template in by hand exactly as if this feature didn't
+        // exist.
+        console.error('[PathScribe] Re-deriving Grossing field suggestions for the newly-accepted template failed:', e);
+      }
+
+      reports = reports.map(g => {
+        if (!matchesExisting(change, g)) return g;
+        return {
+          ...g,
+          templateId:   change.proposedTemplateId ?? g.templateId,
+          templateName: change.proposedTemplateName ?? g.templateName,
+          updatedAt:    nowIso,
+          // Real, load-bearing safety property — same reasoning as
+          // handleProtoCommit's own Synoptic 'replace' handling: the old
+          // answers are keyed to the OLD template's field IDs, which the
+          // new template isn't guaranteed to share; carrying them
+          // forward silently risks misattributing a value to the wrong
+          // field. Cleared, not carried over — the real information
+          // itself isn't lost, though, since it's re-derived just above
+          // from the same dictated narrative, targeted at the new
+          // template's own real fields, still pathologist-confirmed per
+          // field before anything commits as a real answer.
+          answers:      {},
+          aiSuggestions: newFieldSuggestions,
+        };
+      });
+    }
+
+    const patch = { grossingReports: reports };
+    try {
+      await caseRouter.updateCase(caseData.id, patch, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData({ ...caseData, ...patch } as typeof caseData);
+      log('grossing_template_change_committed', {
+        caseId: caseData.id,
+        acceptedCount: acceptedIds.length,
+        totalProposed: grossingProtoChanges.length,
+      });
+    } catch (e) {
+      if (handleConcurrencyConflict(e, setConcurrencyConflict)) return;
+      console.error(e);
+    }
+  }, [grossingProtoChanges, grossingProtoDictatedText, caseData, log, knownVersionRef, setCaseData, setConcurrencyConflict]);
+
   const [amendmentDraftId, setAmendmentDraftId] = useState<string | null>(null);
   const [amendmentSequenceNumber, setAmendmentSequenceNumber] = useState(1);
   const [amendmentSubmitError, setAmendmentSubmitError] = useState<string | null>(null);
@@ -388,8 +605,33 @@ export function useAmendmentWorkflow({
     const res = await amendmentService.startDraft({
       caseId: caseData.id, type: mode,
       authoringPathologist: { userId: signingUser?.id ?? 'unknown', userName: signingUser?.name ?? 'Unknown User' },
+      // Real, per direct guidance's own follow-up on structured
+      // linkage: this exact context is already available right here,
+      // before any editing happens - see AmendmentRecord.reportInstanceId's
+      // own doc comment for the full reasoning.
+      reportInstanceId: activeReportInstanceId ?? undefined,
+      specimenId: (caseData.synopticReports ?? []).find((r: SynopticReportInstance) => r.instanceId === activeReportInstanceId)?.specimenId,
     });
-    if (res.ok) { setAmendmentDraftId(res.data.id); setAmendmentSequenceNumber(res.data.sequenceNumber); }
+    if (res.ok) {
+      setAmendmentDraftId(res.data.id); setAmendmentSequenceNumber(res.data.sequenceNumber);
+      // Real, per direct guidance's own follow-up on provenance &
+      // auditability: this app's own established "all must be
+      // audited" principle, found via direct check to have zero real
+      // audit trail anywhere in the amendment/addendum flow -
+      // startDraft, captureFields, and release all persisted real
+      // data with no corresponding audit log entry at all, despite
+      // this being one of the most compliance-critical actions in the
+      // app (CAP/RCPath accreditation, AmendmentRecord.ts's own
+      // header). Logs the real reportInstanceId/specimenId
+      // association captured above, not just that a draft opened.
+      log('amendment_draft_opened', {
+        caseId: caseData.id,
+        amendmentId: res.data.id,
+        type: mode,
+        reportInstanceId: res.data.reportInstanceId,
+        specimenId: res.data.specimenId,
+      });
+    }
 
     // Delta step needs the true pre-amendment baseline captured NOW,
     // before any field overrides get applied below — not re-cloned
@@ -416,7 +658,7 @@ export function useAmendmentWorkflow({
       await lisAmendmentNoticeService.updateStatus(pendingLisNotice.id, 'synoptic_amended');
       setPendingLisNotice(null);
     }
-  }, [caseData, signingUser, pendingLisNotice, setPendingLisNotice, activeReportInstanceId]);
+  }, [caseData, signingUser, pendingLisNotice, setPendingLisNotice, activeReportInstanceId, log]);
 
   const handleFieldOverridesConfirmed = useCallback(async (overrides: Record<string, FieldOverride>) => {
     if (!caseData || !activeReportInstanceId) return;
@@ -509,8 +751,24 @@ export function useAmendmentWorkflow({
     openAmendmentDraft('amendment');
   }, [caseData, activeReportInstanceId, openAmendmentDraft, setAmendmentMode, setAmendmentText, setShowAmendmentModal]);
 
-  const handleAmendmentSubmit = useCallback(async (fields: { addendumTitle?: string; explanationOfChange?: string; clinicianName?: string; method?: NotificationMethod; notifiedAt?: string }) => {
+  // Batch 380: a new draft opens as an amendment; when the pathologist
+  // switches the modal to Minor Amendment or Addendum, the draft's type
+  // follows. Before this, the draft stayed an amendment, so saving a minor
+  // amendment demanded a clinician notification and an addendum couldn't be
+  // released at all. Checked again at submit, below.
+  useEffect(() => {
     if (!amendmentDraftId) return;
+    let cancelled = false;
+    void amendmentService.changeDraftType(amendmentDraftId, amendmentMode).then(res => {
+      if (!cancelled && res.ok) setAmendmentSequenceNumber(res.data.sequenceNumber);
+    });
+    return () => { cancelled = true; };
+  }, [amendmentDraftId, amendmentMode]);
+
+  const handleAmendmentSubmit = useCallback(async (fields: { addendumTitle?: string; explanationOfChange?: string; clinicianName?: string; method?: NotificationMethod; notifiedAt?: string; reasonId: string }) => {
+    if (!amendmentDraftId) return;
+    const typed = await amendmentService.changeDraftType(amendmentDraftId, amendmentMode);
+    if (!typed.ok) { setAmendmentSubmitError(t('useAmendmentWorkflow.errors.typeChangeRefused')); return; }
     const notification = fields.clinicianName && fields.method
       ? { clinicianName: fields.clinicianName, method: fields.method, notifiedAt: fields.notifiedAt ?? new Date().toISOString() }
       : undefined;
@@ -548,8 +806,9 @@ export function useAmendmentWorkflow({
         explanationOfChange: fields.explanationOfChange ?? '',
         notification,
         originalReportSnapshot,
+        reasonId: fields.reasonId,
       });
-      if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : 'Could not proceed — check required fields.'); return; }
+      if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : t('useAmendmentWorkflow.errors.couldNotProceedCheckFields')); return; }
 
       const unlockedReports = (caseData.synopticReports ?? []).map((r: SynopticReportInstance) =>
         r.instanceId === activeReportInstanceId
@@ -568,7 +827,9 @@ export function useAmendmentWorkflow({
         if (handleConcurrencyConflict(e, setConcurrencyConflict, { blockOverride: true })) return;
         console.error(e);
       }
-      showToast(`Report unlocked for ${amendmentMode === 'correction' ? 'correction' : 'amendment'} — edit the synoptic fields, then re-finalize and sign out to transmit.`);
+      showToast(t('useAmendmentWorkflow.toast.reportUnlockedForMode', {
+        mode: t(amendmentMode === 'correction' ? 'useAmendmentWorkflow.labels.correction' : 'useAmendmentWorkflow.labels.amendment'),
+      }));
 
       setAmendmentSubmitError(null);
       setShowAmendmentModal(false);
@@ -584,15 +845,29 @@ export function useAmendmentWorkflow({
       explanationOfChange: fields.explanationOfChange,
       notification,
       body: amendmentText,
+      reasonId: fields.reasonId,
     });
-    if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : 'Could not release — check required fields.'); return; }
+    if (!res.ok) { setAmendmentSubmitError('error' in res ? res.error : t('useAmendmentWorkflow.errors.couldNotReleaseCheckFields')); return; }
+
+    // Real, per direct guidance's own follow-up on provenance &
+    // auditability - same real gap, same fix, as
+    // releasePendingAmendmentOrAddendum above. Uses the real,
+    // returned record's own reportInstanceId/specimenId (set at
+    // startDraft time), not re-derived here.
+    log('amendment_released', {
+      caseId: caseData?.id,
+      amendmentId: amendmentDraftId,
+      type: res.data.type,
+      reportInstanceId: res.data.reportInstanceId,
+      specimenId: res.data.specimenId,
+    });
 
     setAmendmentSubmitError(null);
     setShowAmendmentModal(false);
     setAmendmentDraftId(null);
-    showToast(`${amendmentMode === 'addendum' ? 'Addendum' : 'Amendment'} released`);
+    showToast(t(amendmentMode === 'addendum' ? 'useAmendmentWorkflow.toast.addendumReleased' : 'useAmendmentWorkflow.toast.amendmentReleased'));
     setAmendmentText('');
-  }, [amendmentDraftId, amendmentMode, amendmentText, caseData, activeReportInstanceId, setAmendmentText, setShowAmendmentModal, showToast, setCaseData, preOverrideSnapshot, knownVersionRef, setConcurrencyConflict]);
+  }, [amendmentDraftId, amendmentMode, amendmentText, caseData, activeReportInstanceId, setAmendmentText, setShowAmendmentModal, showToast, setCaseData, preOverrideSnapshot, knownVersionRef, setConcurrencyConflict, log, t]);
 
   return {
     releasePendingAmendmentOrAddendum,
@@ -601,6 +876,10 @@ export function useAmendmentWorkflow({
     protoChanges,
     handleProtocolChangesDetected,
     handleProtoCommit,
+    showGrossingProtoReview, setShowGrossingProtoReview,
+    grossingProtoChanges,
+    handleGrossingProtocolChangesDetected,
+    handleGrossingProtoCommit,
     amendmentDraftId, setAmendmentDraftId,
     amendmentSequenceNumber,
     amendmentSubmitError, setAmendmentSubmitError,

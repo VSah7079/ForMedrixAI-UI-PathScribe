@@ -46,4 +46,30 @@ export interface Patient {
   phone?: string;
   email?: string;
   address?: string;
+
+  /** Real, per direct UI-review follow-up ("The User may need to see
+   *  the LMP and other clinical history dictionaries entries"): the
+   *  one, real, simple datum captured now — a single date, not a
+   *  dictionary entry. Real, honest scoping: the full clinical-history
+   *  dictionary (surgical/GYN procedures, disease history, oncology
+   *  history, treatment history, clinical indications — six real
+   *  categories) stays separate, deferred work; this field alone
+   *  doesn't attempt to replace it. */
+  lastMenstrualPeriod?: string; // ISO date
+
+  /** Real, per direct guidance: the three real, standard Bethesda §1
+   *  fields flagged as a real, honest gap in CytologyReportContent.ts
+   *  ("no data source anywhere in this app yet") — now real fields,
+   *  same simple-datum scoping as lastMenstrualPeriod above, not the
+   *  full six-category clinical-history dictionary. */
+  hormonalStatus?: 'premenopausal' | 'perimenopausal' | 'postmenopausal' | 'pregnant';
+  /** Real, per the uploaded "Structured Clinical History Dictionary &
+   *  Accessioning Integration" spec's own Acceptance Criteria 3
+   *  ("Category 1 (SCR): Prompts for LMP and prior_hpv_result") — same
+   *  real, simple-datum treatment as hormonalStatus above, not a
+   *  dictionary item (see lastMenstrualPeriod's own doc comment and
+   *  the direct "why is LMP a dictionary?" discussion this follows). */
+  priorHpvResult?: 'positive' | 'negative' | 'unknown' | 'not_tested';
+  priorAbnormalPapHpvHistory?: string;
+  iudOrContraceptionUse?: string;
 }

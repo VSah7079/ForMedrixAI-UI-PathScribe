@@ -5,11 +5,19 @@
  * Receives a pre-captured, PHI-redacted screenshot from EnhancementRequestButton.
  * User can approve or discard the screenshot before submitting.
  *
+ * Batch 364 (PS-349): nothing identifying leaves in the ticket.
+ *   - System details name the page type and the case's support reference,
+ *     not the page address (services/enhancementRequestService.ts).
+ *   - Before sending, the title and description are checked against the
+ *     lab's identifier formats. If a case number or MRN is found, the user
+ *     is warned and can replace case numbers with support references.
+ *
  * Drop-in path: src/components/EnhancementRequest/EnhancementRequestModal.tsx
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import ReactDOM from 'react-dom';
 import { useAuth } from '../../contexts/AuthContext';
@@ -22,6 +30,9 @@ import {
   loadEnhancementConfig,
 } from '../../services/enhancementRequestService';
 import { useScreenCapture, ScreenCaptureResult } from '../../hooks/useScreenCapture';
+import { caseService, supportReferenceService } from '@/services';
+import { supportReferencesForCaseNumbers } from '../../services/enhancementRequestService';
+import { findIdentifiersInText, replaceIdentifiers, type IdentifierInText } from '../../services/supportReferences/supportTicketRules';
 
 // ─── Screenshot compression ───────────────────────────────────────────────────
 // Resizes and re-encodes to JPEG to stay under EmailJS 50KB request limit.
@@ -41,36 +52,32 @@ async function compressScreenshot(dataUrl: string, maxWidth = 800, quality = 0.5
   });
 }
 
-// ─── Style tokens ─────────────────────────────────────────────────────────────
-const T = {
-  bg:      '#0f172a',
-  surface: '#1e293b',
-  border:  '#334155',
-  accent:  '#0891B2',
-  text:    '#f1f5f9',
-  muted:   '#94a3b8',
-  dim:     '#64748b',
-  dimmer:  '#475569',
-};
-
-const inputStyle: React.CSSProperties = {
-  width: '100%', padding: '9px 12px',
-  background: 'rgba(255,255,255,0.04)',
-  border: `1px solid ${T.border}`,
-  borderRadius: '7px', fontSize: '13px', color: T.text,
-  outline: 'none', boxSizing: 'border-box', fontFamily: 'inherit',
-  transition: 'border-color 0.15s',
-};
-
-const labelStyle: React.CSSProperties = {
-  fontSize: '11px', fontWeight: 700, color: T.dim,
-  textTransform: 'uppercase', letterSpacing: '0.07em',
-  display: 'block', marginBottom: '6px',
-};
-
 const ENHANCEMENT_CATEGORIES: RequestCategory[] = ['UI', 'Workflow', 'Reporting', 'Integrations', 'Other'];
 const QA_CATEGORIES: RequestCategory[] = ['UI Bug', 'Functional Issue', 'Data Issue', 'Performance', 'Other'];
 const PRIORITIES: RequestPriority[]  = ['Low', 'Medium', 'High'];
+
+// The real category/priority values stay untouched — they're embedded in
+// the emailed request payload (submitEnhancementRequest), read by the
+// product/QA team in a different context. These map them to translated
+// display labels only, same label-key-map pattern used elsewhere in this
+// sweep.
+const CATEGORY_LABEL_KEY: Record<RequestCategory, string> = {
+  UI:                 'enhancementRequestModal.categories.ui',
+  Workflow:           'enhancementRequestModal.categories.workflow',
+  Reporting:          'enhancementRequestModal.categories.reporting',
+  Integrations:       'enhancementRequestModal.categories.integrations',
+  Other:              'enhancementRequestModal.categories.other',
+  'UI Bug':           'enhancementRequestModal.categories.uiBug',
+  'Functional Issue': 'enhancementRequestModal.categories.functionalIssue',
+  'Data Issue':       'enhancementRequestModal.categories.dataIssue',
+  Performance:        'enhancementRequestModal.categories.performance',
+};
+
+const PRIORITY_LABEL_KEY: Record<RequestPriority, string> = {
+  Low:    'enhancementRequestModal.priorities.low',
+  Medium: 'enhancementRequestModal.priorities.medium',
+  High:   'enhancementRequestModal.priorities.high',
+};
 
 const PRIORITY_STYLES: Record<RequestPriority, { color: string; bg: string; border: string }> = {
   Low:    { color: '#94a3b8', bg: 'rgba(100,116,139,0.15)', border: 'rgba(100,116,139,0.3)'  },
@@ -80,27 +87,28 @@ const PRIORITY_STYLES: Record<RequestPriority, { color: string; bg: string; bord
 
 // ─── Success screen ───────────────────────────────────────────────────────────
 
-const SuccessScreen: React.FC<{ ticketUrl?: string; onClose: () => void }> = ({ ticketUrl, onClose }) => (
-  <div style={{ padding: '40px 32px', textAlign: 'center' }}>
-    <div style={{ fontSize: '48px', marginBottom: '16px' }}>✅</div>
-    <h3 style={{ fontSize: '18px', fontWeight: 800, color: T.text, margin: '0 0 10px' }}>
-      Request Submitted
-    </h3>
-    <p style={{ fontSize: '13px', color: T.muted, lineHeight: 1.7, margin: '0 0 24px' }}>
-      Your enhancement request has been received. The team will review it and follow up if needed.
-    </p>
-    {ticketUrl && (
-      <a href={ticketUrl} target="_blank" rel="noopener noreferrer"
-        style={{ display: 'inline-block', marginBottom: '20px', fontSize: '12px', color: T.accent, textDecoration: 'none', fontWeight: 600 }}>
-        View ticket →
-      </a>
-    )}
-    <button onClick={onClose}
-      style={{ padding: '10px 28px', borderRadius: '8px', border: `1px solid rgba(8,145,178,0.4)`, background: 'rgba(8,145,178,0.15)', color: T.accent, fontSize: '13px', fontWeight: 700, cursor: 'pointer', fontFamily: 'inherit' }}>
-      Done
-    </button>
-  </div>
-);
+const SuccessScreen: React.FC<{ ticketUrl?: string; onClose: () => void }> = ({ ticketUrl, onClose }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="erm-success">
+      <div className="erm-success-icon">✅</div>
+      <h3 className="erm-success-title">
+        {t('enhancementRequestModal.submittedTitle')}
+      </h3>
+      <p className="erm-success-text">
+        {t('enhancementRequestModal.submittedMessage')}
+      </p>
+      {ticketUrl && (
+        <a href={ticketUrl} target="_blank" rel="noopener noreferrer" className="erm-success-link">
+          {t('enhancementRequestModal.viewTicket')}
+        </a>
+      )}
+      <button onClick={onClose} className="erm-success-done-btn">
+        {t('enhancementRequestModal.done')}
+      </button>
+    </div>
+  );
+};
 
 // ─── Screenshot preview ───────────────────────────────────────────────────────
 
@@ -109,87 +117,65 @@ const ScreenshotPreview: React.FC<{
   included:    boolean;
   onToggle:    () => void;
 }> = ({ screenshot, included, onToggle }) => {
+  const { t } = useTranslation();
   const [lightbox, setLightbox] = React.useState(false);
   return (
   <div>
-    <label style={labelStyle}>
-      Screen Capture
-      <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0, marginLeft: '6px' }}>
-        (PHI auto-redacted)
+    <label className="erm-label">
+      {t('enhancementRequestModal.screenCaptureLabel')}
+      <span className="erm-label-optional erm-shot-label-note">
+        {t('enhancementRequestModal.phiAutoRedacted')}
       </span>
     </label>
-    <div style={{
-      borderRadius: '8px', overflow: 'hidden',
-      border: `1px solid ${included ? 'rgba(8,145,178,0.3)' : T.border}`,
-      opacity: included ? 1 : 0.4, transition: 'all 0.2s',
-      cursor: 'zoom-in', position: 'relative',
-    }}
+    <div
+      className="erm-shot-frame"
+      style={{
+        '--erm-shot-border':  included ? 'rgba(8,145,178,0.3)' : '#334155',
+        '--erm-shot-opacity': included ? 1 : 0.4,
+      } as React.CSSProperties}
       onClick={() => setLightbox(true)}
-      title="Click to view full size"
+      title={t('enhancementRequestModal.clickToViewFullSize')}
     >
       <img
         src={screenshot.dataUrl}
-        alt="Screen capture"
-        style={{ width: '100%', display: 'block', maxHeight: '160px', objectFit: 'cover', objectPosition: 'top' }}
+        alt={t('enhancementRequestModal.screenCaptureAlt')}
+        className="erm-shot-img"
       />
-      <div style={{
-        position: 'absolute', bottom: '6px', right: '6px',
-        background: 'rgba(0,0,0,0.55)', borderRadius: '4px',
-        padding: '2px 6px', fontSize: '10px', color: '#cbd5e1', pointerEvents: 'none',
-      }}>🔍 Click to expand</div>
+      <div className="erm-shot-expand-hint">{'🔍 '}{t('enhancementRequestModal.clickToExpand')}</div>
     </div>
 
     {/* Lightbox */}
     {lightbox && ReactDOM.createPortal(
-      <div
-        onClick={() => setLightbox(false)}
-        style={{
-          position: 'fixed', inset: 0, zIndex: 9500,
-          background: 'rgba(0,0,0,0.88)', backdropFilter: 'blur(6px)',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          cursor: 'zoom-out', padding: '32px',
-        }}
-      >
+      <div onClick={() => setLightbox(false)} className="erm-lightbox">
         <img
           src={screenshot.dataUrl}
-          alt="Screen capture — full size"
-          style={{ maxWidth: '100%', maxHeight: '100%', borderRadius: '8px', boxShadow: '0 24px 80px rgba(0,0,0,0.6)', pointerEvents: 'none' }}
+          alt={t('enhancementRequestModal.screenCaptureFullSizeAlt')}
+          className="erm-lightbox-img"
         />
-        <button
-          onClick={() => setLightbox(false)}
-          style={{
-            position: 'absolute', top: '16px', right: '20px',
-            background: 'rgba(255,255,255,0.1)', border: '1px solid rgba(255,255,255,0.2)',
-            borderRadius: '6px', color: '#f1f5f9', fontSize: '14px', fontWeight: 700,
-            padding: '4px 10px', cursor: 'pointer', fontFamily: 'inherit',
-          }}
-        >✕ Close</button>
+        <button onClick={() => setLightbox(false)} className="erm-lightbox-close">
+          {'✕ '}{t('enhancementRequestModal.close')}
+        </button>
       </div>,
       document.body
     )}
 
-    <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', marginTop: '8px' }}>
-      <div style={{ fontSize: '11px', color: T.dimmer }}>
+    <div className="erm-shot-meta-row">
+      <div className="erm-shot-meta-text">
         {(screenshot.redactedCount > 0 || screenshot.pdfRedactedCount > 0) ? (
           <>
             🔒{' '}
-            {screenshot.redactedCount > 0 && `${screenshot.redactedCount} PHI field${screenshot.redactedCount !== 1 ? 's' : ''}`}
+            {screenshot.redactedCount > 0 && t('enhancementRequestModal.phiFieldCount', { count: screenshot.redactedCount })}
             {screenshot.redactedCount > 0 && screenshot.pdfRedactedCount > 0 && ' · '}
-            {screenshot.pdfRedactedCount > 0 && `${screenshot.pdfRedactedCount} PDF report${screenshot.pdfRedactedCount !== 1 ? 's' : ''} masked`}
-            {' redacted'}
+            {screenshot.pdfRedactedCount > 0 && t('enhancementRequestModal.pdfReportMasked', { count: screenshot.pdfRedactedCount })}
+            {' '}{t('enhancementRequestModal.redactedSuffix')}
           </>
-        ) : '✓ No PHI detected'}
-        {' · '}captured {new Date(screenshot.timestamp).toLocaleTimeString()}
+        ) : `✓ ${t('enhancementRequestModal.noPhiDetected')}`}
+        {' · '}{t('enhancementRequestModal.capturedAt', { time: new Date(screenshot.timestamp).toLocaleTimeString() })}
       </div>
-      <button
-        onClick={onToggle}
-        style={{
-          fontSize: '11px', fontWeight: 600, cursor: 'pointer',
-          background: 'none', border: 'none', fontFamily: 'inherit',
-          color: included ? '#f87171' : T.accent, padding: '2px 0',
-        }}
+      <button onClick={onToggle} className="erm-shot-toggle-btn"
+        style={{ '--erm-shot-toggle-color': included ? '#f87171' : '#0891B2' } as React.CSSProperties}
       >
-        {included ? 'Remove' : 'Include'}
+        {included ? t('enhancementRequestModal.remove') : t('enhancementRequestModal.include')}
       </button>
     </div>
   </div>
@@ -206,6 +192,7 @@ interface Props {
 }
 
 export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enhancement' }) => {
+  const { t } = useTranslation();
   const isQA = mode === 'qa';
   const { capture, isCapturing } = useScreenCapture();
   const { user } = useAuth();
@@ -224,14 +211,34 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
     setIncludeScreenshot(true);
   };
   const [submitting,      setSubmitting]      = useState(false);
+  // Batch 364 (PS-349): identifiers found in what the user typed.
+  const [identifiersFound, setIdentifiersFound] = useState<IdentifierInText[] | null>(null);
+  const [replacedCount,    setReplacedCount]    = useState<number | null>(null);
   const [error,           setError]           = useState<string | null>(null);
   const [submitted,       setSubmitted]       = useState(false);
   const [ticketUrl,       setTicketUrl]       = useState<string | undefined>();
 
   const canSubmit = title.trim().length > 0 && description.trim().length > 0 && !submitting;
 
-  const handleSubmit = async () => {
+  const handleReplaceCaseNumbers = async () => {
+    const caseNumbers = (identifiersFound ?? []).filter(f => f.kind === 'accession').map(f => f.text);
+    const refs = await supportReferencesForCaseNumbers(caseNumbers, { caseService, supportReferenceService });
+    const nextTitle = replaceIdentifiers(title, refs);
+    const nextDescription = replaceIdentifiers(description, refs);
+    setTitle(nextTitle);
+    setDescription(nextDescription);
+    setReplacedCount(refs.size);
+    const remaining = findIdentifiersInText(`${nextTitle}\n${nextDescription}`);
+    setIdentifiersFound(remaining.length > 0 ? remaining : null);
+  };
+
+  const handleSubmit = async (sendAnyway = false) => {
     if (!canSubmit) return;
+    if (!sendAnyway) {
+      const found = findIdentifiersInText(`${title}\n${description}`);
+      if (found.length > 0) { setIdentifiersFound(found); setReplacedCount(null); return; }
+    }
+    setIdentifiersFound(null);
     setSubmitting(true);
     setError(null);
 
@@ -256,7 +263,7 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
       mode,
       screenshotDataUrl: (screenshot && includeScreenshot) ? await compressScreenshot(screenshot.dataUrl, 400, 0.3) : undefined,
       metadata: includeSystem && user
-        ? captureMetadata({ id: user.id, name: user.name, role: user.role })
+        ? await captureMetadata({ id: user.id, name: user.name, role: user.role })
         : undefined,
     };
 
@@ -267,10 +274,10 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
         setTicketUrl(result.ticketUrl);
         setSubmitted(true);
       } else {
-        setError(result.error ?? 'Submission failed — please try again.');
+        setError(result.error ?? t('enhancementRequestModal.submissionFailed'));
       }
     } catch (err: any) {
-      setError(err?.message ?? 'An unexpected error occurred.');
+      setError(err?.message ?? t('enhancementRequestModal.unexpectedError'));
     } finally {
       setSubmitting(false);
     }
@@ -280,117 +287,96 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
     <div
       data-enhancement-modal="true"
       onClick={onClose}
-      className="ps-overlay" style={{ zIndex: 9000, alignItems: 'flex-start', paddingTop: 40, paddingBottom: 40, overflowY: 'auto' }}
+      className="ps-overlay erm-overlay"
     >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: '520px', maxHeight: 'calc(100vh - 80px)',
-          background: T.surface,
-          borderRadius: '16px',
-          border: '1px solid rgba(8,145,178,0.2)',
-          boxShadow: '0 32px 64px rgba(0,0,0,0.7)',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-        }}
-      >
+      <div onClick={e => e.stopPropagation()} className="erm-modal">
         {submitted ? (
           <SuccessScreen ticketUrl={ticketUrl} onClose={onClose} />
         ) : (
           <>
             {/* Header */}
-            <div style={{
-              padding: '20px 24px 16px', flexShrink: 0,
-              borderBottom: `1px solid ${T.border}`,
-              display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between',
-              background: isQA ? 'rgba(245,158,11,0.06)' : 'rgba(8,145,178,0.04)',
-            }}>
+            <div className="erm-header" style={{ '--erm-header-bg': isQA ? 'rgba(245,158,11,0.06)' : 'rgba(8,145,178,0.04)' } as React.CSSProperties}>
               <div>
-                <div style={{ fontSize: '16px', fontWeight: 800, color: T.text, display: 'flex', alignItems: 'center', gap: '8px' }}>
+                <div className="erm-header-title">
                   <span>{isQA ? '🐛' : '💡'}</span>
-                  {isQA ? 'Submit QA / Testing Feedback' : 'Submit Enhancement Request'}
+                  {isQA ? t('enhancementRequestModal.qaHeaderTitle') : t('enhancementRequestModal.enhancementHeaderTitle')}
                 </div>
-                <div style={{ fontSize: '12px', color: T.dim, marginTop: '3px' }}>
+                <div className="erm-header-subtitle">
                   {isQA
-                    ? 'Report bugs, test failures, or unexpected behaviour'
-                    : 'Help shape the future of pathscribe AI'}
+                    ? t('enhancementRequestModal.qaHeaderSubtitle')
+                    : t('enhancementRequestModal.enhancementHeaderSubtitle')}
                 </div>
               </div>
-              <button onClick={onClose}
-                style={{ background: 'none', border: 'none', color: T.dimmer, fontSize: '18px', cursor: 'pointer', lineHeight: 1, padding: '2px' }}
-                onMouseEnter={e => e.currentTarget.style.color = T.muted}
-                onMouseLeave={e => e.currentTarget.style.color = T.dimmer}
-              >✕</button>
+              <button onClick={onClose} className="erm-close-btn">✕</button>
             </div>
 
             {/* Body */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: '16px' }}>
+            <div className="erm-body">
 
               {/* Title */}
               <div>
-                <label style={labelStyle}>Title <span style={{ color: '#f87171' }}>*</span></label>
+                <label className="erm-label">{t('enhancementRequestModal.titleLabel')} <span className="erm-label-required">*</span></label>
                 <input
                   value={title} onChange={e => setTitle(e.target.value)}
-                  placeholder="Brief summary of your enhancement idea…"
-                  maxLength={120} style={inputStyle} autoFocus
-                  onFocus={e => e.currentTarget.style.borderColor = T.accent}
-                  onBlur={e  => e.currentTarget.style.borderColor = T.border}
+                  placeholder={t('enhancementRequestModal.titlePlaceholder')}
+                  maxLength={120} className="erm-input" autoFocus
                 />
-                <div style={{ fontSize: '10px', color: T.dimmer, marginTop: '3px', textAlign: 'right' }}>
+                <div className="erm-char-count">
                   {title.length}/120
                 </div>
               </div>
 
               {/* Description */}
               <div>
-                <label style={labelStyle}>Description <span style={{ color: '#f87171' }}>*</span></label>
+                <label className="erm-label">{t('enhancementRequestModal.descriptionLabel')} <span className="erm-label-required">*</span></label>
                 <textarea
                   value={description} onChange={e => setDescription(e.target.value)}
-                  placeholder="Describe the enhancement in detail. What problem does it solve? What should the experience be like?"
+                  placeholder={t('enhancementRequestModal.descriptionPlaceholder')}
                   rows={4}
-                  style={{ ...inputStyle, resize: 'vertical', minHeight: '90px' }}
-                  onFocus={e => e.currentTarget.style.borderColor = T.accent}
-                  onBlur={e  => e.currentTarget.style.borderColor = T.border}
+                  className="erm-input erm-textarea"
                 />
               </div>
 
               {/* QA routing notice */}
               {isQA && (
-                <div style={{ padding: '8px 12px', borderRadius: '6px', background: 'rgba(245,158,11,0.08)', border: '1px solid rgba(245,158,11,0.25)', fontSize: '11px', color: '#fbbf24', lineHeight: 1.5 }}>
-                  🐛 This feedback will be sent to the QA team and cc&#39;d to the system administrator.
+                <div className="erm-qa-notice">
+                  {'🐛 '}{t('enhancementRequestModal.qaRoutingNotice')}
                 </div>
               )}
 
               {/* Category + Priority */}
-              <div style={{ display: 'flex', gap: '16px' }}>
-                <div style={{ flex: 1 }}>
-                  <label style={labelStyle}>Category</label>
-                  <div style={{ display: 'flex', flexWrap: 'wrap', gap: '6px' }}>
-                    {(isQA ? QA_CATEGORIES : ENHANCEMENT_CATEGORIES).map(cat => (
-                      <button key={cat} onClick={() => setCategory(cat)} style={{
-                        padding: '4px 12px', borderRadius: '99px', fontSize: '11px', fontWeight: 600,
-                        cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s',
-                        background: category === cat ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.04)',
-                        color:      category === cat ? T.accent : T.dim,
-                        border:     `1px solid ${category === cat ? 'rgba(8,145,178,0.4)' : T.border}`,
-                      }}>{cat}</button>
-                    ))}
+              <div className="erm-cat-priority-row">
+                <div className="erm-cat-col">
+                  <label className="erm-label">{t('enhancementRequestModal.categoryLabel')}</label>
+                  <div className="erm-cat-chips">
+                    {(isQA ? QA_CATEGORIES : ENHANCEMENT_CATEGORIES).map(cat => {
+                      const active = category === cat;
+                      return (
+                        <button key={cat} onClick={() => setCategory(cat)} className="erm-cat-chip"
+                          style={{
+                            '--erm-chip-bg':     active ? 'rgba(8,145,178,0.15)' : 'rgba(255,255,255,0.04)',
+                            '--erm-chip-color':  active ? '#0891B2' : '#64748b',
+                            '--erm-chip-border': active ? 'rgba(8,145,178,0.4)' : '#334155',
+                          } as React.CSSProperties}
+                        >{t(CATEGORY_LABEL_KEY[cat])}</button>
+                      );
+                    })}
                   </div>
                 </div>
-                <div style={{ width: '140px', flexShrink: 0 }}>
-                  <label style={labelStyle}>Priority <span style={{ fontWeight: 400, textTransform: 'none', letterSpacing: 0 }}>(optional)</span></label>
-                  <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                <div className="erm-priority-col">
+                  <label className="erm-label">{t('enhancementRequestModal.priorityLabel')} <span className="erm-label-optional">{t('enhancementRequestModal.optionalNote')}</span></label>
+                  <div className="erm-priority-list">
                     {PRIORITIES.map(p => {
                       const s = PRIORITY_STYLES[p];
                       const active = priority === p;
                       return (
-                        <button key={p} onClick={() => setPriority(active ? undefined : p)} style={{
-                          padding: '4px 10px', borderRadius: '6px', fontSize: '11px', fontWeight: 700,
-                          cursor: 'pointer', fontFamily: 'inherit', transition: 'all 0.12s', textAlign: 'left',
-                          background: active ? s.bg   : 'rgba(255,255,255,0.03)',
-                          color:      active ? s.color : T.dimmer,
-                          border:     `1px solid ${active ? s.border : T.border}`,
-                        }}>{p}</button>
+                        <button key={p} onClick={() => setPriority(active ? undefined : p)} className="erm-priority-btn"
+                          style={{
+                            '--erm-priority-bg':     active ? s.bg     : 'rgba(255,255,255,0.03)',
+                            '--erm-priority-color':  active ? s.color  : '#475569',
+                            '--erm-priority-border': active ? s.border : '#334155',
+                          } as React.CSSProperties}
+                        >{t(PRIORITY_LABEL_KEY[p])}</button>
                       );
                     })}
                   </div>
@@ -400,24 +386,21 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
               {/* Screen capture — opt-in */}
               {!screenshot ? (
                 <div>
-                  <label style={labelStyle}>Screen Capture</label>
+                  <label className="erm-label">{t('enhancementRequestModal.screenCaptureLabel')}</label>
                   <button
                     onClick={handleCapture}
                     disabled={isCapturing}
+                    className="erm-capture-btn"
                     style={{
-                      width: '100%', padding: '10px 14px', borderRadius: '8px', cursor: isCapturing ? 'wait' : 'pointer',
-                      background: 'rgba(255,255,255,0.03)', border: `1px solid ${T.border}`,
-                      color: isCapturing ? T.dimmer : T.muted, fontSize: '13px', fontFamily: 'inherit',
-                      display: 'flex', alignItems: 'center', justifyContent: 'center', gap: '8px',
-                      transition: 'all 0.15s',
-                    }}
-                    onMouseEnter={e => { if (!isCapturing) { e.currentTarget.style.borderColor = 'rgba(8,145,178,0.4)'; e.currentTarget.style.color = T.accent; }}}
-                    onMouseLeave={e => { e.currentTarget.style.borderColor = T.border; e.currentTarget.style.color = T.muted; }}
+                      '--erm-capture-border': isCapturing ? '#334155' : '#334155',
+                      '--erm-capture-color':  isCapturing ? '#475569' : '#94a3b8',
+                      '--erm-capture-cursor': isCapturing ? 'wait' : 'pointer',
+                    } as React.CSSProperties}
                   >
-                    {isCapturing ? '⏳ Capturing…' : '📷 Capture Current Screen'}
+                    {isCapturing ? `⏳ ${t('enhancementRequestModal.capturing')}` : `📷 ${t('enhancementRequestModal.captureCurrentScreen')}`}
                   </button>
-                  <div style={{ fontSize: '11px', color: T.dimmer, marginTop: '5px' }}>
-                    PHI fields are automatically redacted before capture.
+                  <div className="erm-capture-hint">
+                    {t('enhancementRequestModal.captureHint')}
                   </div>
                 </div>
               ) : (
@@ -431,59 +414,74 @@ export const EnhancementRequestModal: React.FC<Props> = ({ onClose, mode = 'enha
               {/* Include system details toggle */}
               <div
                 onClick={() => setIncludeSystem(v => !v)}
+                className="erm-system-toggle"
                 style={{
-                  display: 'flex', alignItems: 'center', gap: '12px',
-                  padding: '12px 14px', borderRadius: '8px', cursor: 'pointer',
-                  background: includeSystem ? 'rgba(8,145,178,0.06)' : 'rgba(255,255,255,0.02)',
-                  border: `1px solid ${includeSystem ? 'rgba(8,145,178,0.2)' : T.border}`,
-                  transition: 'all 0.15s',
-                }}
+                  '--erm-toggle-bg':    includeSystem ? 'rgba(8,145,178,0.06)' : 'rgba(255,255,255,0.02)',
+                  '--erm-toggle-border': includeSystem ? 'rgba(8,145,178,0.2)' : '#334155',
+                  '--erm-toggle-color': includeSystem ? '#0891B2' : '#94a3b8',
+                } as React.CSSProperties}
               >
-                <div style={{
-                  width: '36px', height: '20px', borderRadius: '99px', flexShrink: 0,
-                  background: includeSystem ? T.accent : 'rgba(255,255,255,0.1)',
-                  position: 'relative', transition: 'background 0.2s',
-                }}>
-                  <span style={{
-                    position: 'absolute', top: '3px', width: '14px', height: '14px',
-                    borderRadius: '50%', background: '#fff', transition: 'left 0.2s',
-                    left: includeSystem ? '19px' : '3px',
-                  }} />
+                <div className="erm-switch" style={{ '--erm-switch-bg': includeSystem ? '#0891B2' : 'rgba(255,255,255,0.1)' } as React.CSSProperties}>
+                  <span className="erm-switch-knob" style={{ '--erm-switch-left': includeSystem ? '19px' : '3px' } as React.CSSProperties} />
                 </div>
                 <div>
-                  <div style={{ fontSize: '12px', fontWeight: 600, color: includeSystem ? T.accent : T.muted }}>
-                    Include system details
+                  <div className="erm-system-title">
+                    {t('enhancementRequestModal.includeSystemDetails')}
                   </div>
-                  <div style={{ fontSize: '10px', color: T.dimmer, marginTop: '1px' }}>
-                    Attaches your user info, browser, OS, app version, and current page
+                  <div className="erm-system-desc">
+                    {t('enhancementRequestModal.includeSystemDetailsHint')}
                   </div>
                 </div>
               </div>
 
+              {/* Batch 364 (PS-349): identifiers in the typed text */}
+              {identifiersFound && (
+                <div className="erm-identifier-warning" role="alert">
+                  <div className="erm-identifier-warning-title">⚠ {t('enhancementRequestModal.identifierWarning.title')}</div>
+                  <div className="erm-identifier-warning-body">{t('enhancementRequestModal.identifierWarning.body')}</div>
+                  <ul className="erm-identifier-warning-list" data-phi="true">
+                    {identifiersFound.map(f => (
+                      <li key={f.text}>{t('enhancementRequestModal.identifierWarning.item', { text: f.text, kind: t(`enhancementRequestModal.identifierWarning.kinds.${f.kind}`) })}</li>
+                    ))}
+                  </ul>
+                  {replacedCount !== null && (
+                    <div className="erm-identifier-warning-note">{t('enhancementRequestModal.identifierWarning.replaced', { count: replacedCount })}</div>
+                  )}
+                  <div className="erm-identifier-warning-actions">
+                    {identifiersFound.some(f => f.kind === 'accession') && (
+                      <button type="button" className="ps-conf-btn-primary" onClick={handleReplaceCaseNumbers}>{t('enhancementRequestModal.identifierWarning.replaceButton')}</button>
+                    )}
+                    <button type="button" className="ps-conf-btn-secondary" onClick={() => setIdentifiersFound(null)}>{t('enhancementRequestModal.identifierWarning.keepEditing')}</button>
+                    <button type="button" className="ps-conf-btn-secondary" onClick={() => handleSubmit(true)}>{t('enhancementRequestModal.identifierWarning.sendAnyway')}</button>
+                  </div>
+                </div>
+              )}
+              {!identifiersFound && replacedCount !== null && replacedCount > 0 && (
+                <div className="erm-identifier-ok">✓ {t('enhancementRequestModal.identifierWarning.replaced', { count: replacedCount })}</div>
+              )}
+
               {/* Error */}
               {error && (
-                <div style={{ padding: '10px 14px', borderRadius: '7px', background: 'rgba(239,68,68,0.08)', border: '1px solid rgba(239,68,68,0.25)', fontSize: '12px', color: '#f87171' }}>
-                  ⚠ {error}
+                <div className="erm-error">
+                  {'⚠ '}{error}
                 </div>
               )}
             </div>
 
             {/* Footer */}
-            <div style={{
-              padding: '14px 24px', flexShrink: 0,
-              borderTop: `1px solid ${T.border}`,
-              display: 'flex', gap: '10px', justifyContent: 'flex-end',
-              background: 'rgba(0,0,0,0.2)',
-            }}>
+            <div className="erm-footer">
               <button onClick={onClose} className="ps-conf-btn-secondary">
-                Cancel
+                {t('enhancementRequestModal.cancel')}
               </button>
               <button
-                onClick={handleSubmit} disabled={!canSubmit}
-                className={`ps-enhance-submit-btn${isQA ? ' ps-enhance-submit-btn--qa' : ''}`}
-                style={{ opacity: submitting ? 0.7 : 1 }}
+                onClick={() => handleSubmit()} disabled={!canSubmit}
+                className={`ps-enhance-submit-btn${isQA ? ' ps-enhance-submit-btn--qa' : ''}${submitting ? ' ps-enhance-submit-btn--busy' : ''}`}
               >
-                {submitting ? '⏳ Submitting…' : isQA ? '🐛 Submit QA Feedback' : '💡 Submit Request'}
+                {submitting
+                  ? `⏳ ${t('enhancementRequestModal.submitting')}`
+                  : isQA
+                    ? `🐛 ${t('enhancementRequestModal.submitQaFeedback')}`
+                    : `💡 ${t('enhancementRequestModal.submitRequest')}`}
               </button>
             </div>
           </>

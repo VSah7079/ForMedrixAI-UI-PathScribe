@@ -1,8 +1,13 @@
-import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef, createContext, useContext } from 'react';
+import React, { useState, useEffect, useRef, useCallback, useImperativeHandle, forwardRef } from 'react';
 import { createPortal } from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { X } from "../Icons";
 import type { PathScribeEditorHandle } from './PathScribeEditorRef';
+import { getUiPreference, setUiPreference } from '@/utils/uiPreferences';
+import { useSpellCheckContext } from '../SpellCheck/SpellCheckContext';
+import { SpellCheckMenu, type SpellMenuRequest } from '../SpellCheck/SpellCheckMenu';
+import { createSpellCheckExtension, requestSpellRecheck } from '../SpellCheck/spellCheckExtension';
 import {
   Bold, Italic, Underline as UnderlineIcon, Strikethrough,
   Subscript as SubscriptIcon, Superscript as SuperscriptIcon,
@@ -27,6 +32,7 @@ import StarterKit from '@tiptap/starter-kit';
 import { TextStyle } from '@tiptap/extension-text-style';
 import { FontFamily } from '@tiptap/extension-font-family';
 import { Color } from '@tiptap/extension-color';
+import Placeholder from '@tiptap/extension-placeholder';
 import Underline from '@tiptap/extension-underline';
 import Highlight from '@tiptap/extension-highlight';
 import Subscript from '@tiptap/extension-subscript';
@@ -67,7 +73,7 @@ export interface PathScribeEditorProps {
   /** Shows a real toggle button in the toolbar letting the user switch
    *  themes themselves. `theme` above becomes only the STARTING point --
    *  once the user has ever clicked the toggle anywhere it appears, that
-   *  becomes their real preference (persisted to localStorage), shared
+   *  becomes their real preference (kept by utils/uiPreferences.ts), shared
    *  across every editor instance that opts into this, overriding
    *  whatever `theme` any individual screen was built with. Off by
    *  default so contexts that shouldn't show it (e.g. a small font
@@ -76,7 +82,7 @@ export interface PathScribeEditorProps {
   // ── Tab width — industry-standard user preference ────────────────────────────
   // Number of spaces a Tab keypress inserts. Word/Docs/Notion all expose this as
   // a user setting rather than hardcoding it. Defaults to 4, persisted by the
-  // parent (e.g. via localStorage or user profile) and passed back in on mount.
+  // parent (e.g. via utils/uiPreferences or the user profile) and passed back in on mount.
   tabWidthChars?: number;
   onTabWidthChange?: (chars: number) => void;
 }
@@ -128,11 +134,25 @@ const DARK_THEME: EditorThemeTokens = {
   accent: '#22b8d8', accentText: 'white',
 };
 
-// IMPORTANT: default context value is LIGHT_THEME, not undefined.
-// Any sub-component rendered outside a ThemeProvider (or before one mounts)
-// gets a safe, correct theme instead of crashing on `theme.whatever`.
-const EditorThemeContext = createContext<EditorThemeTokens>(LIGHT_THEME);
-const useEditorTheme = () => useContext(EditorThemeContext);
+/** Batch 338 (standing rule: no inline CSS): the theme as CSS custom
+ *  properties, set on the editor wrapper and on the toolbar (which can be
+ *  portalled outside the wrapper); pathscribe.css's .pse-* rules read them. */
+const themeVars = (theme: EditorThemeTokens): React.CSSProperties => ({
+  '--pse-toolbar-bg': theme.toolbarBg, '--pse-toolbar-border': theme.toolbarBorder,
+  '--pse-btn-hover-bg': theme.btnHoverBg, '--pse-btn-text': theme.btnText, '--pse-btn-text-disabled': theme.btnTextDisabled,
+  '--pse-divider-color': theme.dividerColor, '--pse-panel-bg': theme.panelBg, '--pse-panel-text': theme.panelText,
+  '--pse-input-bg': theme.inputBg, '--pse-input-border': theme.inputBorder, '--pse-input-text': theme.inputText,
+  '--pse-content-bg': theme.contentBg, '--pse-content-border': theme.contentBorder, '--pse-accent': theme.accent,
+  '--pse-content-text': theme.contentText,
+} as React.CSSProperties);
+
+/** The editor wrapper's custom properties: theme, minimum height and font (Batch 367). */
+const editorWrapVars = (theme: EditorThemeTokens, minHeight: string, font?: string): React.CSSProperties => ({
+  ...themeVars(theme),
+  '--pse-min-height': minHeight,
+  '--pse-font-family': `${font || 'Arial'}, sans-serif`,
+} as React.CSSProperties);
+
 
 // ─── IMPERATIVE HANDLE ────────────────────────────────────────────────────────
 // Exposed via forwardRef so the Orchestrator Engine and NarrativeEditor
@@ -404,50 +424,29 @@ const FormatMarksExtension = Extension.create({
 });
 
 // ─── TOOLBAR BUTTON ───────────────────────────────────────────────────────────
-// Reads theme from context — no prop needed, no way to forget passing it.
+// Colours come from the --pse-* custom properties themeVars() sets on the
+// toolbar (see pathscribe.css), so no theme prop or context is needed.
 
 const TBtn: React.FC<{
   onClick: () => void; isActive?: boolean; title?: string;
   disabled?: boolean; children: React.ReactNode; width?: string;
 }> = ({ onClick, isActive, title, disabled, children, width }) => {
-  const theme = useEditorTheme();
   return (
     <button onClick={onClick} title={title} disabled={disabled}
-      style={{
-        padding: '5px 7px',
-        minWidth: width || '28px',
-        height: '26px',
-        background: isActive ? theme.btnHoverBg : 'transparent',
-        color: disabled ? theme.btnTextDisabled : (isActive ? theme.accent : theme.btnText),
-        border: 'none',
-        borderRadius: '5px',
-        cursor: disabled ? 'not-allowed' : 'pointer',
-        fontSize: '12px',
-        fontWeight: 500,
-        display: 'flex',
-        alignItems: 'center',
-        justifyContent: 'center',
-        gap: '3px',
-        transition: 'background 0.12s, color 0.12s',
-        flexShrink: 0,
-        whiteSpace: 'nowrap',
-      }}
-      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = theme.btnHoverBg; }}
-      onMouseLeave={e => { if (!disabled) e.currentTarget.style.background = isActive ? theme.btnHoverBg : 'transparent'; }}
+      className={isActive ? 'pse-tbtn pse-tbtn--active' : 'pse-tbtn'}
+      style={width ? ({ '--pse-tbtn-min': width } as React.CSSProperties) : undefined}
     >
       {children}
     </button>
   );
 };
 
-const Divider = () => {
-  const theme = useEditorTheme();
-  return <div style={{ width: '1px', height: '18px', background: theme.dividerColor, margin: '0 5px', flexShrink: 0 }} />;
-};
+const Divider = () => <div className="pse-divider" />;
 
 // ─── FIND/REPLACE PANEL ───────────────────────────────────────────────────────
 
 const FindReplacePanel: React.FC<{ editor: any; onClose: () => void }> = ({ editor, onClose }) => {
+  const { t } = useTranslation();
   const [findText, setFindText] = useState('');
   const [replaceText, setReplaceText] = useState('');
   const [mode, setMode] = useState<'find' | 'replace'>('find');
@@ -470,20 +469,20 @@ const FindReplacePanel: React.FC<{ editor: any; onClose: () => void }> = ({ edit
   };
 
   return (
-    <div style={{ position: 'absolute', top: '100%', right: 0, zIndex: 100, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: '340px' }}>
-      <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '12px' }}>
-        <div style={{ display: 'flex', gap: '8px' }}>
-          <button onClick={() => setMode('find')} style={{ fontSize: '13px', fontWeight: 600, color: mode === 'find' ? '#0891B2' : '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px', borderBottom: mode === 'find' ? '2px solid #0891B2' : '2px solid transparent' }}>Find</button>
-          <button onClick={() => setMode('replace')} style={{ fontSize: '13px', fontWeight: 600, color: mode === 'replace' ? '#0891B2' : '#64748b', background: 'none', border: 'none', cursor: 'pointer', padding: '2px 8px', borderBottom: mode === 'replace' ? '2px solid #0891B2' : '2px solid transparent' }}>Replace</button>
+    <div className="pse-dropdown-panel pse-findreplace-panel">
+      <div className="pse-findreplace-header">
+        <div className="pse-findreplace-tabs">
+          <button onClick={() => setMode('find')} className={`pse-findreplace-tab${mode === 'find' ? ' pse-findreplace-tab--active' : ''}`}>{t('pathScribeEditor.findReplace.find')}</button>
+          <button onClick={() => setMode('replace')} className={`pse-findreplace-tab${mode === 'replace' ? ' pse-findreplace-tab--active' : ''}`}>{t('pathScribeEditor.findReplace.replace')}</button>
         </div>
-        <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '18px' }}>✕</button>
+        <button onClick={onClose} className="pse-dropdown-close" aria-label={t('pathScribeEditor.close')}>✕</button>
       </div>
-      <input value={findText} onChange={e => setFindText(e.target.value)} onKeyDown={e => e.key === 'Enter' && doFind()} placeholder="Find..." autoFocus style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', marginBottom: '8px', boxSizing: 'border-box' }} />
-      {mode === 'replace' && <input value={replaceText} onChange={e => setReplaceText(e.target.value)} placeholder="Replace with..." style={{ width: '100%', padding: '8px 10px', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '13px', marginBottom: '8px', boxSizing: 'border-box' }} />}
-      {matchCount > 0 && <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '8px' }}>{matchCount} match(es) found</div>}
-      <div style={{ display: 'flex', gap: '8px' }}>
-        <button onClick={doFind} style={{ flex: 1, padding: '8px', background: '#0891B2', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>{mode === 'find' ? 'Find Next' : 'Find'}</button>
-        {mode === 'replace' && <button onClick={doReplaceAll} style={{ flex: 1, padding: '8px', background: '#475569', color: 'white', border: 'none', borderRadius: '6px', fontSize: '13px', fontWeight: 600, cursor: 'pointer' }}>Replace All</button>}
+      <input value={findText} onChange={e => setFindText(e.target.value)} onKeyDown={e => e.key === 'Enter' && doFind()} placeholder={t('pathScribeEditor.findReplace.findPlaceholder')} autoFocus className="pse-dropdown-input" />
+      {mode === 'replace' && <input value={replaceText} onChange={e => setReplaceText(e.target.value)} placeholder={t('pathScribeEditor.findReplace.replacePlaceholder')} className="pse-dropdown-input" />}
+      {matchCount > 0 && <div className="pse-findreplace-matchcount">{t('pathScribeEditor.findReplace.matchesFound', { count: matchCount })}</div>}
+      <div className="pse-findreplace-actions">
+        <button onClick={doFind} className="pse-btn-primary-block">{mode === 'find' ? t('pathScribeEditor.findReplace.findNext') : t('pathScribeEditor.findReplace.find')}</button>
+        {mode === 'replace' && <button onClick={doReplaceAll} className="pse-btn-secondary-block">{t('pathScribeEditor.findReplace.replaceAll')}</button>}
       </div>
     </div>
   );
@@ -492,15 +491,17 @@ const FindReplacePanel: React.FC<{ editor: any; onClose: () => void }> = ({ edit
 // ─── INSERT TABLE MODAL ───────────────────────────────────────────────────────
 
 const InsertTableModal: React.FC<{ onInsert: (rows: number, cols: number) => void; onClose: () => void }> = ({ onInsert, onClose }) => {
+  const { t } = useTranslation();
   const [hovered, setHovered] = useState<{ rows: number; cols: number } | null>(null);
   const maxR = 8, maxC = 10;
   return (
-    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '16px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)' }}>
-      <div style={{ fontSize: '12px', color: '#64748b', marginBottom: '10px', fontWeight: 600 }}>{hovered ? `${hovered.rows} × ${hovered.cols} table` : 'Select table size'}</div>
-      <div style={{ display: 'grid', gridTemplateColumns: `repeat(${maxC}, 20px)`, gap: '2px' }}>
+    <div className="pse-dropdown-panel pse-inserttable-panel">
+      <div className="pse-inserttable-label">{hovered ? t('pathScribeEditor.insertTable.size', { rows: hovered.rows, cols: hovered.cols }) : t('pathScribeEditor.insertTable.selectSize')}</div>
+      <div className="pse-inserttable-grid" style={{ '--pse-grid-cols': maxC } as React.CSSProperties}>
         {Array.from({ length: maxR }, (_, r) =>
           Array.from({ length: maxC }, (_, c) => (
-            <div key={`${r}-${c}`} onMouseEnter={() => setHovered({ rows: r + 1, cols: c + 1 })} onMouseLeave={() => setHovered(null)} onClick={() => { onInsert(r + 1, c + 1); onClose(); }} style={{ width: 20, height: 20, background: hovered && r < hovered.rows && c < hovered.cols ? '#0891B2' : '#f1f5f9', border: `1px solid ${hovered && r < hovered.rows && c < hovered.cols ? '#0891B2' : '#e2e8f0'}`, borderRadius: '2px', cursor: 'pointer', transition: 'all 0.1s' }} />
+            <div key={`${r}-${c}`} onMouseEnter={() => setHovered({ rows: r + 1, cols: c + 1 })} onMouseLeave={() => setHovered(null)} onClick={() => { onInsert(r + 1, c + 1); onClose(); }}
+              className={`pse-inserttable-cell${hovered && r < hovered.rows && c < hovered.cols ? ' pse-inserttable-cell--active' : ''}`} />
           ))
         )}
       </div>
@@ -511,30 +512,28 @@ const InsertTableModal: React.FC<{ onInsert: (rows: number, cols: number) => voi
 // ─── MACRO MODAL ─────────────────────────────────────────────────────────────
 
 const MacroModal: React.FC<{ macros: Macro[]; initialSearch?: string; onSelect: (macro: Macro) => void; onClose: () => void }> = ({ macros, initialSearch = '', onSelect, onClose }) => {
+  const { t } = useTranslation();
   const [search, setSearch] = useState(initialSearch);
   const filtered = macros.filter(m => m.name.toLowerCase().includes(search.toLowerCase()) || m.trigger.toLowerCase().includes(search.toLowerCase()));
   return (
     <div className="ps-overlay" onClick={onClose}>
-      <div onClick={e => e.stopPropagation()} style={{ width: '480px', maxHeight: '70vh', background: 'white', borderRadius: '16px', overflow: 'hidden', boxShadow: '0 24px 60px rgba(0,0,0,0.25)', display: 'flex', flexDirection: 'column' }}>
-        <div style={{ padding: '20px 24px', borderBottom: '1px solid #e2e8f0' }}>
-          <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: '14px' }}>
-            <h3 style={{ fontSize: '18px', fontWeight: 700, color: '#0f172a', margin: 0 }}>⚡ Insert Macro</h3>
-            <button onClick={onClose} style={{ background: 'none', border: 'none', cursor: 'pointer', color: '#94a3b8', fontSize: '20px' }}>✕</button>
+      <div onClick={e => e.stopPropagation()} className="pse-macromodal">
+        <div className="pse-macromodal-header">
+          <div className="pse-macromodal-header-row">
+            <h3 className="pse-macromodal-title">{'⚡ '}{t('pathScribeEditor.macroModal.title')}</h3>
+            <button onClick={onClose} className="pse-macromodal-close" aria-label={t('pathScribeEditor.close')}>✕</button>
           </div>
-          <input value={search} onChange={e => setSearch(e.target.value)} placeholder="Search by name or trigger (e.g. ;gs)..." autoFocus style={{ width: '100%', padding: '10px 14px', border: '1px solid #e2e8f0', borderRadius: '8px', fontSize: '14px', outline: 'none', boxSizing: 'border-box' }} />
+          <input value={search} onChange={e => setSearch(e.target.value)} placeholder={t('pathScribeEditor.macroModal.searchPlaceholder')} autoFocus className="pse-macromodal-search" />
         </div>
-        <div style={{ overflowY: 'auto', flex: 1, padding: '12px' }}>
+        <div className="pse-macromodal-list">
           {filtered.length === 0 ? (
-            <div style={{ textAlign: 'center', padding: '40px', color: '#94a3b8', fontSize: '14px' }}>No macros found</div>
+            <div className="pse-macromodal-empty">{t('pathScribeEditor.macroModal.noMacrosFound')}</div>
           ) : filtered.map(macro => (
-            <button key={macro.id} onClick={() => { onSelect(macro); onClose(); }} style={{ width: '100%', padding: '12px 16px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '8px', marginBottom: '8px', textAlign: 'left', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '14px', transition: 'all 0.15s' }}
-              onMouseEnter={e => { e.currentTarget.style.background = '#eff6ff'; e.currentTarget.style.borderColor = '#0891B2'; }}
-              onMouseLeave={e => { e.currentTarget.style.background = '#f8fafc'; e.currentTarget.style.borderColor = '#e2e8f0'; }}
-            >
-              <div style={{ fontFamily: 'monospace', fontSize: '13px', fontWeight: 700, color: '#0891B2', background: 'rgba(8,145,178,0.1)', padding: '4px 8px', borderRadius: '4px', whiteSpace: 'nowrap' }}>{macro.trigger}</div>
+            <button key={macro.id} onClick={() => { onSelect(macro); onClose(); }} className="pse-macromodal-row">
+              <div className="pse-macromodal-trigger">{macro.trigger}</div>
               <div>
-                <div style={{ fontSize: '14px', fontWeight: 600, color: '#0f172a' }}>{macro.name}</div>
-                <div style={{ fontSize: '12px', color: '#64748b', marginTop: '2px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', maxWidth: '300px' }}>{macro.content.replace(/<[^>]+>/g, ' ').trim().slice(0, 80)}...</div>
+                <div className="pse-macromodal-name">{macro.name}</div>
+                <div className="pse-macromodal-preview">{macro.content.replace(/<[^>]+>/g, ' ').trim().slice(0, 80)}...</div>
               </div>
             </button>
           ))}
@@ -547,18 +546,24 @@ const MacroModal: React.FC<{ macros: Macro[]; initialSearch?: string; onSelect: 
 // ─── SPACING DROPDOWN ─────────────────────────────────────────────────────────
 
 const SpacingDropdown: React.FC<{ editor: any; onClose: () => void }> = ({ editor, onClose }) => {
-  const lineSpacings = [{ label: 'Single (1.0)', value: '1' }, { label: '1.15', value: '1.15' }, { label: '1.5', value: '1.5' }, { label: 'Double (2.0)', value: '2' }];
+  const { t } = useTranslation();
+  const lineSpacings = [
+    { labelKey: 'pathScribeEditor.spacing.single', value: '1' },
+    { labelKey: 'pathScribeEditor.spacing.oneOneFive', value: '1.15' },
+    { labelKey: 'pathScribeEditor.spacing.oneFive', value: '1.5' },
+    { labelKey: 'pathScribeEditor.spacing.double', value: '2' },
+  ];
   const setLineHeight = (_lh: string) => { if (!editor) return; editor.chain().focus().run(); onClose(); };
   return (
-    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: '180px' }}>
-      <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', padding: '4px 8px 8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Line Spacing</div>
+    <div className="pse-dropdown-panel pse-spacing-panel">
+      <div className="pse-dropdown-section-label">{t('pathScribeEditor.spacing.lineSpacing')}</div>
       {lineSpacings.map(s => (
-        <button key={s.value} onClick={() => setLineHeight(s.value)} style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: 'none', border: 'none', borderRadius: '6px', fontSize: '13px', color: '#1e293b', cursor: 'pointer', fontWeight: 500 }} onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>{s.label}</button>
+        <button key={s.value} onClick={() => setLineHeight(s.value)} className="pse-dropdown-item">{t(s.labelKey)}</button>
       ))}
-      <div style={{ borderTop: '1px solid #e2e8f0', margin: '6px 0', paddingTop: '6px' }}>
-        <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', padding: '0 8px 6px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Paragraph Spacing</div>
-        <button onClick={() => { editor?.chain().focus().run(); onClose(); }} style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: 'none', border: 'none', borderRadius: '6px', fontSize: '13px', color: '#1e293b', cursor: 'pointer', fontWeight: 500 }} onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>Add Space Before</button>
-        <button onClick={() => { editor?.chain().focus().run(); onClose(); }} style={{ width: '100%', padding: '8px 12px', textAlign: 'left', background: 'none', border: 'none', borderRadius: '6px', fontSize: '13px', color: '#1e293b', cursor: 'pointer', fontWeight: 500 }} onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>Add Space After</button>
+      <div className="pse-spacing-divider">
+        <div className="pse-dropdown-section-label pse-dropdown-section-label--nopad">{t('pathScribeEditor.spacing.paragraphSpacing')}</div>
+        <button onClick={() => { editor?.chain().focus().run(); onClose(); }} className="pse-dropdown-item">{t('pathScribeEditor.spacing.addSpaceBefore')}</button>
+        <button onClick={() => { editor?.chain().focus().run(); onClose(); }} className="pse-dropdown-item">{t('pathScribeEditor.spacing.addSpaceAfter')}</button>
       </div>
     </div>
   );
@@ -573,34 +578,40 @@ const COLORS = [
   '#fee2e2', '#ffedd5', '#fef3c7', '#dcfce7', '#e0f2fe', '#ede9fe',
 ];
 
-const ColorPicker: React.FC<{ onSelect: (color: string | null) => void; onClose: () => void; title: string }> = ({ onSelect, onClose, title }) => (
-  <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '12px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', width: '176px' }}>
-    <div style={{ fontSize: '11px', fontWeight: 700, color: '#94a3b8', marginBottom: '8px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>{title}</div>
-    <div style={{ display: 'grid', gridTemplateColumns: 'repeat(6, 1fr)', gap: '4px' }}>
-      {COLORS.map(color => (
-        <div key={color} onClick={() => { onSelect(color); onClose(); }} style={{ width: '24px', height: '24px', background: color, borderRadius: '4px', cursor: 'pointer', border: color === '#ffffff' ? '1px solid #e2e8f0' : '1px solid transparent', transition: 'transform 0.1s' }} onMouseEnter={e => e.currentTarget.style.transform = 'scale(1.2)'} onMouseLeave={e => e.currentTarget.style.transform = 'scale(1)'} />
-      ))}
+const ColorPicker: React.FC<{ onSelect: (color: string | null) => void; onClose: () => void; title: string }> = ({ onSelect, onClose, title }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="pse-dropdown-panel pse-colorpicker-panel">
+      <div className="pse-dropdown-section-label">{title}</div>
+      <div className="pse-colorpicker-grid">
+        {COLORS.map(color => (
+          <div key={color} onClick={() => { onSelect(color); onClose(); }}
+            className={`pse-colorpicker-swatch${color === '#ffffff' ? ' pse-colorpicker-swatch--outlined' : ''}`}
+            style={{ '--swatch-color': color } as React.CSSProperties} />
+        ))}
+      </div>
+      <button onClick={() => { onSelect(null); onClose(); }} className="pse-colorpicker-noneBtn">{t('pathScribeEditor.colorPicker.noColor')}</button>
     </div>
-    <button onClick={() => { onSelect(null); onClose(); }} style={{ marginTop: '10px', width: '100%', padding: '6px', background: '#f8fafc', border: '1px solid #e2e8f0', borderRadius: '6px', fontSize: '12px', color: '#64748b', cursor: 'pointer', fontWeight: 600 }}>No Color</button>
-  </div>
-);
+  );
+};
 
 // ─── BORDER DROPDOWN ──────────────────────────────────────────────────────────
 
 const BorderDropdown: React.FC<{ onSelect: (style: BorderStyle) => void; onClose: () => void }> = ({ onSelect, onClose }) => {
-  const borders: { label: string; value: BorderStyle; svg: React.ReactNode }[] = [
-    { label: 'Box Border',    value: 'box',    svg: <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" fill="none" stroke="#1e293b" strokeWidth="1.5"/></svg> },
-    { label: 'Left Border',   value: 'left',   svg: <svg width="14" height="14" viewBox="0 0 14 14"><line x1="1" y1="1" x2="1" y2="13" stroke="#1e293b" strokeWidth="2"/><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="0.5"/></svg> },
-    { label: 'Right Border',  value: 'right',  svg: <svg width="14" height="14" viewBox="0 0 14 14"><line x1="13" y1="1" x2="13" y2="13" stroke="#1e293b" strokeWidth="2"/><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="0.5"/></svg> },
-    { label: 'Top Border',    value: 'top',    svg: <svg width="14" height="14" viewBox="0 0 14 14"><line x1="1" y1="1" x2="13" y2="1" stroke="#1e293b" strokeWidth="2"/><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="0.5"/></svg> },
-    { label: 'Bottom Border', value: 'bottom', svg: <svg width="14" height="14" viewBox="0 0 14 14"><line x1="1" y1="13" x2="13" y2="13" stroke="#1e293b" strokeWidth="2"/><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="0.5"/></svg> },
-    { label: 'No Border',     value: 'none',   svg: <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2"/></svg> },
+  const { t } = useTranslation();
+  const borders: { labelKey: string; value: BorderStyle; svg: React.ReactNode }[] = [
+    { labelKey: 'pathScribeEditor.border.box',    value: 'box',    svg: <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" fill="none" stroke="#1e293b" strokeWidth="1.5"/></svg> },
+    { labelKey: 'pathScribeEditor.border.left',   value: 'left',   svg: <svg width="14" height="14" viewBox="0 0 14 14"><line x1="1" y1="1" x2="1" y2="13" stroke="#1e293b" strokeWidth="2"/><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="0.5"/></svg> },
+    { labelKey: 'pathScribeEditor.border.right',  value: 'right',  svg: <svg width="14" height="14" viewBox="0 0 14 14"><line x1="13" y1="1" x2="13" y2="13" stroke="#1e293b" strokeWidth="2"/><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="0.5"/></svg> },
+    { labelKey: 'pathScribeEditor.border.top',    value: 'top',    svg: <svg width="14" height="14" viewBox="0 0 14 14"><line x1="1" y1="1" x2="13" y2="1" stroke="#1e293b" strokeWidth="2"/><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="0.5"/></svg> },
+    { labelKey: 'pathScribeEditor.border.bottom', value: 'bottom', svg: <svg width="14" height="14" viewBox="0 0 14 14"><line x1="1" y1="13" x2="13" y2="13" stroke="#1e293b" strokeWidth="2"/><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="0.5"/></svg> },
+    { labelKey: 'pathScribeEditor.border.none',   value: 'none',   svg: <svg width="14" height="14" viewBox="0 0 14 14"><rect x="1" y="1" width="12" height="12" fill="none" stroke="#cbd5e1" strokeWidth="1" strokeDasharray="2 2"/></svg> },
   ];
   return (
-    <div style={{ position: 'absolute', top: '100%', left: 0, zIndex: 100, background: 'white', border: '1px solid #e2e8f0', borderRadius: '8px', padding: '8px', boxShadow: '0 8px 24px rgba(0,0,0,0.12)', minWidth: '160px' }}>
+    <div className="pse-dropdown-panel pse-border-panel">
       {borders.map(b => (
-        <button key={b.label} onClick={() => { onSelect(b.value); onClose(); }} style={{ width: '100%', padding: '7px 12px', textAlign: 'left', background: 'none', border: 'none', borderRadius: '6px', fontSize: '13px', color: '#1e293b', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '10px', fontWeight: 500 }} onMouseEnter={e => e.currentTarget.style.background = '#f1f5f9'} onMouseLeave={e => e.currentTarget.style.background = 'none'}>
-          {b.svg} {b.label}
+        <button key={b.value} onClick={() => { onSelect(b.value); onClose(); }} className="pse-dropdown-item pse-dropdown-item--withicon">
+          {b.svg} {t(b.labelKey)}
         </button>
       ))}
     </div>
@@ -618,7 +629,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
     onChange,
     approvedFonts = ['Arial', 'Times New Roman', 'Courier New', 'Calibri'],
     macros = [],
-    placeholder: _placeholder = 'Begin typing or use a macro trigger (e.g. ;gs)...',
+    placeholder,
     minHeight = '400px',
     readOnly = false,
     suppressToolbar = false,
@@ -630,23 +641,24 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
   },
   ref
 ) => {
+  const { t } = useTranslation();
+  const effectivePlaceholder = placeholder ?? t('pathScribeEditor.defaultPlaceholder');
+
   // themeProp is only the STARTING point -- see allowThemeToggle's doc
   // comment above. A real saved user preference, once one exists, always
   // wins over whatever theme an individual screen was built with.
-  const THEME_PREF_KEY = 'ps-editor-theme-preference';
+  // Batch 338: kept through utils/uiPreferences.ts (deployment-neutral UI).
+  const THEME_PREF_KEY = 'editorTheme';
   const [activeThemeName, setActiveThemeName] = useState<'light' | 'dark'>(() => {
     if (!allowThemeToggle) return themeProp;
-    try {
-      const saved = localStorage.getItem(THEME_PREF_KEY);
-      if (saved === 'light' || saved === 'dark') return saved;
-    } catch { /* ignore */ }
-    return themeProp;
+    const saved = getUiPreference<string>(THEME_PREF_KEY, '');
+    return saved === 'light' || saved === 'dark' ? saved : themeProp;
   });
   const theme = activeThemeName === 'dark' ? DARK_THEME : LIGHT_THEME;
   const toggleTheme = () => {
     const next = activeThemeName === 'dark' ? 'light' : 'dark';
     setActiveThemeName(next);
-    try { localStorage.setItem(THEME_PREF_KEY, next); } catch { /* ignore quota errors */ }
+    setUiPreference(THEME_PREF_KEY, next);
   };
 
   // ── UI State ──────────────────────────────────────────────────────────────
@@ -682,10 +694,30 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
     [tabWidthChars]
   );
 
+  const placeholderExtension = React.useMemo(
+    () => Placeholder.configure({ placeholder: effectivePlaceholder }),
+    [effectivePlaceholder]
+  );
+
   // Tracks whether the next content-prop change originated from this
   // editor's own typing (via onUpdate) vs. an external source (AI
   // generation, template switch). See the content-sync useEffect below.
   const isInternalChange = useRef(false);
+
+  // ── Spell check (PS-342, Batch 338) ───────────────────────────────────────
+  // Inside a report screen's SpellCheckProvider the report's own checker
+  // (the case's language + medical/facility/personal dictionaries) draws the
+  // squiggles and the browser's spell check is switched off; elsewhere the
+  // browser's spell check stays on. The extension is always installed and
+  // reads the context through a ref, since TipTap fixes extensions at mount.
+  const spell = useSpellCheckContext();
+  const spellRef = useRef(spell);
+  spellRef.current = spell;
+  const [spellMenu, setSpellMenu] = useState<SpellMenuRequest | null>(null);
+  const spellExtension = React.useMemo(
+    () => createSpellCheckExtension(() => spellRef.current, setSpellMenu),
+    []
+  );
 
   const editor = useEditor({
     extensions: [
@@ -696,7 +728,8 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
       TextAlign.configure({ types: ['heading', 'paragraph'] }),
       Table.configure({ resizable: true }),
       TableRow, TableHeader, TableCell,
-      macroExtension, tabExtension, FormatMarksExtension,
+      macroExtension, tabExtension, FormatMarksExtension, placeholderExtension,
+      spellExtension,
     ],
     content,
     editable: !readOnly,
@@ -718,9 +751,16 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
       setFontSize(sizeAttr ? sizeAttr.replace(/pt$/, '') : '12');
     },
     editorProps: {
-      attributes: { class: 'ps-editor-content', spellcheck: 'true' },
+      attributes: () => ({ class: 'ps-editor-content', spellcheck: spellRef.current ? 'false' : 'true' }),
     },
   });
+
+  // Re-check when the language or the word lists change (and when the
+  // provider appears or goes away, which also flips the browser check).
+  const spellActive = !!spell;
+  useEffect(() => {
+    requestSpellRecheck(editor?.view);
+  }, [editor, spellActive, spell?.locale, spell?.revision]);
 
   // Keep the module-level ref in sync with state, and force ProseMirror to
   // recompute decorations immediately (decorations() only re-runs when the
@@ -825,77 +865,77 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
   }, []);
 
   if (!editor) return (
-    <div style={{ border: '1px solid #e2e8f0', borderRadius: '12px', overflow: 'hidden', background: 'white', minHeight, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
-      <span style={{ fontSize: '12px', color: '#94a3b8' }}>Loading editor…</span>
+    <div className="pse-loading-wrap" style={{ '--pse-min-height': minHeight } as React.CSSProperties}>
+      <span className="pse-loading-text">{t('pathScribeEditor.loadingEditor')}</span>
     </div>
   );
 
   const IC = 14;
 
   const renderToolbar = () => (
-    <div onMouseDown={e => e.stopPropagation()} style={{ display: 'flex', flexWrap: 'wrap', gap: '1px', alignItems: 'center', padding: '6px 8px', background: theme.toolbarBg, borderBottom: `1px solid ${theme.toolbarBorder}`, borderRadius: '10px 10px 0 0' }}>
-      <select value={selectedFont} onChange={e => { setSelectedFont(e.target.value); editor.chain().focus().setFontFamily(e.target.value).run(); }} style={{ padding: '3px 6px', height: '26px', border: `1px solid ${theme.inputBorder}`, borderRadius: '5px', fontSize: '12px', fontWeight: 500, color: theme.inputText, background: theme.inputBg, cursor: 'pointer', maxWidth: '140px' }}>
-        {approvedFonts.map(f => <option key={f} value={f} style={{ color: theme.panelText, background: theme.panelBg }}>{f}</option>)}
+    <div onMouseDown={e => e.stopPropagation()} className="pse-toolbar" style={themeVars(theme)}>
+      <select value={selectedFont} onChange={e => { setSelectedFont(e.target.value); editor.chain().focus().setFontFamily(e.target.value).run(); }} className="pse-toolbar-font-select">
+        {approvedFonts.map(f => <option key={f} value={f}>{f}</option>)}
       </select>
-      <select value={fontSize} onChange={e => { setFontSize(e.target.value); (editor.chain().focus() as any).setFontSize(`${e.target.value}pt`).run(); }} style={{ padding: '3px 4px', height: '26px', border: `1px solid ${theme.inputBorder}`, borderRadius: '5px', fontSize: '12px', color: theme.inputText, background: theme.inputBg, cursor: 'pointer', width: '48px' }}>
-        {['8','9','10','11','12','14','16','18','20','24','28','32','36','48','72'].map(s => <option key={s} value={s} style={{ color: theme.panelText, background: theme.panelBg }}>{s}</option>)}
+      <select value={fontSize} onChange={e => { setFontSize(e.target.value); (editor.chain().focus() as any).setFontSize(`${e.target.value}pt`).run(); }} className="pse-toolbar-size-select">
+        {['8','9','10','11','12','14','16','18','20','24','28','32','36','48','72'].map(s => <option key={s} value={s}>{s}</option>)}
       </select>
       <Divider />
-      <TBtn onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive('bold')} title="Bold (Ctrl+B)"><Bold size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive('italic')} title="Italic (Ctrl+I)"><Italic size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')} title="Underline (Ctrl+U)"><UnderlineIcon size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive('strike')} title="Strikethrough"><Strikethrough size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().toggleSubscript().run()} isActive={editor.isActive('subscript')} title="Subscript"><SubscriptIcon size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().toggleSuperscript().run()} isActive={editor.isActive('superscript')} title="Superscript"><SuperscriptIcon size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleBold().run()} isActive={editor.isActive('bold')} title={t('pathScribeEditor.toolbar.bold')}><Bold size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleItalic().run()} isActive={editor.isActive('italic')} title={t('pathScribeEditor.toolbar.italic')}><Italic size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleUnderline().run()} isActive={editor.isActive('underline')} title={t('pathScribeEditor.toolbar.underline')}><UnderlineIcon size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleStrike().run()} isActive={editor.isActive('strike')} title={t('pathScribeEditor.toolbar.strikethrough')}><Strikethrough size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleSubscript().run()} isActive={editor.isActive('subscript')} title={t('pathScribeEditor.toolbar.subscript')}><SubscriptIcon size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleSuperscript().run()} isActive={editor.isActive('superscript')} title={t('pathScribeEditor.toolbar.superscript')}><SuperscriptIcon size={IC} /></TBtn>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
-        <TBtn onClick={() => { setShowFontColor(v => !v); setShowHighlight(false); setShowShading(false); setShowBorder(false); setShowSpacing(false); }} title="Font Color">
-          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}><Baseline size={IC} /><span style={{ width: '14px', height: '3px', background: '#dc2626', borderRadius: '1px', marginTop: '1px' }} /></span>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
+        <TBtn onClick={() => { setShowFontColor(v => !v); setShowHighlight(false); setShowShading(false); setShowBorder(false); setShowSpacing(false); }} title={t('pathScribeEditor.toolbar.fontColor')}>
+          <span className="pse-toolbar-swatch-icon"><Baseline size={IC} /><span className="pse-toolbar-swatch-bar pse-toolbar-swatch-bar--red" /></span>
         </TBtn>
-        {showFontColor && <ColorPicker title="Font Color" onSelect={color => color ? editor.chain().focus().setColor(color).run() : editor.chain().focus().unsetColor().run()} onClose={() => setShowFontColor(false)} />}
+        {showFontColor && <ColorPicker title={t('pathScribeEditor.toolbar.fontColor')} onSelect={color => color ? editor.chain().focus().setColor(color).run() : editor.chain().focus().unsetColor().run()} onClose={() => setShowFontColor(false)} />}
       </div>
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
-        <TBtn onClick={() => { setShowHighlight(v => !v); setShowFontColor(false); setShowShading(false); setShowBorder(false); setShowSpacing(false); }} title="Text Highlight Color">
-          <span style={{ display: 'flex', flexDirection: 'column', alignItems: 'center', lineHeight: 1 }}><Highlighter size={IC} /><span style={{ width: '14px', height: '3px', background: '#fde047', borderRadius: '1px', marginTop: '1px' }} /></span>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
+        <TBtn onClick={() => { setShowHighlight(v => !v); setShowFontColor(false); setShowShading(false); setShowBorder(false); setShowSpacing(false); }} title={t('pathScribeEditor.toolbar.highlightColor')}>
+          <span className="pse-toolbar-swatch-icon"><Highlighter size={IC} /><span className="pse-toolbar-swatch-bar pse-toolbar-swatch-bar--yellow" /></span>
         </TBtn>
-        {showHighlight && <ColorPicker title="Highlight" onSelect={color => color ? editor.chain().focus().setHighlight({ color }).run() : editor.chain().focus().unsetHighlight().run()} onClose={() => setShowHighlight(false)} />}
+        {showHighlight && <ColorPicker title={t('pathScribeEditor.toolbar.highlight')} onSelect={color => color ? editor.chain().focus().setHighlight({ color }).run() : editor.chain().focus().unsetHighlight().run()} onClose={() => setShowHighlight(false)} />}
       </div>
       <Divider />
-      <TBtn onClick={() => editor.chain().focus().setTextAlign('left').run()} isActive={editor.isActive({ textAlign: 'left' })} title="Align Left"><AlignLeft size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().setTextAlign('center').run()} isActive={editor.isActive({ textAlign: 'center' })} title="Align Center"><AlignCenter size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().setTextAlign('right').run()} isActive={editor.isActive({ textAlign: 'right' })} title="Align Right"><AlignRight size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().setTextAlign('justify').run()} isActive={editor.isActive({ textAlign: 'justify' })} title="Justify"><AlignJustify size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().setTextAlign('left').run()} isActive={editor.isActive({ textAlign: 'left' })} title={t('pathScribeEditor.toolbar.alignLeft')}><AlignLeft size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().setTextAlign('center').run()} isActive={editor.isActive({ textAlign: 'center' })} title={t('pathScribeEditor.toolbar.alignCenter')}><AlignCenter size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().setTextAlign('right').run()} isActive={editor.isActive({ textAlign: 'right' })} title={t('pathScribeEditor.toolbar.alignRight')}><AlignRight size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().setTextAlign('justify').run()} isActive={editor.isActive({ textAlign: 'justify' })} title={t('pathScribeEditor.toolbar.justify')}><AlignJustify size={IC} /></TBtn>
       <Divider />
-      <TBtn onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive('bulletList')} title="Bullet List"><List size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive('orderedList')} title="Numbered List"><ListOrdered size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleBulletList().run()} isActive={editor.isActive('bulletList')} title={t('pathScribeEditor.toolbar.bulletList')}><List size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleOrderedList().run()} isActive={editor.isActive('orderedList')} title={t('pathScribeEditor.toolbar.numberedList')}><ListOrdered size={IC} /></TBtn>
       <Divider />
-      <TBtn onClick={() => editor.chain().focus().sinkListItem('listItem').run()} title="Increase Indent" disabled={!editor.can().sinkListItem('listItem')}><IndentIncrease size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().liftListItem('listItem').run()} title="Decrease Indent" disabled={!editor.can().liftListItem('listItem')}><IndentDecrease size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().sinkListItem('listItem').run()} title={t('pathScribeEditor.toolbar.increaseIndent')} disabled={!editor.can().sinkListItem('listItem')}><IndentIncrease size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().liftListItem('listItem').run()} title={t('pathScribeEditor.toolbar.decreaseIndent')} disabled={!editor.can().liftListItem('listItem')}><IndentDecrease size={IC} /></TBtn>
       <Divider />
-      <TBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} isActive={editor.isActive('heading', { level: 1 })} title="Heading 1"><Heading1 size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} isActive={editor.isActive('heading', { level: 2 })} title="Heading 2"><Heading2 size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} isActive={editor.isActive('heading', { level: 3 })} title="Heading 3"><Heading3 size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleHeading({ level: 1 }).run()} isActive={editor.isActive('heading', { level: 1 })} title={t('pathScribeEditor.toolbar.heading1')}><Heading1 size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleHeading({ level: 2 }).run()} isActive={editor.isActive('heading', { level: 2 })} title={t('pathScribeEditor.toolbar.heading2')}><Heading2 size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().toggleHeading({ level: 3 }).run()} isActive={editor.isActive('heading', { level: 3 })} title={t('pathScribeEditor.toolbar.heading3')}><Heading3 size={IC} /></TBtn>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
-        <TBtn onClick={() => { setShowSpacing(v => !v); setShowFontColor(false); setShowHighlight(false); setShowShading(false); setShowBorder(false); }} title="Line & Paragraph Spacing"><ArrowUpDown size={IC} /></TBtn>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
+        <TBtn onClick={() => { setShowSpacing(v => !v); setShowFontColor(false); setShowHighlight(false); setShowShading(false); setShowBorder(false); }} title={t('pathScribeEditor.toolbar.lineParagraphSpacing')}><ArrowUpDown size={IC} /></TBtn>
         {showSpacing && <SpacingDropdown editor={editor} onClose={() => setShowSpacing(false)} />}
       </div>
-      <TBtn onClick={() => setShowFormatMarks(v => !v)} isActive={showFormatMarks} title="Show/Hide Formatting Marks (¶)"><PilcrowSquare size={IC} /></TBtn>
+      <TBtn onClick={() => setShowFormatMarks(v => !v)} isActive={showFormatMarks} title={t('pathScribeEditor.toolbar.toggleFormattingMarks')}><PilcrowSquare size={IC} /></TBtn>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
-        <TBtn onClick={() => { setShowShading(v => !v); setShowFontColor(false); setShowHighlight(false); setShowBorder(false); setShowSpacing(false); }} title="Paragraph Shading — whole-paragraph background">
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
+        <TBtn onClick={() => { setShowShading(v => !v); setShowFontColor(false); setShowHighlight(false); setShowBorder(false); setShowSpacing(false); }} title={t('pathScribeEditor.toolbar.paragraphShading')}>
           <PaintBucket size={IC} />
         </TBtn>
         {showShading && (
           <ColorPicker
-            title="Paragraph Shading"
+            title={t('pathScribeEditor.toolbar.paragraphShadingShort')}
             onSelect={color => (editor.chain().focus() as any).setParagraphShading(color).run()}
             onClose={() => setShowShading(false)}
           />
         )}
       </div>
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
-        <TBtn onClick={() => { setShowBorder(v => !v); setShowFontColor(false); setShowHighlight(false); setShowShading(false); setShowSpacing(false); }} title="Borders"><SquareDashedBottom size={IC} /></TBtn>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
+        <TBtn onClick={() => { setShowBorder(v => !v); setShowFontColor(false); setShowHighlight(false); setShowShading(false); setShowSpacing(false); }} title={t('pathScribeEditor.toolbar.borders')}><SquareDashedBottom size={IC} /></TBtn>
         {showBorder && (
           <BorderDropdown
             onSelect={style => (editor.chain().focus() as any).setParagraphBorder(style).run()}
@@ -904,51 +944,58 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
         )}
       </div>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
-        <TBtn onClick={() => { setShowTablePicker(v => !v); setShowFindReplace(false); }} isActive={showTablePicker} title="Insert Table"><TableIcon size={IC} /></TBtn>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
+        <TBtn onClick={() => { setShowTablePicker(v => !v); setShowFindReplace(false); }} isActive={showTablePicker} title={t('pathScribeEditor.toolbar.insertTable')}><TableIcon size={IC} /></TBtn>
         {showTablePicker && <InsertTableModal onInsert={(rows, cols) => { editor.chain().focus().insertTable({ rows, cols, withHeaderRow: true }).run(); }} onClose={() => setShowTablePicker(false)} />}
       </div>
       {editor.isActive('table') && (
         <>
           <Divider />
-          <TBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title="Add Column After"><Columns3 size={IC} /></TBtn>
-          <TBtn onClick={() => editor.chain().focus().addRowAfter().run()} title="Add Row After"><Rows3 size={IC} /></TBtn>
-          <TBtn onClick={() => editor.chain().focus().deleteColumn().run()} title="Delete Column"><span style={{ position: 'relative', display: 'inline-flex' }}><Columns3 size={IC} /><X size={8} style={{ position: 'absolute', top: -2, right: -3, color: '#ef4444' }} /></span></TBtn>
-          <TBtn onClick={() => editor.chain().focus().deleteRow().run()} title="Delete Row"><span style={{ position: 'relative', display: 'inline-flex' }}><Rows3 size={IC} /><X size={8} style={{ position: 'absolute', top: -2, right: -3, color: '#ef4444' }} /></span></TBtn>
-          <TBtn onClick={() => editor.chain().focus().mergeCells().run()} title="Merge Cells"><Combine size={IC} /></TBtn>
-          <TBtn onClick={() => editor.chain().focus().splitCell().run()} title="Split Cell"><SplitSquareHorizontal size={IC} /></TBtn>
-          <TBtn onClick={() => editor.chain().focus().deleteTable().run()} title="Delete Table"><span style={{ position: 'relative', display: 'inline-flex' }}><TableIcon size={IC} /><X size={8} style={{ position: 'absolute', top: -2, right: -3, color: '#ef4444' }} /></span></TBtn>
+          <TBtn onClick={() => editor.chain().focus().addColumnAfter().run()} title={t('pathScribeEditor.toolbar.addColumnAfter')}><Columns3 size={IC} /></TBtn>
+          <TBtn onClick={() => editor.chain().focus().addRowAfter().run()} title={t('pathScribeEditor.toolbar.addRowAfter')}><Rows3 size={IC} /></TBtn>
+          <TBtn onClick={() => editor.chain().focus().deleteColumn().run()} title={t('pathScribeEditor.toolbar.deleteColumn')}><span className="pse-toolbar-icon-badge"><Columns3 size={IC} /><span className="pse-toolbar-icon-x"><X size={8} /></span></span></TBtn>
+          <TBtn onClick={() => editor.chain().focus().deleteRow().run()} title={t('pathScribeEditor.toolbar.deleteRow')}><span className="pse-toolbar-icon-badge"><Rows3 size={IC} /><span className="pse-toolbar-icon-x"><X size={8} /></span></span></TBtn>
+          <TBtn onClick={() => editor.chain().focus().mergeCells().run()} title={t('pathScribeEditor.toolbar.mergeCells')}><Combine size={IC} /></TBtn>
+          <TBtn onClick={() => editor.chain().focus().splitCell().run()} title={t('pathScribeEditor.toolbar.splitCell')}><SplitSquareHorizontal size={IC} /></TBtn>
+          <TBtn onClick={() => editor.chain().focus().deleteTable().run()} title={t('pathScribeEditor.toolbar.deleteTable')}><span className="pse-toolbar-icon-badge"><TableIcon size={IC} /><span className="pse-toolbar-icon-x"><X size={8} /></span></span></TBtn>
         </>
       )}
       <Divider />
-      <TBtn onClick={() => { setMacroModalSearch(''); setShowMacroModal(true); }} title="Insert Macro (or type trigger + Space)" width="68px"><Zap size={IC} /><span style={{ fontSize: '11px', fontWeight: 700 }}>Macro</span></TBtn>
+      <TBtn onClick={() => { setMacroModalSearch(''); setShowMacroModal(true); }} title={t('pathScribeEditor.toolbar.insertMacro')} width="68px"><Zap size={IC} /><span className="pse-toolbar-macro-label">{t('pathScribeEditor.toolbar.macro')}</span></TBtn>
       <Divider />
-      <TBtn onClick={() => { const sig = `<p><br/></p><p>_____________________________ &nbsp;&nbsp;&nbsp; Date: ___________</p><p><em>Pathologist Signature</em></p><p><br/></p>`; editor.chain().focus().insertContent(sig).run(); }} title="Insert Signature Line"><PenLine size={IC} /></TBtn>
+      <TBtn onClick={() => { const sig = `<p><br/></p><p>_____________________________ &nbsp;&nbsp;&nbsp; ${t('pathScribeEditor.signatureLine.date')}: ___________</p><p><em>${t('pathScribeEditor.signatureLine.pathologistSignature')}</em></p><p><br/></p>`; editor.chain().focus().insertContent(sig).run(); }} title={t('pathScribeEditor.toolbar.insertSignatureLine')}><PenLine size={IC} /></TBtn>
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
-        <TBtn onClick={() => { setShowFindReplace(v => !v); setShowTablePicker(false); }} isActive={showFindReplace} title="Find & Replace (Ctrl+F)"><Search size={IC} /></TBtn>
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
+        <TBtn onClick={() => { setShowFindReplace(v => !v); setShowTablePicker(false); }} isActive={showFindReplace} title={t('pathScribeEditor.toolbar.findReplace')}><Search size={IC} /></TBtn>
         {showFindReplace && <FindReplacePanel editor={editor} onClose={() => setShowFindReplace(false)} />}
       </div>
       <Divider />
-      <TBtn onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title="Undo (Ctrl+Z)"><Undo2 size={IC} /></TBtn>
-      <TBtn onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title="Redo (Ctrl+Shift+Z)"><Redo2 size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().undo().run()} disabled={!editor.can().undo()} title={t('pathScribeEditor.toolbar.undo')}><Undo2 size={IC} /></TBtn>
+      <TBtn onClick={() => editor.chain().focus().redo().run()} disabled={!editor.can().redo()} title={t('pathScribeEditor.toolbar.redo')}><Redo2 size={IC} /></TBtn>
       {allowThemeToggle && (
-        <TBtn onClick={toggleTheme} title={activeThemeName === 'dark' ? 'Switch to light mode' : 'Switch to dark mode'}>
+        <TBtn onClick={toggleTheme} title={activeThemeName === 'dark' ? t('pathScribeEditor.toolbar.switchToLightMode') : t('pathScribeEditor.toolbar.switchToDarkMode')}>
           {activeThemeName === 'dark' ? <Sun size={IC} /> : <Moon size={IC} />}
         </TBtn>
       )}
       <Divider />
-      <div style={{ position: 'relative' }} onMouseDown={e => e.stopPropagation()}>
-        <TBtn onClick={() => setShowTabWidthMenu(v => !v)} isActive={showTabWidthMenu} title={`Tab width: ${tabWidthChars} spaces`} width="auto">
-          Tab: {tabWidthChars}
+      <div className="pse-toolbar-anchor" onMouseDown={e => e.stopPropagation()}>
+        <TBtn onClick={() => setShowTabWidthMenu(v => !v)} isActive={showTabWidthMenu} title={t('pathScribeEditor.toolbar.tabWidth', { count: tabWidthChars })} width="auto">
+          {t('pathScribeEditor.toolbar.tabShort', { count: tabWidthChars })}
         </TBtn>
         {showTabWidthMenu && (
-          <div style={{ position: 'absolute', top: '32px', left: 0, background: theme.panelBg, border: `1px solid ${theme.panelBorder}`, borderRadius: '8px', padding: '6px', boxShadow: theme.panelShadow, zIndex: 50, minWidth: '90px' }}>
+          <div
+            className="pse-tabwidth-menu"
+            style={{ '--pse-tw-bg': theme.panelBg, '--pse-tw-border': theme.panelBorder, '--pse-tw-shadow': theme.panelShadow } as React.CSSProperties}
+          >
             {[2, 4, 6, 8].map(n => (
               <button key={n} onClick={() => { onTabWidthChange?.(n); setShowTabWidthMenu(false); }}
-                style={{ display: 'block', width: '100%', padding: '6px 10px', textAlign: 'left', background: n === tabWidthChars ? theme.btnBgActive : 'none', color: n === tabWidthChars ? theme.btnTextActive : theme.panelText, border: 'none', borderRadius: '5px', fontSize: '12px', cursor: 'pointer', fontWeight: 500 }}
+                className="pse-tabwidth-item"
+                style={{
+                  '--pse-tw-item-bg': n === tabWidthChars ? theme.btnBgActive : 'transparent',
+                  '--pse-tw-item-color': n === tabWidthChars ? theme.btnTextActive : theme.panelText,
+                } as React.CSSProperties}
               >
-                {n} spaces
+                {t('pathScribeEditor.toolbar.spacesCount', { count: n })}
               </button>
             ))}
           </div>
@@ -958,8 +1005,11 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
   );
 
   return (
-    <EditorThemeContext.Provider value={theme}>
-    <div ref={editorWrapperRef} style={{ display: 'flex', flexDirection: 'column', border: `1px solid ${theme.contentBorder}`, borderRadius: '12px', background: theme.contentBg }}>
+    <div
+      ref={editorWrapperRef}
+      className={`pse-editor-wrap${showFormatMarks ? ' pse-editor-wrap--marks' : ''}`}
+      style={editorWrapVars(theme, minHeight, approvedFonts[0])}
+    >
 
       {/* Toolbar — portal-aware:
           suppressToolbar=false (default) → inline (backward compat for every
@@ -972,7 +1022,7 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
         return node ? createPortal(renderToolbar(), node) : null;
       })()}
 
-      <div style={{ flex: 1, overflowY: 'auto', minHeight, borderRadius: '0 0 12px 12px' }}>
+      <div className="pse-editor-body" style={{ '--pse-min-height': minHeight } as React.CSSProperties}>
         <EditorContent editor={editor} />
       </div>
 
@@ -980,51 +1030,9 @@ const PathScribeEditor = forwardRef<PathScribeEditorHandle, PathScribeEditorProp
         <MacroModal macros={macros} initialSearch={macroModalSearch} onSelect={insertMacro} onClose={() => { setShowMacroModal(false); setMacroModalSearch(''); }} />
       )}
 
-      <style>{`
-        .ps-editor-content { padding: 20px 24px; min-height: ${minHeight}; outline: none; font-size: 12pt; line-height: 1.8; color: #1e293b; font-family: ${approvedFonts[0] || 'Arial'}, sans-serif; }
-        .ps-editor-content:focus { outline: none; }
-        .ps-editor-content p { margin: 0 0 10px 0; }
-        .ps-editor-content strong { font-weight: 700; }
-        .ps-editor-content em { font-style: italic; }
-        .ps-editor-content u { text-decoration: underline; }
-        .ps-editor-content s { text-decoration: line-through; }
-        .ps-editor-content ul, .ps-editor-content ol { padding-left: 28px; margin: 10px 0; }
-        .ps-editor-content li { margin: 4px 0; }
-        .ps-editor-content h1 { font-size: 24px; font-weight: 700; margin: 16px 0 10px; }
-        .ps-editor-content h2 { font-size: 20px; font-weight: 700; margin: 14px 0 8px; }
-        .ps-editor-content h3 { font-size: 16px; font-weight: 700; margin: 12px 0 6px; }
-        .ps-editor-content table { border-collapse: collapse; width: 100%; margin: 12px 0; }
-        .ps-editor-content th, .ps-editor-content td { border: 1px solid #cbd5e1; padding: 8px 12px; min-width: 60px; vertical-align: top; }
-        .ps-editor-content th { background: #f1f5f9; font-weight: 700; text-align: left; }
-        .ps-editor-content .selectedCell:after { background: rgba(8,145,178,0.12); content: ''; left: 0; right: 0; top: 0; bottom: 0; pointer-events: none; position: absolute; z-index: 2; }
-        .ps-editor-content .tableWrapper { overflow-x: auto; }
-        .ps-editor-content .ps-tab { display: inline-block; white-space: pre; }
-        /* Show Formatting Marks — visible dots over space characters.
-           Regular spaces (typed by hitting spacebar) get a light grey dot;
-           non-breaking spaces (inserted by Tab) get a teal dot so the two
-           are visually distinguishable when debugging whitespace. */
-        .ps-fm-space, .ps-fm-nbsp { position: relative; }
-        .ps-fm-space::after, .ps-fm-nbsp::after {
-          content: '·';
-          position: absolute;
-          left: 0; right: 0; top: -2px;
-          text-align: center;
-          font-weight: 700;
-          pointer-events: none;
-        }
-        .ps-fm-space::after { color: #94a3b8; }
-        .ps-fm-nbsp::after  { color: #0891B2; }
-        .ai-generated-content { background: rgba(8,145,178,0.04); border-left: 2px solid rgba(8,145,178,0.25); padding-left: 8px; transition: background 0.2s; }
-        .user-edited-content  { background: rgba(251,191,36,0.04); border-left: 2px solid rgba(251,191,36,0.25); padding-left: 8px; }
-        ${showFormatMarks ? `
-          .ps-editor-content p::after { content: '¶'; color: #94a3b8; font-size: 10px; margin-left: 2px; }
-          .ps-editor-content br::after { content: '↵'; color: #94a3b8; font-size: 10px; }
-          .ps-editor-content .ps-tab { background: rgba(8,145,178,0.08); outline: 1px dashed #bae6fd; position: relative; }
-          .ps-editor-content .ps-tab::before { content: '→'; color: #94a3b8; font-size: 9px; position: absolute; left: 2px; top: 50%; transform: translateY(-50%); }
-        ` : ''}
-      `}</style>
+      {spellMenu && <SpellCheckMenu request={spellMenu} onClose={() => setSpellMenu(null)} />}
+
     </div>
-    </EditorThemeContext.Provider>
   );
 });
 

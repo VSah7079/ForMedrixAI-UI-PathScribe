@@ -40,6 +40,16 @@ export async function hasPassingValidationForVoiceModel(modelId: string): Promis
   );
 }
 
+/** Whether the Models tab may make this model the organisation's
+ *  default. A voice model goes live the moment it becomes the default
+ *  (there is no per-facility voice override), so the validation hard block
+ *  applies here; a report-generation model's gate is the per-facility
+ *  override instead (resolveClientAiModel.ts), so its default is free. */
+export async function canBecomeDefault(model: { id: string; type: string }): Promise<boolean> {
+  if (model.type !== 'Voice Dictation') return true;
+  return hasPassingValidationForVoiceModel(model.id);
+}
+
 /** Every Voice Dictation model in the catalog with at least one
  *  passing, reported validation study — the real, enforced list an
  *  admin is allowed to set as the active voice model. Mirrors

@@ -5,10 +5,11 @@
  * Voice context: CONFIGURATION — tab navigation commands active while here.
  * ─────────────────────────────────────────────────────────────────────────────
  */
-import React, { useState, useEffect } from 'react';
-import { useNavigate, useLocation } from 'react-router-dom';
+import React, { useState, useEffect, useRef, useCallback, useMemo } from 'react';
+import { useNavigate, useLocation } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import { useAuditLog } from '../components/Audit/useAuditLog';
-import { useAuth } from '../contexts/AuthContext';
+import { useIsAdmin, useIsSuperAdmin } from '../contexts/AuthContext';
 import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { VOICE_CONTEXT } from '../constants/systemActions';
 import AITab         from '../components/Config/AI/index';
@@ -16,7 +17,7 @@ import ModelsTab     from '../components/Config/Models/index';
 import ProtocolsTab  from '../components/Config/Protocols/index';
 import StaffTab      from '../components/Config/Staff/StaffTab';
 import SystemTab     from '../components/Config/System/index';
-import IntegrationsTab from '../components/Config/Integrations/index';
+import CytologyTab   from '../components/Config/Cytology/index';
 import TATConfigSection from '../components/Config/System/TATConfigSection';
 import MacrosTab     from '../components/Config/Macros/index';
 import VoiceSettings from '../components/Voice/VoiceSettings';
@@ -25,68 +26,142 @@ import DemoResetTab    from '../components/Config/System/DemoResetTab';
 import ReportTemplatesSection    from '../components/TemplateBuilder/ReportTemplatesSection';
 import ValidationStudiesSection from '../components/ValidationStudies/ValidationStudiesSection';
 import ConfigSearchBar from '../components/Config/Search/ConfigSearchBar';
+import { resetConfigScroll } from '../utils/resetConfigScroll';
+import { ConfigDirtyGuardContext } from '../components/Config/configDirtyGuardContext';
+import ConfirmModal from '../components/Common/ConfirmModal';
 import '../pathscribe.css';
 
 // ── Admin permission check ────────────────────────────────────────────────────
-// Validation Studies tab is only visible to admin-tier roles (admin,
-// pathologist-admin, or superadmin) — a broader check than AuthContext's
-// own roleHas() helper, which deliberately doesn't fold superadmin into
-// its "admin" check (see roleHas's own doc comment). Was previously its
-// own independent localStorage.getItem('pathscribe-user') + JSON.parse,
-// duplicating exactly what AuthContext already does under the same
-// storage key — now reads useAuth()'s already-parsed user.role instead,
-// so there's one source of truth for the stored shape rather than two
-// that could drift out of sync.
-function useIsAdmin(): boolean {
-  const { user } = useAuth();
-  return !!user && ['admin', 'pathologist-admin', 'superadmin'].includes(user.role);
-}
-
-function useIsSuperAdmin(): boolean {
-  const { user } = useAuth();
-  return user?.role === 'superadmin';
-}
-
-const VALID_TABS = ['ai', 'protocols', 'staff', 'voice', 'system', 'integrations', 'tat', 'actions', 'macros', 'templates', 'validation', 'demo'] as const;
+// Validation Studies tab is only visible to admin-tier roles. useIsAdmin/
+// useIsSuperAdmin now come from AuthContext.tsx — file-by-file cleanup
+// sweep: this page used to carry its own local copy of both (already fixed,
+// per its own prior history, to read useAuth() rather than an independent
+// localStorage.getItem('pathscribe-user') + JSON.parse); Config/AI/index.tsx
+// carried a second, real-bug-prone copy of the same check. Both now share
+// one implementation.
+const VALID_TABS = ['ai', 'protocols', 'staff', 'voice', 'system', 'cytology', 'tat', 'actions', 'macros', 'templates', 'validation', 'demo'] as const;
 type TabId = typeof VALID_TABS[number];
 
-const TAB_LABELS: { id: TabId; label: string }[] = [
-  { id: 'actions',    label: 'Action Registry'    },
-  { id: 'ai',         label: 'AI Behavior'        },
-  { id: 'macros',     label: 'Macros'             },
-  { id: 'templates',  label: 'Report Templates'   },
-  { id: 'staff',      label: 'Staff'              },
-  { id: 'protocols',  label: 'Synoptic Library'   },
-  { id: 'system',     label: 'System'             },
-  { id: 'integrations', label: 'Integrations'     },
-  { id: 'tat',        label: 'TAT Configuration'   },
-  { id: 'validation', label: 'Validation Studies' },
-  { id: 'voice',      label: 'Voice'              },
+const TAB_LABEL_KEYS: Record<TabId, string> = {
+  actions:    'configuration.tabs.actions',
+  ai:         'configuration.tabs.ai',
+  macros:     'configuration.tabs.macros',
+  templates:  'configuration.tabs.templates',
+  staff:      'configuration.tabs.staff',
+  protocols:  'configuration.tabs.protocols',
+  system:     'configuration.tabs.system',
+  cytology:   'configuration.tabs.cytology',
+  tat:        'configuration.tabs.tat',
+  validation: 'configuration.tabs.validation',
+  voice:      'configuration.tabs.voice',
   // Pinned last deliberately, not alphabetized — a reset/destructive
   // action, same convention as keeping "Delete Account" separate from
   // an alphabetized settings list rather than letting it land wherever
   // "D" happens to sort.
-  { id: 'demo',       label: '⟳ Demo Reset'       },
-];
+  demo:       'configuration.tabs.demo',
+};
+const TAB_ORDER: TabId[] = ['actions', 'ai', 'macros', 'templates', 'staff', 'protocols', 'system', 'cytology', 'tat', 'validation', 'voice', 'demo'];
 
 function getTabFromSearch(search: string): TabId {
   const t = new URLSearchParams(search).get('tab') as TabId | null;
-  return t && (VALID_TABS as readonly string[]).includes(t) ? t : 'ai';
+  // Real fix, per direct report: "The Config page opens up on the 2nd
+  // tab. I would say it should either open on the first tab or the
+  // System Tab." Defaulted to 'ai' (Config's own 2nd tab) purely
+  // because it happened to be first in VALID_TABS after Action
+  // Registry — never a deliberate landing-page choice. 'system' now,
+  // since that's genuinely where most real, active admin work in this
+  // app lives (Scan Stations, Cassette Routing Rules, Cassette
+  // Colors, Protocols, and everything else built under it this
+  // session) — a plain /configuration visit should land where an
+  // admin actually needs to be most often, not wherever the tab list
+  // happened to order things.
+  return t && (VALID_TABS as readonly string[]).includes(t) ? t : 'system';
 }
 
 const ConfigurationPage: React.FC = () => {
+  const { t }      = useTranslation();
   const navigate   = useNavigate();
   const location   = useLocation();
   const { log }    = useAuditLog();
 
   const [activeTab,   setActiveTab]   = useState<TabId>(() => getTabFromSearch(location.search));
   const [isLoaded,    setIsLoaded]    = useState(false);
-  const [showWarning, setShowWarning] = useState(false);
   const isAdmin      = useIsAdmin();
   const isSuperAdmin = useIsSuperAdmin();
 
   useEffect(() => { setActiveTab(getTabFromSearch(location.search)); }, [location.search]);
   useEffect(() => { const t = setTimeout(() => setIsLoaded(true), 100); return () => clearTimeout(t); }, []);
+
+  // ── PS-128: page-level dirty-flag guard ────────────────────────────────────
+  // Real fix — this page previously had zero awareness of any nested tab's
+  // own unsaved-draft state: the tab bar, the voice-nav listeners below, and
+  // ConfigSearchBar's onNavigate all called navigate()/setActiveTab()
+  // unconditionally, silently discarding whatever a tab like Macros had
+  // half-written. tabIsDirty is fed by ConfigDirtyGuardContext, which
+  // MacroPanel.tsx (the first real, confirmed case — see its own comment)
+  // now populates. A ref mirrors the state so the voice-nav listeners below
+  // (registered once, via a stable effect) can read the CURRENT dirty value
+  // without needing to be re-subscribed on every keystroke.
+  const [tabIsDirty, setTabIsDirty] = useState(false);
+  const tabIsDirtyRef = useRef(false);
+  useEffect(() => { tabIsDirtyRef.current = tabIsDirty; }, [tabIsDirty]);
+  // A tab that just became active starts clean — any dirty flag belonged to
+  // whichever tab was showing a moment ago.
+  useEffect(() => { setTabIsDirty(false); }, [activeTab]);
+
+  const [showDiscardConfirm, setShowDiscardConfirm] = useState(false);
+  const pendingNavRef = useRef<(() => void) | null>(null);
+
+  // The real navigation actions, unchanged from before this fix — pulled out
+  // so both the "just go" path and the "confirm first" path call the exact
+  // same code.
+  const performNavigateToTab = useCallback((tabId: TabId, withScrollReset: boolean, section?: string) => {
+    navigate(`/configuration?tab=${tabId}`);
+    log('navigate_tab', { tabId });
+    if (withScrollReset) {
+      // Real fix, per direct report: switching tabs used to leave
+      // scroll position wherever it was on the previous tab, hiding
+      // the new tab's own add button and column headers until manually
+      // scrolled up. See utils/resetConfigScroll.ts's own header for
+      // why this needs a direct container lookup rather than a prop.
+      resetConfigScroll();
+    }
+    if (section) {
+      // Real, per direct report ("the top level search in config
+      // found the entry, but when clicked on, it did not go to
+      // the setting"): same real PATHSCRIBE_SYSTEM_NAVIGATE event
+      // AppShell.tsx's own config-link chat messages already
+      // dispatch, same setTimeout delay reasoning — the System
+      // tab's own component needs to actually mount (and its
+      // event listener attach) after this navigation's state
+      // update, before this event can be caught.
+      setTimeout(() => {
+        window.dispatchEvent(new CustomEvent('PATHSCRIBE_SYSTEM_NAVIGATE', { detail: { section } }));
+      }, 150);
+    }
+  }, [navigate, log]);
+
+  const guardedNavigateToTab = useCallback((tabId: TabId, withScrollReset: boolean, section?: string) => {
+    if (tabIsDirtyRef.current) {
+      pendingNavRef.current = () => performNavigateToTab(tabId, withScrollReset, section);
+      setShowDiscardConfirm(true);
+    } else {
+      performNavigateToTab(tabId, withScrollReset, section);
+    }
+  }, [performNavigateToTab]);
+
+  const handleDiscardConfirm = () => {
+    setShowDiscardConfirm(false);
+    setTabIsDirty(false);
+    const perform = pendingNavRef.current;
+    pendingNavRef.current = null;
+    perform?.();
+  };
+
+  const handleDiscardCancel = () => {
+    setShowDiscardConfirm(false);
+    pendingNavRef.current = null;
+  };
 
   // ── Voice: set context on mount ─────────────────────────────────────────────
   useEffect(() => {
@@ -102,9 +177,11 @@ const ConfigurationPage: React.FC = () => {
       setActiveTab(current => {
         const idx = tabIds.indexOf(current);
         const next = tabIds[Math.min(idx + 1, tabIds.length - 1)];
-        navigate(`/configuration?tab=${next}`);
-        log('navigate_tab', { tabId: next });
-        return next;
+        guardedNavigateToTab(next, false);
+        // Stay on the current tab until a pending discard-confirm resolves;
+        // performNavigateToTab (via the effect above) is what actually
+        // advances activeTab once the navigation really happens.
+        return tabIsDirtyRef.current ? current : next;
       });
     };
 
@@ -112,9 +189,8 @@ const ConfigurationPage: React.FC = () => {
       setActiveTab(current => {
         const idx = tabIds.indexOf(current);
         const prev = tabIds[Math.max(idx - 1, 0)];
-        navigate(`/configuration?tab=${prev}`);
-        log('navigate_tab', { tabId: prev });
-        return prev;
+        guardedNavigateToTab(prev, false);
+        return tabIsDirtyRef.current ? current : prev;
       });
     };
 
@@ -124,12 +200,11 @@ const ConfigurationPage: React.FC = () => {
       window.removeEventListener('PATHSCRIBE_NEXT_TAB',     nextTab);
       window.removeEventListener('PATHSCRIBE_PREVIOUS_TAB', prevTab);
     };
-  }, [navigate, log]);
+  }, [guardedNavigateToTab]);
 
-  const handleTabChange = (tabId: TabId) => {
-    navigate(`/configuration?tab=${tabId}`);
-    log('navigate_tab', { tabId });
-  };
+  const handleTabChange = (tabId: TabId) => guardedNavigateToTab(tabId, true);
+
+  const dirtyGuardContextValue = useMemo(() => ({ setDirty: setTabIsDirty }), []);
 
   const renderActiveTab = () => {
     switch (activeTab) {
@@ -137,7 +212,7 @@ const ConfigurationPage: React.FC = () => {
       case 'protocols': return <ProtocolsTab />;
       case 'staff':     return <StaffTab />;
       case 'system':    return <SystemTab />;
-      case 'integrations': return <IntegrationsTab />;
+      case 'cytology':  return <CytologyTab />;
       case 'tat':       return <TATConfigSection />;
       case 'actions':   return <ActionsTab />;
       case 'macros':    return <MacrosTab />;
@@ -147,15 +222,15 @@ const ConfigurationPage: React.FC = () => {
         ? <ValidationStudiesSection isSuperAdmin={isSuperAdmin} />
         : <div className="ps-cfgpage-locked">
             <div className="ps-cfgpage-locked-icon">🔒</div>
-            <div className="ps-cfgpage-locked-title">Admin access required</div>
-            <div className="ps-cfgpage-locked-sub">Validation Studies is available to administrators only.</div>
+            <div className="ps-cfgpage-locked-title">{t('configuration.adminRequiredTitle')}</div>
+            <div className="ps-cfgpage-locked-sub">{t('configuration.adminRequiredSub')}</div>
           </div>;
       case 'demo':      return <DemoResetTab />;
       default:          return null;
     }
   };
 
-  if (!isLoaded) return <div className="ps-cfgpage-loading">Loading configuration…</div>;
+  if (!isLoaded) return <div className="ps-cfgpage-loading">{t('configuration.loading')}</div>;
 
   return (
     <div className="ps-cfgpage-shell">
@@ -163,22 +238,22 @@ const ConfigurationPage: React.FC = () => {
       {/* ── Header + Tab bar — full width, never scrolls ── */}
       <div className="ps-cfgpage-header">
         <div className="ps-cfgpage-title-block">
-          <h1 className="ps-cfgpage-title">Configuration</h1>
-          <p className="ps-cfgpage-subtitle">Control AI behavior, templates, users, and system settings</p>
-          <ConfigSearchBar onNavigate={tabId => handleTabChange(tabId)} />
+          <h1 className="ps-cfgpage-title">{t('configuration.title')}</h1>
+          <p className="ps-cfgpage-subtitle">{t('configuration.subtitle')}</p>
+          <ConfigSearchBar onNavigate={(tabId, section) => guardedNavigateToTab(tabId, true, section)} />
         </div>
 
         <div className="ps-cfgpage-tabbar">
-          {TAB_LABELS.filter(tab => {
-            if (tab.id === 'validation') return isAdmin; // admin, pathologist-admin, superadmin
+          {TAB_ORDER.filter(tabId => {
+            if (tabId === 'validation') return isAdmin; // admin, pathologist-admin, superadmin
             return true;
-          }).map(tab => (
+          }).map(tabId => (
             <button
-              key={tab.id}
-              onClick={() => handleTabChange(tab.id)}
-              className={`ps-cfgpage-tab-btn${activeTab === tab.id ? ' ps-cfgpage-tab-btn--active' : ''}`}
+              key={tabId}
+              onClick={() => handleTabChange(tabId)}
+              className={`ps-cfgpage-tab-btn${activeTab === tabId ? ' ps-cfgpage-tab-btn--active' : ''}`}
             >
-              {tab.label}
+              {t(TAB_LABEL_KEYS[tabId])}
             </button>
           ))}
         </div>
@@ -188,23 +263,22 @@ const ConfigurationPage: React.FC = () => {
       <div className="ps-cfgpage-scroll">
         {/* Inner content: full width, padding on sides */}
         <div className="ps-cfgpage-inner">
-          {renderActiveTab()}
+          <ConfigDirtyGuardContext.Provider value={dirtyGuardContextValue}>
+            {renderActiveTab()}
+          </ConfigDirtyGuardContext.Provider>
         </div>
       </div>
 
-      {/* Unsaved Changes Modal */}
-      {showWarning && (
-        <div className="ps-overlay" onClick={() => setShowWarning(false)}>
-          <div className="ps-modal-dark ps-cfgpage-modal--w420" onClick={e => e.stopPropagation()}>
-            <span className="ps-modal-dark-title">Unsaved Changes</span>
-            <p className="ps-modal-dark-body">You have unsaved changes. Are you sure you want to leave?</p>
-            <div className="ps-modal-dark-footer">
-              <button className="ps-btn-ghost-dark" onClick={() => setShowWarning(false)}>Stay</button>
-              <button className="ps-btn-red" onClick={() => navigate('/')}>Leave</button>
-            </div>
-          </div>
-        </div>
-      )}
+      {/* ── PS-128: discard-unsaved-changes confirmation ── */}
+      <ConfirmModal
+        show={showDiscardConfirm}
+        title={t('configuration.dirtyGuard.title')}
+        message={t('configuration.dirtyGuard.message')}
+        confirmLabel={t('configuration.dirtyGuard.discardButton')}
+        cancelLabel={t('common.cancel')}
+        onConfirm={handleDiscardConfirm}
+        onCancel={handleDiscardCancel}
+      />
     </div>
   );
 };

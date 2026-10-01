@@ -12,8 +12,8 @@
 // plus the actual records (SpecimenDeficiency) raised against a specimen
 // and resolved by whoever has the context to resolve it — deliberately
 // NOT the "unblock now, admin approves later" governance pattern used
-// for Physician/Client/SpecimenCategory. That pattern fits an unrecognized
-// *code* with an unambiguous key to dedupe against (NPI, Client.assigningAuthority).
+// for Physician/Facility/Department. That pattern fits an unrecognized
+// *code* with an unambiguous key to dedupe against (NPI, Facility.assigningAuthority).
 // A deficiency doesn't have that — it's a workflow event, not an entity
 // needing deduplication — and per the design discussion, the person
 // best positioned to resolve it (the accessioner, looking at the actual
@@ -42,6 +42,16 @@ export interface DeficiencyType {
    *  admin hasn't classified yet) — the safe, permissive default rather
    *  than silently hiding a type nobody's explicitly scoped. */
   level?: 'case' | 'specimen' | 'both';
+  /**
+   * Real, per direct guidance: different performing labs get their own
+   * deficiency vocabulary — same Global/scoped convention as
+   * ContainerType/DelegationType's own performingLabFacilityId
+   * (undefined = Global, offered for every lab's cases; set = only
+   * ever offered when raising a deficiency for that lab's own case).
+   * Resolved via resolvePerformingLabFacilityId() from the case's own
+   * order.facilityId — never a direct field read on the case.
+   */
+  performingLabFacilityId?: string;
 }
 
 export interface IDeficiencyTypeService {
@@ -59,6 +69,9 @@ export interface ResolutionType {
   name: string;
   description?: string;
   status: 'Active' | 'Inactive';
+  /** Same Global/scoped convention as DeficiencyType's own
+   *  performingLabFacilityId — see that field's doc comment. */
+  performingLabFacilityId?: string;
 }
 
 export interface IResolutionTypeService {
@@ -74,6 +87,23 @@ export interface IResolutionTypeService {
 export interface SpecimenDeficiency {
   id: ID;
   caseId: string;
+  /** Real, per direct guidance's own decision ahead of the Firestore
+   *  CAPA foundation build: added now, deliberately optional — making
+   *  this required would break every existing raise()/raiseAndResolve()
+   *  call site across the app (fixative-time gate, tissue discrepancy,
+   *  pre-analytic date gate, dictionary-mismatch), none of which
+   *  currently populate it. Real, going forward: every NEW real write
+   *  (especially FirestoreSpecimenDeficiencyService's own and any real
+   *  backend-raised deficiency) should populate this — retrofitting a
+   *  scoping field onto already-written Firestore documents later is
+   *  real, avoidable migration work this app doesn't have yet, so this
+   *  is added before the first real document exists, not after. */
+  organisationId?: string;
+  /** Same real reasoning as organisationId above — optional for the
+   *  same existing-call-site reason, but a specimen deficiency is
+   *  usually resolvable to a real Site via its own case's
+   *  originSiteId/originHospitalId when a caller has that context. */
+  siteId?: string;
   /**
    * Optional as of a previous pass — not every real deficiency is tied
    * to one specific specimen. "Missing Requisition" is the clearest
@@ -135,6 +165,25 @@ export interface SpecimenDeficiency {
   /** What was actually done to fix this specific occurrence — the
    *  multi-stage manual flow's equivalent of resolutionComment. */
   correctiveAction?: string;
+  /** Real, per Epic reference document, Section 3 ("Root Cause
+   *  Analysis (RCA)") and per direct guidance: why this actually
+   *  happened - distinct from correctiveAction (what was done about
+   *  this one occurrence) and preventiveAction (what stops it
+   *  recurring). An immediately-contained item (containImmediately())
+   *  never gets this deep, by design: it's the quick, no-further-
+   *  follow-up path specifically for issues that don't warrant a
+   *  formal root-cause analysis at all.
+   *  Two real, distinct populating paths as of PS-119: the original,
+   *  manual escalation path (resolve() below, a human's own RCA
+   *  writeup), and — new — the generic QA Activity Engine's automated
+   *  trigger path (mockQaActivityRecordService.ts's create()), which
+   *  now wires a discordant review's own already-captured rootCause/
+   *  rootCauseNote through at raise() time, rather than leaving that
+   *  real diagnostic detail stranded on the review record alone. A
+   *  later resolve() call still overwrites this with the resolver's
+   *  own, potentially more thorough RCA - the raise-time value is a
+   *  real, honest starting point, not a substitute for that process. */
+  rootCause?: string;
   /** What prevents this from recurring — distinct from correctiveAction,
    *  which only fixes the one instance in front of you. Optional: not
    *  every deficiency type has a meaningful systemic prevention step. */
@@ -183,6 +232,13 @@ export interface SpecimenDeficiency {
  */
 export interface ManagementReview {
   id: ID;
+  /** Same real reasoning as SpecimenDeficiency.organisationId — added
+   *  now, before the Firestore CAPA foundation build, so real reviews
+   *  are scoped from their first real write rather than retrofitted
+   *  later. Deliberately no siteId here — ISO 15189 Management Review
+   *  is a lab/organisation-level activity by nature, and a real review
+   *  can legitimately span multiple sites within one organisation. */
+  organisationId?: string;
   reviewedBy: string;
   reviewedAt: string;
   /** Which closed deficiencies were included in this review's scope. */
@@ -210,12 +266,27 @@ export interface ISpecimenDeficiencyService {
    * Moves an open deficiency to 'pending-verification' — NOT closed.
    * Captures the corrective action taken and a target date to actually
    * come back and check it worked. This is the real multi-stage manual
-   * flow; see verifyEffectiveness() for the step that actually closes
-   * something out.
+   * flow — the "Escalate to CAPA" action; see verifyEffectiveness()
+   * for the step that actually closes something out.
    */
   resolve(id: ID, resolution: {
-    resolutionTypeId: string; correctiveAction: string; preventiveAction?: string;
+    resolutionTypeId: string; correctiveAction: string; rootCause: string; preventiveAction?: string;
     resolvedBy: string; verificationDueDate?: string;
+  }): Promise<ServiceResult<SpecimenDeficiency>>;
+  /**
+   * Real, per direct guidance: the "Immediate Containment" action —
+   * resolves an EXISTING open deficiency straight to 'closed',
+   * deliberately skipping pending-verification and never asking for
+   * rootCause. Same real posture raiseAndResolve() already has for a
+   * brand-new deficiency (the fix and the record of the fix are the
+   * same action, nothing meaningful to verify later) — this is that
+   * same shape, for an issue that was already open rather than one
+   * just detected. Not every open issue warrants a full RCA/
+   * escalation; this is the quick, contained-on-the-spot path for the
+   * ones that don't.
+   */
+  containImmediately(id: ID, resolution: {
+    resolutionTypeId: string; resolutionComment: string; resolvedBy: string;
   }): Promise<ServiceResult<SpecimenDeficiency>>;
   /**
    * The effectiveness check itself — ISO 15189:2022 Clause 8.7's actual

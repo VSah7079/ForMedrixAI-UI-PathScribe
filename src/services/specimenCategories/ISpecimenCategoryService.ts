@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────
 
 import type { ServiceResult, ID } from '../types';
+import type { RetentionOverrideDays } from '../retentionPolicy/RetentionPolicy';
 
 export interface SpecimenCategory {
   id: ID;
@@ -59,6 +60,35 @@ export interface SpecimenCategory {
    *  raw order code/description that didn't match anything, so the admin
    *  reviewing it has context without digging through the source order. */
   autoCreatedNote?: string;
+
+  /**
+   * Real, optional per-category retention-days override — any
+   * material type omitted here falls back to the live GoverningBody
+   * default for the current jurisdiction (resolveRetentionEligibility.ts's
+   * own resolveCategoryOverride() walks Specimen ->
+   * SpecimenEntry.specimenCategoryId -> this field, feeding real
+   * disposal-queue and scan-based disposal eligibility calculations).
+   * See services/retentionPolicy/RetentionPolicy.ts's own doc comment
+   * on RetentionOverrideDays for the full, canonical account — this
+   * field was always the real, intended attachment point that comment
+   * names, just missing here until now.
+   */
+  retentionOverrideDays?: RetentionOverrideDays;
+
+  /**
+   * Optional performing-lab scope, same pattern as
+   * ContainerTypesSection.tsx's own field of this name (see
+   * utils/performingLabs.ts). Undefined = global/"All Labs". A given
+   * name is unique within its own scope (findDuplicate on
+   * [performingLabFacilityId, name]) — the same name may exist once
+   * globally and once per lab, but not twice in the same scope.
+   * accessionPrefix/numberSeries/defaultGrossingTemplateId/
+   * retentionOverrideDays are all real candidates for legitimate
+   * per-lab variation (e.g. a lab running its own numbering series
+   * for a locally-defined category), same reasoning as Container
+   * Types.
+   */
+  performingLabFacilityId?: string;
 }
 
 export interface ISpecimenCategoryService {

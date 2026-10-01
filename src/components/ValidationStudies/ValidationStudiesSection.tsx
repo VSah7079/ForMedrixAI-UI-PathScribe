@@ -5,6 +5,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import '@/pathscribe.css';
 import { useAuditLog } from '@/components/Audit/useAuditLog';
 import { mockValidationStudyService }  from '@/services/validationStudies/mockValidationStudyService';
@@ -16,10 +17,11 @@ import { mockReportTemplateService }   from '@/services/reportTemplates/mockRepo
 import { modelService }                from '@/services';
 import type { ValidationStudy }        from '@/services/validationStudies/IValidationStudyService';
 import type { NarrativeSignalStats }   from '@/services/narrativeSignals/INarrativeSignalService';
-import type { Facility as Client } from '@/services/facilities/IFacilityService';
+import type { Facility } from '@/services/facilities/IFacilityService';
 import type { Physician }              from '@/services/physicians/IPhysicianService';
 import type { ReportTemplate }         from '@/types/reportPart';
 import type { AIModel }                from '@/services/models/IModelService';
+import { computeValidationStudyGrade } from '@/services/validationStudies/computeValidationStudyGrade';
 import { ModelStoreModal } from './ModelStoreModal';
 
 type SubTab = 'studies' | 'dashboard' | 'reports';
@@ -35,41 +37,60 @@ const STATUS_COLORS: Record<string, string> = {
   reported:           '#0891B2',
 };
 
-const STATUS_LABELS: Record<string, string> = {
-  draft:              'DRAFT',
-  pending_approval:   'PENDING APPROVAL',
-  approved:           'APPROVED',
-  active:             'ACTIVE',
-  closed:             'CLOSED',
-  reported:           'REPORTED',
+const STATUS_LABEL_KEY: Record<string, string> = {
+  draft:              'validationStudies.status.draft',
+  pending_approval:   'validationStudies.status.pendingApproval',
+  approved:           'validationStudies.status.approved',
+  active:             'validationStudies.status.active',
+  closed:             'validationStudies.status.closed',
+  reported:           'validationStudies.status.reported',
 };
 
 function pct(n: number): string { return `${Math.round(n * 100)}%`; }
 
-function gradeResult(
-  acceptanceRate: number,
-  targetAcceptanceRate: number,
-  editRatio: number,
-  targetMaxEditRatio: number,
-): { grade: string; color: string; description: string } {
-  const passes = acceptanceRate >= targetAcceptanceRate && editRatio <= targetMaxEditRatio;
-  const partial = acceptanceRate >= targetAcceptanceRate * 0.85;
-  if (passes)  return { grade: 'PASS',             color: '#10b981', description: 'Performance meets study targets' };
-  if (partial) return { grade: 'CONDITIONAL PASS', color: '#f59e0b', description: 'Performance approaches targets — extended study recommended' };
-  return        { grade: 'FURTHER REVIEW',         color: '#ef4444', description: 'Performance below targets — review AI configuration' };
-}
+// Locates one or more values inside an already-translated sentence and
+// wraps each in <strong>, correct regardless of a locale's word order.
+// Same pattern as PoolClaimModal.tsx/RequestReviewModal.tsx's own
+// boldSubstrings().
+const boldSubstrings = (text: string, values: string[]): React.ReactNode => {
+  const positions = values
+    .filter(Boolean)
+    .map(v => ({ v, i: text.indexOf(v) }))
+    .filter(p => p.i !== -1)
+    .sort((a, b) => a.i - b.i);
+  if (positions.length === 0) return text;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  positions.forEach(({ v, i }, idx) => {
+    if (i < cursor) return;
+    parts.push(text.slice(cursor, i));
+    parts.push(<strong key={idx}>{v}</strong>);
+    cursor = i + v.length;
+  });
+  parts.push(text.slice(cursor));
+  return parts;
+};
+
+// Real fix, found by this app's own inline-CSS/business-logic sweep:
+// the PASS/CONDITIONAL PASS/FURTHER REVIEW grading rule now lives in
+// computeValidationStudyGrade.ts, a dedicated, tested module — real,
+// regulatory-relevant logic (persisted as ValidationStudy.finalGrade,
+// which resolveClientAiModel.ts/resolveVoiceAiModel.ts both gate
+// production AI model eligibility on) that had no backing service and
+// no tests. See that module's own header for the full rationale.
 
 // ── Studies Tab ───────────────────────────────────────────────────────────────
 
 const StudiesTab: React.FC<{
   studies:    ValidationStudy[];
-  clients:    Client[];
+  facilities: Facility[];
   physicians: Physician[];
   templates:  ReportTemplate[];
   models:     AIModel[];
   onRefresh:    () => void;
   isSuperAdmin?: boolean;
-}> = ({ studies, clients, physicians, templates, models, onRefresh, isSuperAdmin: _isSuperAdmin = false }) => {
+}> = ({ studies, facilities, physicians, templates, models, onRefresh, isSuperAdmin: _isSuperAdmin = false }) => {
+  const { t } = useTranslation();
   const { log } = useAuditLog();
   const [showNew,    setShowNew]    = useState(false);
   const [editId,     setEditId]     = useState<string | null>(null);
@@ -80,7 +101,7 @@ const StudiesTab: React.FC<{
     const study = studies.find(s => s.id === id);
     const result = await mockValidationStudyService.activate(id, 'admin') as any;
     if (!result.ok) {
-      alert(result.error ?? 'Cannot activate — ensure committee approval and IRB reference are recorded first.');
+      alert(result.error ?? t('validationStudies.studies.activateError'));
       return;
     }
     if (study) log('validation_study_activated', {
@@ -109,21 +130,20 @@ const StudiesTab: React.FC<{
     <div className="ps-vs-studies">
       <div className="ps-vs-section-header">
         <div>
-          <div className="ps-vs-section-title">Validation Studies</div>
+          <div className="ps-vs-section-title">{t('validationStudies.studies.title')}</div>
           <div className="ps-vs-section-sub">
-            Each study defines a cohort of pathologists and clients for a parallel run validation period.
-            Studies must be approved before activation. All AI output remains advisory — pathologist sign-off is always required.
+            {t('validationStudies.studies.subtitle')}
           </div>
         </div>
-        <button className="ps-section-add-btn" onClick={() => setShowNew(true)}>+ New Study</button>
+        <button className="ps-section-add-btn" onClick={() => setShowNew(true)}>{t('validationStudies.studies.newStudy')}</button>
       </div>
 
       {studies.length === 0 ? (
         <div className="ps-vs-empty">
           <div className="ps-vs-empty-icon">🔬</div>
-          <div className="ps-vs-empty-title">No validation studies yet</div>
+          <div className="ps-vs-empty-title">{t('validationStudies.studies.emptyTitle')}</div>
           <div className="ps-vs-empty-body">
-            Create a study to begin a parallel run validation of AI-assisted reporting.
+            {t('validationStudies.studies.emptyBody')}
           </div>
         </div>
       ) : studies.map(s => (
@@ -131,35 +151,38 @@ const StudiesTab: React.FC<{
           <div className="ps-vs-study-row-main">
             <div className="ps-vs-study-name">{s.name}</div>
             <div className="ps-vs-study-meta">
-              <span className="ps-vs-study-badge" style={{ color: STATUS_COLORS[s.status], borderColor: STATUS_COLORS[s.status] + '40', background: STATUS_COLORS[s.status] + '12' }}>
-                {STATUS_LABELS[s.status] ?? s.status.toUpperCase()}
+              <span
+                className="ps-vs-study-badge"
+                style={{ '--ps-vs-badge-color': STATUS_COLORS[s.status] } as React.CSSProperties}
+              >
+                {STATUS_LABEL_KEY[s.status] ? t(STATUS_LABEL_KEY[s.status]) : s.status.toUpperCase()}
               </span>
-              <span>{s.clientIds.length} client{s.clientIds.length !== 1 ? 's' : ''}</span>
-              <span>{s.pathologistIds.length} pathologist{s.pathologistIds.length !== 1 ? 's' : ''}</span>
+              <span>{t('validationStudies.studies.facilityCount', { count: s.clientIds.length })}</span>
+              <span>{t('validationStudies.studies.pathologistCount', { count: s.pathologistIds.length })}</span>
               {s.templateIds && s.templateIds.length > 0 && (
-                <span>{s.templateIds.length} template{s.templateIds.length !== 1 ? 's' : ''}</span>
+                <span>{t('validationStudies.studies.templateCount', { count: s.templateIds.length })}</span>
               )}
-              <span>Target: {pct(s.targetAcceptanceRate)} acceptance</span>
-              {s.startDate && <span>Started {new Date(s.startDate).toLocaleDateString()}</span>}
-              {s.committeeApproval?.irbReference && <span>IRB: {s.committeeApproval.irbReference}</span>}
-              {s.committeeSubmission?.committeeName && s.status === 'pending_approval' && <span>Committee: {s.committeeSubmission.committeeName}</span>}
+              <span>{t('validationStudies.studies.targetAcceptance', { pct: pct(s.targetAcceptanceRate) })}</span>
+              {s.startDate && <span>{t('validationStudies.studies.started', { date: new Date(s.startDate).toLocaleDateString() })}</span>}
+              {s.committeeApproval?.irbReference && <span>{t('validationStudies.studies.irb', { ref: s.committeeApproval.irbReference })}</span>}
+              {s.committeeSubmission?.committeeName && s.status === 'pending_approval' && <span>{t('validationStudies.studies.committee', { name: s.committeeSubmission.committeeName })}</span>}
             </div>
             {s.description && <div className="ps-vs-study-desc">{s.description}</div>}
           </div>
           <div className="ps-vs-study-actions">
-            {s.status === 'draft'            && <button className="ps-rr-btn" onClick={() => setEditId(s.id)}>Edit</button>}
-            {s.status === 'draft'            && <button className="ps-rr-btn ps-rr-btn--primary" onClick={() => setSubmitId(s.id)}>Submit for Review →</button>}
-            {s.status === 'pending_approval' && <button className="ps-rr-btn ps-rr-btn--primary" onClick={() => setApproveId(s.id)}>Record Approval →</button>}
-            {s.status === 'approved'         && <button className="ps-rr-btn ps-rr-btn--primary" onClick={() => handleActivate(s.id)}>Activate →</button>}
-            {s.status === 'active'           && <button className="ps-rr-btn" onClick={() => handleClose(s.id)}>Close Study</button>}
-            {s.status === 'draft'            && <button className="ps-rr-btn ps-rr-btn--ghost" onClick={() => handleDelete(s.id)}>Delete</button>}
+            {s.status === 'draft'            && <button className="ps-rr-btn" onClick={() => setEditId(s.id)}>{t('validationStudies.studies.edit')}</button>}
+            {s.status === 'draft'            && <button className="ps-rr-btn ps-rr-btn--primary" onClick={() => setSubmitId(s.id)}>{t('validationStudies.studies.submitForReview')}</button>}
+            {s.status === 'pending_approval' && <button className="ps-rr-btn ps-rr-btn--primary" onClick={() => setApproveId(s.id)}>{t('validationStudies.studies.recordApproval')}</button>}
+            {s.status === 'approved'         && <button className="ps-rr-btn ps-rr-btn--primary" onClick={() => handleActivate(s.id)}>{t('validationStudies.studies.activate')}</button>}
+            {s.status === 'active'           && <button className="ps-rr-btn" onClick={() => handleClose(s.id)}>{t('validationStudies.studies.closeStudy')}</button>}
+            {s.status === 'draft'            && <button className="ps-rr-btn ps-rr-btn--ghost" onClick={() => handleDelete(s.id)}>{t('validationStudies.studies.delete')}</button>}
           </div>
         </div>
       ))}
 
       {showNew && (
         <StudyFormModal
-          clients={clients}
+          facilities={facilities}
           physicians={physicians}
           templates={templates}
           models={models}
@@ -217,7 +240,7 @@ const StudiesTab: React.FC<{
 
       {editId && (
         <StudyFormModal
-          clients={clients}
+          facilities={facilities}
           physicians={physicians}
           templates={templates}
           models={models}
@@ -249,6 +272,7 @@ const SubmitForReviewModal: React.FC<{
   onSave:  (submission: CommitteeSubmission) => void;
   onClose: () => void;
 }> = ({ study, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [committeeName,       setCommitteeName]       = useState('');
   const [submittedBy,         setSubmittedBy]         = useState('');
   const [expectedReviewDate,  setExpectedReviewDate]  = useState('');
@@ -260,39 +284,41 @@ const SubmitForReviewModal: React.FC<{
     <div className="ps-overlay" onClick={onClose}>
       <div className="ps-modal-dark ps-modal-dark--narrow" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-dark-header">
-          <span className="ps-modal-dark-title">Submit for Ethics / IRB Review</span>
+          <span className="ps-modal-dark-title">{t('validationStudies.submitModal.title')}</span>
           <button className="ps-research-close" onClick={onClose}>✕</button>
         </div>
         <div className="ps-vs-modal-body">
           <div className="ps-vs-modal-study-name">{study.name}</div>
 
           <div className="ps-vs-modal-info">
-            Submitting this study for committee review changes its status to <strong>Pending Approval</strong>.
-            No data will be collected until the study is formally activated after committee approval is recorded.
+            {boldSubstrings(
+              t('validationStudies.submitModal.info', { status: t(STATUS_LABEL_KEY.pending_approval) }),
+              [t(STATUS_LABEL_KEY.pending_approval)]
+            )}
           </div>
 
           <div>
-            <div className="ps-conf-label ps-conf-label--required">Ethics / IRB Committee Name</div>
+            <div className="ps-conf-label ps-conf-label--required">{t('validationStudies.submitModal.committeeName')}</div>
             <input
               className="ps-conf-input"
               value={committeeName}
               onChange={e => setCommitteeName(e.target.value)}
-              placeholder="e.g. MGH Clinical Ethics & Research Committee"
+              placeholder={t('validationStudies.submitModal.committeeNamePlaceholder')}
             />
           </div>
 
           <div>
-            <div className="ps-conf-label ps-conf-label--required">Submitted By</div>
+            <div className="ps-conf-label ps-conf-label--required">{t('validationStudies.submitModal.submittedBy')}</div>
             <input
               className="ps-conf-input"
               value={submittedBy}
               onChange={e => setSubmittedBy(e.target.value)}
-              placeholder="Full name of person submitting"
+              placeholder={t('validationStudies.submitModal.submittedByPlaceholder')}
             />
           </div>
 
           <div>
-            <div className="ps-conf-label">Expected Review Date</div>
+            <div className="ps-conf-label">{t('validationStudies.submitModal.expectedReviewDate')}</div>
             <input
               type="date"
               className="ps-conf-input"
@@ -302,22 +328,22 @@ const SubmitForReviewModal: React.FC<{
           </div>
 
           <div>
-            <div className="ps-conf-label">Notes for Committee</div>
+            <div className="ps-conf-label">{t('validationStudies.submitModal.notes')}</div>
             <textarea
               className="ps-conf-input"
               rows={3}
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="Any additional context for the committee review…"
+              placeholder={t('validationStudies.submitModal.notesPlaceholder')}
             />
           </div>
 
           <div className="ps-vs-modal-governance">
-            🔒 This action is recorded in the audit log with timestamp and user identity.
+            🔒 {t('validationStudies.submitModal.auditNotice')}
           </div>
         </div>
         <div className="ps-modal-dark-footer">
-          <button className="ps-btn-ghost-dark" onClick={onClose}>Cancel</button>
+          <button className="ps-btn-ghost-dark" onClick={onClose}>{t('validationStudies.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             disabled={!canSave}
@@ -329,7 +355,7 @@ const SubmitForReviewModal: React.FC<{
               notes:              notes.trim() || undefined,
             })}
           >
-            Submit for Review →
+            {t('validationStudies.submitModal.submit')}
           </button>
         </div>
       </div>
@@ -344,6 +370,7 @@ const RecordApprovalModal: React.FC<{
   onSave:  (approval: CommitteeApproval) => void;
   onClose: () => void;
 }> = ({ study, onSave, onClose }) => {
+  const { t } = useTranslation();
   const [approvedBy,           setApprovedBy]           = useState('');
   const [approvedAt,           setApprovedAt]           = useState(new Date().toISOString().slice(0,10));
   const [irbReference,         setIrbReference]         = useState('');
@@ -356,7 +383,7 @@ const RecordApprovalModal: React.FC<{
     <div className="ps-overlay" onClick={onClose}>
       <div className="ps-modal-dark ps-modal-dark--narrow" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-dark-header">
-          <span className="ps-modal-dark-title">Record Committee Approval</span>
+          <span className="ps-modal-dark-title">{t('validationStudies.approveModal.title')}</span>
           <button className="ps-research-close" onClick={onClose}>✕</button>
         </div>
         <div className="ps-vs-modal-body">
@@ -364,44 +391,45 @@ const RecordApprovalModal: React.FC<{
 
           {study.committeeSubmission && (
             <div className="ps-vs-modal-submission-ref">
-              <span className="ps-vs-modal-ref-label">Submitted to:</span>
+              <span className="ps-vs-modal-ref-label">{t('validationStudies.approveModal.submittedTo')}</span>
               <span>{study.committeeSubmission.committeeName}</span>
-              <span className="ps-vs-modal-ref-label">By:</span>
+              <span className="ps-vs-modal-ref-label">{t('validationStudies.approveModal.by')}</span>
               <span>{study.committeeSubmission.submittedBy}</span>
-              <span className="ps-vs-modal-ref-label">On:</span>
+              <span className="ps-vs-modal-ref-label">{t('validationStudies.approveModal.on')}</span>
               <span>{new Date(study.committeeSubmission.submittedAt).toLocaleDateString()}</span>
             </div>
           )}
 
           <div className="ps-vs-modal-info">
-            Recording approval changes status to <strong>Approved</strong>.
-            The study can then be activated to begin data collection.
-            The IRB reference number is required and cannot be changed after activation.
+            {boldSubstrings(
+              t('validationStudies.approveModal.info', { status: t(STATUS_LABEL_KEY.approved) }),
+              [t(STATUS_LABEL_KEY.approved)]
+            )}
           </div>
 
           <div>
-            <div className="ps-conf-label ps-conf-label--required">IRB / Ethics Reference Number</div>
+            <div className="ps-conf-label ps-conf-label--required">{t('validationStudies.approveModal.irbReference')}</div>
             <input
               className="ps-conf-input"
               value={irbReference}
               onChange={e => setIrbReference(e.target.value)}
-              placeholder="e.g. MGH-IRB-2026-0042"
+              placeholder={t('validationStudies.approveModal.irbReferencePlaceholder')}
             />
-            <div className="ps-vs-slider-hint">Required — cannot be changed after activation</div>
+            <div className="ps-vs-slider-hint">{t('validationStudies.approveModal.irbReferenceHint')}</div>
           </div>
 
           <div>
-            <div className="ps-conf-label ps-conf-label--required">Approved By (name of approver)</div>
+            <div className="ps-conf-label ps-conf-label--required">{t('validationStudies.approveModal.approvedBy')}</div>
             <input
               className="ps-conf-input"
               value={approvedBy}
               onChange={e => setApprovedBy(e.target.value)}
-              placeholder="Full name of person recording approval"
+              placeholder={t('validationStudies.approveModal.approvedByPlaceholder')}
             />
           </div>
 
           <div>
-            <div className="ps-conf-label ps-conf-label--required">Approval Date</div>
+            <div className="ps-conf-label ps-conf-label--required">{t('validationStudies.approveModal.approvalDate')}</div>
             <input
               type="date"
               className="ps-conf-input"
@@ -411,32 +439,32 @@ const RecordApprovalModal: React.FC<{
           </div>
 
           <div>
-            <div className="ps-conf-label">Committee Minutes Reference</div>
+            <div className="ps-conf-label">{t('validationStudies.approveModal.minutesReference')}</div>
             <input
               className="ps-conf-input"
               value={committeeMinutesRef}
               onChange={e => setCommitteeMinutesRef(e.target.value)}
-              placeholder="e.g. MGH-CERC-MIN-2026-Q2-04 (optional)"
+              placeholder={t('validationStudies.approveModal.minutesReferencePlaceholder')}
             />
           </div>
 
           <div>
-            <div className="ps-conf-label">Conditions Attached to Approval</div>
+            <div className="ps-conf-label">{t('validationStudies.approveModal.conditions')}</div>
             <textarea
               className="ps-conf-input"
               rows={3}
               value={conditions}
               onChange={e => setConditions(e.target.value)}
-              placeholder="Any conditions or restrictions placed on the study by the committee… (optional)"
+              placeholder={t('validationStudies.approveModal.conditionsPlaceholder')}
             />
           </div>
 
           <div className="ps-vs-modal-governance">
-            🔒 This approval record is permanent and audited. The IRB reference will appear on all validation reports generated from this study.
+            🔒 {t('validationStudies.approveModal.auditNotice')}
           </div>
         </div>
         <div className="ps-modal-dark-footer">
-          <button className="ps-btn-ghost-dark" onClick={onClose}>Cancel</button>
+          <button className="ps-btn-ghost-dark" onClick={onClose}>{t('validationStudies.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             disabled={!canSave}
@@ -448,7 +476,7 @@ const RecordApprovalModal: React.FC<{
               conditions:           conditions.trim() || undefined,
             })}
           >
-            Record Approval →
+            {t('validationStudies.approveModal.submit')}
           </button>
         </div>
       </div>
@@ -459,7 +487,7 @@ const RecordApprovalModal: React.FC<{
 // ── Study Form Modal ──────────────────────────────────────────────────────────
 
 const StudyFormModal: React.FC<{
-  clients:    Client[];
+  facilities: Facility[];
   physicians: Physician[];
   templates:  ReportTemplate[];
   models:     AIModel[];
@@ -474,7 +502,8 @@ const StudyFormModal: React.FC<{
    *  newly-downloaded model would exist in storage but never appear
    *  as a selectable option here. */
   onModelsChanged?: () => void;
-}> = ({ clients, physicians, templates, models, existing, onSave, onClose, onModelsChanged }) => {
+}> = ({ facilities, physicians, templates, models, existing, onSave, onClose, onModelsChanged }) => {
+  const { t } = useTranslation();
   const isEdit = !!existing;
   const [name,           setName]           = useState(existing?.name ?? '');
   const [description,    setDescription]    = useState(existing?.description ?? '');
@@ -492,7 +521,7 @@ const StudyFormModal: React.FC<{
   // ("template: Breast Core Biopsy") — this makes that description
   // actually true rather than aspirational. Optional, matching the
   // field's own optional type — a study can validly be unscoped by
-  // template (applies across all templates for the selected clients).
+  // template (applies across all templates for the selected facilities).
   const [templateIds,    setTemplateIds]    = useState<string[]>(existing?.templateIds ?? []);
   const [targetAccept,   setTargetAccept]   = useState(existing?.targetAcceptanceRate ?? 0.70);
   const [targetEdit,     setTargetEdit]     = useState(existing?.targetMaxEditRatio ?? 0.30);
@@ -501,10 +530,10 @@ const StudyFormModal: React.FC<{
   const [piId,           setPiId]           = useState(existing?.principalInvestigatorId ?? '');
   void setPiId; // genuine gap: no input field lets a user actually choose a specific PI; always falls back to pathIds[0] at submission (line ~569). Flagged, not deleted.
 
-  const toggleClient = (id: string) => {
+  const toggleFacility = (id: string) => {
     const next = clientIds.includes(id) ? clientIds.filter(x => x !== id) : [...clientIds, id];
     setClientIds(next);
-    // Remove pathologists no longer associated with any selected client
+    // Remove pathologists no longer associated with any selected facility
     setPathIds(prev => prev.filter(pid => {
       const ph = physicians.find(p => (p.id as string) === pid);
       return ph?.clientIds?.some((cid: string) => next.includes(cid));
@@ -517,49 +546,45 @@ const StudyFormModal: React.FC<{
 
   return (
     <div className="ps-overlay" onClick={onClose}>
-      <div className="ps-modal-dark" style={{ width: 640, maxHeight: '85vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+      <div className="ps-modal-dark ps-vs-studyform-modal" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-dark-header">
-          <span className="ps-modal-dark-title">{isEdit ? 'Edit Study (Draft)' : 'New Validation Study'}</span>
+          <span className="ps-modal-dark-title">{isEdit ? t('validationStudies.form.editTitle') : t('validationStudies.form.newTitle')}</span>
           <button className="ps-research-close" onClick={onClose}>✕</button>
         </div>
-        <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+        <div className="ps-vs-studyform-body">
 
-          <div><div className="ps-conf-label ps-conf-label--required">Study Name</div>
-            <input className="ps-conf-input" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. DVMC Breast Pathology AI Validation Q3 2026" /></div>
+          <div><div className="ps-conf-label ps-conf-label--required">{t('validationStudies.form.studyName')}</div>
+            <input className="ps-conf-input" value={name} onChange={e => setName(e.target.value)} placeholder={t('validationStudies.form.studyNamePlaceholder')} /></div>
 
-          <div><div className="ps-conf-label">Description</div>
-            <textarea className="ps-conf-input" rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder="Study objectives and scope…" /></div>
+          <div><div className="ps-conf-label">{t('validationStudies.form.description')}</div>
+            <textarea className="ps-conf-input" rows={2} value={description} onChange={e => setDescription(e.target.value)} placeholder={t('validationStudies.form.descriptionPlaceholder')} /></div>
 
           <div>
-            <div className="ps-conf-label ps-conf-label--required">AI Model Being Validated</div>
+            <div className="ps-conf-label ps-conf-label--required">{t('validationStudies.form.aiModel')}</div>
             <select
               className="ps-conf-select"
               value={modelId}
               disabled={isEdit}
               onChange={e => setModelId(e.target.value)}
-              title={isEdit ? 'Cannot be changed once a study exists — the whole record is evidence for this specific model version' : undefined}
+              title={isEdit ? t('validationStudies.form.aiModelLockedTitle') : undefined}
             >
-              <option value="">Select a model…</option>
+              <option value="">{t('validationStudies.form.aiModelPlaceholder')}</option>
               {models.map(m => (
                 <option key={m.id} value={m.id}>{m.name} {m.version} — {m.status}</option>
               ))}
             </select>
             {isEdit && (
-              <div className="ps-vs-slider-hint" style={{ marginTop: 4 }}>
-                Locked once a study exists — this record is the validation evidence for this exact model version.
+              <div className="ps-vs-slider-hint ps-vs-hint--spaced">
+                {t('validationStudies.form.aiModelLockedHint')}
               </div>
             )}
             {!isEdit && (
               <button
                 type="button"
                 onClick={() => setShowStore(true)}
-                style={{
-                  marginTop: 6, background: 'none', border: 'none', padding: 0,
-                  color: '#38bdf8', fontSize: 11, fontWeight: 600, cursor: 'pointer',
-                  display: 'flex', alignItems: 'center', gap: 4,
-                }}
+                className="ps-vs-store-link"
               >
-                🏪 Don't see the model you need? Browse the ForMedrixAI store
+                🏪 {t('validationStudies.form.browseStore')}
               </button>
             )}
             {showStore && (
@@ -575,34 +600,34 @@ const StudyFormModal: React.FC<{
           </div>
 
           <div className="ps-vs-form-2col">
-            <div><div className="ps-conf-label">Target Acceptance Rate</div>
+            <div><div className="ps-conf-label">{t('validationStudies.form.targetAcceptanceRate')}</div>
               <div className="ps-vs-slider-wrap">
                 <input type="range" min={0.5} max={1} step={0.05} value={targetAccept} onChange={e => setTargetAccept(Number(e.target.value))} className="ps-vs-slider" />
                 <span className="ps-vs-slider-val">{pct(targetAccept)}</span>
               </div>
-              <div className="ps-vs-slider-hint">% of AI sections accepted without edits</div>
+              <div className="ps-vs-slider-hint">{t('validationStudies.form.targetAcceptanceRateHint')}</div>
             </div>
-            <div><div className="ps-conf-label">Max Mean Edit Ratio</div>
+            <div><div className="ps-conf-label">{t('validationStudies.form.maxEditRatio')}</div>
               <div className="ps-vs-slider-wrap">
                 <input type="range" min={0.1} max={0.9} step={0.05} value={targetEdit} onChange={e => setTargetEdit(Number(e.target.value))} className="ps-vs-slider" />
                 <span className="ps-vs-slider-val">{pct(targetEdit)}</span>
               </div>
-              <div className="ps-vs-slider-hint">Max average change before flagging</div>
+              <div className="ps-vs-slider-hint">{t('validationStudies.form.maxEditRatioHint')}</div>
             </div>
           </div>
 
-          <div><div className="ps-conf-label ps-conf-label--required">Start Date</div>
+          <div><div className="ps-conf-label ps-conf-label--required">{t('validationStudies.form.startDate')}</div>
             <input type="date" className="ps-conf-input" value={startDate} onChange={e => setStartDate(e.target.value)} /></div>
 
-          <div><div className="ps-conf-label">IRB / Ethics Reference</div>
-            <input className="ps-conf-input" value={irbRef} onChange={e => setIrbRef(e.target.value)} placeholder="Optional — ethics committee reference number" /></div>
+          <div><div className="ps-conf-label">{t('validationStudies.form.irbReference')}</div>
+            <input className="ps-conf-input" value={irbRef} onChange={e => setIrbRef(e.target.value)} placeholder={t('validationStudies.form.irbReferencePlaceholder')} /></div>
 
           <div>
-            <div className="ps-conf-label ps-conf-label--required">Participating Clients</div>
+            <div className="ps-conf-label ps-conf-label--required">{t('validationStudies.form.facilities')}</div>
             <div className="ps-vs-checklist">
-              {clients.map(c => (
+              {facilities.map(c => (
                 <label key={c.id as string} className="ps-vs-check-row">
-                  <input type="checkbox" checked={clientIds.includes(c.id as string)} onChange={() => toggleClient(c.id as string)} />
+                  <input type="checkbox" checked={clientIds.includes(c.id as string)} onChange={() => toggleFacility(c.id as string)} />
                   <span>{c.name}</span>
                 </label>
               ))}
@@ -610,9 +635,9 @@ const StudyFormModal: React.FC<{
           </div>
 
           <div>
-            <div className="ps-conf-label ps-conf-label--required">Enrolled Pathologists</div>
+            <div className="ps-conf-label ps-conf-label--required">{t('validationStudies.form.pathologists')}</div>
             {clientIds.length === 0 && (
-              <div className="ps-vs-slider-hint" style={{ marginBottom: 6 }}>Select at least one client to filter pathologists</div>
+              <div className="ps-vs-slider-hint ps-vs-hint--spaced">{t('validationStudies.form.pathologistsHint')}</div>
             )}
             <div className="ps-vs-checklist">
               {physicians
@@ -625,32 +650,32 @@ const StudyFormModal: React.FC<{
                 ))
               }
               {clientIds.length > 0 && physicians.filter(p => p.clientIds?.some((cid: string) => clientIds.includes(cid))).length === 0 && (
-                <div className="ps-vs-slider-hint">No pathologists found for the selected clients</div>
+                <div className="ps-vs-slider-hint">{t('validationStudies.form.noPathologistsFound')}</div>
               )}
             </div>
           </div>
 
           <div>
-            <div className="ps-conf-label">Report Templates</div>
-            <div className="ps-vs-slider-hint" style={{ marginBottom: 6 }}>
-              Optional — leave unselected to cover every template used by the selected clients
+            <div className="ps-conf-label">{t('validationStudies.form.templates')}</div>
+            <div className="ps-vs-slider-hint ps-vs-hint--spaced">
+              {t('validationStudies.form.templatesHint')}
             </div>
             <div className="ps-vs-checklist">
-              {templates.map(t => (
-                <label key={t.id} className="ps-vs-check-row">
-                  <input type="checkbox" checked={templateIds.includes(t.id)} onChange={() => toggleTemplate(t.id)} />
-                  <span>{t.name} — {t.specialty}</span>
+              {templates.map(tpl => (
+                <label key={tpl.id} className="ps-vs-check-row">
+                  <input type="checkbox" checked={templateIds.includes(tpl.id)} onChange={() => toggleTemplate(tpl.id)} />
+                  <span>{tpl.name} — {tpl.specialty}</span>
                 </label>
               ))}
               {templates.length === 0 && (
-                <div className="ps-vs-slider-hint">No published templates available</div>
+                <div className="ps-vs-slider-hint">{t('validationStudies.form.noTemplatesAvailable')}</div>
               )}
             </div>
           </div>
 
         </div>
         <div className="ps-modal-dark-footer">
-          <button className="ps-btn-ghost-dark" onClick={onClose}>Cancel</button>
+          <button className="ps-btn-ghost-dark" onClick={onClose}>{t('validationStudies.cancel')}</button>
           <button
             className="ps-conf-btn-primary"
             disabled={!name || !modelId || clientIds.length === 0 || pathIds.length === 0}
@@ -671,7 +696,7 @@ const StudyFormModal: React.FC<{
               validationMode: 'advisory',
               createdBy: 'admin',
             })}
-          >{isEdit ? 'Save Changes' : 'Create Study'}</button>
+          >{isEdit ? t('validationStudies.form.saveChanges') : t('validationStudies.form.createStudy')}</button>
         </div>
       </div>
     </div>
@@ -684,6 +709,7 @@ const DashboardTab: React.FC<{
   studies:      ValidationStudy[];
   isSuperAdmin?: boolean;
 }> = ({ studies, isSuperAdmin: _isSuperAdmin = false }) => {
+  const { t } = useTranslation();
   const [selectedId, setSelectedId] = useState<string>(studies[0]?.id ?? '');
   const [stats,      setStats]      = useState<NarrativeSignalStats | null>(null);
   const [caseCount,  setCaseCount]  = useState(0);
@@ -705,20 +731,23 @@ const DashboardTab: React.FC<{
   if (active.length === 0) return (
     <div className="ps-vs-empty">
       <div className="ps-vs-empty-icon">📊</div>
-      <div className="ps-vs-empty-title">No active studies</div>
-      <div className="ps-vs-empty-body">Activate a study to begin capturing validation metrics.</div>
+      <div className="ps-vs-empty-title">{t('validationStudies.dashboard.emptyTitle')}</div>
+      <div className="ps-vs-empty-body">{t('validationStudies.dashboard.emptyBody')}</div>
     </div>
   );
 
   return (
     <div className="ps-vs-dashboard">
       <div className="ps-vs-study-select-wrap">
-        <select className="ps-conf-select" aria-label="Select validation study" style={{ maxWidth: 380 }} value={selectedId} onChange={e => setSelectedId(e.target.value)}>
+        <select className="ps-conf-select ps-vs-select--wide" aria-label={t('validationStudies.dashboard.selectStudyAriaLabel')} value={selectedId} onChange={e => setSelectedId(e.target.value)}>
           {active.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
         </select>
         {study && (
-          <span className="ps-vs-study-badge" style={{ color: STATUS_COLORS[study.status], borderColor: STATUS_COLORS[study.status] + '40', background: STATUS_COLORS[study.status] + '12' }}>
-            {study.status.toUpperCase()}
+          <span
+            className="ps-vs-study-badge"
+            style={{ '--ps-vs-badge-color': STATUS_COLORS[study.status] } as React.CSSProperties}
+          >
+            {STATUS_LABEL_KEY[study.status] ? t(STATUS_LABEL_KEY[study.status]) : study.status.toUpperCase()}
           </span>
         )}
       </div>
@@ -729,37 +758,37 @@ const DashboardTab: React.FC<{
           <div className="ps-vs-kpi-row">
             <div className="ps-vs-kpi">
               <div className="ps-vs-kpi-val">{caseCount}</div>
-              <div className="ps-vs-kpi-label">Cases captured</div>
-              {study.targetCaseCount && <div className="ps-vs-kpi-target">Target: {study.targetCaseCount}</div>}
+              <div className="ps-vs-kpi-label">{t('validationStudies.dashboard.casesCaptured')}</div>
+              {study.targetCaseCount && <div className="ps-vs-kpi-target">{t('validationStudies.dashboard.target', { value: study.targetCaseCount })}</div>}
             </div>
             <div className="ps-vs-kpi">
               <div className="ps-vs-kpi-val">{stats.totalSignals}</div>
-              <div className="ps-vs-kpi-label">Section signals</div>
+              <div className="ps-vs-kpi-label">{t('validationStudies.dashboard.sectionSignals')}</div>
             </div>
-            <div className="ps-vs-kpi" style={{ borderColor: stats.acceptanceRate >= study.targetAcceptanceRate ? '#10b981' : '#f87171' }}>
-              <div className="ps-vs-kpi-val" style={{ color: stats.acceptanceRate >= study.targetAcceptanceRate ? '#10b981' : '#f87171' }}>
+            <div className={`ps-vs-kpi ${stats.acceptanceRate >= study.targetAcceptanceRate ? 'ps-vs-kpi--good' : 'ps-vs-kpi--bad'}`}>
+              <div className="ps-vs-kpi-val ps-vs-kpi-val--metric">
                 {pct(stats.acceptanceRate)}
               </div>
-              <div className="ps-vs-kpi-label">Acceptance rate</div>
-              <div className="ps-vs-kpi-target">Target: ≥{pct(study.targetAcceptanceRate)}</div>
+              <div className="ps-vs-kpi-label">{t('validationStudies.dashboard.acceptanceRate')}</div>
+              <div className="ps-vs-kpi-target">{t('validationStudies.dashboard.targetAtLeast', { value: pct(study.targetAcceptanceRate) })}</div>
             </div>
             <div className="ps-vs-kpi">
               <div className="ps-vs-kpi-val">{stats.acceptedCount}</div>
-              <div className="ps-vs-kpi-label">Accepted unchanged</div>
+              <div className="ps-vs-kpi-label">{t('validationStudies.dashboard.acceptedUnchanged')}</div>
             </div>
           </div>
 
           {/* Section breakdown */}
           <div className="ps-vs-table-wrap">
-            <div className="ps-vs-table-title">Performance by Section</div>
+            <div className="ps-vs-table-title">{t('validationStudies.dashboard.performanceBySection')}</div>
             <table className="ps-vs-table">
               <thead>
                 <tr>
-                  <th>Section</th>
-                  <th>Signals</th>
-                  <th>Acceptance</th>
-                  <th>Mean Edit Ratio</th>
-                  <th>Most Common Edit</th>
+                  <th>{t('validationStudies.dashboard.colSection')}</th>
+                  <th>{t('validationStudies.dashboard.colSignals')}</th>
+                  <th>{t('validationStudies.dashboard.colAcceptance')}</th>
+                  <th>{t('validationStudies.dashboard.colMeanEditRatio')}</th>
+                  <th>{t('validationStudies.dashboard.colMostCommonEdit')}</th>
                 </tr>
               </thead>
               <tbody>
@@ -770,8 +799,8 @@ const DashboardTab: React.FC<{
                     <tr key={sectionId}>
                       <td className="ps-vs-td-name">{sectionId.replace(/_/g,' ')}</td>
                       <td>{sec.total}</td>
-                      <td style={{ color: ar >= study.targetAcceptanceRate ? '#10b981' : '#f87171' }}>{pct(ar)}</td>
-                      <td style={{ color: sec.avgEditRatio <= study.targetMaxEditRatio ? '#10b981' : '#f87171' }}>{pct(sec.avgEditRatio)}</td>
+                      <td className={ar >= study.targetAcceptanceRate ? 'ps-vs-metric--good' : 'ps-vs-metric--bad'}>{pct(ar)}</td>
+                      <td className={sec.avgEditRatio <= study.targetMaxEditRatio ? 'ps-vs-metric--good' : 'ps-vs-metric--bad'}>{pct(sec.avgEditRatio)}</td>
                       <td className="ps-vs-td-edittype">{topEdit?.[0]?.replace(/_/g,' ') ?? '—'}</td>
                     </tr>
                   );
@@ -782,14 +811,14 @@ const DashboardTab: React.FC<{
 
           {/* Advisory mode notice */}
           <div className="ps-vs-advisory-notice">
-            🔒 Advisory mode — all AI output reviewed and signed by pathologist before submission. No AI-direct LIS transmission.
+            🔒 {t('validationStudies.dashboard.advisoryNotice')}
           </div>
         </>
       )}
 
       {!stats?.totalSignals && (
-        <div className="ps-vs-empty" style={{ marginTop: 24 }}>
-          <div className="ps-vs-empty-body">No signals captured yet for this study. Cases finalised by enrolled pathologists will appear here.</div>
+        <div className="ps-vs-empty ps-vs-empty--spaced">
+          <div className="ps-vs-empty-body">{t('validationStudies.dashboard.noSignalsYet')}</div>
         </div>
       )}
     </div>
@@ -799,6 +828,7 @@ const DashboardTab: React.FC<{
 // ── Reports Tab ───────────────────────────────────────────────────────────────
 
 const ReportsTab: React.FC<{ studies: ValidationStudy[]; onRefresh: () => void; isSuperAdmin?: boolean }> = ({ studies, onRefresh, isSuperAdmin: _isSuperAdmin = false }) => {
+  const { t } = useTranslation();
   const { log } = useAuditLog();
   const [selectedId, setSelectedId] = useState<string>(studies[0]?.id ?? '');
   const [stats,      setStats]      = useState<NarrativeSignalStats | null>(null);
@@ -823,7 +853,7 @@ const ReportsTab: React.FC<{ studies: ValidationStudy[]; onRefresh: () => void; 
     // Generate screen report — PDF export would use reportlab/pdfmake in production
     const avgEditRatio = Object.values(stats.bySection).reduce((sum, s) => sum + s.avgEditRatio, 0) /
       Math.max(Object.values(stats.bySection).length, 1);
-    const grade = gradeResult(stats.acceptanceRate, study.targetAcceptanceRate, avgEditRatio, study.targetMaxEditRatio);
+    const grade = computeValidationStudyGrade(stats.acceptanceRate, study.targetAcceptanceRate, avgEditRatio, study.targetMaxEditRatio);
 
     // Print-friendly report in new window
     const html = buildReportHtml(study, stats, caseCount, grade, avgEditRatio);
@@ -832,7 +862,7 @@ const ReportsTab: React.FC<{ studies: ValidationStudy[]; onRefresh: () => void; 
 
     // Real fix: the grade shown here was always computed live and never
     // actually recorded anywhere on the study itself — meaning nothing
-    // else in the app (like a client's own AI model override) could
+    // else in the app (like a facility's own AI model override) could
     // ever check "did this study pass" without recomputing it fresh.
     // Persisted exactly once, the first time a report is generated —
     // if finalGrade is already set from an earlier report run, it's
@@ -842,7 +872,7 @@ const ReportsTab: React.FC<{ studies: ValidationStudy[]; onRefresh: () => void; 
     await mockValidationStudyService.update(study.id, {
       status: 'reported',
       ...(alreadyGraded ? {} : {
-        finalGrade: grade.grade as 'PASS' | 'CONDITIONAL PASS' | 'FURTHER REVIEW',
+        finalGrade: grade.grade,
         finalGradedAt: new Date().toISOString(),
       }),
     });
@@ -859,10 +889,9 @@ const ReportsTab: React.FC<{ studies: ValidationStudy[]; onRefresh: () => void; 
     <div className="ps-vs-reports">
       <div className="ps-vs-section-header">
         <div>
-          <div className="ps-vs-section-title">Validation Reports</div>
+          <div className="ps-vs-section-title">{t('validationStudies.reports.title')}</div>
           <div className="ps-vs-section-sub">
-            Generate a de-identified validation report for closed studies.
-            Reports contain no patient data — only aggregate statistics.
+            {t('validationStudies.reports.subtitle')}
           </div>
         </div>
       </div>
@@ -870,30 +899,30 @@ const ReportsTab: React.FC<{ studies: ValidationStudy[]; onRefresh: () => void; 
       {closedStudies.length === 0 ? (
         <div className="ps-vs-empty">
           <div className="ps-vs-empty-icon">📄</div>
-          <div className="ps-vs-empty-title">No closed studies</div>
-          <div className="ps-vs-empty-body">Close an active study to generate its validation report.</div>
+          <div className="ps-vs-empty-title">{t('validationStudies.reports.emptyTitle')}</div>
+          <div className="ps-vs-empty-body">{t('validationStudies.reports.emptyBody')}</div>
         </div>
       ) : (
         <>
-          <div style={{ marginBottom: 16 }}>
-            <select className="ps-conf-select" aria-label="Select closed validation study" style={{ maxWidth: 380 }} value={selectedId} onChange={e => setSelectedId(e.target.value)}>
+          <div className="ps-vs-reports-select-wrap">
+            <select className="ps-conf-select ps-vs-select--wide" aria-label={t('validationStudies.reports.selectStudyAriaLabel')} value={selectedId} onChange={e => setSelectedId(e.target.value)}>
               {closedStudies.map(s => <option key={s.id} value={s.id}>{s.name}</option>)}
             </select>
           </div>
 
           {study && stats && (
             <div className="ps-vs-report-preview">
-              <div className="ps-vs-report-preview-title">Report Preview — {study.name}</div>
+              <div className="ps-vs-report-preview-title">{t('validationStudies.reports.previewTitle', { name: study.name })}</div>
               <div className="ps-vs-report-kpis">
-                <div><span className="ps-vs-rp-label">Period</span><span>{new Date(study.startDate).toLocaleDateString()} — {study.endDate ? new Date(study.endDate).toLocaleDateString() : 'Ongoing'}</span></div>
-                <div><span className="ps-vs-rp-label">Cases</span><span>{caseCount}</span></div>
-                <div><span className="ps-vs-rp-label">Sections analysed</span><span>{stats.totalSignals}</span></div>
-                <div><span className="ps-vs-rp-label">Acceptance rate</span><span style={{ color: stats.acceptanceRate >= study.targetAcceptanceRate ? '#10b981' : '#f87171' }}>{pct(stats.acceptanceRate)}</span></div>
-                <div><span className="ps-vs-rp-label">Governance</span><span>Advisory mode only</span></div>
-                {study.committeeApproval?.irbReference && <div><span className="ps-vs-rp-label">IRB</span><span>{study.committeeApproval.irbReference}</span></div>}
+                <div><span className="ps-vs-rp-label">{t('validationStudies.reports.period')}</span><span>{new Date(study.startDate).toLocaleDateString()} — {study.endDate ? new Date(study.endDate).toLocaleDateString() : t('validationStudies.reports.ongoing')}</span></div>
+                <div><span className="ps-vs-rp-label">{t('validationStudies.reports.cases')}</span><span>{caseCount}</span></div>
+                <div><span className="ps-vs-rp-label">{t('validationStudies.reports.sectionsAnalysed')}</span><span>{stats.totalSignals}</span></div>
+                <div><span className="ps-vs-rp-label">{t('validationStudies.reports.acceptanceRate')}</span><span className={stats.acceptanceRate >= study.targetAcceptanceRate ? 'ps-vs-metric--good' : 'ps-vs-metric--bad'}>{pct(stats.acceptanceRate)}</span></div>
+                <div><span className="ps-vs-rp-label">{t('validationStudies.reports.governance')}</span><span>{t('validationStudies.reports.advisoryModeOnly')}</span></div>
+                {study.committeeApproval?.irbReference && <div><span className="ps-vs-rp-label">{t('validationStudies.reports.irb')}</span><span>{study.committeeApproval.irbReference}</span></div>}
               </div>
-              <button className="ps-conf-btn-primary" onClick={generateReport} disabled={generating} style={{ marginTop: 16 }}>
-                {generating ? 'Generating…' : '📄 Generate & Print Report'}
+              <button className="ps-conf-btn-primary ps-vs-generate-btn" onClick={generateReport} disabled={generating}>
+                {generating ? t('validationStudies.reports.generating') : `📄 ${t('validationStudies.reports.generateAndPrint')}`}
               </button>
             </div>
           )}
@@ -979,10 +1008,17 @@ ${study.committeeApproval?.irbReference ? `<tr><td><strong>Ethics Reference</str
 
 // ── Main Section ──────────────────────────────────────────────────────────────
 
+const SUBTAB_LABEL_KEY: Record<SubTab, string> = {
+  studies:   'validationStudies.tabs.studies',
+  dashboard: 'validationStudies.tabs.dashboard',
+  reports:   'validationStudies.tabs.reports',
+};
+
 const ValidationStudiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSuperAdmin = false }) => {
+  const { t } = useTranslation();
   const [subTab,     setSubTab]     = useState<SubTab>('studies');
   const [studies,    setStudies]    = useState<ValidationStudy[]>([]);
-  const [clients,    setClients]    = useState<Client[]>([]);
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [physicians, setPhysicians] = useState<Physician[]>([]);
   const [templates,  setTemplates]  = useState<ReportTemplate[]>([]);
   const [models,     setModels]     = useState<AIModel[]>([]);
@@ -997,7 +1033,7 @@ const ValidationStudiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSupe
       modelService.getAll(),
     ]);
     if ((sr as any).ok) setStudies((sr as any).data);
-    if ((cr as any).ok) setClients((cr as any).data.filter((c: Client) => c.status === 'Active'));
+    if ((cr as any).ok) setFacilities((cr as any).data.filter((c: Facility) => c.status === 'Active'));
     if ((pr as any).ok) setPhysicians((pr as any).data.filter((p: Physician) => p.status === 'Active'));
     if ((tr as any).ok) setTemplates((tr as any).data.filter((t: ReportTemplate) => t.status === 'published'));
     if (mr.ok) setModels(mr.data);
@@ -1008,81 +1044,62 @@ const ValidationStudiesSection: React.FC<{ isSuperAdmin?: boolean }> = ({ isSupe
   return (
     <div className="ps-vs-root">
       <div className="ps-vs-header">
-        <div className="ps-vs-header-title">Validation Studies</div>
+        <div className="ps-vs-header-title">{t('validationStudies.header.title')}</div>
         <div className="ps-vs-header-sub">
-          Parallel run validation of AI-assisted reporting against existing workflow.
-          All studies operate in advisory mode — pathologist sign-off required for all reports.
+          {t('validationStudies.header.subtitle')}
         </div>
         <div className="ps-vs-advisory-banner">
-          🔒 Advisory Mode — AI output is never submitted to the LIS without pathologist review and approval
+          🔒 {t('validationStudies.header.advisoryBanner')}
         </div>
         <button
           onClick={() => setHowItWorksOpen(o => !o)}
-          className="ps-conf-btn-secondary"
-          style={{ marginTop: 10, fontSize: 12 }}
+          className="ps-conf-btn-secondary ps-vs-howitworks-toggle"
         >
-          {howItWorksOpen ? '▾' : '▸'} How this works — with an example
+          {howItWorksOpen ? '▾' : '▸'} {t('validationStudies.howItWorks.toggle')}
         </button>
         {howItWorksOpen && (
-          <div style={{ marginTop: 10, padding: '14px 16px', borderRadius: 8, background: 'rgba(255,255,255,0.03)', border: '1px solid rgba(255,255,255,0.08)', fontSize: 13, lineHeight: 1.7, color: '#cbd5e1' }}>
-            <p style={{ margin: '0 0 10px' }}>
-              A validation study measures whether a specific AI model's suggestions are trustworthy enough
-              for a specific client, physician, or report template — before relying on it for real reporting
-              decisions. Every study goes through the same six stages, shown as its status:{' '}
-              <strong>Draft → Pending Approval → Approved → Active → Closed → Reported</strong>.
+          <div className="ps-vs-howitworks-panel">
+            <p className="ps-vs-howitworks-p">
+              <Trans
+                i18nKey="validationStudies.howItWorks.intro"
+                components={{ strong: <strong /> }}
+              />
             </p>
-            <p style={{ margin: '0 0 10px' }}>
-              Every model a study can be scoped to starts as <strong style={{ color: '#fbbf24' }}>Beta</strong> —
-              advisory, never the org default, zero cases processed against real data — until a study like this
-              one confirms it. A required field an AI model suggested a value for still has to be explicitly
-              confirmed or overridden by a pathologist before a case can be finalized, regardless of how
-              confident the model claims to be; nothing here relies on the AI's own accuracy claim as a
-              substitute for that.
+            <p className="ps-vs-howitworks-p">
+              <Trans
+                i18nKey="validationStudies.howItWorks.betaNote"
+                components={{ beta: <strong className="ps-vs-howitworks-beta" /> }}
+              />
             </p>
-            <p style={{ margin: '0 0 6px', fontWeight: 700, color: '#e2e8f0' }}>Worked example</p>
-            <p style={{ margin: '0 0 6px' }}>
-              Say Metro General Hospital wants to know if a new AI model is ready for their breast core biopsies.
+            <p className="ps-vs-howitworks-example-heading">{t('validationStudies.howItWorks.workedExample')}</p>
+            <p className="ps-vs-howitworks-p">
+              {t('validationStudies.howItWorks.exampleIntro')}
             </p>
-            <ol style={{ margin: '0 0 10px', paddingLeft: 20 }}>
-              <li><strong>Get the model.</strong> An admin gets notified — today, an email from ForMedrixAI —
-                that a new model has been published following ForMedrixAI's own internal regression testing.
-                From this screen's "New Study" form, <strong>Browse the ForMedrixAI store</strong> and download
-                it; it lands in your system as Beta, never the default, with zero cases processed yet.</li>
-              <li><strong>Create the study (Draft).</strong> Scope it — the model you just downloaded, client:
-                Metro General, template: Breast Core Biopsy — and set your targets, e.g. 90% AI-suggestion
-                acceptance rate and a maximum 15% edit ratio (how much pathologists end up changing).</li>
-              <li><strong>Submit for Review (Pending Approval).</strong> A second pathologist or admin
-                reviews the study's scope and targets before it can start collecting real data.</li>
-              <li><strong>Record Approval (Approved → Active).</strong> Once approved, the study goes live —
-                every matching report during the study period is scored against the targets, still fully
-                advisory the whole time.</li>
-              <li><strong>Close the study.</strong> After enough cases (the Dashboard tab tracks this live),
-                close it — this locks in the final numbers.</li>
-              <li><strong>Report.</strong> The grade is computed automatically: <strong>PASS</strong> if both
-                targets are met, <strong>CONDITIONAL PASS</strong> if close but not quite there, or{' '}
-                <strong>FURTHER REVIEW</strong> if performance fell short — each with the specific numbers
-                behind it, exportable from the Reports tab. A PASS is what makes it reasonable for an admin to
-                later consider setting this model as the client's default, in the Models screen — this study
-                is the evidence for that decision, not the model's own published benchmark.</li>
+            <ol className="ps-vs-howitworks-list">
+              <li><Trans i18nKey="validationStudies.howItWorks.step1" components={{ strong: <strong /> }} /></li>
+              <li><Trans i18nKey="validationStudies.howItWorks.step2" components={{ strong: <strong /> }} /></li>
+              <li><Trans i18nKey="validationStudies.howItWorks.step3" components={{ strong: <strong /> }} /></li>
+              <li><Trans i18nKey="validationStudies.howItWorks.step4" components={{ strong: <strong /> }} /></li>
+              <li><Trans i18nKey="validationStudies.howItWorks.step5" components={{ strong: <strong /> }} /></li>
+              <li><Trans i18nKey="validationStudies.howItWorks.step6" components={{ strong: <strong /> }} /></li>
             </ol>
-            <p style={{ margin: 0, color: '#94a3b8' }}>
-              The Dashboard tab shows every active study's live progress toward its targets; the Reports tab
-              is where finished studies' graded outcomes live.
+            <p className="ps-vs-howitworks-footer">
+              {t('validationStudies.howItWorks.footer')}
             </p>
           </div>
         )}
       </div>
 
       <div className="ps-sub-tab-group">
-        {(['studies','dashboard','reports'] as SubTab[]).map(t => (
-          <button key={t} onClick={() => setSubTab(t)} className={`ps-sub-tab-btn${subTab === t ? ' active' : ''}`}>
-            {t.charAt(0).toUpperCase() + t.slice(1)}
+        {(['studies','dashboard','reports'] as SubTab[]).map(tab => (
+          <button key={tab} onClick={() => setSubTab(tab)} className={`ps-sub-tab-btn${subTab === tab ? ' active' : ''}`}>
+            {t(SUBTAB_LABEL_KEY[tab])}
           </button>
         ))}
       </div>
 
       <div className="ps-vs-content">
-        {subTab === 'studies'   && <StudiesTab   studies={studies} clients={clients} physicians={physicians} templates={templates} models={models} onRefresh={load} isSuperAdmin={isSuperAdmin} />}
+        {subTab === 'studies'   && <StudiesTab   studies={studies} facilities={facilities} physicians={physicians} templates={templates} models={models} onRefresh={load} isSuperAdmin={isSuperAdmin} />}
         {subTab === 'dashboard' && <DashboardTab studies={studies} isSuperAdmin={isSuperAdmin} />}
         {subTab === 'reports'   && <ReportsTab   studies={studies} onRefresh={load} isSuperAdmin={isSuperAdmin} />}
       </div>

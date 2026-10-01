@@ -7,28 +7,12 @@ etc.), consumed from many places across `pages/`/`components/`.
 
 ## Files
 
-- **`AuthContext.tsx`** — session/login state, the hardcoded demo
-  credentials list, and `resolveStaffFields` (backfills
-  `canViewPediatric`/`canViewOrchestration`/`canAccessCrossTenantQa`/
-  `organisationId` from the real `StaffUser` record at login and on
-  session restore — deliberately fail-safe: any resolution failure
-  defaults every one of these to `false`/absent rather than granting
-  access). Real, thoughtful reasoning throughout (the `forceSupersede`
-  three-outcome login result, the session-supersede-vs-explicit-logout
-  distinction in `logout()`, the organisationId backfill comment
-  explaining why a stale stored session would otherwise get silently
-  locked out of all case access). Cleaned up this pass: a debug
-  `console.log` that fired on every real login attempt (logging email
-  + password length) removed; `resolveStaffFields`'s `.find((u: any)
-  => ...)` was making `staffUser` implicitly `any`, which had produced
-  an inconsistent mix — 4 fields read off it had a redundant `as any`
-  layered on top of the already-`any` value, 5 didn't, no functional
-  difference, just misleading. Fixed the root cause (typed the `.find`
-  properly) and removed all 4 redundant casts. One more unnecessary
-  cast on `voiceProfile` removed — traced `VoiceProfileId`'s real
-  definition and confirmed it's just `string` underneath, no cast ever
-  needed.
-
+- **`AuthContext.tsx`**: who is signed in, for React (`useAuth()`, `roleHas`, `useIsAdmin`, `useIsSuperAdmin`). **Rewritten in Batch 343 (PS-60):**
+  - **Decisions moved out.** Signing in and out now lives in `services/auth/authSession.ts`: password and SSO sign-in, the same-browser conflict check, sign-out with drafts kept on idle timeout, restore on load with the staff-field backfill. The context keeps React state only, and it's off both deployment baselines.
+  - **Hard-coded accounts gone.** The eleven accounts with plain-text passwords now live in `services/auth/demo/demoAccounts.ts` as PBKDF2 hashes, left out of `VITE_AUTH_MODE=sso` builds.
+  - **SSO added.** `passwordSignInEnabled`, `ssoProviders`, `beginSsoSignIn`, `completeSsoSignIn` (one completion per callback URL, since StrictMode runs the callback page's effect twice), and `resolvePendingSsoSignIn` for the conflict prompt.
+  - **`User`** is now `SessionProfile` (`services/auth/sessionProfile.ts`), with the same fields plus `authMethod` and `ssoProviderId`.
+  - **Earlier history** (the three-outcome login result, the supersede-vs-explicit-logout distinction, the organisationId backfill) carries over unchanged in behaviour.
 - **`MessagingContext.tsx`** — unread count, urgent-flag audio alert,
   drawer open/closed (persisted to `sessionStorage`), inbox polling
   every 20s plus a reload-on-tab-visible listener. Found and fixed one
@@ -52,6 +36,23 @@ etc.), consumed from many places across `pages/`/`components/`.
   separately, `App.tsx`'s routing shows `/` is actually the Home page,
   not login. Removed — the outer guard already provides the real
   protection.
+
+- **Real feature, per direct, detailed specification: "Barcode Listener
+  & Form Auto-Ingestion."** A real conflict found and fixed while
+  wiring it in: `handleScan()`'s own, existing auto-navigation
+  (`navigate('/case/{accession}/synoptic')` on an accession-pattern
+  match) fired globally, with no route awareness — including on
+  `pages/AccessionPage/AccessionPage.tsx`, which now has its own,
+  real, more specific handling for the exact same event (see that
+  file's own README for the full feature). An accessioner scanning a
+  brand-new specimen label whose payload happened to also match a
+  configured accession-number pattern would have been yanked off the
+  very page they were using to create the case, mid-scan. Fixed by
+  suppressing the navigation specifically on `/accession` (via
+  `useLocation()`, new) — the real `PATHSCRIBE_SCAN` event this file
+  already dispatches on every successful scan still fires
+  unconditionally either way; only the navigation side effect is
+  route-gated.
 
 - **`SystemConfigContext.tsx`** — three independently-persisted config
   layers (system/enterprise/hospital) with a documented override
@@ -104,6 +105,30 @@ etc.), consumed from many places across `pages/`/`components/`.
     failing, the proxy returning a bad status, a speech-recognition
     error), not debug noise.
 
+  **Real addition ("Personal Quick Text" — Enterprise then Facility
+  then Staff), per direct guidance:** the real spoken-trigger
+  substitution algorithm already existed (`MockVoiceMacroService.
+  refineTranscript()`, `services/voicemacro/`) but had zero real call
+  sites anywhere in the app, confirmed directly before wiring this —
+  it was correct and complete, just never invoked from the live
+  dictation pipeline. Now genuinely wired in: the algorithm was
+  extracted into a pure, synchronous `applyVoiceMacroSubstitutions()`
+  (`types/voiceMacros.ts`, shared by `refineTranscript()` itself so the
+  two can't drift apart) and applied inside `handleDictationSegment`'s
+  own real LOCAL PATH — right after punctuation/learned-corrections,
+  before the AI-refinement/direct-insertion branch, so a spoken trigger
+  expands the same way regardless of whether AI refinement also runs
+  afterward. Filtered per-segment to exactly the real macros the
+  current session user can see (`isVoiceMacroVisibleTo()`) for
+  whichever real facility the current `DictationTarget` belongs to.
+  `DictationTarget` gained `performingLabFacilityId?` for this —
+  `OrchestratorSectionEditor.tsx`'s own `registerDictationTarget`
+  passes through the case's own already-resolved performing lab, same
+  value its "QT" (Personal Quick Text) button already uses. The active
+  macro list is refreshed once per real dictation session
+  (`startDictation`), not per spoken segment — this needed to stay
+  near-instant, not add a fetch to every utterance.
+
 - **`BreadcrumbContext.tsx`** — simple push/pop breadcrumb stack for
   the nav bar. Clean, no issues.
 
@@ -134,3 +159,11 @@ an incomplete list as a result. Migrated all 6 consumers onto the real
 service, removed the `<SubspecialtyProvider>` wrapper from `App.tsx`,
 deleted the file. Full writeup in `PRIORITY_FIXES.md` item #31; the
 rest of this folder's smaller findings are item #32.
+
+## Batch 328 (PS-63), reverted in Batch 329
+
+Batch 328 added `User.staffRoles`, the staff record's role names, to the session for template approval. Batch 329 removed it again. Template rights are now read live from the staff record and the role catalog, by role id, at the moment of the action (`services/templates/templateService.ts → currentActor`). A role granted or renamed therefore takes effect without signing in again. `AuthContext.tsx` is back to its Batch 327 shape.
+
+## React Router 7 (Batch 341, PS-344)
+
+Every file here that used `react-router-dom` now imports the same hooks and components from `react-router` 7 (`react-router-dom` was removed from the project). Nothing else changed: the app had already opted into version 7's behaviour. See `src/i18n/README.md` → Batch 341.

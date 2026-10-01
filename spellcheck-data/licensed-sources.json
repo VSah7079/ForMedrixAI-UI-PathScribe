@@ -1,0 +1,35 @@
+{
+  "loinc": {
+    "classPrefixes": ["PATH", "CYTO", "MOLPATH", "CELLMARK", "HEM/BC", "MICRO"],
+    "englishLocales": ["en-US", "en-CA"],
+    "fields": ["COMPONENT", "LONG_COMMON_NAME"],
+    "languages": { "de": "de-DE", "fr": "fr-FR", "ko": "ko-KR", "nl": "nl-NL" },
+    "variantFields": ["COMPONENT", "LONG_COMMON_NAME", "LinguisticVariantDisplayName"]
+  },
+  "snomed": {
+    "acceptability": ["900000000000548007", "900000000000549004"],
+    "dialectRefsets": {
+      "19491000087109": "en-CA",
+      "32570271000036106": "en-AU",
+      "900000000000508004": "en-GB",
+      "900000000000509007": "en-US",
+      "999001261000000100": "en-GB"
+    },
+    "englishFallback": { "en-AU": ["en-GB"], "en-CA": ["en-US", "en-GB"] },
+    "languages": { "de": "de-DE", "fr": "fr-FR", "ko": "ko-KR", "nl": "nl-NL" },
+    "semanticTags": [
+      "body structure",
+      "cell",
+      "cell structure",
+      "disorder",
+      "finding",
+      "morphologic abnormality",
+      "observable entity",
+      "organism",
+      "procedure",
+      "qualifier value",
+      "specimen",
+      "substance"
+    ]
+  }
+}

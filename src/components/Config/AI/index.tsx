@@ -1,23 +1,42 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { aiBehaviorService } from '../../../services/aiBehavior/IAIBehaviorService';
 import type { AIBehaviorConfig } from '../../../services/aiBehavior/IAIBehaviorService';
 import { resolveAiConfig } from './aiProviderConfig';
 import AiProviderSettings from './AiProviderSettings';
 import OrchestratorConfigSection from './OrchestratorConfigSection';
+import { useIsAdmin } from '../../../contexts/AuthContext';
 
-// ── Role check helper ─────────────────────────────────────────
-// Reads from the same auth context used elsewhere in PathScribe.
-// Returns true if the current user has org-admin privileges.
-function useIsAdmin(): boolean {
-  try {
-    const raw  = localStorage.getItem('pathscribe_current_user');
-    const user = raw ? JSON.parse(raw) : null;
-    return user?.role === 'admin' || user?.role === 'superadmin';
-  } catch { return false; }
-}
+// File-by-file cleanup sweep: this file used to carry its own local
+// useIsAdmin(), reading localStorage directly — real, per its own prior
+// fix history, this had already broken once for real (wrong storage key,
+// isAdmin always false for every user) before being caught and fixed
+// locally. Now shares the one real implementation in AuthContext.tsx
+// (also used by ConfigurationPage.tsx, which had an independent copy of
+// the same pattern) — one source of truth instead of two that can drift.
+//
+// i18n note: `providerLabel`'s 'Mock — Demo Mode' fallback deliberately
+// mirrors AiProviderSettings.tsx's own PROVIDER_LABELS.mock literal
+// verbatim — that file's header explains why real vendor/product labels
+// stay untranslated, and this is the exact same literal, so it stays
+// untouched here too. The chevron icon reuses OrchestratorConfigSection's
+// (batch 158) `.ps-orchcfg-chevron`/`--open` classes verbatim (identical
+// rotate behavior), and the "Model Versions" panel spacing reuses the
+// sweep's existing `.ps-mt-20` utility class.
+
+const TOGGLE_LABEL_KEY: Record<
+  'autoInsertSuggestions' | 'showConfidenceScores' | 'macroSuggestions' | 'subspecialtyRouting',
+  string
+> = {
+  autoInsertSuggestions: 'aiTab.advanced.autoInsertSuggestions',
+  showConfidenceScores:  'aiTab.advanced.showConfidenceScores',
+  macroSuggestions:      'aiTab.advanced.macroSuggestions',
+  subspecialtyRouting:   'aiTab.advanced.subspecialtyRouting',
+};
 
 const AITab: React.FC<{ ModelsPanel?: React.ComponentType }> = ({ ModelsPanel }) => {
+  const { t } = useTranslation();
   const [config,     setConfig]     = useState<AIBehaviorConfig | null>(null);
   const [loading,    setLoading]    = useState(true);
   const [saving,     setSaving]     = useState(false);
@@ -47,38 +66,43 @@ const AITab: React.FC<{ ModelsPanel?: React.ComponentType }> = ({ ModelsPanel })
   };
 
   if (loading || !config) return (
-    <div style={{ padding: '40px 24px', textAlign: 'center', color: 'var(--ps-conf-text-3)', fontSize: 14 }}>
-      Loading AI settings…
+    <div className="ps-conf-loading">
+      {t('aiTab.loading')}
     </div>
   );
 
   return (
-    <div style={{ padding: '24px' }}>
-      <h2 className="ps-conf-section-title">AI Behavior</h2>
-      <p className="ps-conf-section-subtitle" style={{ marginBottom: 24 }}>
-        Configure how the AI assists with gross and microscopic reporting.
+    <div className="ps-conf-page">
+      <h2 className="ps-conf-section-title">{t('aiTab.title')}</h2>
+      <p className="ps-conf-section-subtitle ps-conf-section-subtitle--spaced">
+        {t('aiTab.subtitle')}
       </p>
 
       {/* ── AI Engine (read-only badge for all users) ── */}
-      <div className="ps-conf-card" style={{ marginBottom: 24 }}>
-        <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: 12 }}>
+      <div className="ps-conf-card ps-conf-card--mb24">
+        <div className="ps-aitab-engine-row">
           <div>
-            <div style={{ fontSize: 13, fontWeight: 700, color: 'var(--ps-conf-text)', marginBottom: 2 }}>
-              AI Engine
+            <div className="ps-aitab-engine-title">
+              {t('aiTab.engine.heading')}
             </div>
-            <div style={{ fontSize: 12, color: 'var(--ps-conf-text-2)' }}>
-              {isMock
-                ? 'Demo mode active — responses are simulated'
-                : 'Managed by your lab administrator'}
+            <div className="ps-aitab-engine-desc">
+              {isMock ? t('aiTab.engine.demoActive') : t('aiTab.engine.managedByAdmin')}
             </div>
           </div>
-          <div style={{ display: 'flex', gap: 8, alignItems: 'center', flexShrink: 0 }}>
+          <div className="ps-aitab-engine-badges">
             {isMock && (
-              <span style={{ fontSize: 10, fontWeight: 700, padding: '2px 8px', borderRadius: 10, background: 'rgba(251,191,36,0.12)', color: '#fbbf24', border: '1px solid rgba(251,191,36,0.25)' }}>
-                DEMO
+              <span className="ps-aitab-demo-pill">
+                {t('aiTab.engine.demoPill')}
               </span>
             )}
-            <span style={{ fontSize: 12, fontWeight: 600, color: isMock ? '#fbbf24' : '#38bdf8', background: isMock ? 'rgba(251,191,36,0.08)' : 'rgba(56,189,248,0.08)', padding: '5px 12px', borderRadius: 8, border: `1px solid ${isMock ? 'rgba(251,191,36,0.2)' : 'rgba(56,189,248,0.2)'}` }}>
+            <span
+              className="ps-aitab-provider-badge"
+              style={{
+                '--ps-aitab-badge-color':  isMock ? '#fbbf24' : '#38bdf8',
+                '--ps-aitab-badge-bg':     isMock ? 'rgba(251,191,36,0.08)' : 'rgba(56,189,248,0.08)',
+                '--ps-aitab-badge-border': isMock ? 'rgba(251,191,36,0.2)' : 'rgba(56,189,248,0.2)',
+              } as React.CSSProperties}
+            >
               {providerLabel}
             </span>
           </div>
@@ -86,89 +110,89 @@ const AITab: React.FC<{ ModelsPanel?: React.ComponentType }> = ({ ModelsPanel })
       </div>
 
       {/* ── Gross-Driven AI ── */}
-      <div className="ps-conf-card" style={{ marginBottom: 12 }}>
+      <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ps-conf-text)', marginBottom: 4 }}>
-              Gross-Driven AI
+            <div className="ps-conf-card-title">
+              {t('aiTab.grossDriven.title')}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--ps-conf-text-2)' }}>
-              AI suggestions based on gross examination findings.
+            <div className="ps-conf-card-description--tight">
+              {t('aiTab.grossDriven.description')}
             </div>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flexShrink: 0 }}>
+          <label className="ps-conf-toggle-label-row">
             <input type="checkbox" checked={config.grossEnabled}
               onChange={e => update({ grossEnabled: e.target.checked })}
-              style={{ width: 16, height: 16, accentColor: 'var(--ps-conf-teal)' }} />
-            <span style={{ fontSize: 14, color: 'var(--ps-conf-text)' }}>Enabled</span>
+              className="ps-conf-radio-input" />
+            <span className="ps-conf-option-text">{t('aiTab.enabledLabel')}</span>
           </label>
         </div>
       </div>
 
       {/* ── Microscopic-Driven AI ── */}
-      <div className="ps-conf-card" style={{ marginBottom: 12 }}>
+      <div className="ps-conf-card ps-conf-card--spaced">
         <div className="ps-conf-row">
           <div>
-            <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ps-conf-text)', marginBottom: 4 }}>
-              Microscopic-Driven AI
+            <div className="ps-conf-card-title">
+              {t('aiTab.microscopicDriven.title')}
             </div>
-            <div style={{ fontSize: 13, color: 'var(--ps-conf-text-2)' }}>
-              AI suggestions based on microscopic diagnosis findings.
+            <div className="ps-conf-card-description--tight">
+              {t('aiTab.microscopicDriven.description')}
             </div>
           </div>
-          <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer', flexShrink: 0 }}>
+          <label className="ps-conf-toggle-label-row">
             <input type="checkbox" checked={config.microscopicEnabled}
               onChange={e => update({ microscopicEnabled: e.target.checked })}
-              style={{ width: 16, height: 16, accentColor: 'var(--ps-conf-teal)' }} />
-            <span style={{ fontSize: 14, color: 'var(--ps-conf-text)' }}>Enabled</span>
+              className="ps-conf-radio-input" />
+            <span className="ps-conf-option-text">{t('aiTab.enabledLabel')}</span>
           </label>
         </div>
       </div>
 
       {/* ── Confidence Threshold ── */}
-      <div className="ps-conf-card" style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ps-conf-text)', marginBottom: 4 }}>
-          Confidence Threshold
+      <div className="ps-conf-card ps-conf-card--spaced">
+        <div className="ps-conf-card-title">
+          {t('aiTab.confidenceThreshold.title')}
         </div>
-        <div style={{ fontSize: 13, color: 'var(--ps-conf-text-2)', marginBottom: 16 }}>
-          Minimum confidence score before AI suggestions are shown.
+        <div className="ps-aitab-threshold-desc">
+          {t('aiTab.confidenceThreshold.description')}
         </div>
-        <div style={{ display: 'flex', alignItems: 'center', gap: 16 }}>
+        <div className="ps-aitab-threshold-row">
           <input type="range" min={0} max={100} value={config.confidenceThreshold}
             onChange={e => update({ confidenceThreshold: Number(e.target.value) })}
-            aria-label={`Confidence threshold, ${config.confidenceThreshold} percent`}
-            style={{ flex: 1, accentColor: 'var(--ps-conf-teal)' }} />
-          <span style={{ fontSize: 14, fontWeight: 700, color: 'var(--ps-conf-teal)', minWidth: 44 }}>
+            aria-label={t('aiTab.confidenceThreshold.ariaLabel', { value: config.confidenceThreshold })}
+            className="ps-aitab-threshold-range" />
+          <span className="ps-aitab-threshold-value">
             {config.confidenceThreshold}%
           </span>
         </div>
       </div>
 
       {/* ── Additional Toggles ── */}
-      <div className="ps-conf-card" style={{ marginBottom: 12 }}>
-        <div style={{ fontSize: 15, fontWeight: 600, color: 'var(--ps-conf-text)', marginBottom: 4 }}>
-          Advanced
+      <div className="ps-conf-card ps-conf-card--spaced">
+        <div className="ps-conf-card-title">
+          {t('aiTab.advanced.title')}
         </div>
-        <div style={{ fontSize: 13, color: 'var(--ps-conf-text-2)', marginBottom: 8 }}>
-          Additional AI behaviour settings.
+        <div className="ps-aitab-advanced-desc">
+          {t('aiTab.advanced.description')}
         </div>
         {([
-          ['autoInsertSuggestions', 'Auto-insert suggestions at or above confidence threshold'],
-          ['showConfidenceScores',  'Show confidence scores in the editor UI'],
-          ['macroSuggestions',      'Suggest macros based on diagnosis context'],
-          ['subspecialtyRouting',   'Filter AI suggestions by subspecialty'],
-        ] as const).map(([key, label]) => (
-          <label key={key} className="ps-conf-row" style={{ cursor: 'pointer', alignItems: 'center' }}>
-            <span style={{ fontSize: 14, color: 'var(--ps-conf-text)' }}>{label}</span>
+          'autoInsertSuggestions',
+          'showConfidenceScores',
+          'macroSuggestions',
+          'subspecialtyRouting',
+        ] as const).map(key => (
+          <label key={key} className="ps-conf-row ps-conf-row--clickable">
+            <span className="ps-conf-option-text">{t(TOGGLE_LABEL_KEY[key])}</span>
             <input type="checkbox" checked={config[key] as boolean}
               onChange={e => update({ [key]: e.target.checked })}
-              style={{ width: 16, height: 16, accentColor: 'var(--ps-conf-teal)', flexShrink: 0 }} />
+              className="ps-aitab-advanced-checkbox" />
           </label>
         ))}
       </div>
 
       {/* ── Actions ── */}
-      <div style={{ display: 'flex', gap: 10, marginTop: 8, alignItems: 'center' }}>
+      <div className="ps-aitab-actions-row">
         <button
           onClick={async () => {
             setSaving(true);
@@ -178,19 +202,19 @@ const AITab: React.FC<{ ModelsPanel?: React.ComponentType }> = ({ ModelsPanel })
           }}
           className="ps-conf-btn-row"
         >
-          Reset to Defaults
+          {t('aiTab.resetToDefaults')}
         </button>
-        {saving && <span style={{ fontSize: 13, color: 'var(--ps-conf-text-3)' }}>Saving…</span>}
+        {saving && <span className="ps-aitab-saving-text">{t('common.saving')}</span>}
       </div>
 
       {/* ── AI Provider Configuration — admin only ── */}
       {isAdmin ? (
-        <div style={{ marginTop: 40, borderTop: '1px solid var(--ps-conf-border)', paddingTop: 32 }}>
+        <div className="ps-aitab-provider-wrap">
           <AiProviderSettings isAdmin={true} />
         </div>
       ) : (
-        <div style={{ marginTop: 32, padding: '12px 16px', background: 'rgba(255,255,255,0.02)', borderRadius: 8, border: '1px solid rgba(255,255,255,0.06)', fontSize: 12, color: '#475569' }}>
-          AI provider configuration is managed by your lab administrator. Contact your admin to change the AI engine or model.
+        <div className="ps-aitab-provider-note">
+          {t('aiTab.providerManagedByAdminNote')}
         </div>
       )}
 
@@ -202,24 +226,21 @@ const AITab: React.FC<{ ModelsPanel?: React.ComponentType }> = ({ ModelsPanel })
 
       {/* ── Model Versions — admin only ── */}
       {ModelsPanel && (
-        <div style={{ marginTop: 32, borderTop: '1px solid var(--ps-conf-border)', paddingTop: 24 }}>
+        <div className="ps-aitab-models-wrap">
           <button
             onClick={() => setModelsOpen(o => !o)}
-            className="ps-conf-label"
-            style={{ display: 'flex', alignItems: 'center', gap: 8, background: 'none',
-              border: 'none', cursor: 'pointer', padding: 0 }}
+            className="ps-conf-label ps-aitab-models-toggle-btn"
           >
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"
-              style={{ transition: 'transform 0.2s', transform: modelsOpen ? 'rotate(90deg)' : 'rotate(0deg)' }}>
+              className={`ps-orchcfg-chevron${modelsOpen ? ' ps-orchcfg-chevron--open' : ''}`}>
               <polyline points="9 18 15 12 9 6"/>
             </svg>
-            Model Versions
-            <span style={{ fontSize: 10, fontWeight: 600, padding: '2px 7px', borderRadius: 10,
-              background: 'rgba(255,255,255,0.06)', color: 'var(--ps-conf-text-dim)', letterSpacing: 0 }}>
-              Admin only
+            {t('aiTab.modelVersions')}
+            <span className="ps-aitab-admin-pill">
+              {t('aiTab.adminOnlyPill')}
             </span>
           </button>
-          {modelsOpen && <div style={{ marginTop: 20 }}><ModelsPanel /></div>}
+          {modelsOpen && <div className="ps-mt-20"><ModelsPanel /></div>}
         </div>
       )}
     </div>

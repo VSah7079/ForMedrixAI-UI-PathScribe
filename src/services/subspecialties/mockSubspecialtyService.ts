@@ -8,8 +8,22 @@ const SEED_SUBSPECIALTIES: Subspecialty[] = [
     id: 'gi', name: 'Gastrointestinal',
     description: 'GI tract and hepatobiliary pathology.',
     userIds: ['1', '7'], specimenIds: ['sp1', 'sp2'], clientIds: ['c1'],
-    isWorkgroup: false,
-    isWorkgroupEnabled: false, active: true, status: 'Active',
+    // Real fix, per direct report: seeded case data has real, hardcoded
+    // pool cases (MFT26-8807-POOL, S26-4415-BX-001) pointing to this
+    // pool by name — but this record's own isWorkgroup was false,
+    // meaning Configuration's own "Create Workgroup" toggle showed
+    // this pool as disabled while the worklist plainly showed it
+    // active. The two were never actually connected in the seed data;
+    // this makes them consistent so the admin config accurately
+    // reflects what's really happening.
+    isWorkgroup: true,
+    // Real fix, per direct follow-up report: the earlier fix that made
+    // isWorkgroupEnabled mirror isWorkgroup only applied going forward,
+    // on new saves through the admin UI — it never touched this
+    // existing seed record, so enforcement stayed silently off here
+    // even after isWorkgroup above was corrected to true. Same
+    // principle, applied to existing data, not just future saves.
+    isWorkgroupEnabled: true, active: true, status: 'Active',
   },
   {
     id: 'breast', name: 'Breast',
@@ -22,8 +36,12 @@ const SEED_SUBSPECIALTIES: Subspecialty[] = [
     id: 'derm', name: 'Dermatopathology',
     description: 'Skin and soft tissue pathology.',
     userIds: ['6'], specimenIds: ['sp4', 'sp5'], clientIds: [],
-    isWorkgroup: false,
-    isWorkgroupEnabled: false, active: true, status: 'Active',
+    // Real fix — same reasoning as 'gi' above: a real, hardcoded pool
+    // case (S26-4416-BX-001) exists for this pool by name.
+    isWorkgroup: true,
+    // Same follow-up fix as 'gi' above — isWorkgroupEnabled now
+    // matches isWorkgroup for this existing record too.
+    isWorkgroupEnabled: true, active: true, status: 'Active',
   },
   {
     id: 'neuro', name: 'Neuropathology',
@@ -40,18 +58,40 @@ const SEED_SUBSPECIALTIES: Subspecialty[] = [
     isWorkgroupEnabled: false, active: true, status: 'Active',
   },
   {
-    id: 'gyn', name: 'Gynecological',
-    description: 'Female reproductive tract pathology.',
+    // Real, per direct request (Sep 2026): renamed from 'Gynecological'
+    // to 'Surgical GYN' — confirmed this was genuinely confusing
+    // (including to Pete himself, mid-review of PS-306): "Gynecological"
+    // reads as the cytology-screening service line at a glance, when
+    // this subspecialty/pool is actually the GYN *surgical* triage
+    // queue — a real, separate pool from "Cytology" (poolId '1'), where
+    // actual Pap smears/FNAs live. `id: 'gyn'` is unchanged (stable
+    // identifier, nothing keys off the display name except the
+    // poolName match below, updated to stay in sync — see that
+    // comment for why both must change together).
+    id: 'gyn', name: 'Surgical GYN',
+    description: 'Female reproductive tract surgical pathology.',
     userIds: ['1'], specimenIds: ['sp8'], clientIds: [],
-    isWorkgroup: false,
-    isWorkgroupEnabled: false, active: true, status: 'Active',
+    // Real fix — same reasoning as 'gi' above: a real, hardcoded pool
+    // case (MPA26-1006-POOL) exists for this pool. Its own poolName
+    // was also separately fixed from 'Gynaecologic Pathology' to
+    // this record's real name — see mockCaseService.ts's own comment
+    // at that case for the full story.
+    isWorkgroup: true,
+    // Same follow-up fix as 'gi' above — isWorkgroupEnabled now
+    // matches isWorkgroup for this existing record too.
+    isWorkgroupEnabled: true, active: true, status: 'Active',
   },
   {
     id: 'uro', name: 'Urological',
     description: 'Urinary tract and male reproductive pathology.',
     userIds: ['7'], specimenIds: ['sp9'], clientIds: [],
-    isWorkgroup: false,
-    isWorkgroupEnabled: false, active: true, status: 'Active',
+    // Real fix — same reasoning as 'gi' above. Its own poolName was
+    // also separately fixed from 'Uropathology' to this record's real
+    // name — see mockCaseService.ts's own comment at that case.
+    isWorkgroup: true,
+    // Same follow-up fix as 'gi' above — isWorkgroupEnabled now
+    // matches isWorkgroup for this existing record too.
+    isWorkgroupEnabled: true, active: true, status: 'Active',
   },
   {
     id: 'thoracic', name: 'Thoracic',
@@ -67,6 +107,24 @@ const SEED_SUBSPECIALTIES: Subspecialty[] = [
     userIds: ['1', '6', '7', '9'], specimenIds: [], clientIds: ['c1', 'c2', 'c4'],
     isWorkgroup: true,
     isWorkgroupEnabled: false, active: true, status: 'Active',
+  },
+  // Real feature, per direct product decision: a read-only entry
+  // describing the automatic fallback pool. This id/name pair must
+  // match casePoolAssignmentService.ts's own DEFAULT_ROUTING_CONFIG
+  // (fallbackPoolId: 'general', fallbackPoolName: 'General Pathology')
+  // exactly — that service was already silently routing unmatched
+  // cases here with zero visible, admin-editable record behind it.
+  // isWorkgroupEnabled stays false deliberately, not as an oversight
+  // to fix later: restricting the one pool that exists specifically to
+  // catch cases nothing else matched would defeat its own purpose —
+  // any pathologist should be able to pick up stray, unmatched work.
+  {
+    id: 'general', name: 'General Pathology',
+    description: 'Automatic fallback for cases that don\u2019t match any subspecialty routing rule. Not user-configurable — managed by the system\u2019s own case-routing logic.',
+    userIds: [], specimenIds: [], clientIds: [],
+    isWorkgroup: true,
+    isWorkgroupEnabled: false, active: true, status: 'Active',
+    isSystemManaged: true,
   },
 ];
 

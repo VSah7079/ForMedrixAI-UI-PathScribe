@@ -3,6 +3,7 @@ import { ServiceResult } from '../types';
 import { storageGet, storageSet } from '../mockStorage';
 import type { FppeAssignment } from '@/types/case/FppeAssignment';
 import type { IFppeAssignmentService } from './IFppeAssignmentService';
+import { computeFppeProgress } from './fppeEndCondition';
 
 const STORAGE_KEY = 'fppe_assignments';
 const load    = (): FppeAssignment[] => storageGet<FppeAssignment[]>(STORAGE_KEY, []);
@@ -12,14 +13,13 @@ const ok  = <T>(data: T):     ServiceResult<T> => ({ ok: true,  data  });
 const err = <T>(message: string): ServiceResult<T> => ({ ok: false, error: message });
 
 /** Real end-condition check — 'either' means whichever threshold is hit
- *  first, matching the most common real FPPE policy shape. */
+ *  first, matching the most common real FPPE policy shape. Delegates to
+ *  fppeEndCondition.ts's shared computeFppeProgress() — the one real
+ *  source of truth also used by the admin/tracking-tab progress
+ *  displays, so they can never silently disagree with this real
+ *  enforcement check. */
 function endConditionMet(a: FppeAssignment): boolean {
-  const daysSinceStart = (Date.now() - new Date(a.startedAt).getTime()) / 86400000;
-  switch (a.endCondition.type) {
-    case 'case_count':    return a.casesReviewedCount >= a.endCondition.threshold;
-    case 'duration_days': return daysSinceStart >= a.endCondition.threshold;
-    case 'either':        return a.casesReviewedCount >= a.endCondition.caseCountThreshold || daysSinceStart >= a.endCondition.durationDaysThreshold;
-  }
+  return computeFppeProgress(a).met;
 }
 function completionReason(a: FppeAssignment): 'case_count_met' | 'duration_met' {
   if (a.endCondition.type === 'case_count') return 'case_count_met';
@@ -27,7 +27,8 @@ function completionReason(a: FppeAssignment): 'case_count_met' | 'duration_met' 
   // 'either' — whichever actually triggered. Only called after
   // endConditionMet() already confirmed true, so if the case-count
   // threshold wasn't the trigger, the duration one must have been.
-  return a.casesReviewedCount >= a.endCondition.caseCountThreshold ? 'case_count_met' : 'duration_met';
+  const { byCasesFraction } = computeFppeProgress(a);
+  return (byCasesFraction ?? 0) >= 1 ? 'case_count_met' : 'duration_met';
 }
 
 export const mockFppeAssignmentService: IFppeAssignmentService = {
@@ -50,6 +51,7 @@ export const mockFppeAssignmentService: IFppeAssignmentService = {
       provisionalUserName: input.provisionalUserName,
       proctorUserId: input.proctorUserId,
       proctorUserName: input.proctorUserName,
+      facilityId: input.facilityId,
       subspecialtyId: input.subspecialtyId,
       startedAt: new Date().toISOString(),
       endCondition: input.endCondition,

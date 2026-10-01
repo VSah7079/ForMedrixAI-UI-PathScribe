@@ -81,7 +81,23 @@ export type CaseStatus =
   /** Case is closed (no further changes allowed) */
   | "closed"
 
-  /** Case returned to pathologist (shared workflow) */
+  /** Real, per direct guidance ("Yes we should scope 'Return to
+   *  Trainee'/'Reject with Notes'. I think the delegation workflow
+   *  might be a good method"): this dormant status — previously
+   *  confirmed to have zero real consuming logic anywhere in the app
+   *  (mockOrchestratorCaseService.ts's own seed-data comment) — is now
+   *  genuinely wired. Set when an attending rejects a resident's
+   *  countersign submission (services/cases/ICountersignService.ts's
+   *  own new `reject()`), sending the case back for revision.
+   *  Ownership is reassigned to the resident via the same real
+   *  syncPrimaryAssignee() primitive delegateCase()'s own
+   *  ownership-transfer branch uses (services/cases/
+   *  caseAssignmentSync.ts) — deliberately reused directly, not a
+   *  parallel DelegationRecord for the same event, since
+   *  CountersignRecord already is this specific relationship's own
+   *  real audit trail. Case.returnedBy (below) is who sent it back;
+   *  the full context (why, what changed) lives on the real
+   *  CountersignRecord, same as pending-countersign's own detail. */
   | "returned"
 
   /** Case accepted by another pathologist (shared workflow) */

@@ -14,8 +14,8 @@
 // averages/rankings alongside those real numbers needs to be an
 // institutional choice, not a default. This is that choice, stored on the
 // real, shared SystemConfig (not a bespoke new service) since it's a
-// simple, single, org-wide boolean, same shape as voiceEnabled or
-// lisIntegrationEnabled already on that same config object.
+// simple, single, org-wide boolean, same shape as voiceEnabled elsewhere
+// on that same config object.
 //
 // Real fix, Pete's own clinical-informatics guidance: added the real
 // facilityTimezone setting - a real, admin-visible way to actually change
@@ -25,28 +25,38 @@
 // would silently fall back to raw UTC bucketing (see
 // getFacilityDateParts' own honest fallback) rather than fail loudly, so
 // a validated dropdown is the safer real choice here.
+//
+// Real fix (batch 35, i18n sweep): converted from one-off inline
+// `style={{...}}` objects to this app's already-established `.ps-conf-*`
+// Config-page class family (see pathscribe.css) — reusing it exactly
+// where it matched (`.ps-conf-select`, `.ps-conf-section-title`,
+// `.ps-conf-label`, `.ps-conf-desc`, `.ps-conf-hint--success`) and adding
+// a few small `.ps-contrib-settings__*` classes only where this file's own
+// spacing genuinely differed from the shared classes.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { useSystemConfig } from '../../../contexts/SystemConfigContext';
 
 // Real, common IANA timezone identifiers covering every real US time zone
 // plus a few common international ones - not exhaustive, but every real
 // entry here is a genuine, valid Intl.DateTimeFormat timeZone value.
-const TIMEZONE_OPTIONS: { value: string; label: string }[] = [
-  { value: 'America/New_York',    label: 'Eastern Time (US)' },
-  { value: 'America/Chicago',     label: 'Central Time (US)' },
-  { value: 'America/Denver',      label: 'Mountain Time (US)' },
-  { value: 'America/Phoenix',     label: 'Arizona Time (US, no DST)' },
-  { value: 'America/Los_Angeles', label: 'Pacific Time (US)' },
-  { value: 'America/Anchorage',   label: 'Alaska Time (US)' },
-  { value: 'Pacific/Honolulu',    label: 'Hawaii Time (US, no DST)' },
-  { value: 'Europe/London',       label: 'UK Time' },
-  { value: 'UTC',                 label: 'UTC' },
+const TIMEZONE_OPTIONS: { value: string; labelKey: string }[] = [
+  { value: 'America/New_York',    labelKey: 'contributionSettings.timezone.options.easternUs' },
+  { value: 'America/Chicago',     labelKey: 'contributionSettings.timezone.options.centralUs' },
+  { value: 'America/Denver',      labelKey: 'contributionSettings.timezone.options.mountainUs' },
+  { value: 'America/Phoenix',     labelKey: 'contributionSettings.timezone.options.arizonaUs' },
+  { value: 'America/Los_Angeles', labelKey: 'contributionSettings.timezone.options.pacificUs' },
+  { value: 'America/Anchorage',   labelKey: 'contributionSettings.timezone.options.alaskaUs' },
+  { value: 'Pacific/Honolulu',    labelKey: 'contributionSettings.timezone.options.hawaiiUs' },
+  { value: 'Europe/London',       labelKey: 'contributionSettings.timezone.options.ukTime' },
+  { value: 'UTC',                 labelKey: 'contributionSettings.timezone.options.utc' },
 ];
 
 const ContributionSettingsSection: React.FC = () => {
+  const { t } = useTranslation();
   const { config, updateConfig } = useSystemConfig();
   const [saved, setSaved] = React.useState(false);
 
@@ -63,68 +73,52 @@ const ContributionSettingsSection: React.FC = () => {
   };
 
   return (
-    <div style={{ width: '100%', maxWidth: 640 }}>
-      <div style={{ marginBottom: 24 }}>
-        <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>Contribution Dashboard Settings</h1>
-        <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4 }}>
-          Controls what pathologists see on their own My Contribution page.
-          Administrators, pathologist-admins, and superadmins always see peer
-          and institutional comparison data regardless of this setting — it
-          only gates the plain pathologist role's view of themselves against
-          others.
+    <div className="ps-contrib-settings">
+      <div className="ps-contrib-settings__header">
+        <h1 className="ps-conf-section-title">{t('contributionSettings.title')}</h1>
+        <p className="ps-conf-section-subtitle ps-conf-section-subtitle--top-gap">
+          {t('contributionSettings.description')}
         </p>
       </div>
 
-      <div style={{ border: '1px solid #1f2937', borderRadius: 12, padding: 24, marginBottom: 20 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-          Facility Timezone
+      <div className="ps-contrib-settings__card">
+        <div className="ps-conf-label ps-contrib-settings__label">
+          {t('contributionSettings.timezone.label')}
         </div>
         <select
           value={config.facilityTimezone}
           onChange={e => handleTimezoneChange(e.target.value)}
-          style={{
-            width: '100%', padding: '8px 12px', borderRadius: 8, fontSize: 13,
-            background: '#111827', color: '#e2e8f0', border: '1px solid #374151',
-          }}
+          className="ps-conf-select ps-contrib-settings__select"
         >
           {TIMEZONE_OPTIONS.map(tz => (
-            <option key={tz.value} value={tz.value}>{tz.label}</option>
+            <option key={tz.value} value={tz.value}>{t(tz.labelKey)}</option>
           ))}
         </select>
-        <p style={{ fontSize: 12, color: '#4b5563', marginTop: 12 }}>
-          Monthly and YTD metrics (case counts, RVU) group a finalized case
-          by the real month/day it happened in THIS timezone — not the
-          viewing device's own timezone, and not raw UTC. An 11pm sign-off
-          here counts toward that same day even if the pathologist later
-          views their own dashboard while traveling elsewhere. Storage
-          itself is always UTC; this only controls how it's grouped for
-          display and metrics.
+        <p className="ps-conf-desc ps-contrib-settings__hint">
+          {t('contributionSettings.timezone.hint')}
         </p>
       </div>
 
-      <div style={{ border: '1px solid #1f2937', borderRadius: 12, padding: 24 }}>
-        <div style={{ fontSize: 12, fontWeight: 600, color: '#94a3b8', textTransform: 'uppercase', letterSpacing: '0.06em', marginBottom: 12 }}>
-          Peer Comparison Visibility
+      <div className="ps-contrib-settings__card">
+        <div className="ps-conf-label ps-contrib-settings__label">
+          {t('contributionSettings.peerComparison.label')}
         </div>
-        <label style={{ display: 'flex', alignItems: 'center', gap: 10, cursor: 'pointer' }}>
+        <label className="ps-contrib-settings__toggle-label">
           <input
             type="checkbox"
             checked={config.showPeerAveragesToPathologists}
             onChange={e => handleToggle(e.target.checked)}
           />
-          <span style={{ fontSize: 13, color: '#e2e8f0' }}>
-            Show peer averages and top-performer comparisons to pathologists
+          <span className="ps-contrib-settings__toggle-text">
+            {t('contributionSettings.peerComparison.toggle')}
           </span>
         </label>
-        <p style={{ fontSize: 12, color: '#4b5563', marginTop: 12 }}>
-          When off (the default), pathologists see only their own real case
-          counts and progress toward institutional targets — no comparison
-          against colleagues. When on, anonymized peer-average and
-          top-performer figures are also shown on their own dashboard.
+        <p className="ps-conf-desc ps-contrib-settings__hint">
+          {t('contributionSettings.peerComparison.hint')}
         </p>
         {saved && (
-          <div style={{ marginTop: 12, fontSize: 12, color: '#22c55e', fontWeight: 600 }}>
-            ✓ Saved
+          <div className="ps-conf-hint ps-conf-hint--success ps-contrib-settings__saved">
+            {t('contributionSettings.saved')}
           </div>
         )}
       </div>

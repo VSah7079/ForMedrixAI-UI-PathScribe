@@ -1,11 +1,16 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 import { useVoice } from '../../contexts/VoiceProvider';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { useSystemConfig } from '../../contexts/SystemConfigContext';
+import { mockOnDemandCaseFetchService } from '@/services/cases/mockOnDemandCaseFetchService';
+import { useEnabledIdentifierFormats } from '../../hooks/useEnabledIdentifierFormats';
 import { useAuditLog } from '../Audit/useAuditLog';
+import { useAuth } from '../../contexts/AuthContext';
+import { supportReferenceService } from '@/services';
+import { isSupportReference } from '@/services/supportReferences/supportReferenceRules';
 import type { IdentifierFormat } from '../../types/systemConfig';
 
 interface CaseSearchBarProps {
@@ -20,7 +25,7 @@ interface CaseHit {
   sex:            string;
   status:         string;
   priority:       string;
-  clientName:     string;
+  facilityName:   string;
   specimenCount:  number;
   assignedTo:     string;
   flags:          { name: string; color: string; tagClass: string }[];
@@ -30,14 +35,6 @@ interface CaseHit {
 
 // Scan types emitted by ScannerProvider that warrant auto-navigation
 const AUTO_NAV_SCAN_TYPES = new Set(['barcode', 'qr']);
-
-// Real, stable, module-level empty array - real fix for a genuine
-// instability ESLint flagged: `config.identifierFormats?.formats ?? []`
-// creates a NEW array reference every render whenever the optional
-// field is absent, which cascades into resolve() (below) getting a new
-// identity every render too. A single, shared, never-recreated empty
-// array reference fixes this at the actual source.
-const EMPTY_IDENTIFIER_FORMATS: IdentifierFormat[] = [];
 
 // ── Case lookup ───────────────────────────────────────────────────────────────
 // Uses Tier 1 enabled IdentifierFormats from SystemConfig to match input.
@@ -186,7 +183,7 @@ async function lookupCases(
           sex:           cas.patient?.sex ?? '—',
           status:        (cas as any).status ?? 'unknown',
           priority:      cas.order?.priority ?? '—',
-          clientName:    cas.order?.clientName ?? '—',
+          facilityName:  cas.order?.facilityName ?? '—',
           specimenCount: (cas.specimens ?? []).length,
           assignedTo:    cas.order?.assignedTo ?? '—',
           flags:         ((cas as any).flags ?? [])
@@ -240,18 +237,42 @@ function highlight(text: string, query: string): React.ReactNode {
   );
 }
 
+// Batch 349 (PS-101): every case status now has a label. Before, a case in
+// Draft, Needs Review and other states showed its raw code ("draft",
+// "pending-review") in near-invisible text in the results list.
+const STATUS_LABEL_KEY: Record<string, string> = {
+  'in-progress': 'caseSearchBar.status.inProgress', 'pending': 'caseSearchBar.status.pending',
+  'finalized': 'caseSearchBar.status.finalized', 'signed-out': 'caseSearchBar.status.signedOut',
+  'pool': 'caseSearchBar.status.pool',
+  'draft': 'caseSearchBar.status.draft', 'accessioned': 'caseSearchBar.status.accessioned',
+  'gross-complete': 'caseSearchBar.status.grossComplete', 'intraoperative-complete': 'caseSearchBar.status.intraopComplete',
+  'pending-review': 'caseSearchBar.status.pendingReview', 'pathologist-review': 'caseSearchBar.status.pathologistReview',
+  'closed': 'caseSearchBar.status.closed', 'returned': 'caseSearchBar.status.returned',
+  'accepted': 'caseSearchBar.status.accepted', 'ai-assisted': 'caseSearchBar.status.aiAssisted',
+  'claiming': 'caseSearchBar.status.claiming', 'finalizing': 'caseSearchBar.status.finalizing',
+  'pending-countersign': 'caseSearchBar.status.pendingCountersign', 'pending-release': 'caseSearchBar.status.pendingRelease',
+};
+
 const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
+  const { t } = useTranslation();
   const [caseNumber, setCaseNumber] = useState('');
   const [scanFlash,  setScanFlash]  = useState(false);
   const [searching,  setSearching]  = useState(false);
+  const [fetchingFromLis, setFetchingFromLis] = useState<string | null>(null);
   const [hits,       setHits]       = useState<CaseHit[]>([]);
   const [notFound,   setNotFound]   = useState(false);
   const inputRef    = useRef<HTMLInputElement>(null);
   const navigate    = useNavigate();
 
-  const { config } = useSystemConfig();
   const { log } = useAuditLog();
-  const activeFormats: IdentifierFormat[] = config.identifierFormats?.formats ?? EMPTY_IDENTIFIER_FORMATS;
+  const { user } = useAuth();
+  // Real, per direct guidance: replaces config.identifierFormats -
+  // useEnabledIdentifierFormats() already returns a stable reference
+  // (either the module-level IDENTIFIER_FORMAT_LIBRARY, or real React
+  // state), so the old EMPTY_IDENTIFIER_FORMATS workaround for
+  // reference instability is no longer needed - the hook itself never
+  // produces a new array identity on every render.
+  const activeFormats: IdentifierFormat[] = useEnabledIdentifierFormats();
 
   const { phase, transcript } = useVoice();
   const isDictating = phase === 'dictate';
@@ -265,10 +286,40 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
     setNotFound(false);
     setHits([]);
 
+    // Batch 364 (PS-350): a support reference (SR-7K2Q-9MXD) opens what it names.
+    if (isSupportReference(q)) {
+      const found = await supportReferenceService.resolve(q, { id: user?.id ?? 'unknown', name: user?.name ?? '' });
+      setSearching(false);
+      if (!found.ok) { setNotFound(true); setTimeout(() => setNotFound(false), 3000); return; }
+      setCaseNumber('');
+      navigate(found.data.kind === 'case' ? `/case/${found.data.recordId}/synoptic` : `/audit?supportRef=${found.data.ref}`);
+      return;
+    }
+
     const { hits: results, autoNav } = await lookupCases(q, activeFormats);
     setSearching(false);
 
     if (results.length === 0) {
+      // Real, per direct guidance's own full "On-Demand Fetch &
+      // Fallback" design — Step 3/4: a real local cache miss falls
+      // back to a real, live LIS fetch (Option A, REST/FHIR),
+      // before ever telling the pathologist the case doesn't exist
+      // at all.
+      setFetchingFromLis(q);
+      const fetchResult = await mockOnDemandCaseFetchService.fetchCaseByAccession(q);
+      setFetchingFromLis(null);
+
+      if (fetchResult.ok && fetchResult.data.outcome === 'found') {
+        // Real, per Step 4.2 — "Cache the case into PathScribe's
+        // local storage and active worklist so subsequent opens
+        // during that session are instant."
+        await caseRouter.createCase(fetchResult.data.caseData);
+        log('case_fetched_on_demand_from_lis', { query: q, caseId: fetchResult.data.caseData.id });
+        navigate(`/case/${fetchResult.data.caseData.id}/synoptic`);
+        setCaseNumber('');
+        return;
+      }
+
       setNotFound(true);
       setTimeout(() => setNotFound(false), 3000);
       log('case_search_no_results', { query: q });
@@ -285,7 +336,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
 
     // Multiple matches or non-direct format — show dropdown
     setHits(results);
-  }, [navigate, activeFormats, log]);
+  }, [navigate, activeFormats, log, user]);
 
   // ── Scanner events ────────────────────────────────────────────────────────
   useEffect(() => {
@@ -366,22 +417,17 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
 
   const iconSize = compact ? 14 : 18;
 
-  const statusLabel: Record<string, string> = {
-    'in-progress': 'In Progress', 'pending': 'Pending',
-    'finalized': 'Finalized', 'signed-out': 'Signed Out',
-    'pool': 'Pool',
-  };
-
   return (
     <div className="ps-search-wrap">
       <input
         ref={inputRef}
         type="text"
+        data-phi="accession"
         value={caseNumber}
         onChange={e => { setCaseNumber(e.target.value.toUpperCase()); setHits([]); setNotFound(false); }}
         onKeyDown={handleKeyDown}
-        placeholder={compact ? 'Scan or enter ID…' : 'Scan or enter any case identifier…'}
-        aria-label="Search or scan case number"
+        placeholder={compact ? t('caseSearchBar.placeholderCompact') : t('caseSearchBar.placeholder')}
+        aria-label={t('caseSearchBar.ariaLabel')}
         className={inputClass}
       />
 
@@ -389,7 +435,7 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
       <div className="ps-search-icon">
         {searching ? (
           <svg width={iconSize} height={iconSize} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"
-            style={{ animation: 'spin 0.8s linear infinite' }}>
+            className="ps-search-icon-spin">
             <circle cx="12" cy="12" r="9" strokeDasharray="28 56" />
           </svg>
         ) : scanFlash ? (
@@ -406,14 +452,25 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
       {/* Scan success indicator */}
       {scanFlash && (
         <div className={`ps-search-scanned${compact ? ' ps-search-scanned--compact' : ''}`}>
-          ✓ Scanned
+          {'✓ '}{t('caseSearchBar.scanned')}
         </div>
       )}
 
       {/* Not found — inline under input */}
       {notFound && (
-        <div className="ps-search-not-found">
-          No case found for &ldquo;{caseNumber}&rdquo;
+        <div className="ps-search-not-found" data-phi="accession">
+          {t('caseSearchBar.noCaseFound', { query: caseNumber })}
+        </div>
+      )}
+
+      {/* Real, per direct guidance's own Step 3 — explicit loading
+          feedback during the on-demand LIS fetch, distinct from the
+          ordinary local-search spinner above, so the pathologist
+          knows a slower, real network call is in progress, not an
+          unresponsive app. */}
+      {fetchingFromLis && (
+        <div className="ps-search-fetching-lis" data-phi="accession">
+          {t('caseSearchBar.fetchingFromLis', { accession: fetchingFromLis })}
         </div>
       )}
 
@@ -424,22 +481,22 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
 
             {/* Modal header */}
             <div className="ps-casebar-modal__header">
-              <div className="ps-casebar-modal__title">
+              <div className="ps-casebar-modal__title" data-phi="accession">
                 {searching
-                  ? 'Searching…'
-                  : `${hits.length} case${hits.length !== 1 ? 's' : ''} match “${caseNumber}”`}
+                  ? t('caseSearchBar.searching')
+                  : t('caseSearchBar.matchCount', { count: hits.length, query: caseNumber })}
               </div>
               <button className="ps-casebar-modal__close" onClick={() => setHits([])}>✕</button>
             </div>
 
             {/* Column headers */}
             <div className="ps-casebar-dropdown__col-headers">
-              <span className="ps-casebar-dropdown__col-header">Accession</span>
-              <span className="ps-casebar-dropdown__col-header">Patient</span>
-              <span className="ps-casebar-dropdown__col-header">DOB · Sex</span>
-              <span className="ps-casebar-dropdown__col-header">Priority</span>
-              <span className="ps-casebar-dropdown__col-header">Status</span>
-              <span className="ps-casebar-dropdown__col-header">Client</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.accession')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.patient')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.dobSex')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.priority')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.status')}</span>
+              <span className="ps-casebar-dropdown__col-header">{t('caseSearchBar.col.facility')}</span>
             </div>
 
             {/* Results */}
@@ -450,36 +507,34 @@ const CaseSearchBar: React.FC<CaseSearchBarProps> = ({ compact = false }) => {
               className="ps-casebar-dropdown__row"
               onClick={() => openCase(hit)}
             >
-              {/* Grid row matching column headers: Accession | Patient | DOB·Sex | Priority | Status | Client */}
+              {/* Grid row matching column headers: Accession | Patient | DOB·Sex | Priority | Status | Facility */}
               <div className="ps-casebar-dropdown__grid">
-                <span className="ps-casebar-dropdown__accession">
-                  {highlight(hit.accession, caseNumber)}
-                </span>
-                <span className="ps-casebar-dropdown__patient">{hit.patientName}</span>
-                <span className="ps-casebar-dropdown__dob">{hit.dob} · {hit.sex}</span>
+                <span className="ps-casebar-dropdown__accession" data-phi="accession">{highlight(hit.accession, caseNumber)}</span>
+                <span className="ps-casebar-dropdown__patient" data-phi="name">{hit.patientName}</span>
+                <span className="ps-casebar-dropdown__dob" data-phi="true">{hit.dob} · {hit.sex}</span>
                 <span className={`ps-casebar-dropdown__priority${hit.priority === 'STAT' ? ' ps-casebar-dropdown__priority--stat' : ''}`}>
                   {hit.priority !== '—' ? hit.priority : ''}
                 </span>
                 <span className={`ps-casebar-dropdown__status ps-casebar-dropdown__status--${hit.status.replace(/\s+/g, '-').toLowerCase()}`}>
-                  {statusLabel[hit.status] ?? hit.status}
+                  {STATUS_LABEL_KEY[hit.status] ? t(STATUS_LABEL_KEY[hit.status]) : hit.status}
                 </span>
-                <span className="ps-casebar-dropdown__client">{hit.clientName}</span>
+                <span className="ps-casebar-dropdown__client">{hit.facilityName}</span>
               </div>
               {/* Sub-row: specimens + flags + match hint */}
               {(hit.specimenCount > 0 || hit.flags.length > 0 || (hit.matchedValue && hit.matchedValue !== hit.accession.toUpperCase().replace(/[\s-]/g, ''))) && (
                 <div className="ps-casebar-dropdown__sub">
                   <span className="ps-casebar-dropdown__specimens">
-                    {hit.specimenCount} specimen{hit.specimenCount !== 1 ? 's' : ''}
+                    {t('caseSearchBar.specimenCount', { count: hit.specimenCount })}
                   </span>
                   {hit.flags.map((f, i) => (
                     <span key={i} className="ps-casebar-dropdown__flag-chip"
-                      style={{ background: f.color + '22', color: f.color, border: `1px solid ${f.color}44` }}>
+                      style={{ '--ps-hue': f.color } as React.CSSProperties}>
                       {f.name}
                     </span>
                   ))}
                   {hit.matchedValue && hit.matchedValue !== hit.accession.toUpperCase().replace(/[\s-]/g, '') && (
                     <span className="ps-casebar-dropdown__match-hint">
-                      matched: <span className="ps-casebar-dropdown__match-value">{highlight(hit.matchedValue, caseNumber)}</span>
+                      {t('caseSearchBar.matchedPrefix')} <span className="ps-casebar-dropdown__match-value" data-phi="accession">{highlight(hit.matchedValue, caseNumber)}</span>
                     </span>
                   )}
                 </div>

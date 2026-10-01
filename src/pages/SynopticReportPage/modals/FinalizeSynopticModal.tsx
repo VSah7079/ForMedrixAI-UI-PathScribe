@@ -1,22 +1,37 @@
-import React from 'react';
+// src/pages/SynopticReportPage/modals/FinalizeSynopticModal.tsx
+// The per-synoptic finalize confirmation (deferred/amendment flow).
+// Batch 344 (PS-60 follow-up): the password typed here used to go nowhere;
+// now the signer is confirmed (services/auth/signerConfirmation.ts) before
+// onConfirm runs. `activeSynoptic?.title` is data and is not translated;
+// its fallback reuses `rightSynopticPanel.templatePicker.title`.
+
+import React, { useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import { SignerConfirmationFields } from '@/components/Signing/SignerConfirmationFields';
+import { useSignerConfirmation } from '@/hooks/useSignerConfirmation';
+import type { SignatureConfirmation } from '@/services/auth/signerConfirmation';
 type SynopticReport = any;
 
 interface FinalizeSynopticModalProps {
   show: boolean;
   activeSynoptic: SynopticReport | null;
-  finalizePassword: string;
-  finalizeError: string;
   finalizeAndNext: boolean;
+  /** The case's accession, for the audit entry. */
+  caseRef?: string | null;
   onClose: () => void;
-  onPasswordChange: (value: string) => void;
-  onConfirm: () => void;
+  onConfirm: (confirmation: SignatureConfirmation) => void;
 }
 
 const FinalizeSynopticModal: React.FC<FinalizeSynopticModalProps> = ({
-  show, activeSynoptic, finalizePassword, finalizeError,
-  finalizeAndNext, onClose, onPasswordChange, onConfirm,
+  show, activeSynoptic, finalizeAndNext, caseRef, onClose, onConfirm,
 }) => {
+  const { t } = useTranslation();
+  const signer = useSignerConfirmation('synoptic-finalize', caseRef);
+  const { reset } = signer;
+  useEffect(() => { if (!show) reset(); }, [show, reset]);
   if (!show) return null;
+  // Straight from the click: for SSO this opens the provider's popup.
+  const confirmAndFinalize = () => { void signer.confirm().then(c => { if (c) onConfirm(c); }); };
 
   return (
     <div data-capture-hide="true" className="ps-overlay">
@@ -26,40 +41,26 @@ const FinalizeSynopticModal: React.FC<FinalizeSynopticModalProps> = ({
 
         <div className="ps-modal-dark-header ps-modal-dark-header--center">
           <span className="ps-modal-dark-title">
-            Finalize {activeSynoptic?.title ?? 'Synoptic Report'}
+            {t('finalizeSynopticModal.title', { name: activeSynoptic?.title ?? t('rightSynopticPanel.templatePicker.title') })}
           </span>
         </div>
 
         <p className="ps-modal-dark-body ps-modal-dark-body--center">
-          Finalizing this report locks it for editing and creates an audit entry.
-          <br />Enter your password to confirm.
+          {t('finalizeSynopticModal.bodyLocks')}
         </p>
 
-        <input
-          type="password"
-          autoFocus
-          value={finalizePassword}
-          onChange={e => onPasswordChange(e.target.value)}
-          onKeyDown={e => e.key === 'Enter' && onConfirm()}
-          placeholder="Your password"
-          className={"ps-modal-dark-input" + (finalizeError ? " ps-modal-dark-input--error" : "")}
-        />
-
-        {finalizeError && (
-          <p className="ps-modal-dark-field-error">
-            {finalizeError}
-          </p>
-        )}
+        <SignerConfirmationFields signer={signer} onSubmit={confirmAndFinalize} />
 
         <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch">
           <button className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn" onClick={onClose}>
-            Cancel
+            {t('common.cancel')}
           </button>
           <button
-            onClick={onConfirm}
+            onClick={confirmAndFinalize}
+            disabled={signer.busy || signer.method === 'unavailable'}
             className="ps-btn-primary ps-modal-dark-footer__flex-btn"
           >
-            🔒 Confirm &amp; Finalize{finalizeAndNext ? ' →' : ''}
+            🔒 {signer.busy ? t('signerConfirmation.confirming') : t('finalizeSynopticModal.confirmButton')}{finalizeAndNext && !signer.busy ? ' →' : ''}
           </button>
         </div>
 

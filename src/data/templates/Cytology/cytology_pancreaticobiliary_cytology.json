@@ -1,526 +1,596 @@
 {
-  "id": "pancreaticobiliary_cytology",
-  "name": "Pancreaticobiliary Cytology — Papanicolaou Society System for Reporting Pancreaticobiliary Cytology",
-  "source": "PathScribe",
-  "version": "1.0.0",
-  "category": "CYTOLOGY_NONGYN",
-  "standard": "Papanicolaou Society of Cytopathology System for Reporting Pancreaticobiliary Cytology (2014)",
-  "sections": [
-    {
-      "id": "specimen",
-      "title": "Specimen",
-      "fields": [
+    "id": "pancreaticobiliary_cytology",
+    "name": "Pancreaticobiliary Cytology — Papanicolaou Society System for Reporting Pancreaticobiliary Cytology",
+    "source": "PathScribe",
+    "version": "1.0.0",
+    "category": "CYTOLOGY_NONGYN",
+    "standard": "Papanicolaou Society of Cytopathology System for Reporting Pancreaticobiliary Cytology (2014)",
+    "sections": [
         {
-          "id": "procedure",
-          "label": "Procedure",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "eus_fna",
-              "label": "EUS-guided fine needle aspiration",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "ercp_brushing",
-              "label": "ERCP biliary brushing",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "bile_duct_fna",
-              "label": "Bile duct FNA",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "cyst_fluid",
-              "label": "Cyst fluid aspiration",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "not_specified",
-              "label": "Not specified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "specimen",
+            "title": "Specimen",
+            "fields": [
+                {
+                    "id": "procedure",
+                    "label": "Procedure",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "eus_fna",
+                            "label": "EUS-guided fine needle aspiration",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "EUS-guided fine needle aspiration"
+                        },
+                        {
+                            "id": "ercp_brushing",
+                            "label": "ERCP biliary brushing",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "ERCP biliary brushing"
+                        },
+                        {
+                            "id": "bile_duct_fna",
+                            "label": "Bile duct FNA",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "bile duct FNA"
+                        },
+                        {
+                            "id": "cyst_fluid",
+                            "label": "Cyst fluid aspiration",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "cyst fluid aspiration"
+                        },
+                        {
+                            "id": "not_specified",
+                            "label": "Not specified",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Procedure: {value}."
+                },
+                {
+                    "id": "site",
+                    "label": "Site",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "pancreatic_head",
+                            "label": "Pancreatic head",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "pancreatic head"
+                        },
+                        {
+                            "id": "pancreatic_body",
+                            "label": "Pancreatic body",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "pancreatic body"
+                        },
+                        {
+                            "id": "pancreatic_tail",
+                            "label": "Pancreatic tail",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "pancreatic tail"
+                        },
+                        {
+                            "id": "common_bile_duct",
+                            "label": "Common bile duct",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "common bile duct"
+                        },
+                        {
+                            "id": "not_specified",
+                            "label": "Not specified",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Site: {value}."
+                },
+                {
+                    "id": "lesion_type",
+                    "label": "Lesion Type (per imaging)",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "solid",
+                            "label": "Solid mass",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "solid mass"
+                        },
+                        {
+                            "id": "cystic",
+                            "label": "Cystic lesion",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "cystic lesion"
+                        },
+                        {
+                            "id": "mixed",
+                            "label": "Mixed solid and cystic",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "mixed solid and cystic"
+                        },
+                        {
+                            "id": "stricture",
+                            "label": "Biliary stricture",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "biliary stricture"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Lesion type: {value}."
+                },
+                {
+                    "id": "rose_performed",
+                    "label": "Rapid On-Site Evaluation (ROSE) Performed",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "performed"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "not performed"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Rapid on-site evaluation (ROSE) was {value}."
+                }
+            ]
         },
         {
-          "id": "site",
-          "label": "Site",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "pancreatic_head",
-              "label": "Pancreatic head",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "pancreatic_body",
-              "label": "Pancreatic body",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "pancreatic_tail",
-              "label": "Pancreatic tail",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "common_bile_duct",
-              "label": "Common bile duct",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "not_specified",
-              "label": "Not specified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "adequacy",
+            "title": "Specimen Adequacy",
+            "fields": [
+                {
+                    "id": "adequacy_status",
+                    "label": "Adequacy",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "satisfactory",
+                            "label": "Satisfactory for evaluation",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "satisfactory for evaluation"
+                        },
+                        {
+                            "id": "nondiagnostic",
+                            "label": "Nondiagnostic",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "nondiagnostic"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "The specimen is {value}."
+                },
+                {
+                    "id": "nondiagnostic_reason",
+                    "label": "Reason for Nondiagnostic (if applicable)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "low_cellularity",
+                            "label": "Insufficient epithelial cellularity",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "insufficient epithelial cellularity"
+                        },
+                        {
+                            "id": "acellular_fluid",
+                            "label": "Acellular cyst fluid only",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "acellular cyst fluid only"
+                        },
+                        {
+                            "id": "gi_contamination",
+                            "label": "Gastrointestinal contaminant only",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "gastrointestinal contaminant only"
+                        },
+                        {
+                            "id": "other",
+                            "label": "Other (specify)",
+                            "snomed": "",
+                            "icd": ""
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Reason for nondiagnostic assessment: {value}."
+                }
+            ]
         },
         {
-          "id": "lesion_type",
-          "label": "Lesion Type (per imaging)",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "solid",
-              "label": "Solid mass",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "cystic",
-              "label": "Cystic lesion",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "mixed",
-              "label": "Mixed solid and cystic",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "stricture",
-              "label": "Biliary stricture",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "diagnostic_category",
+            "title": "Papanicolaou Society Diagnostic Category",
+            "fields": [
+                {
+                    "id": "pscp_category",
+                    "label": "Diagnostic Category",
+                    "type": "dropdown",
+                    "required": true,
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "i_nondiagnostic",
+                            "label": "I — Nondiagnostic",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "I — Nondiagnostic",
+                            "lexiconTermKey": "papanicolaou.pancreaticobiliary.category.i_nondiagnostic"
+                        },
+                        {
+                            "id": "ii_negative",
+                            "label": "II — Negative (Benign)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "II — Negative (Benign)",
+                            "lexiconTermKey": "papanicolaou.pancreaticobiliary.category.ii_negative"
+                        },
+                        {
+                            "id": "iii_atypical",
+                            "label": "III — Atypical",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "III — Atypical",
+                            "lexiconTermKey": "papanicolaou.pancreaticobiliary.category.iii_atypical"
+                        },
+                        {
+                            "id": "iva_neoplastic_benign",
+                            "label": "IVA — Neoplastic: Benign (e.g. serous cystadenoma)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "IVA — Neoplastic: Benign",
+                            "lexiconTermKey": "papanicolaou.pancreaticobiliary.category.iva_neoplastic_benign"
+                        },
+                        {
+                            "id": "ivb_neoplastic_other",
+                            "label": "IVB — Neoplastic: Other (premalignant — e.g. IPMN, MCN, PanIN with low/high-grade dysplasia)",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "IVB — Neoplastic: Other (premalignant)",
+                            "lexiconTermKey": "papanicolaou.pancreaticobiliary.category.ivb_neoplastic_other"
+                        },
+                        {
+                            "id": "v_suspicious",
+                            "label": "V — Suspicious for Malignancy",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "V — Suspicious for Malignancy",
+                            "lexiconTermKey": "papanicolaou.pancreaticobiliary.category.v_suspicious"
+                        },
+                        {
+                            "id": "vi_positive",
+                            "label": "VI — Positive / Malignant",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "VI — Positive / Malignant",
+                            "lexiconTermKey": "papanicolaou.pancreaticobiliary.category.vi_positive"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Papanicolaou Society Diagnostic Category: {value}.",
+                    "clinicalTier": "tier_1_diagnostic_category"
+                },
+                {
+                    "id": "category_note",
+                    "label": "Category Notes (reference only)",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+) — informational: Category IV is deliberately split into two subtypes rather than one, since a benign neoplasm (IVA) and a premalignant one (IVB) carry very different clinical management implications despite both being 'neoplastic.' Cite local institutional risk data where available.",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
         },
         {
-          "id": "rose_performed",
-          "label": "Rapid On-Site Evaluation (ROSE) Performed",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
+            "id": "cytologic_findings",
+            "title": "Cytologic Findings",
+            "fields": [
+                {
+                    "id": "cellularity",
+                    "label": "Cellularity",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "scant",
+                            "label": "Scant",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "scant"
+                        },
+                        {
+                            "id": "low",
+                            "label": "Low",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "low"
+                        },
+                        {
+                            "id": "moderate",
+                            "label": "Moderate",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "moderate"
+                        },
+                        {
+                            "id": "high",
+                            "label": "High",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "high"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Cellularity: {value}."
+                },
+                {
+                    "id": "background",
+                    "label": "Background (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "thick_mucin",
+                            "label": "Thick, extracellular mucin",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "thick, extracellular mucin"
+                        },
+                        {
+                            "id": "necrotic_debris",
+                            "label": "Necrotic / inflammatory debris",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "necrotic/inflammatory debris"
+                        },
+                        {
+                            "id": "clean_background",
+                            "label": "Clean background",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "clean background"
+                        },
+                        {
+                            "id": "chronic_pancreatitis_change",
+                            "label": "Features of chronic pancreatitis",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "features of chronic pancreatitis"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Background: {value}."
+                },
+                {
+                    "id": "architecture",
+                    "label": "Architectural Pattern (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "papillary",
+                            "label": "Papillary fragments",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "papillary fragments"
+                        },
+                        {
+                            "id": "honeycomb_sheets",
+                            "label": "Honeycomb sheets — benign ductal pattern",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "honeycomb sheets"
+                        },
+                        {
+                            "id": "single_cells",
+                            "label": "Predominantly single, dyshesive cells",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "predominantly single, dyshesive cells"
+                        },
+                        {
+                            "id": "three_dimensional",
+                            "label": "Three-dimensional clusters with nuclear crowding",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "three-dimensional clusters with nuclear crowding"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Architectural pattern: {value}."
+                },
+                {
+                    "id": "nuclear_features",
+                    "label": "Nuclear Features (select all that apply)",
+                    "type": "checkboxes",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "enlargement",
+                            "label": "Nuclear enlargement / variation in size",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "nuclear enlargement"
+                        },
+                        {
+                            "id": "irregular_contour",
+                            "label": "Irregular nuclear contour",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "irregular nuclear contour"
+                        },
+                        {
+                            "id": "loss_of_polarity",
+                            "label": "Loss of nuclear polarity",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "loss of nuclear polarity"
+                        },
+                        {
+                            "id": "none_significant",
+                            "label": "No significant atypia identified",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "no significant atypia"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Nuclear features: {value}."
+                }
+            ]
+        },
+        {
+            "id": "ancillary_studies",
+            "title": "Ancillary Studies",
+            "fields": [
+                {
+                    "id": "cyst_fluid_cea",
+                    "label": "Cyst Fluid CEA (ng/mL, if performed)",
+                    "type": "text",
+                    "required": false,
+                    "note": "Optional (+) — elevated CEA supports a mucinous cystic lesion (IPMN/MCN) over a serous one",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "Cyst fluid CEA: {value} ng/mL."
+                },
+                {
+                    "id": "cyst_fluid_amylase",
+                    "label": "Cyst Fluid Amylase (if performed)",
+                    "type": "text",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "Cyst fluid amylase: {value}."
+                },
+                {
+                    "id": "molecular_testing_ordered",
+                    "label": "Molecular Testing Ordered",
+                    "type": "dropdown",
+                    "required": false,
+                    "note": "Optional (+) — KRAS and GNAS mutation testing are the most clinically relevant markers for pancreatic cystic lesions",
+                    "snomed": "",
+                    "icd": "",
+                    "options": [
+                        {
+                            "id": "yes",
+                            "label": "Yes",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "ordered"
+                        },
+                        {
+                            "id": "no",
+                            "label": "No",
+                            "snomed": "",
+                            "icd": ""
+                        },
+                        {
+                            "id": "pending",
+                            "label": "Pending",
+                            "snomed": "",
+                            "icd": "",
+                            "narrativePhrase": "ordered, results pending"
+                        }
+                    ],
+                    "narrativeSentenceTemplate": "Molecular testing: {value}."
+                },
+                {
+                    "id": "molecular_result",
+                    "label": "Result (if resulted)",
+                    "type": "longtext",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
+        },
+        {
+            "id": "comments",
+            "title": "Comment / Correlation",
+            "fields": [
+                {
+                    "id": "radiologic_correlation",
+                    "label": "Radiologic / Imaging Correlation",
+                    "type": "text",
+                    "required": false,
+                    "note": "Optional (+)",
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "Radiologic correlation: {value}."
+                },
+                {
+                    "id": "comment",
+                    "label": "Additional Comment",
+                    "type": "longtext",
+                    "required": false,
+                    "snomed": "",
+                    "icd": "",
+                    "narrativeSentenceTemplate": "{value}"
+                }
+            ]
         }
-      ]
-    },
-    {
-      "id": "adequacy",
-      "title": "Specimen Adequacy",
-      "fields": [
-        {
-          "id": "adequacy_status",
-          "label": "Adequacy",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "satisfactory",
-              "label": "Satisfactory for evaluation",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "nondiagnostic",
-              "label": "Nondiagnostic",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "nondiagnostic_reason",
-          "label": "Reason for Nondiagnostic (if applicable)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "low_cellularity",
-              "label": "Insufficient epithelial cellularity",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "acellular_fluid",
-              "label": "Acellular cyst fluid only",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "gi_contamination",
-              "label": "Gastrointestinal contaminant only",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "other",
-              "label": "Other (specify)",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "diagnostic_category",
-      "title": "Papanicolaou Society Diagnostic Category",
-      "fields": [
-        {
-          "id": "pscp_category",
-          "label": "Diagnostic Category",
-          "type": "dropdown",
-          "required": true,
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "i_nondiagnostic",
-              "label": "I — Nondiagnostic",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "ii_negative",
-              "label": "II — Negative (Benign)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "iii_atypical",
-              "label": "III — Atypical",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "iva_neoplastic_benign",
-              "label": "IVA — Neoplastic: Benign (e.g. serous cystadenoma)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "ivb_neoplastic_other",
-              "label": "IVB — Neoplastic: Other (premalignant — e.g. IPMN, MCN, PanIN with low/high-grade dysplasia)",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "v_suspicious",
-              "label": "V — Suspicious for Malignancy",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "vi_positive",
-              "label": "VI — Positive / Malignant",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "category_note",
-          "label": "Category Notes (reference only)",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+) — informational: Category IV is deliberately split into two subtypes rather than one, since a benign neoplasm (IVA) and a premalignant one (IVB) carry very different clinical management implications despite both being 'neoplastic.' Cite local institutional risk data where available.",
-          "snomed": "",
-          "icd": ""
-        }
-      ]
-    },
-    {
-      "id": "cytologic_findings",
-      "title": "Cytologic Findings",
-      "fields": [
-        {
-          "id": "cellularity",
-          "label": "Cellularity",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "scant",
-              "label": "Scant",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "low",
-              "label": "Low",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "moderate",
-              "label": "Moderate",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "high",
-              "label": "High",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "background",
-          "label": "Background (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "thick_mucin",
-              "label": "Thick, extracellular mucin",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "necrotic_debris",
-              "label": "Necrotic / inflammatory debris",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "clean_background",
-              "label": "Clean background",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "chronic_pancreatitis_change",
-              "label": "Features of chronic pancreatitis",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "architecture",
-          "label": "Architectural Pattern (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "papillary",
-              "label": "Papillary fragments",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "honeycomb_sheets",
-              "label": "Honeycomb sheets — benign ductal pattern",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "single_cells",
-              "label": "Predominantly single, dyshesive cells",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "three_dimensional",
-              "label": "Three-dimensional clusters with nuclear crowding",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "nuclear_features",
-          "label": "Nuclear Features (select all that apply)",
-          "type": "checkboxes",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "enlargement",
-              "label": "Nuclear enlargement / variation in size",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "irregular_contour",
-              "label": "Irregular nuclear contour",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "loss_of_polarity",
-              "label": "Loss of nuclear polarity",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "none_significant",
-              "label": "No significant atypia identified",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        }
-      ]
-    },
-    {
-      "id": "ancillary_studies",
-      "title": "Ancillary Studies",
-      "fields": [
-        {
-          "id": "cyst_fluid_cea",
-          "label": "Cyst Fluid CEA (ng/mL, if performed)",
-          "type": "text",
-          "required": false,
-          "note": "Optional (+) — elevated CEA supports a mucinous cystic lesion (IPMN/MCN) over a serous one",
-          "snomed": "",
-          "icd": ""
-        },
-        {
-          "id": "cyst_fluid_amylase",
-          "label": "Cyst Fluid Amylase (if performed)",
-          "type": "text",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        },
-        {
-          "id": "molecular_testing_ordered",
-          "label": "Molecular Testing Ordered",
-          "type": "dropdown",
-          "required": false,
-          "note": "Optional (+) — KRAS and GNAS mutation testing are the most clinically relevant markers for pancreatic cystic lesions",
-          "snomed": "",
-          "icd": "",
-          "options": [
-            {
-              "id": "yes",
-              "label": "Yes",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "no",
-              "label": "No",
-              "snomed": "",
-              "icd": ""
-            },
-            {
-              "id": "pending",
-              "label": "Pending",
-              "snomed": "",
-              "icd": ""
-            }
-          ]
-        },
-        {
-          "id": "molecular_result",
-          "label": "Result (if resulted)",
-          "type": "longtext",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        }
-      ]
-    },
-    {
-      "id": "comments",
-      "title": "Comment / Correlation",
-      "fields": [
-        {
-          "id": "radiologic_correlation",
-          "label": "Radiologic / Imaging Correlation",
-          "type": "text",
-          "required": false,
-          "note": "Optional (+)",
-          "snomed": "",
-          "icd": ""
-        },
-        {
-          "id": "comment",
-          "label": "Additional Comment",
-          "type": "longtext",
-          "required": false,
-          "snomed": "",
-          "icd": ""
-        }
-      ]
+    ],
+    "applicability": {
+        "specimenSites": [
+            "Pancreas",
+            "Bile Duct"
+        ],
+        "specimenTypes": [
+            "FNA"
+        ],
+        "note": "EUS-FNA or ERCP brushing of a pancreatic or biliary lesion"
     }
-  ],
-  "applicability": {
-    "specimenSites": [
-      "Pancreas",
-      "Bile Duct"
-    ],
-    "specimenTypes": [
-      "FNA"
-    ],
-    "note": "EUS-FNA or ERCP brushing of a pancreatic or biliary lesion"
-  }
 }

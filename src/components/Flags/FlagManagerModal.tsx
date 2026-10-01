@@ -26,6 +26,7 @@
 
 import React, { useState, useMemo, useCallback, useEffect } from "react";
 import ReactDOM from 'react-dom';
+import { useTranslation } from 'react-i18next';
 import { useAuditLog } from '@/components/Audit/useAuditLog';
 import "../../pathscribe.css";
 import type { FlagDefinition } from "../../types/FlagDefinition";
@@ -84,13 +85,13 @@ const sevColor = (sev?: number): string => {
 // ─── SVG Icons ────────────────────────────────────────────────────────────────
 
 const IcoCase = () => (
-  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="fm-icon--shrink">
     <rect x="1.5" y="2" width="13" height="12" rx="2" stroke="currentColor" strokeWidth="1.4"/>
     <path d="M4.5 5.5h7M4.5 8h5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/>
   </svg>
 );
 const IcoSpec = () => (
-  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0 }}>
+  <svg width="13" height="13" viewBox="0 0 16 16" fill="none" className="fm-icon--shrink">
     <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4"/>
     <circle cx="8" cy="8" r="2.5" fill="currentColor"/>
   </svg>
@@ -102,7 +103,7 @@ const IcoSearch = () => (
   </svg>
 );
 const IcoFlag = () => (
-  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" style={{ flexShrink: 0, color: "#ef4444" }}>
+  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" className="fm-icon-flag">
     <path d="M3 2v12M3 2h9l-2.5 4L12 10H3" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/>
   </svg>
 );
@@ -134,36 +135,46 @@ const IcoCheck = () => (
 const ScopeDialog: React.FC<{
   flagName: string; otherCount: number;
   onSingle: () => void; onAll: () => void; onCancel: () => void;
-}> = ({ flagName, otherCount, onSingle, onAll, onCancel }) => (
-  <div data-capture-hide="true" className="fm-overlay" style={{ zIndex: 9500 }}>
-    <div className="fm-dialog" style={{ width: 440 }}>
-      <div className="fm-dialog-icon info"><IcoSpec /></div>
-      <h3 className="fm-dialog-title">Remove from multiple specimens?</h3>
-      <p className="fm-dialog-body">
-        <strong>{flagName}</strong> is also applied to{" "}
-        <strong>{otherCount} other specimen{otherCount !== 1 ? "s" : ""}</strong>.
-      </p>
-      <p className="fm-dialog-hint">This will apply once you click Save — all removals will be recorded in the audit trail.</p>
-      <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
-        <button onClick={onSingle} className="fm-dialog-option neutral">
-          Remove from this specimen only
-        </button>
-        <button onClick={onAll} className="fm-dialog-option danger">
-          Remove from all {otherCount + 1} specimens
-        </button>
-        <button onClick={onCancel} className="fm-dialog-option ghost">
-          Cancel
-        </button>
+}> = ({ flagName, otherCount, onSingle, onAll, onCancel }) => {
+  const { t } = useTranslation();
+  return (
+    <div data-capture-hide="true" className="fm-overlay fm-overlay--scope-dialog">
+      <div className="fm-dialog fm-dialog--wide">
+        <div className="fm-dialog-icon info"><IcoSpec /></div>
+        <h3 className="fm-dialog-title">{t('flagManagerModal.scopeDialog.title')}</h3>
+        <p className="fm-dialog-body">
+          <strong>{flagName}</strong>{' '}
+          {t('flagManagerModal.scopeDialog.alsoAppliedTo')}{' '}
+          <strong>{t('flagManagerModal.scopeDialog.otherSpecimenCount', { count: otherCount })}</strong>.
+        </p>
+        <p className="fm-dialog-hint">{t('flagManagerModal.scopeDialog.hint')}</p>
+        <div className="fm-dialog-options">
+          <button onClick={onSingle} className="fm-dialog-option neutral">
+            {t('flagManagerModal.scopeDialog.removeThisOnly')}
+          </button>
+          <button onClick={onAll} className="fm-dialog-option danger">
+            {t('flagManagerModal.scopeDialog.removeFromAll', { count: otherCount + 1 })}
+          </button>
+          <button onClick={onCancel} className="fm-dialog-option ghost">
+            {t('flagManagerModal.cancel')}
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Main component ───────────────────────────────────────────────────────────
+
+const LEVEL_LABEL_KEY: Record<"case" | "specimen", string> = {
+  case: 'flagManagerModal.level.case',
+  specimen: 'flagManagerModal.level.specimen',
+};
 
 const FlagManagerModal: React.FC<Props> = ({
   onClose, caseData: initialCaseData, flagDefinitions, onApplyFlags, onRemoveFlag, onDirtyChange,
 }) => {
+  const { t } = useTranslation();
   // The ONLY thing edited while this modal is open. Nothing here touches
   // the real backend until handleSave runs. initialCaseData itself is
   // kept around, untouched, as the "what did this look like when we
@@ -380,11 +391,11 @@ const FlagManagerModal: React.FC<Props> = ({
       // accurate picture if some items DID succeed before this one
       // failed (some flag changes may already be persisted even though
       // the modal is still showing "unsaved changes").
-      const detail = (e as Error)?.message ?? 'unknown error';
+      const detail = (e as Error)?.message ?? t('flagManagerModal.unknownError');
       setSaveError(
         succeededAny
-          ? `Some flag changes saved before this failed (${detail}). The remaining changes shown are still unsaved — try again, or close and reopen to see what actually persisted.`
-          : `Save failed (${detail}) — nothing was saved. Try again.`
+          ? t('flagManagerModal.partialSaveError', { detail })
+          : t('flagManagerModal.saveFailedError', { detail })
       );
     } finally {
       setIsSaving(false);
@@ -487,19 +498,19 @@ const FlagManagerModal: React.FC<Props> = ({
             <button
               className="fm-chip-undo-btn"
               onClick={handleUndo}
-              title="Undo removal"
+              title={t('flagManagerModal.undoRemoval')}
             >
               <IcoUndo />
             </button>
           ) : isLis ? (
-            <span title="Applied by LIS — cannot be removed" className="fm-chip-remove-btn" style={{ cursor: "default" }}>
+            <span title={t('flagManagerModal.appliedByLis')} className="fm-chip-remove-btn fm-chip-remove-btn--locked">
               <IcoLock />
             </span>
           ) : (
             <button
               className="fm-chip-remove-btn"
               onClick={() => requestRemove(inst, specimenId)}
-              title="Remove flag"
+              title={t('flagManagerModal.removeFlag')}
             >
               <IcoTrash />
             </button>
@@ -522,21 +533,17 @@ const FlagManagerModal: React.FC<Props> = ({
           {/* ── HEADER ── */}
           <div className="ps-research-header">
             <div>
-              <div className="fm-eyebrow">Flag Manager</div>
+              <div className="fm-eyebrow">{t('flagManagerModal.eyebrow')}</div>
               <div className="fm-title-row">
                 <IcoFlag />
-                <h2 className="fm-title">Case</h2>
-                <span className="fm-accession">· {localCase.accession}</span>
+                <h2 className="fm-title">{t('flagManagerModal.caseTitle')}</h2>
+                <span className="fm-accession" data-phi="accession">· {localCase.accession}</span>
                 {totalFlags > 0 && (
-                  <span className="fm-active-badge">{totalFlags} active</span>
+                  <span className="fm-active-badge">{t('flagManagerModal.activeCount', { count: totalFlags })}</span>
                 )}
               </div>
             </div>
-            <button onClick={handleClose} aria-label="Close"
-              style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 18, cursor: 'pointer', padding: '2px 8px', lineHeight: 1, flexShrink: 0 }}
-              onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
-              onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
-            >✕</button>
+            <button onClick={handleClose} aria-label={t('flagManagerModal.close')} className="fm-close-btn">✕</button>
           </div>
 
           {/* ── BODY ── */}
@@ -544,7 +551,7 @@ const FlagManagerModal: React.FC<Props> = ({
 
             {/* LEFT: targets */}
             <div className="fm-left">
-              <div className="fm-section-label">Apply to</div>
+              <div className="fm-section-label">{t('flagManagerModal.applyTo')}</div>
 
               {/* Case */}
               <button
@@ -552,8 +559,8 @@ const FlagManagerModal: React.FC<Props> = ({
                 onClick={toggleCase}
               >
                 <IcoCase />
-                <span style={{ flex: 1, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
-                  Case {localCase.accession}
+                <span className="fm-target-text" data-phi="accession">
+                  {t('flagManagerModal.caseAccession', { accession: localCase.accession })}
                 </span>
                 {activeInst(localCase.flags).length > 0 && (
                   <span className="fm-count-badge">{activeInst(localCase.flags).length}</span>
@@ -563,7 +570,7 @@ const FlagManagerModal: React.FC<Props> = ({
                 <FlagChip key={inst.id} inst={inst} />
               ))}
               {activeInst(localCase.flags).length === 0 && localCase.flags.filter((f: FlagInstance) => f.flagDefinitionId && !f.deletedAt).length === 0 && (
-                <div className="fm-no-flags-note">No case flags applied</div>
+                <div className="fm-no-flags-note">{t('flagManagerModal.noCaseFlags')}</div>
               )}
 
               <div className="fm-divider" />
@@ -576,7 +583,7 @@ const FlagManagerModal: React.FC<Props> = ({
                     onClick={toggleAll}
                   >
                     <IcoSpec />
-                    <span>All Specimens</span>
+                    <span>{t('flagManagerModal.allSpecimens')}</span>
                   </button>
                   <div className="fm-divider" />
                 </>
@@ -584,15 +591,15 @@ const FlagManagerModal: React.FC<Props> = ({
 
               {/* Individual specimens */}
               {localCase.specimens.map((sp: any) => (
-                <div key={sp.id} style={{ marginBottom: 2 }}>
+                <div key={sp.id} className="fm-specimen-row-wrap">
                   <button
                     className={`fm-target-row${spIds.has(sp.id) ? " active" : ""}`}
                     onClick={() => toggleSp(sp.id)}
                   >
                     <IcoSpec />
-                    <span style={{ flex: 1, overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                      <span style={{ color: '#38bdf8', fontWeight: 600 }}>{sp.label}:</span>{' '}
-                      <span style={{ color: 'inherit' }}>{sp.description ?? ''}</span>
+                    <span className="fm-target-text">
+                      <span className="fm-specimen-label">{sp.label}:</span>{' '}
+                      <span className="fm-specimen-desc">{sp.description ?? ''}</span>
                     </span>
                     {activeInst(sp.flags).length > 0 && (
                       <span className="fm-count-badge">{activeInst(sp.flags).length}</span>
@@ -602,14 +609,14 @@ const FlagManagerModal: React.FC<Props> = ({
                     <FlagChip key={inst.id} inst={inst} specimenId={sp.id} />
                   ))}
                   {activeInst(sp.flags).length === 0 && sp.flags.filter((f: FlagInstance) => f.flagDefinitionId && !f.deletedAt).length === 0 && (
-                    <div className="fm-no-flags-note">No flags applied</div>
+                    <div className="fm-no-flags-note">{t('flagManagerModal.noFlagsApplied')}</div>
                   )}
                 </div>
               ))}
 
               {invalid && (
                 <div className="fm-invalid-warn">
-                  Case and specimens can't be selected together
+                  {t('flagManagerModal.invalidSelectionWarn')}
                 </div>
               )}
             </div>
@@ -624,7 +631,7 @@ const FlagManagerModal: React.FC<Props> = ({
                   className="fm-search-input"
                   value={query}
                   onChange={e => setQuery(e.target.value)}
-                  placeholder="Search flags by name, code, or description…"
+                  placeholder={t('flagManagerModal.searchPlaceholder')}
                 />
                 {query && (
                   <button className="fm-search-clear" onClick={() => setQuery("")}>✕</button>
@@ -633,14 +640,14 @@ const FlagManagerModal: React.FC<Props> = ({
 
               {/* Column headers */}
               <div className="fm-col-header">
-                <span className="fm-col-label">Code</span>
+                <span className="fm-col-label">{t('flagManagerModal.col.code')}</span>
                 <span className="fm-col-label">
-                  Flag
+                  {t('flagManagerModal.col.flag')}
                   {hasTarget && (
-                    <span className="fm-col-label-note"> · {targetLevel}-level</span>
+                    <span className="fm-col-label-note"> · {t('flagManagerModal.levelNote', { level: t(LEVEL_LABEL_KEY[targetLevel]) })}</span>
                   )}
                 </span>
-                <span className="fm-col-label" style={{ textAlign: "right" }}>Action</span>
+                <span className="fm-col-label fm-col-label--right">{t('flagManagerModal.col.action')}</span>
               </div>
 
               {/* Flag list */}
@@ -649,15 +656,15 @@ const FlagManagerModal: React.FC<Props> = ({
                 {!hasTarget && !invalid && (
                   <div className="fm-empty">
                     <IcoCase />
-                    <div className="fm-empty-heading">Select a target on the left</div>
-                    <div className="fm-empty-hint">Choose the case or one or more specimens, then click a flag to apply it</div>
+                    <div className="fm-empty-heading">{t('flagManagerModal.selectTarget')}</div>
+                    <div className="fm-empty-hint">{t('flagManagerModal.selectTargetHint')}</div>
                   </div>
                 )}
 
                 {invalid && (
                   <div className="fm-empty">
-                    <div className="fm-empty-heading" style={{ color: "#f87171" }}>Invalid selection</div>
-                    <div className="fm-empty-hint">Deselect either the case or the specimens</div>
+                    <div className="fm-empty-heading fm-empty-heading--error">{t('flagManagerModal.invalidSelection')}</div>
+                    <div className="fm-empty-hint">{t('flagManagerModal.invalidSelectionHint')}</div>
                   </div>
                 )}
 
@@ -665,10 +672,12 @@ const FlagManagerModal: React.FC<Props> = ({
                   <div className="fm-empty">
                     <IcoSearch />
                     <div className="fm-empty-heading">
-                      {query ? `No flags match "${query}"` : `No ${targetLevel}-level flags defined`}
+                      {query
+                        ? t('flagManagerModal.noFlagsMatch', { query })
+                        : t('flagManagerModal.noLevelFlagsDefined', { level: t(LEVEL_LABEL_KEY[targetLevel]) })}
                     </div>
                     {!query && (
-                      <div className="fm-empty-hint">Go to Configuration → System → Flags to add some</div>
+                      <div className="fm-empty-hint">{t('flagManagerModal.addFlagsHint')}</div>
                     )}
                   </div>
                 )}
@@ -691,7 +700,7 @@ const FlagManagerModal: React.FC<Props> = ({
                       <div className="fm-flag-info">
                         <div className="fm-flag-name-row">
                           {sev && (
-                            <span className="fm-sev-dot" style={{ background: sevColor(sev) }} title={`Severity ${sev}`} />
+                            <span className="fm-sev-dot" style={{ '--ps-hue': sevColor(sev) } as React.CSSProperties} title={t('flagManagerModal.severityTitle', { sev })} />
                           )}
                           <span className="fm-flag-name">{def.name}</span>
                         </div>
@@ -700,14 +709,14 @@ const FlagManagerModal: React.FC<Props> = ({
                         )}
                       </div>
 
-                      <div style={{ textAlign: "right" }}>
+                      <div className="fm-flag-card-action">
                         {applied ? (
                           <span className="fm-applied-text">
                             <IcoCheck />
-                            Applied
+                            {t('flagManagerModal.applied')}
                           </span>
                         ) : (
-                          <span className="fm-apply-text">+ Apply</span>
+                          <span className="fm-apply-text">{t('flagManagerModal.apply')}</span>
                         )}
                       </div>
                     </div>
@@ -720,31 +729,24 @@ const FlagManagerModal: React.FC<Props> = ({
           {/* ── FOOTER — Cancel (reverts) | Save (commits + closes) ── */}
           <div className="fm-footer">
             {saveError ? (
-              <span style={{ fontSize: 11, color: '#f87171', flex: 1 }}>{saveError}</span>
+              <span className="fm-footer-status acd-footer-status--error">{saveError}</span>
             ) : (
-              <span style={{ fontSize: 11, color: isDraftDirty ? '#f59e0b' : '#475569', flex: 1 }}>
-                {isDraftDirty ? 'You have unsaved flag changes' : 'No changes'}
+              <span className={`fm-footer-status${isDraftDirty ? ' dirty' : ''}`}>
+                {isDraftDirty ? t('flagManagerModal.unsavedChanges') : t('flagManagerModal.noChanges')}
               </span>
             )}
-            <button className="fm-btn-cancel" onClick={handleClose} style={{ flexShrink: 0 }}>
-              Cancel
-            </button>
-            <button
-              className="fm-btn-cancel"
-              onClick={handleSave}
-              disabled={!isDraftDirty || isSaving}
-              style={{
-                flexShrink: 0,
-                background: isDraftDirty ? 'rgba(34,197,94,0.15)' : undefined,
-                borderColor: isDraftDirty ? 'rgba(34,197,94,0.5)' : undefined,
-                color: isDraftDirty ? '#4ade80' : undefined,
-                fontWeight: 700,
-                opacity: isSaving ? 0.6 : 1,
-                cursor: (!isDraftDirty || isSaving) ? 'default' : 'pointer',
-              }}
-            >
-              {isSaving ? 'Saving…' : 'Save'}
-            </button>
+            <div className="fm-footer-actions">
+              <button className="fm-btn-cancel" onClick={handleClose}>
+                {t('flagManagerModal.cancel')}
+              </button>
+              <button
+                className="fm-btn-save"
+                onClick={handleSave}
+                disabled={!isDraftDirty || isSaving}
+              >
+                {isSaving ? t('flagManagerModal.saving') : t('flagManagerModal.save')}
+              </button>
+            </div>
           </div>
         </div>
       </div>
@@ -762,20 +764,20 @@ const FlagManagerModal: React.FC<Props> = ({
       {/* ── Discard-changes warning — now genuinely accurate: the draft
           is discarded and nothing was ever written to the backend ── */}
       {showDirtyWarn && ReactDOM.createPortal(
-        <div className="ps-overlay" style={{ zIndex: 9500 }}>
+        <div className="ps-overlay ps-overlay--flag-discard-warn">
           <div className="ps-modal-dark ps-modal-dark--sm">
             <div className="ps-modal-dark-header">
               <span className="ps-modal-dark-emoji">⚠️</span>
-              <span className="ps-modal-dark-title">Discard changes?</span>
+              <span className="ps-modal-dark-title">{t('flagManagerModal.discardDialog.title')}</span>
             </div>
             <p className="ps-modal-dark-body">
               {saveError
-                ? 'You have unsaved flag changes, and the last save attempt failed partway through — some of these may already be saved. Closing now will discard whatever is still local and unsaved.'
-                : 'You have unsaved flag changes. Closing will discard them — nothing has been saved yet.'}
+                ? t('flagManagerModal.discardDialog.bodyAfterFailure')
+                : t('flagManagerModal.discardDialog.body')}
             </p>
             <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch">
-              <button className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn" onClick={() => setShowDirtyWarn(false)}>Keep editing</button>
-              <button className="ps-btn-red ps-modal-dark-footer__flex-btn" onClick={handleDiscardConfirm}>Discard changes</button>
+              <button className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn" onClick={() => setShowDirtyWarn(false)}>{t('flagManagerModal.discardDialog.keepEditing')}</button>
+              <button className="ps-btn-red ps-modal-dark-footer__flex-btn" onClick={handleDiscardConfirm}>{t('flagManagerModal.discardDialog.discardChanges')}</button>
             </div>
           </div>
         </div>,

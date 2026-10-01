@@ -13,8 +13,13 @@
 // upper end of what any real lab does) this is trivially cheap; the same
 // order of cost as the existing BlockIcon/SlideChip components already
 // rendered throughout MaterialTreePanel.tsx.
+//
+// i18n note: `cassetteLabel`/`p.specimenLabel`/`p.specimenDescription`/
+// `p.position` are real block/specimen data, interpolated into
+// translated sentences, never translated themselves.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useMemo } from 'react';
+import { Trans, useTranslation } from 'react-i18next';
 
 export interface BiopsyArrayPosition {
   position: number;
@@ -34,7 +39,7 @@ interface BiopsyArrayDiagramProps {
 // Grid columns scale gently with count so the block reads as roughly
 // square regardless of how many positions it holds (a 3-core Biopsy Array
 // isn't a single long strip; a 12-core one isn't a single tall column).
-function columnsFor(count: number): number {
+export function columnsFor(count: number): number {
   if (count <= 2) return 2;
   if (count <= 4) return 2;
   if (count <= 6) return 3;
@@ -42,11 +47,33 @@ function columnsFor(count: number): number {
   return 4;
 }
 
+/**
+ * Real, per direct spec (PS-93's Array Mapper): a human-facing "Core
+ * Coordinate" (e.g. "A1", "A2", "B1") for a given 1-indexed
+ * MatrixBlockParticipant.positionInBlock, laid out row-major against
+ * the exact same columnsFor(count) shape this diagram already renders
+ * — so a coordinate shown in the Array Mapper always matches the same
+ * cell's real position in this diagram, never a second, independently-
+ * computed layout that could disagree. Deliberately distinct from
+ * MatrixBlock.label ("M1") and matrixBlockIdentifier() (types/labels/
+ * LabelData.ts, the printed cassette identifier) — this is a
+ * within-block position, not an identifier for the block itself.
+ */
+export function positionToCoreCoordinate(position: number, totalCount: number): string {
+  const cols = columnsFor(totalCount);
+  const zeroIndexed = position - 1;
+  const row = Math.floor(zeroIndexed / cols);
+  const col = (zeroIndexed % cols) + 1;
+  const rowLetter = String.fromCharCode(65 + row); // 65 = 'A'
+  return `${rowLetter}${col}`;
+}
+
 const CELL = 46;
 const GAP = 4;
 const PAD = 10;
 
 const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, positions, onOpenBlockEditor }) => {
+  const { t } = useTranslation();
   const sorted = useMemo(
     () => [...positions].sort((a, b) => a.position - b.position),
     [positions]
@@ -57,8 +84,8 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
   const height = PAD * 2 + rows * CELL + (rows - 1) * GAP + 20; // +20 for the cassette-label strip
 
   return (
-    <div style={{ display: 'flex', alignItems: 'center', gap: 14, marginLeft: 40, marginBottom: 12 }}>
-      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} style={{ flexShrink: 0 }}>
+    <div className="ps-biopsyarray-wrap">
+      <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} className="ps-biopsyarray-svg">
         {/* Cassette outline — same amber/brown language as BlockIcon, so a
             Biopsy Array still visually reads as "a block" at a glance. */}
         <rect
@@ -77,9 +104,12 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
             <g
               key={p.blockId}
               onClick={() => onOpenBlockEditor(p.blockId)}
-              style={{ cursor: 'pointer' }}
+              className="ps-biopsyarray-cell-group"
             >
-              <title>{`Position ${p.position}: Specimen ${p.specimenLabel}${p.specimenDescription ? ` — ${p.specimenDescription}` : ''}`}</title>
+              <title>
+                {t('biopsyArrayDiagram.positionTooltip', { position: p.position, label: p.specimenLabel })}
+                {p.specimenDescription ? t('biopsyArrayDiagram.tooltipDescriptionSuffix', { description: p.specimenDescription }) : ''}
+              </title>
               <rect
                 x={x} y={y} width={CELL} height={CELL} rx={3}
                 fill="rgba(8,145,178,0.12)" stroke="rgba(148,163,184,0.35)" strokeWidth={0.5}
@@ -88,18 +118,21 @@ const BiopsyArrayDiagram: React.FC<BiopsyArrayDiagramProps> = ({ cassetteLabel, 
                 {p.specimenLabel}
               </text>
               <text x={x + CELL / 2} y={y + CELL / 2 + 11} textAnchor="middle" fontSize={8} fill="#94a3b8">
-                pos {p.position}
+                {t('biopsyArrayDiagram.positionShort', { position: p.position })}
               </text>
             </g>
           );
         })}
       </svg>
-      <div style={{ fontSize: 11, color: '#94a3b8', lineHeight: 1.6 }}>
+      <div className="ps-biopsyarray-legend">
         {sorted.map(p => (
           <div key={p.blockId}>
-            <span style={{ fontWeight: 700, color: '#cbd5e1' }}>Position {p.position}</span>
-            {' — Specimen '}{p.specimenLabel}
-            {p.specimenDescription ? `: ${p.specimenDescription}` : ''}
+            <Trans
+              i18nKey="biopsyArrayDiagram.legendRow"
+              values={{ position: p.position, label: p.specimenLabel }}
+              components={{ bold: <span className="ps-biopsyarray-legend-bold" /> }}
+            />
+            {p.specimenDescription ? t('biopsyArrayDiagram.legendDescriptionSuffix', { description: p.specimenDescription }) : ''}
           </div>
         ))}
       </div>

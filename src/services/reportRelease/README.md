@@ -401,13 +401,83 @@ calls at all. 776/776 tests passing, zero regressions. Live-verified:
 the button is genuinely absent from the real, running page while
 pending-release.
 
+## Two known gaps closed (post-push follow-up)
+
+**Orchestration mode's print entry point** — confirmed to be a real,
+separate function (`handleOrchPrint` in `SynopticReportPage.tsx`),
+genuinely distinct from `BottomActionBar.tsx`'s CoPilot print button
+this feature already gated, with its own, separate PDF payload
+construction that never got the Phase 3 `watermarkText` field either.
+Both closed: the same confirmation-before-print gate (naming the
+watermark, never a silent block) now applies here too, and the payload
+now carries `watermarkText` the same way `generateReportPdfSnapshot()`'s
+does. Live-verified: the button only renders on the "Report Draft" tab
+(a real, easy-to-miss UI detail — not visible on the default "Synoptic
+Reporting" tab a case first opens to), and clicking it while
+`pending-release` correctly triggers the exact same confirmation
+message as the CoPilot path.
+
+**Facility Configuration edit modal's override UI** — never
+independently screenshotted in Phase 2; only logic-verified via a
+direct service call at the time. Now confirmed live: the "Post-Sign-Out
+Release Buffer" section renders correctly under the facility editor's
+"AI & Performance" tab, and selecting "Override for this lab" correctly
+reveals all three real fields (buffer enabled, duration, STAT bypass) —
+matching the same design already verified working end-to-end back in
+Phase 2's own resolution-chain test.
+
+## Worklist tile color, revisited (real audit finding)
+
+The teal used for "Queued for Release" (`#06b6d4`) turned out to be part
+of a real, confirmed color-collision problem across the worklist's
+tiles — found during a direct audit against user-reported testing notes,
+not guessed at. Computed actual RGB distances: `grosscomplete` and
+`completed` were the closest pair (37.2), with `pendingrelease`,
+`inprogress`, and `grosscomplete` all clustered in the same teal/cyan
+family. Redesigned the seven colliding tiles' colors as a deliberate,
+evenly-spaced palette (minimum pairwise distance now 63.1, up from
+37.2), verified with an actual rendered swatch before touching any code.
+
+`pendingrelease` is now `#1C8DE3` (a blue), not teal. Updated
+everywhere this color appears for cross-page consistency —
+`HeaderBar.tsx`'s status pill, `WorklistTable.tsx`'s status column, and
+`SearchPage.tsx`'s status filter — including re-deriving the header
+pill's light-theme variant with a freshly WCAG-checked text/background
+pair (6.16:1, actually better than the 5.15:1 it replaced). Did **not**
+touch `#06b6d4` on the login page's submit-button hover state — same
+hex, completely unrelated element, verified via its own separate WCAG
+comment before leaving it alone.
+
 ## Genuinely complete
 
-This closes the confirmed 5-phase build. Two real, honest gaps remain —
-client IP address (needs real backend infrastructure) and the
-`ReportVersionRecord`/`finalizeSignOut()` relationship for §18b (needs a
-real, separate architectural decision) — both documented above rather
-than silently left for someone else to discover. Orchestration mode's
-own print entry point also remains ungated by the print restriction
-(carried forward from Phase 3).
+This closes the confirmed 5-phase build, plus both known gaps above.
+Two real, honest gaps remain — client IP address (needs real backend
+infrastructure) and the `ReportVersionRecord`/`finalizeSignOut()`
+relationship for §18b (needs a real, separate architectural decision) —
+both documented above rather than silently left for someone else to
+discover.
 
+## Real, per direct follow-up ("we had a configurable delay feature that allowed the Pathologist time to fix typos... Hopefully that still works given all the updates?"): the §18b gap immediately above is now closed — real ORU^R01 dispatch is genuinely deferred to real buffer expiry
+
+Real, honest history worth recording precisely, since this took several real rounds to get right. Investigating the direct question above surfaced something more serious than a simple compatibility check: `finalizeSignOut()` (the function `services/reports/README.md`'s own ORU^R01 dispatch hook lives inside `reportVersionService.create()`, which this function calls) has **zero awareness of the release buffer** — confirmed directly, not assumed, by tracing every real line between `BottomActionBar.tsx`'s two sign-out-adjacent buttons and their real handlers. Further investigation (a direct call-site audit of every real `reportVersionService.create()` invocation in this app) found the deeper, more precise shape of the gap: Orchestration Mode's own real `create()` call (the whole-case snapshot) never passes an `instanceId` at all — so the dispatch hook's own real guard (`mode === 'orchestration' && instanceId`) was never satisfied by any real, existing call in this app, for a reason unrelated to buffer timing: ORU^R01 is inherently per-instance (real OBR/OBX structure), and a whole-case snapshot was never going to carry one.
+
+**The real design that resolved this** ("Path B Execution Plan," arrived at across several rounds of direct collaboration):
+
+- **`reportVersionService.create()` stays pure** — no `Case.status`/buffer knowledge was ever added to it; that would have been a real service-boundary violation. It still just creates the immutable version/snapshot record, unchanged.
+- **A new, shared, idempotent helper — `services/reports/dispatchCaseInstances.ts`** — is the one real place the actual ORU^R01 dispatch now happens for Orchestration Mode's initial sign-out. Deliberately per-instance, reusing `buildOruR01Payload.ts`/`mockOutboundResultQueueService.ts` exactly as they already existed (real OBR/OBX semantics — never a new, combined whole-case payload format), with a real dedup check (`getByInstanceAndState`) so calling it more than once for the same case never double-dispatches.
+- **`handleSignOutConfirm()` (`useSignOutWorkflow.ts`)** — the attending's real sign-out path — now, immediately after `finalizeSignOut()` creates the snapshot, evaluates `resolveBufferForCase()` (the exact same real decision `finalizeCase()` already used) and branches: if a buffer applies, sets `status: 'pending-release'` + the real buffer fields (same patch shape `finalizeCase()` always used); if not (disabled config, or a real STAT-priority bypass), sets `status: 'finalized'` and calls `dispatchCaseInstances()` immediately, fire-and-forget — no reason to make an already-signed case wait on a buffer that was never going to fire.
+- **`checkAndReleaseIfExpired()`, this folder's own function** — now calls `dispatchCaseInstances()`, fire-and-forget, the moment a real buffer genuinely expires. This is the actual, real fix: the moment a signed-out case's real result(s) finally go out, and never before.
+
+**A real, separate compliance gap found and closed in the same pass, not part of the original question but found while tracing the real flow**: `finalizeCase()`'s own two hard-block regulatory gates (pre-analytic date — UKAS ISO 15189/CAP/CLIA/etc. — and fixative-time) had no equivalent anywhere in `handleSignOutConfirm()`. Since Orchestration Mode's own "Finalize" button is being retired (below), simply hiding it without relocating these two gates would have silently removed real regulatory protection for that mode. Extracted into a shared, pure `checkPreAnalyticAndFixativeGates()` helper — `finalizeCase()` (still real and active for Assist Mode) and `handleSignOutConfirm()` both call it now; never two independently-maintained copies. Placed in `handleSignOutConfirm()` after the resident/countersign gate and the existing authorization check — a trainee's own submission ("I am done drafting, but this is not a final medical record") never hits it; only an attending's real sign-out does. The gate-resolution flow (the two real modals, `FixativeGateModal`/`PreAnalyticDateGateModal`) needed a new, small piece of real state (`pendingActionIsSignOut`, `SynopticReportPage.tsx`) so resolving a gate raised from Sign Out Case correctly resumes `handleSignOutConfirm()` rather than incorrectly calling `finalizeCase(args)`.
+
+**"🔒 Finalize" is retired for Orchestration Mode** (`BottomActionBar.tsx`) — with the gates and buffer logic now both real and complete on the "✍️ Sign Out Case" path, Finalize had no remaining real purpose there. Save Draft/Save & Next/Gen. Report all stay exactly as visible as they always were — only the Finalize/Finalize & Next buttons themselves are now gated to `reportingMode === 'assist'`, where the button remains real and unaffected, for that mode's own distinct handoff to the external LIS.
+
+**Real, honest, deliberately-unaddressed scope in this same pass**: the trainee/resident path (`countersignService.release()`, inside `handleSignOutConfirm()`'s own resident/FPPE gate) does not yet create a `ReportVersionRecord` at the moment a resident submits for countersign — a real, separate piece of work, not done in this pass. Full test-suite re-verification after all of the above (in particular `useSignOutWorkflow.test.ts`, given how much of that function changed) is also still outstanding as of this entry.
+
+## Real, per direct follow-up ("Continue with the version-record creation to the trainee path... It seems like we should have caught the [gap] when we built all the FPPE work"): both gaps immediately above are now closed
+
+Fair, direct observation worth recording honestly: this genuinely is the kind of gap the earlier Phase 4 (trainee/resident integration) work should have caught — except that pass was specifically scoped to the recall-*authorization* bug (a trainee could see and click the Recall button on a case that wasn't theirs), not to whether the countersign-redirect path creates a version record at all. Related area, adjacent concern, real miss.
+
+**Fixed**: right before `countersignService.release()` in `handleSignOutConfirm()`'s resident/FPPE gate, a real, immutable `ReportVersionRecord` snapshot is now created — same real `generateReportPdfSnapshot()`/versionCount-based trigger inference `finalizeSignOut()` already used, captured before the release so it genuinely reflects what the resident actually submitted, not a possibly-later-edited state. Deliberately no `instanceId` — the same real, whole-case snapshot shape every orchestration-mode `create()` call in this app already uses — which alone is what correctly keeps it out of the real ORU^R01 dispatch hook inside `create()` itself (`mode === 'orchestration' && instanceId`), satisfying "no release buffer starts, no HL7 is queued" without needing a second, separate guard.
+
+**Full test-suite re-verification, done**: 1933/1936 passing (3 new, all passing — a dedicated trainee-path version-record test, plus two new tests for the attending path's own buffer-vs-immediate-dispatch branching), same 3 pre-existing, unrelated failures, zero regressions from the whole rearchitecture across every prior pass. Two of the three new tests also caught and fixed a real gap in the test file's own setup along the way: `mockReportReleaseService`/`dispatchCaseInstances` had never been mocked in this test file at all — every existing test was silently hitting the real `resolveBufferForCase()` implementation. Mocked now, with the default matching what the real service already resolved to for a plain test case (`applies: true`) — confirmed by first getting the default wrong (`applies: false`) and watching two genuinely pre-existing tests fail for the right reason before correcting it.

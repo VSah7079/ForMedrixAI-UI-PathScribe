@@ -1,4 +1,4 @@
-import React from 'react';
+// Batch 367 (PS-74): icons take no style prop; colour and size are attributes.
 
 //
 // Shared props for all icons
@@ -6,7 +6,6 @@ import React from 'react';
 export type IconProps = {
   color?: string;
   size?: number;
-  style?: React.CSSProperties;
 };
 
 //
@@ -14,13 +13,11 @@ export type IconProps = {
 //
 export const SunIcon = ({
   color = "currentColor",
-  size = 20,
-  style
+  size = 20
 }: IconProps) => (
   <svg
     width={size}
     height={size}
-    style={style}
     viewBox="0 0 24 24"
     fill="none"
     stroke={color}
@@ -45,13 +42,11 @@ export const SunIcon = ({
 //
 export const MoonIcon = ({
   color = "currentColor",
-  size = 20,
-  style
+  size = 20
 }: IconProps) => (
   <svg
     width={size}
     height={size}
-    style={style}
     viewBox="0 0 24 24"
     fill="none"
     stroke={color}
@@ -68,13 +63,11 @@ export const MoonIcon = ({
 //
 export const HelpIcon = ({
   color = "currentColor",
-  size = 20,
-  style
+  size = 20
 }: IconProps) => (
   <svg
     width={size}
     height={size}
-    style={style}
     viewBox="0 0 24 24"
     fill="none"
     stroke={color}
@@ -93,13 +86,11 @@ export const HelpIcon = ({
 //
 export const MonitorIcon = ({
   color = "currentColor",
-  size = 18,
-  style
+  size = 18
 }: IconProps) => (
   <svg
     width={size}
     height={size}
-    style={style}
     viewBox="0 0 24 24"
     fill="none"
     stroke={color}
@@ -118,13 +109,11 @@ export const MonitorIcon = ({
 //
 export const WarningIcon = ({
   color = "#F59E0B",
-  size = 48,
-  style
+  size = 48
 }: IconProps) => (
   <svg
     width={size}
     height={size}
-    style={style}
     viewBox="0 0 24 24"
     fill="none"
     stroke={color}
@@ -143,13 +132,11 @@ export const WarningIcon = ({
 //
 export const X = ({
   color = "currentColor",
-  size = 16,
-  style
+  size = 16
 }: IconProps) => (
   <svg
     width={size}
     height={size}
-    style={style}
     viewBox="0 0 24 24"
     fill="none"
     stroke={color}

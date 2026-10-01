@@ -29,13 +29,22 @@
 // a real, server-side scheduler that would also release a case nobody
 // has this page open for. Flagged honestly, not hidden.
 //
-// Matches this folder's own established banner pattern
-// (InformalReviewBanner.tsx) — a self-contained component, inline
-// styles (no dedicated banner CSS class family exists for these
-// one-offs, confirmed directly against pathscribe.css), ps-btn-secondary
-// for actions.
+// Matched this folder's own established banner pattern at the time
+// this file was written — a self-contained component, inline styles (no
+// dedicated banner CSS class family existed for these one-offs at the
+// time), ps-btn-secondary for actions. This i18n/cleanup sweep gave it
+// its own new `.ps-release-buffer-*` class family instead, matching
+// how batch 168's TerminologyAlertBanner.tsx (also fully inline
+// originally) was handled.
+//
+// i18n note: `result.reason` (from mockReportReleaseService.recall(),
+// a shared, multi-consumer service) stays literal English — same
+// precedent as leaving referenceCheckService.ts's own reference labels
+// untranslated in batch 178, since converting one shared .ts service's
+// return strings is out of scope for a single component's batch.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useCallback, useEffect, useRef } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import type { Case } from '@/types/case/Case';
 import { mockReportReleaseService } from '@/services/reportRelease/mockReportReleaseService';
 import { useReleaseBufferCountdown, formatRemaining } from '../hooks/useReleaseBufferCountdown';
@@ -48,12 +57,13 @@ interface ReleaseBufferBannerProps {
   currentUserId?: string;
   currentUserName?: string;
   setCaseData: (updater: (prev: Case | null | undefined) => Case | null | undefined) => void;
-  showToast?: (message: string) => void;
+  showToast?: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
 }
 
 export const ReleaseBufferBanner: React.FC<ReleaseBufferBannerProps> = ({
   caseData, currentUserId, currentUserName, setCaseData, showToast,
 }) => {
+  const { t } = useTranslation();
   const [recalling, setRecalling] = useState(false);
   const releasingRef = useRef(false);
 
@@ -74,7 +84,7 @@ export const ReleaseBufferBanner: React.FC<ReleaseBufferBannerProps> = ({
     mockReportReleaseService.checkAndReleaseIfExpired(caseData.id).then(result => {
       if (result.released) {
         setCaseData(prev => prev ? ({ ...prev, status: 'finalized' as const, releasedAt: new Date().toISOString(), releaseBufferExpiresAt: undefined, releaseBufferDurationMinutes: undefined, preReleaseBufferStatus: undefined }) : prev);
-        showToast?.('Release buffer expired — report finalized and released.');
+        showToast?.(t('releaseBufferBanner.releaseExpiredToast'));
       }
       releasingRef.current = false;
     });
@@ -96,7 +106,7 @@ export const ReleaseBufferBanner: React.FC<ReleaseBufferBannerProps> = ({
           releaseBufferDurationMinutes: undefined,
           preReleaseBufferStatus: undefined,
         }) : prev);
-        showToast?.('Report recalled — you can continue editing.');
+        showToast?.(t('releaseBufferBanner.recalledToast'));
       } else {
         showToast?.((result as { ok: false; reason: string }).reason);
       }
@@ -105,24 +115,37 @@ export const ReleaseBufferBanner: React.FC<ReleaseBufferBannerProps> = ({
     }
   }, [caseData?.id, currentUserId, currentUserName, setCaseData, showToast]);
 
+  // Real, per direct follow-up ("the actions list is out of sync...
+  // voice control... has to be flawless"): the real, other half of the
+  // RECALL_REPORT action registered in mockActionRegistryService.ts —
+  // that side dispatches this same event (see SynopticReportPage.tsx's
+  // own onAction switch), this side is what actually calls the real
+  // handler. Safe to wire globally, not gated on isRealSigner here
+  // too — mockReportReleaseService.recall() itself already refuses a
+  // mismatched performedBy.userId independently of this component's
+  // own UI-level button gating (see that service's own doc comment).
+  useEffect(() => {
+    const handler = () => { handleRecall(); };
+    window.addEventListener('PATHSCRIBE_RECALL_REPORT', handler);
+    return () => window.removeEventListener('PATHSCRIBE_RECALL_REPORT', handler);
+  }, [handleRecall]);
+
   if (!isPendingRelease || !expiresAt) return null;
 
   return (
-    <div style={{
-      display: 'flex', alignItems: 'center', justifyContent: 'space-between', gap: '12px',
-      padding: '10px 14px', margin: '0 0 12px', borderRadius: '6px',
-      background: 'rgba(251,191,36,0.10)', border: '1px solid rgba(251,191,36,0.35)',
-      color: '#e2e8f0', fontSize: '13px',
-    }}>
+    <div className="ps-release-buffer-banner">
       {isRealSigner ? (
         <>
           <span>
-            ⏳ <strong>Pending Release</strong> — releasing automatically in{' '}
-            <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{formatRemaining(remainingMs)}</strong>.
-            Recall now to keep editing without triggering an amendment.
+            ⏳{' '}
+            <Trans
+              i18nKey="releaseBufferBanner.signerMessage"
+              values={{ status: t('searchPage.statusLabelKey.pendingRelease'), time: formatRemaining(remainingMs) }}
+              components={{ bold: <strong />, countdown: <strong className="ps-release-buffer-countdown" /> }}
+            />
           </span>
           <button className="ps-btn-secondary" disabled={recalling} onClick={handleRecall}>
-            {recalling ? 'Recalling…' : 'Recall Report'}
+            {recalling ? t('releaseBufferBanner.recallingLabel') : t('releaseBufferBanner.recallButtonLabel')}
           </button>
         </>
       ) : (
@@ -131,9 +154,12 @@ export const ReleaseBufferBanner: React.FC<ReleaseBufferBannerProps> = ({
         // anyone, including trainees, but the recall action itself
         // was never theirs to take).
         <span>
-          ⏳ <strong>Pending Release</strong> — the signing pathologist's recall window
-          closes automatically in{' '}
-          <strong style={{ fontVariantNumeric: 'tabular-nums' }}>{formatRemaining(remainingMs)}</strong>.
+          ⏳{' '}
+          <Trans
+            i18nKey="releaseBufferBanner.nonSignerMessage"
+            values={{ status: t('searchPage.statusLabelKey.pendingRelease'), time: formatRemaining(remainingMs) }}
+            components={{ bold: <strong />, countdown: <strong className="ps-release-buffer-countdown" /> }}
+          />
         </span>
       )}
     </div>

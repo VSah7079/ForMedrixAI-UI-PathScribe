@@ -28,7 +28,7 @@ export function buildEnhancementHtml(payload: EnhancementRequestPayload): string
           <strong>Submitted by:</strong> ${payload.metadata.userName} (${payload.metadata.userRole})
         </td></tr>
         <tr><td style="padding:0 0 4px 0;font-size:12px;color:#555555;font-family:Arial,sans-serif;">
-          <strong>Page:</strong> ${payload.metadata.currentPage}
+          <strong>Page:</strong> ${payload.metadata.currentPage}${payload.metadata.caseSupportReference ? ` &nbsp;·&nbsp; <strong>Case support reference:</strong> ${payload.metadata.caseSupportReference}` : ''}
         </td></tr>
         <tr><td style="padding:0 0 4px 0;font-size:12px;color:#555555;font-family:Arial,sans-serif;">
           <strong>Browser:</strong> ${payload.metadata.browser} &nbsp;·&nbsp; ${payload.metadata.os} &nbsp;·&nbsp; v${payload.metadata.appVersion}
@@ -153,9 +153,10 @@ export function buildEnhancementText(payload: EnhancementRequestPayload): string
       '---',
       `Submitted by : ${payload.metadata.userName} (${payload.metadata.userRole})`,
       `Page         : ${payload.metadata.currentPage}`,
+      payload.metadata.caseSupportReference ? `Case ref     : ${payload.metadata.caseSupportReference}` : null,
       `Browser      : ${payload.metadata.browser} · ${payload.metadata.os}`,
       `Version      : ${payload.metadata.appVersion}`,
       `At           : ${new Date().toLocaleString()}`,
-    ].join('\n') : `At: ${new Date().toLocaleString()}`,
+    ].filter(Boolean).join('\n') : `At: ${new Date().toLocaleString()}`,
   ].filter((l): l is string => l !== null).join('\n');
 }

@@ -6,7 +6,8 @@
 // whether they're inside a Part or an old-style Template.
 // ─────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
+import { useNavigate, useParams } from 'react-router';
+import { useTranslation } from 'react-i18next';
 
 import type { ReportPart, ReportPartType } from '../../types/reportPart';
 import type { TemplateNode } from '../../types/template';
@@ -14,15 +15,25 @@ import { TemplatePalette }   from './TemplatePalette';
 import { TemplateCanvas, updateNode } from './TemplateCanvas';
 import { TemplateInspector } from './TemplateInspector';
 import { mockReportPartService } from '../../services/reportParts/mockReportPartService';
+import { getActivePerformingLabs } from '../../utils/performingLabs';
+import type { Facility } from '../../services/facilities/IFacilityService';
 
 const svc = mockReportPartService;
 
 // ── Type config ────────────────────────────────────────────────
 
-const TYPE_CONFIG: Record<ReportPartType, { label: string; icon: string }> = {
-  header: { label: 'Header Part',  icon: '▲' },
-  footer: { label: 'Footer Part',  icon: '▼' },
-  body:   { label: 'Body Part',    icon: '▬' },
+const TYPE_CONFIG: Record<ReportPartType, { icon: string }> = {
+  header: { icon: '▲' },
+  footer: { icon: '▼' },
+  body:   { icon: '▬' },
+};
+
+// Real, persisted ReportPartType enum values stay as data; only the
+// displayed label is translated (this sweep's usual LABEL_KEY pattern).
+const TYPE_LABEL_KEY: Record<ReportPartType, string> = {
+  header: 'partBuilderPage.type.header',
+  footer: 'partBuilderPage.type.footer',
+  body:   'partBuilderPage.type.body',
 };
 
 // ── Save state ─────────────────────────────────────────────────
@@ -32,6 +43,7 @@ type SaveState = 'saved' | 'unsaved' | 'saving' | 'error';
 // ── Main page ──────────────────────────────────────────────────
 
 const PartBuilderPage: React.FC = () => {
+  const { t } = useTranslation();
   const { partId } = useParams<{ partId: string }>();
   const navigate   = useNavigate();
 
@@ -41,6 +53,8 @@ const PartBuilderPage: React.FC = () => {
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [showGrid, setShowGrid] = useState(false);
   const [metaOpen, setMetaOpen] = useState(false);
+  const [labs, setLabs] = useState<Facility[]>([]);
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
   const saveTimeout = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // ── Load ───────────────────────────────────────────────────
@@ -106,7 +120,7 @@ const PartBuilderPage: React.FC = () => {
   if (!loading && !part && (!partId || partId === 'new')) {
     return <NewPartTypePicker onPick={type => {
       const blank: ReportPart = {
-        id: crypto.randomUUID(), name: `New ${TYPE_CONFIG[type].label}`,
+        id: crypto.randomUUID(), name: t('partBuilderPage.defaultNewPartName', { typeLabel: t(TYPE_LABEL_KEY[type]) }),
         partType: type, specialty: 'General', status: 'draft',
         nodes: [], institutionId: '', createdBy: 'current-user',
         createdAt: new Date().toISOString(), updatedAt: new Date().toISOString(),
@@ -119,13 +133,13 @@ const PartBuilderPage: React.FC = () => {
 
   if (loading) return (
     <div className="ps-partb-loading">
-      Loading part…
+      {t('partBuilderPage.loadingPart')}
     </div>
   );
 
   if (!part) return (
     <div className="ps-partb-loading ps-partb-loading--error">
-      Part not found.
+      {t('partBuilderPage.partNotFound')}
     </div>
   );
 
@@ -147,26 +161,26 @@ const PartBuilderPage: React.FC = () => {
               className="ps-partb-name-input"
             />
             <div className="ps-partb-name-sub">
-              {tc.label} · {part.specialty}
+              {t(TYPE_LABEL_KEY[part.partType])} · {part.specialty}
             </div>
           </div>
         </div>
 
         <div className="ps-partb-top-right">
           <span className="ps-partb-save-indicator">
-            {saveState === 'saving' ? '⟳ Saving…'
-              : saveState === 'saved' ? '✓ Saved'
-              : saveState === 'unsaved' ? '● Unsaved'
-              : '✕ Error'}
+            {saveState === 'saving' ? `⟳ ${t('partBuilderPage.saveState.saving')}`
+              : saveState === 'saved' ? `✓ ${t('partBuilderPage.saveState.saved')}`
+              : saveState === 'unsaved' ? `● ${t('partBuilderPage.saveState.unsaved')}`
+              : `✕ ${t('partBuilderPage.saveState.error')}`}
           </span>
           <button
             onClick={() => setShowGrid(g => !g)}
             className={`ps-partb-btn${showGrid ? ' ps-partb-btn--grid-on' : ''}`}
           >
-            ⊞ {showGrid ? 'Grid on' : 'Grid off'}
+            ⊞ {showGrid ? t('partBuilderPage.gridOn') : t('partBuilderPage.gridOff')}
           </button>
           <button onClick={() => setMetaOpen(o => !o)} className="ps-partb-btn">
-            Settings
+            {t('partBuilderPage.settingsButton')}
           </button>
           <button
             onClick={async () => {
@@ -176,7 +190,7 @@ const PartBuilderPage: React.FC = () => {
             disabled={part.status === 'published'}
             className={`ps-partb-btn${part.status === 'published' ? ' ps-partb-btn--published' : ' ps-partb-btn--publish'}`}
           >
-            {part.status === 'published' ? 'Published' : 'Publish'}
+            {part.status === 'published' ? t('partBuilderPage.publishedButton') : t('partBuilderPage.publishButton')}
           </button>
         </div>
       </header>
@@ -190,28 +204,38 @@ const PartBuilderPage: React.FC = () => {
                 <input type="radio" name="partType" value={type} checked={part.partType === type}
                   onChange={() => markUnsaved({ ...part, partType: type })} />
                 <span className="ps-partb-meta-radio-label">
-                  {TYPE_CONFIG[type].icon} {TYPE_CONFIG[type].label}
+                  {TYPE_CONFIG[type].icon} {t(TYPE_LABEL_KEY[type])}
                 </span>
               </label>
             ))}
             <div>
-              <div className="ps-partb-meta-label">Specialty</div>
+              <div className="ps-partb-meta-label">{t('partBuilderPage.specialtyLabel')}</div>
               <input value={part.specialty} onChange={e => markUnsaved({ ...part, specialty: e.target.value })}
-                placeholder="General" className="ps-partb-meta-input" />
+                placeholder={t('partBuilderPage.specialtyPlaceholder')} className="ps-partb-meta-input" />
             </div>
             <div>
-              <div className="ps-partb-meta-label">Description</div>
+              <div className="ps-partb-meta-label">{t('partBuilderPage.descriptionLabel')}</div>
               <input value={part.description ?? ''} onChange={e => markUnsaved({ ...part, description: e.target.value })}
-                placeholder="What this part contains" className="ps-partb-meta-input" />
+                placeholder={t('partBuilderPage.descriptionPlaceholder')} className="ps-partb-meta-input" />
             </div>
             <div>
-              <div className="ps-partb-meta-label">Standard</div>
+              <div className="ps-partb-meta-label">{t('partBuilderPage.standardLabel')}</div>
+              {/* CAP/RCPath are fixed governing-body vocabulary, kept
+                  literal per this app's established convention. */}
               <select value={part.standard ?? ''} onChange={e => markUnsaved({ ...part, standard: e.target.value as ReportPart['standard'] })}
                 className="ps-partb-meta-select">
-                <option value="">None</option>
+                <option value="">{t('partBuilderPage.standardNone')}</option>
                 <option value="CAP">CAP</option>
                 <option value="RCPath">RCPath</option>
-                <option value="custom">Custom</option>
+                <option value="custom">{t('partBuilderPage.standardCustom')}</option>
+              </select>
+            </div>
+            <div>
+              <div className="ps-partb-meta-label">{t('partBuilderPage.performingLabLabel')}</div>
+              <select value={part.performingLabFacilityId ?? ''} onChange={e => markUnsaved({ ...part, performingLabFacilityId: e.target.value || undefined })}
+                className="ps-partb-meta-select">
+                <option value="">{t('partBuilderPage.performingLabGlobalOption')}</option>
+                {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
               </select>
             </div>
           </div>
@@ -225,12 +249,12 @@ const PartBuilderPage: React.FC = () => {
         <div className="ps-partb-canvas-wrapper">
           <div className="ps-partb-canvas-toolbar">
             <span className="ps-partb-canvas-count">
-              {countNodes(part.nodes)} component{countNodes(part.nodes) !== 1 ? 's' : ''}
+              {t('partBuilderPage.componentCount', { count: countNodes(part.nodes) })}
             </span>
             {selectedId && (
               <button onClick={() => setSelectedId(null)}
                 className="ps-partb-clear-selection">
-                Clear selection
+                {t('partBuilderPage.clearSelection')}
               </button>
             )}
           </div>
@@ -255,44 +279,47 @@ const PartBuilderPage: React.FC = () => {
 const NewPartTypePicker: React.FC<{
   onPick: (type: ReportPartType) => void;
   onBack: () => void;
-}> = ({ onPick, onBack }) => (
-  <div className="ps-partb-picker-shell">
-    <div className="ps-partb-picker-intro">
-      <div className="ps-partb-picker-title">
-        What kind of part are you creating?
+}> = ({ onPick, onBack }) => {
+  const { t } = useTranslation();
+  const descriptionKey: Record<ReportPartType, string> = {
+    header: 'partBuilderPage.picker.description.header',
+    body:   'partBuilderPage.picker.description.body',
+    footer: 'partBuilderPage.picker.description.footer',
+  };
+  return (
+    <div className="ps-partb-picker-shell">
+      <div className="ps-partb-picker-intro">
+        <div className="ps-partb-picker-title">
+          {t('partBuilderPage.picker.title')}
+        </div>
+        <div className="ps-partb-picker-sub">
+          {t('partBuilderPage.picker.subtitle')}
+        </div>
       </div>
-      <div className="ps-partb-picker-sub">
-        Parts are reusable building blocks assembled into report templates.
+      <div className="ps-partb-picker-cards">
+        {(['header', 'body', 'footer'] as ReportPartType[]).map(type => {
+          const tc = TYPE_CONFIG[type];
+          return (
+            <button key={type} onClick={() => onPick(type)}
+              className={`ps-partb-picker-card ps-partb-picker-card--${type}`}
+            >
+              <div className={`ps-partb-picker-card-icon ps-partb-picker-card-icon--${type}`}>{tc.icon}</div>
+              <div className="ps-partb-picker-card-title">
+                {t(TYPE_LABEL_KEY[type])}
+              </div>
+              <div className="ps-partb-picker-card-desc">
+                {t(descriptionKey[type])}
+              </div>
+            </button>
+          );
+        })}
       </div>
+      <button onClick={onBack} className="ps-partb-picker-back">
+        ← {t('common.back')}
+      </button>
     </div>
-    <div className="ps-partb-picker-cards">
-      {(['header', 'body', 'footer'] as ReportPartType[]).map(type => {
-        const tc = TYPE_CONFIG[type];
-        const descriptions: Record<ReportPartType, string> = {
-          header: 'Institution branding, accession number, patient demographics. Appears at the top of pages.',
-          body:   'Clinical content — diagnosis, gross description, microscopic, synoptic data. The main report substance.',
-          footer: 'Page numbers, confidentiality notice, patient identity line. Appears at the bottom of pages.',
-        };
-        return (
-          <button key={type} onClick={() => onPick(type)}
-            className={`ps-partb-picker-card ps-partb-picker-card--${type}`}
-          >
-            <div className={`ps-partb-picker-card-icon ps-partb-picker-card-icon--${type}`}>{tc.icon}</div>
-            <div className="ps-partb-picker-card-title">
-              {tc.label}
-            </div>
-            <div className="ps-partb-picker-card-desc">
-              {descriptions[type]}
-            </div>
-          </button>
-        );
-      })}
-    </div>
-    <button onClick={onBack} className="ps-partb-picker-back">
-      ← Back
-    </button>
-  </div>
-);
+  );
+};
 
 // ── Helpers ────────────────────────────────────────────────────
 

@@ -13,6 +13,15 @@
 // Deliberately general — scoped by eventType/reason/rawMessage rather
 // than anything A43-specific — so the same queue can hold a future
 // unresolvable event of a different real type without a redesign.
+//
+// That design paid off a second time: eventType: 'unmapped_order_code'
+// (order-type-mapping work, see services/orderIntake's own
+// SpecimenCodeCrosswalkEntry) reuses this same queue/service/UI
+// unchanged, for the same reason A40/A24/A47 did — an inbound order
+// code the crosswalk couldn't match, in any coding system tried,
+// needs a real human review path, not a silent guess. Only the
+// optional rawOrderCode/normalizedOrderCode/codingSystem/
+// organisationId/siteId fields below are new.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { ServiceResult, ID } from '../types';
@@ -53,6 +62,36 @@ export interface InterfaceException {
    *  match anything," which still resolves both identities fine). */
   sourcePatientId?: string;
   targetPatientId?: string;
+  /** Real fields for eventType: 'unmapped_order_code' — a real, external
+   *  order/test code the Specimen Code Crosswalk (see
+   *  services/orderIntake/IOrderIntakeService.ts's own
+   *  SpecimenCodeCrosswalkEntry) had no match for, in any coding
+   *  system tried. Same "deliberately general, add optional fields for
+   *  a new real event type rather than a parallel type" posture this
+   *  interface's own header already documents — not a new table.
+   *  Genuinely absent for every exception type that predates this one
+   *  (A40/A24/A43/A47), same as sourcePatientId/targetPatientId are
+   *  genuinely absent here. */
+  rawOrderCode?: string;
+  normalizedOrderCode?: string;
+  codingSystem?: string;
+  organisationId?: string;
+  siteId?: string;
+  /** Real, new field, per the real "Map & Link" contextual resolution
+   *  feature (Config → Integrations' own Order Types & Inbound Rules
+   *  screen, InterfaceExceptionReviewModal.tsx) — the real Facility/
+   *  client id (services/facilities/) this unmapped order code came
+   *  in on, distinct from organisationId/siteId above (a real,
+   *  different concept — see resolveProviderName.ts's own header on
+   *  Facility vs Organisation/Site for why these are never
+   *  conflated). Needed to correctly scope the real crosswalk entry
+   *  a reviewer creates when resolving this exception —
+   *  SpecimenCodeCrosswalkEntry.clientId is the same code string
+   *  meaning different things at different sending systems, so a
+   *  crosswalk entry without a real facilityId can't be created
+   *  correctly. Genuinely absent for every exception type that
+   *  predates this field. */
+  facilityId?: string;
   status: InterfaceExceptionStatus;
   createdAt: string;
   resolvedAt?: string;

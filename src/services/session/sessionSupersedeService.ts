@@ -62,3 +62,25 @@ export function setOwnSessionId(sessionId: string): void {
 export function clearOwnSessionId(): void {
   try { sessionStorage.removeItem(OWN_SESSION_ID_KEY); } catch {}
 }
+
+// ─── The "you were signed out because you signed in elsewhere" notice ───────
+// PS-60 (Batch 343): moved here from ProtectedRoute and LoginPage, which
+// used sessionStorage directly. ProtectedRoute flags it as it signs the
+// superseded tab out; LoginPage shows it once on arrival.
+
+const SUPERSEDED_NOTICE_KEY = 'pathscribe_show_superseded_notice';
+
+export function flagSupersededNotice(): void {
+  try { sessionStorage.setItem(SUPERSEDED_NOTICE_KEY, '1'); } catch {}
+}
+
+/** True once after flagSupersededNotice(), then false. */
+export function consumeSupersededNotice(): boolean {
+  try {
+    if (sessionStorage.getItem(SUPERSEDED_NOTICE_KEY) !== '1') return false;
+    sessionStorage.removeItem(SUPERSEDED_NOTICE_KEY);
+    return true;
+  } catch {
+    return false;
+  }
+}

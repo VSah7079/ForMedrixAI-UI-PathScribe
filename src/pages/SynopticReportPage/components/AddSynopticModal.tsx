@@ -2,6 +2,7 @@
 // Two-panel Flag Manager style modal for adding synoptic reports.
 
 import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { TemplateRequestModal } from '@/components/TemplateRequest/TemplateRequestModal';
 import type { Case, SynopticReportInstance } from '@/types/case/Case';
 import { suggestSynopticTemplates } from '@/services/templateSuggestions/synopticTemplateSuggestionService';
@@ -22,12 +23,26 @@ interface AddSynopticModalProps {
   onAdd:               (instances: SynopticReportInstance[], updatedCase: Case) => void;
 }
 
+// Real search/filter tag values, matched as literal substrings against
+// protocol name/source/category text — the values themselves must stay
+// the fixed English keywords the underlying data actually contains.
+// 'CAP'/'RCPath' are governing-body abbreviations (fixed vocabulary,
+// never translated); the organ tags get a separate display-only label.
+const FILTER_TAGS = ['All', 'CAP', 'RCPath', 'BREAST', 'COLON', 'PROSTATE', 'LUNG'] as const;
+const ORGAN_TAG_LABEL_KEY: Record<string, string> = {
+  BREAST:   'addSynopticModal.filters.breast',
+  COLON:    'addSynopticModal.filters.colon',
+  PROSTATE: 'addSynopticModal.filters.prostate',
+  LUNG:     'addSynopticModal.filters.lung',
+};
+
 const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
   caseData,
   availableProtocols,
   onClose,
   onAdd,
 }) => {
+  const { t } = useTranslation();
   const [selectedSpecimenIds, setSelectedSpecimenIds] = useState<string[]>([]);
   const [selectedProtocol,    setSelectedProtocol]    = useState('');
   const [protocolSearch,      setProtocolSearch]      = useState('');
@@ -57,7 +72,7 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
       availableTemplates: availableProtocols.map(p => ({
         id: p.id, name: p.name, category: p.category ?? 'Other',
       })),
-      clientId: caseData?.order?.clientId,
+      facilityId: caseData?.order?.facilityId,
     }).then(result => {
       if (!cancelled) setSuggestions(result.suggestions);
     }).catch(() => { /* suggestion fetch failing must never block manual selection */ });
@@ -171,18 +186,14 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
     onClose();
   };
 
-  // Badge for source
+  // Badge for source — 'RCPath' vs everything else (typically 'CAP')
+  // are real governing-body-sourced protocols; both abbreviations stay
+  // literal, only the badge's visual variant differs.
   const SourceBadge: React.FC<{ source?: string }> = ({ source }) => {
     if (!source) return null;
     const isRCPath = source === 'RCPath';
     return (
-      <span style={{
-        fontSize: 10, fontWeight: 700, padding: '1px 6px', borderRadius: 4,
-        background: isRCPath ? 'rgba(8,145,178,0.15)' : 'rgba(139,92,246,0.15)',
-        color:      isRCPath ? '#38bdf8'               : '#a78bfa',
-        border:    `1px solid ${isRCPath ? 'rgba(8,145,178,0.3)' : 'rgba(139,92,246,0.3)'}`,
-        marginLeft: 6, flexShrink: 0,
-      }}>
+      <span className={`ps-addsyn-source-badge${isRCPath ? ' ps-addsyn-source-badge--rcpath' : ''}`}>
         {source}
       </span>
     );
@@ -192,41 +203,30 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
     <>
     <div className="ps-overlay" onClick={onClose}>
       <div
-        className="ps-research-modal"
-        style={{ width: 980, height: '80vh', maxHeight: '80vh', display: 'flex', flexDirection: 'column' }}
+        className="ps-research-modal ps-addsyn-modal"
         onClick={e => e.stopPropagation()}
       >
         {/* ── Header ── */}
         <div className="ps-research-header">
           <div>
-            <div className="fm-eyebrow">Synoptic Reporting</div>
+            <div className="fm-eyebrow">{t('addSynopticModal.eyebrow')}</div>
             <div className="fm-title-row">
-              <h2 className="fm-title">Add Synoptic Report</h2>
+              <h2 className="fm-title">{t('addSynopticModal.title')}</h2>
               {selectedSpecimenIds.length > 0 && (
-                <span className="fm-active-badge">{selectedSpecimenIds.length} selected</span>
+                <span className="fm-active-badge">{t('addSynopticModal.selectedBadge', { count: selectedSpecimenIds.length })}</span>
               )}
             </div>
           </div>
-          <button onClick={onClose} aria-label="Close"
-            style={{ background: 'none', border: 'none', color: 'rgba(255,255,255,0.5)', fontSize: 20, cursor: 'pointer', padding: '2px 8px', lineHeight: 1, flexShrink: 0 }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#ef4444'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = 'rgba(255,255,255,0.5)'; }}
-          >✕</button>
+          <button onClick={onClose} aria-label={t('common.close')} className="ps-addsyn-close-btn">✕</button>
         </div>
 
         {/* ── Two-panel body ── */}
-        <div style={{ display: 'flex', flex: 1, overflow: 'hidden', minHeight: 0 }}>
+        <div className="ps-addsyn-body">
 
           {/* Left — Specimens */}
-          <div style={{
-            width: 320, flexShrink: 0, borderRight: '1px solid rgba(51,65,85,0.9)',
-            overflowY: 'auto', padding: '12px 0',
-          }}>
-            <div style={{
-              fontSize: 10, fontWeight: 800, textTransform: 'uppercase', letterSpacing: '0.12em',
-              color: '#0891B2', padding: '4px 20px 10px',
-            }}>
-              Select Specimens
+          <div className="ps-addsyn-left">
+            <div className="ps-addsyn-panel-eyebrow">
+              {t('addSynopticModal.selectSpecimens')}
             </div>
 
             {specimens.map(spec => {
@@ -236,38 +236,20 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
                 <div
                   key={spec.id}
                   onClick={() => toggleSpecimen(spec.id)}
-                  style={{
-                    display: 'flex', alignItems: 'center', gap: 10,
-                    padding: '12px 20px', cursor: 'pointer',
-                    background: isSelected ? 'rgba(8,145,178,0.12)' : 'transparent',
-                    borderLeft: `3px solid ${isSelected ? '#0891B2' : 'transparent'}`,
-                    borderBottom: '1px solid rgba(255,255,255,0.04)',
-                    transition: 'all 0.12s',
-                  }}
-                  onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                  onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = 'transparent'; }}
+                  className={`ps-addsyn-specimen-row${isSelected ? ' ps-addsyn-specimen-row--selected' : ''}`}
                 >
                   {/* Checkbox */}
-                  <div style={{
-                    width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                    background: isSelected ? '#0891B2' : 'transparent',
-                    border: `2px solid ${isSelected ? '#0891B2' : 'rgba(255,255,255,0.2)'}`,
-                    display: 'flex', alignItems: 'center', justifyContent: 'center',
-                    transition: 'all 0.12s',
-                  }}>
-                    {isSelected && <span style={{ color: '#fff', fontSize: 11, fontWeight: 800, lineHeight: 1 }}>✓</span>}
+                  <div className={`ps-addsyn-checkbox${isSelected ? ' ps-addsyn-checkbox--checked' : ''}`}>
+                    {isSelected && <span className="ps-addsyn-checkbox-check">✓</span>}
                   </div>
 
-                  <div style={{ flex: 1, minWidth: 0 }}>
-                    <div style={{
-                      fontSize: 13, fontWeight: 700, color: '#e2e8f0',
-                      overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap',
-                    }}>
-                      <span style={{ color: '#38bdf8' }}>{spec.label}:</span>{' '}{spec.description}
+                  <div className="ps-addsyn-specimen-info">
+                    <div className="ps-addsyn-specimen-name">
+                      <span className="ps-addsyn-specimen-label">{spec.label}:</span>{' '}{spec.description}
                     </div>
                     {hasReport && (
-                      <div style={{ fontSize: 10, color: '#10b981', marginTop: 2 }}>
-                        ✓ Report exists
+                      <div className="ps-addsyn-specimen-report-exists">
+                        ✓ {t('addSynopticModal.reportExists')}
                       </div>
                     )}
                   </div>
@@ -277,16 +259,11 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
           </div>
 
           {/* Right — Protocol search & selection */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'hidden' }}>
+          <div className="ps-addsyn-right">
 
             {/* Search */}
-            <div style={{ padding: '14px 20px 0', borderBottom: '1px solid rgba(51,65,85,0.9)' }}>
-              <div style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                background: 'rgba(255,255,255,0.05)',
-                border: '1px solid rgba(255,255,255,0.1)',
-                borderRadius: 8, padding: '10px 14px', marginBottom: 12,
-              }}>
+            <div className="ps-addsyn-search-wrap">
+              <div className="ps-addsyn-search-box">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#64748b" strokeWidth="2.5">
                   <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
                 </svg>
@@ -295,48 +272,42 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
                   type="text"
                   value={selectedProtocol ? (selectedProtocolObj?.name ?? '') : protocolSearch}
                   onChange={e => { setProtocolSearch(e.target.value); setSelectedProtocol(''); }}
-                  placeholder="Search protocols by name, source, or organ…"
-                  style={{
-                    flex: 1, background: 'transparent', border: 'none', outline: 'none',
-                    color: '#e2e8f0', fontSize: 13, fontFamily: 'inherit',
-                  }}
+                  placeholder={t('addSynopticModal.search.placeholder')}
+                  className="ps-addsyn-search-input"
                 />
                 {(protocolSearch || selectedProtocol) && (
                   <button onClick={() => { setProtocolSearch(''); setSelectedProtocol(''); }}
-                    style={{ background: 'none', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16, lineHeight: 1, padding: 0 }}>
+                    className="ps-addsyn-search-clear">
                     ×
                   </button>
                 )}
               </div>
 
               {/* Filter pills */}
-              <div style={{ display: 'flex', gap: 6, paddingBottom: 12 }}>
-                {['All', 'CAP', 'RCPath', 'BREAST', 'COLON', 'PROSTATE', 'LUNG'].map(tag => (
-                  <button
-                    key={tag}
-                    onClick={() => setProtocolSearch(tag === 'All' ? '' : tag)}
-                    style={{
-                      padding: '3px 10px', borderRadius: 99, fontSize: 11, fontWeight: 700,
-                      cursor: 'pointer', border: '1px solid',
-                      background: (tag === 'All' && !protocolSearch) || protocolSearch.toLowerCase() === tag.toLowerCase()
-                        ? 'rgba(8,145,178,0.2)' : 'transparent',
-                      borderColor: (tag === 'All' && !protocolSearch) || protocolSearch.toLowerCase() === tag.toLowerCase()
-                        ? 'rgba(8,145,178,0.5)' : 'rgba(255,255,255,0.1)',
-                      color: (tag === 'All' && !protocolSearch) || protocolSearch.toLowerCase() === tag.toLowerCase()
-                        ? '#38bdf8' : '#64748b',
-                    }}
-                  >
-                    {tag}
-                  </button>
-                ))}
+              <div className="ps-addsyn-pills">
+                {FILTER_TAGS.map(tag => {
+                  const isActive = (tag === 'All' && !protocolSearch) || protocolSearch.toLowerCase() === tag.toLowerCase();
+                  const label = tag === 'All' ? t('addSynopticModal.filters.all')
+                    : (tag === 'CAP' || tag === 'RCPath') ? tag
+                    : t(ORGAN_TAG_LABEL_KEY[tag]);
+                  return (
+                    <button
+                      key={tag}
+                      onClick={() => setProtocolSearch(tag === 'All' ? '' : tag)}
+                      className={`ps-addsyn-pill${isActive ? ' ps-addsyn-pill--active' : ''}`}
+                    >
+                      {label}
+                    </button>
+                  );
+                })}
               </div>
             </div>
 
             {/* Protocol list */}
-            <div style={{ flex: 1, overflowY: 'auto', padding: '8px 0' }}>
+            <div className="ps-addsyn-protocol-list">
               {filteredProtocols.length === 0 ? (
-                <div style={{ padding: '40px', textAlign: 'center', color: '#475569', fontSize: 13 }}>
-                  No protocols match your search
+                <div className="ps-addsyn-empty">
+                  {t('addSynopticModal.protocolList.empty')}
                 </div>
               ) : filteredProtocols.map(p => {
                 const isSelected = selectedProtocol === p.id;
@@ -344,43 +315,24 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
                   <div
                     key={p.id}
                     onClick={() => setSelectedProtocol(isSelected ? '' : p.id)}
-                    style={{
-                      display: 'flex', alignItems: 'center', justifyContent: 'space-between',
-                      padding: '13px 20px', cursor: 'pointer',
-                      background: isSelected ? 'rgba(8,145,178,0.12)' : 'transparent',
-                      borderLeft: `3px solid ${isSelected ? '#0891B2' : 'transparent'}`,
-                      borderBottom: '1px solid rgba(255,255,255,0.04)',
-                      transition: 'all 0.12s',
-                    }}
-                    onMouseEnter={e => { if (!isSelected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-                    onMouseLeave={e => { if (!isSelected) e.currentTarget.style.background = isSelected ? 'rgba(8,145,178,0.12)' : 'transparent'; }}
+                    className={`ps-addsyn-protocol-row${isSelected ? ' ps-addsyn-protocol-row--selected' : ''}`}
                   >
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 0, flex: 1, minWidth: 0 }}>
-                      <span style={{ fontSize: 13, fontWeight: isSelected ? 700 : 500, color: isSelected ? '#e2e8f0' : '#cbd5e1', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' }}>
-                        {p.name}
-                      </span>
+                    <div className="ps-addsyn-protocol-info">
+                      <span className={`ps-addsyn-protocol-name${isSelected ? ' ps-addsyn-protocol-name--selected' : ''}`} data-phi="name">{p.name}</span>
                       <SourceBadge source={p.source} />
                       {(() => {
                         const match = suggestionForTemplate(p.id);
                         if (!match) return null;
                         return (
-                          <span
-                            title={match.reason}
-                            style={{
-                              marginLeft: 8, flexShrink: 0, fontSize: 10, fontWeight: 700,
-                              color: '#a78bfa', background: 'rgba(167,139,250,0.12)',
-                              border: '1px solid rgba(167,139,250,0.3)', borderRadius: 4,
-                              padding: '2px 6px',
-                            }}
-                          >
-                            ✨ Suggested · {match.confidence}%
+                          <span title={match.reason} className="ps-addsyn-suggestion-badge">
+                            ✨ {t('addSynopticModal.protocolList.suggested', { confidence: match.confidence })}
                           </span>
                         );
                       })()}
                     </div>
                     {isSelected && (
-                      <span style={{ color: '#0891B2', fontSize: 13, fontWeight: 800, marginLeft: 12, flexShrink: 0 }}>
-                        ✓ Applied
+                      <span className="ps-addsyn-applied-badge">
+                        ✓ {t('addSynopticModal.protocolList.applied')}
                       </span>
                     )}
                   </div>
@@ -389,42 +341,26 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
             </div>
 
             {/* Request a template link */}
-            <div style={{ borderTop: '1px solid rgba(51,65,85,0.6)', padding: '10px 20px', textAlign: 'center' }}>
+            <div className="ps-addsyn-request-wrap">
               <button
                 onClick={() => setShowRequestModal(true)}
-                style={{
-                  background: 'transparent', border: 'none', cursor: 'pointer',
-                  fontSize: 12, color: '#64748b', fontFamily: 'inherit',
-                  textDecoration: 'underline', textUnderlineOffset: 2,
-                  padding: '2px 0',
-                }}
+                className="ps-addsyn-request-btn"
               >
-                Don't see what you need? Request a template →
+                {t('addSynopticModal.requestTemplate.button')} →
               </button>
             </div>
 
             {/* Learn pairing */}
-            <div style={{ borderTop: '1px solid rgba(51,65,85,0.9)', padding: '12px 20px' }}>
-              <label style={{
-                display: 'flex', alignItems: 'center', gap: 10,
-                padding: '10px 14px', borderRadius: 8,
-                background: 'rgba(16,185,129,0.08)', border: '1px solid rgba(16,185,129,0.2)',
-                cursor: 'pointer',
-              }}>
-                <div style={{
-                  width: 18, height: 18, borderRadius: 4, flexShrink: 0,
-                  background: learnPairing ? '#10b981' : 'transparent',
-                  border: `2px solid ${learnPairing ? '#10b981' : 'rgba(255,255,255,0.2)'}`,
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  transition: 'all 0.12s',
-                }}
+            <div className="ps-addsyn-learn-wrap">
+              <label className="ps-addsyn-learn-label">
+                <div className={`ps-addsyn-checkbox${learnPairing ? ' ps-addsyn-checkbox--checked ps-addsyn-checkbox--checked-learn' : ''}`}
                   onClick={() => setLearnPairing(p => !p)}
                 >
-                  {learnPairing && <span style={{ color: '#fff', fontSize: 11, fontWeight: 800 }}>✓</span>}
+                  {learnPairing && <span className="ps-addsyn-checkbox-check">✓</span>}
                 </div>
                 <div>
-                  <div style={{ fontSize: 12, fontWeight: 700, color: '#10b981' }}>🤖 Learn this pairing</div>
-                  <div style={{ fontSize: 11, color: '#6ee7b7', marginTop: 1 }}>AI will suggest this protocol for similar specimens in future cases</div>
+                  <div className="ps-addsyn-learn-title">🤖 {t('addSynopticModal.learnPairing.title')}</div>
+                  <div className="ps-addsyn-learn-desc">{t('addSynopticModal.learnPairing.description')}</div>
                 </div>
               </label>
             </div>
@@ -432,30 +368,20 @@ const AddSynopticModal: React.FC<AddSynopticModalProps> = ({
         </div>
 
         {/* ── Footer ── */}
-        <div style={{
-          padding: '14px 24px', borderTop: '1px solid rgba(51,65,85,0.9)',
-          display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-          background: 'var(--ps-grad-header, rgba(0,0,0,0.2))',
-        }}>
-          <div style={{ fontSize: 12, color: '#475569' }}>
+        <div className="ps-addsyn-footer">
+          <div className="ps-addsyn-footer-status">
             {canAdd
-              ? `Adding "${selectedProtocolObj?.name}" to ${selectedSpecimenIds.length} specimen${selectedSpecimenIds.length > 1 ? 's' : ''}`
-              : 'Select specimen(s) and a protocol to continue'}
+              ? t('addSynopticModal.footer.addingStatus', { name: selectedProtocolObj?.name, count: selectedSpecimenIds.length })
+              : t('addSynopticModal.footer.selectPrompt')}
           </div>
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button className="fm-btn-cancel" onClick={onClose}>Cancel</button>
+          <div className="ps-addsyn-footer-btns">
+            <button className="fm-btn-cancel" onClick={onClose}>{t('common.cancel')}</button>
             <button
               onClick={handleAdd}
               disabled={!canAdd}
-              style={{
-                padding: '9px 24px', borderRadius: 8, fontSize: 13, fontWeight: 700,
-                cursor: canAdd ? 'pointer' : 'not-allowed', border: 'none',
-                background: canAdd ? '#0891B2' : 'rgba(8,145,178,0.2)',
-                color: canAdd ? '#fff' : '#475569',
-                transition: 'all 0.15s', fontFamily: 'inherit',
-              }}
+              className="ps-addsyn-add-btn"
             >
-              Add Report
+              {t('addSynopticModal.footer.addReport')}
             </button>
           </div>
         </div>

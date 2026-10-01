@@ -24,6 +24,11 @@ Shared, reusable UI primitives used across multiple pages.
   className props rather than hardcoding classes) since it's reused across
   two different class systems (`ps-input-dark` on AccessionPage,
   `ps-conf-input` on Config screens). No issues.
+- **`PatientIdStatusDot.tsx`** — real feature, per direct specification:
+  "UI Status Indicator Component." A colored status dot next to a
+  patient ID field, with a real, hoverable tooltip explaining the
+  status — jurisdiction-aware (NHS Number's own real HL7 status code
+  for England & Wales; locally-derived Green/Red elsewhere).
 - **`LookupModal.tsx`** — Shared full-screen search-and-select modal shell
   (overlay, header, close-on-Escape/overlay-click), used across
   SearchPage's SNOMED/ICD-10/ICD-O/Specimen/Synoptic/Flags/Pathologist/
@@ -40,6 +45,11 @@ Shared, reusable UI primitives used across multiple pages.
   over-build ahead of need. ~36 other native `<select>` elements remain
   across `Config/System/` alone; this is the proof-of-concept, not a full
   sweep — logged as its own `PRIORITY_FIXES.md` item.
+- **`SearchableCombobox.tsx`** — a genuine searchable combobox, real fix
+  for item #69 ("Can the specimen type search be contains?"). `Dropdown.tsx`
+  above is explicitly, deliberately a plain single-select with no search
+  — this is its sibling for the cases that genuinely need filter-as-you-type
+  over a longer option list, not a replacement for it.
 - **`LogoutWarningModal.tsx`** — **MOVED HERE**, consolidating what were
   TWO separate implementations of the same "unsaved changes, log out
   anyway?" dialog: this one (was `pages/WorklistPage/LogoutWarningModal.tsx`)
@@ -185,6 +195,42 @@ Shared, reusable UI primitives used across multiple pages.
   never actually reached zero. Fixed by anchoring to absolute timestamps
   and rechecking on the `visibilitychange` event, not just counting
   timer ticks.
+
+## PS-62: native `<select>` stays native (Batch 323)
+
+PS-62 asked for the remaining native `<select>` elements in Config/System to get the `Dropdown.tsx` treatment.
+- **The count was far off.** The ticket said 18; a fresh count found about 190 in Config/System and about 400 app-wide.
+- **Pete's decision:** keep the browser's own select, which gives keyboard, screen-reader and mobile behaviour for free, and make its open list match the dark theme with CSS. `Dropdown.tsx` and `SearchableCombobox.tsx` stay for the cases they were built for (chips + add-another, search).
+- **What changed:** one app-wide rule set in `pathscribe.css` (near the top, beside the date-input rule). All selects get `color-scheme: dark` and the same dark option and optgroup colours. This replaced four per-class option rules (ps-conf-select, ps-input-dark, ps-specedit-input, ps-st-role-filter) that used four different shades. Checked in the browser on the Accession page, Staff and System: every select's options now compute to the same surface colour and text.
+- **Not used: Chrome/Edge's fully styled open list** (`appearance: base-select`). It was tried and checked in the browser. It sizes each select to its *selected* value instead of its widest option, so toolbars and table columns change width as values are picked, and it changes the arrow glyph and row height. Getting native-like widths back would need a small script measuring every select app-wide. That is Pete's call; it's recorded on PS-62.
+
+## Batch 367 (PS-74): no inline CSS
+
+`ConfirmModal.tsx`, `DraftRecoveryModal.tsx`, `LookupModal.tsx`, `PatientIdStatusDot.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+`ConfirmModal` lost its unused `overlayStyle` prop.
+
+## CapabilityButton (Batch 369, PS-355)
+
+`CapabilityButton` is a button for an action that needs a capability. Without the capability, the button:
+- stays visible, greyed out (`aria-disabled`, class `ps-cap-btn--denied`);
+- shows a tooltip naming the missing capability;
+- ignores clicks.
+
+It reads `hooks/useCapabilities.ts` and decides nothing itself. The service behind the action checks again and audits.
+
+## Batch 370 (PS-356)
+
+`CapabilityButton` takes an optional `context`: the case, the facility, or all facilities. The tooltip gives the actual reason:
+- not granted;
+- a missing requirement;
+- outside the user's facility assignment.
+
+## Batch 374
+
+- **`ScreenGate`:** wraps a route and shows it only if the signed-in user may open that screen (`services/screens`); otherwise it shows a short "no access" page with a way home.
+
+- **Batch 375, `ScreenGate`:** takes a Home tile id too; a tile opens when any of its screens may be opened (the Worklist and its two queues, the hubs).
 
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

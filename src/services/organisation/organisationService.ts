@@ -9,6 +9,23 @@
 // REAL PHASE (when backend is ready):
 //   Replace each function body with the corresponding fetch() call.
 //   See API_CONTRACT.md Section 10 for full endpoint documentation.
+//
+// Real, per direct guidance: Site is now genuinely read-only end to
+// end - no write path exists anywhere in this file. Used to carry a
+// real, persisted overlay (Facility Setup's own LIS connection/CLIA
+// fields), which created a real, disclosed sync-vs-async data
+// consistency gap between the four async functions below (which
+// merged that overlay in) and the several synchronous helpers
+// further down (which didn't). Both the LIS connection fields and
+// CLIA were migrated off Site entirely this session - CLIA to
+// Facility.cliaOrIsoNumber (services/facilities/), and the LIS
+// connection consolidated into Facility.interfaceEngineConnection/
+// lisRouting per a real architectural correction: PathScribe
+// maintains one physical connection to the Interface Engine per real
+// Enterprise, never a direct per-Site connection to an individual
+// LIS. With no write path left, the sync/async split below is purely
+// about matching a future real backend's likely API shape, not a
+// data-consistency concern.
 // ─────────────────────────────────────────────────────────────
 
 // ─── Types ────────────────────────────────────────────────────
@@ -45,7 +62,15 @@ export interface Organisation {
    *  AccessionPage.tsx now reads from instead of hardcoding either one.
    */
   enterpriseId:  string;
-  country:       'UK' | 'US' | 'AU' | 'CA';
+  /** Real, per direct guidance's own cross-jurisdiction pre-analytic
+   *  compliance research (resolvePreAnalyticDateGateConfig.ts) - widened
+   *  from the original 'UK' | 'US' | 'AU' | 'CA' to cover every real
+   *  market PathScribe targets. 'EU' is a deliberate, single generic
+   *  bucket per direct guidance's own table (one combined "European
+   *  Union" row spanning COFRAC/DAkkS/ENAC, not per-member-state) -
+   *  narrower to a specific EU country only if a real, later need for
+   *  that granularity is confirmed. */
+  country:       'UK' | 'US' | 'AU' | 'CA' | 'EU' | 'NZ' | 'KR';
   locale:        string;
   timezone:      string;
   contractStart: string;
@@ -63,14 +88,21 @@ export interface Site {
   siteCode:                string;   // accession prefix from LIS
   address:                 string;
   active:                  boolean;
-  lisType:                 LisType;
-  lisEndpoint:             string;
-  lisVersion?:             string;
   defaultTemplateStandard: TemplateStandard;
   defaultLocale:           string;
   defaultWorkflowMode:     WorkflowMode;
   codingSystems:           CodingSystem[];   // ordered list — first is default tab
   secureEmailGateway?:     'Paubox' | 'Virtru' | 'Zix';
+  /** Real, per direct guidance's own detailed jurisdictional research
+   *  (resolveBillingDateOfService.ts) - a real, explicit override for
+   *  which real date this site's own charges use as billing date of
+   *  service. Undefined means the real country-based default applies
+   *  (see that file's own defaultRuleForCountry) - only set here when
+   *  a site's own real billing arrangement genuinely differs from its
+   *  country's typical default (e.g. a UK site serving meaningful
+   *  private-insurance volume, which should override away from the
+   *  NHS-costing SIGNOUT_DATE default to COLLECTION_DATE). */
+  billingDosRule?: 'COLLECTION_DATE' | 'SIGNOUT_DATE' | 'ACCESSION_DATE';
 }
 
 export interface Lab {
@@ -107,8 +139,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'S',
         address: '1234 Desert Blvd, Phoenix, AZ 85001',
         active: true,
-        lisType: 'CoPath',
-        lisEndpoint: 'hl7://lis.dvmc.org:2575',
         defaultTemplateStandard: 'CAP',
         defaultLocale: 'en-US',
         defaultWorkflowMode: 'assist',
@@ -149,8 +179,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'MFT',
         address: 'Oxford Road, Manchester, M13 9WL',
         active: true,
-        lisType: 'WinPath',
-        lisEndpoint: 'hl7://lis.mft.nhs.uk:2575',
         defaultTemplateStandard: 'RCPath',
         defaultLocale: 'en-GB',
         defaultWorkflowMode: 'assist',
@@ -164,8 +192,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'MFT',
         address: 'Southmoor Road, Manchester, M23 9LT',
         active: true,
-        lisType: 'WinPath',
-        lisEndpoint: 'hl7://lis.mft.nhs.uk:2575',
         defaultTemplateStandard: 'RCPath',
         defaultLocale: 'en-GB',
         defaultWorkflowMode: 'assist',
@@ -179,8 +205,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'MFT',
         address: 'Delaunays Road, Manchester, M8 5RB',
         active: true,
-        lisType: 'WinPath',
-        lisEndpoint: 'hl7://lis.mft.nhs.uk:2575',
         defaultTemplateStandard: 'RCPath',
         defaultLocale: 'en-GB',
         defaultWorkflowMode: 'assist',
@@ -220,8 +244,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'MPA',
         address: '200 E Illinois St, Chicago, IL 60611',
         active: true,
-        lisType: 'CoPath',
-        lisEndpoint: 'hl7://lis.midwestpath.com:2575',
         defaultTemplateStandard: 'CAP',
         defaultLocale: 'en-US',
         defaultWorkflowMode: 'assist',
@@ -262,8 +284,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
         siteCode: 'HFHS',
         address: '2799 W Grand Blvd, Detroit, MI 48202',
         active: true,
-        lisType: 'CoPath',
-        lisEndpoint: 'hl7://lis.henryford.org:2575',
         defaultTemplateStandard: 'CAP',
         defaultLocale: 'en-US',
         defaultWorkflowMode: 'assist',
@@ -288,9 +308,6 @@ const MOCK_ORGANISATIONS: Organisation[] = [
 // ─── In-memory lookup ─────────────────────────────────────────
 
 const ORG_BY_ID   = new Map(MOCK_ORGANISATIONS.map(o => [o.id, o]));
-const SITE_BY_ID  = new Map(
-  MOCK_ORGANISATIONS.flatMap(o => o.sites ?? []).map(s => [s.id, s])
-);
 const SITE_BY_CODE = new Map(
   MOCK_ORGANISATIONS.flatMap(o => o.sites ?? []).map(s => [s.siteCode, s])
 );
@@ -304,6 +321,19 @@ export async function listOrganisations(): Promise<Organisation[]> {
   await delay();
   return MOCK_ORGANISATIONS;
   // REAL: const res = await fetch('/api/organisations'); return res.json();
+}
+
+/** GET /sites — real, new: flattens every real Site across every real
+ *  Organisation. Added for Charge Capture's own real site-scoping
+ *  picker (components/Config/System/BillingDictionarySection.tsx) -
+ *  no flat, cross-organisation site listing existed before this;
+ *  getSiteConfig only fetches one known site by id. Real, defensive
+ *  fix: org.sites is optional, ?? [] rather than assuming every real
+ *  organisation always has one. */
+export async function listAllSites(): Promise<Site[]> {
+  await delay();
+  return MOCK_ORGANISATIONS.flatMap(org => org.sites ?? []);
+  // REAL: const res = await fetch('/api/sites'); return res.json();
 }
 
 /** GET /organisations/:id */
@@ -320,12 +350,17 @@ export async function getCurrentOrganisation(organisationId: string): Promise<Or
   // REAL: const res = await fetch('/api/organisations/current'); return res.json();
 }
 
-/** GET /sites/:id/config */
-export async function getSiteConfig(siteId: string): Promise<Site | null> {
-  await delay();
-  return SITE_BY_ID.get(siteId) ?? null;
-  // REAL: const res = await fetch(`/api/sites/${siteId}/config`); return res.json();
-}
+// ─────────────────────────────────────────────────────────────────────────────
+// Real, per direct guidance: the sync-vs-async data-consistency gap
+// this block used to document (PS-79) no longer exists. It was
+// specific to Facility Setup's own real, persisted overlay — the 6
+// synchronous functions below never merged it in, while the 4 async
+// functions above did. That overlay (and the LIS/CLIA fields it
+// covered) is retired entirely this session — Site has no write path
+// left at all, so every function in this file, sync or async, now
+// reads the identical static seed data. The sync/async split remains
+// purely to match a likely future real backend's API shape.
+// ─────────────────────────────────────────────────────────────────────────────
 
 /** Resolve site from accession prefix (siteCode) */
 export function getSiteBySiteCode(siteCode: string): Site | null {

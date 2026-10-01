@@ -1,66 +1,60 @@
-# Real Fix — Your Actual Uploaded Codebase Has 4 Compile Errors
+# Processing-node stage tiles, matching Worklist's own pattern
 
-Verified directly against your real `pathscribe-ai.zip`, not assumed from
-my own sandbox. Short answer to "can I push": **not yet as uploaded** —
-but here's exactly what's missing and why, and it's a clean, contained
-fix.
+Per direct follow-up: "we could do something similar to the worklist
+and have Tiles at the top. So you would have Grossing, Processing,
+Embedding, Microtomy, Checkout - I may have missed some."
 
-## What I actually did
+## The vocabulary — a real, deliberate reconciliation, not just a rename
 
-Extracted your real zip, linked in the identical `node_modules` (your
-`package.json`/`package-lock.json` matched mine exactly, so this is a
-fair, accurate test), ran `tsc --noEmit` directly against your real code.
+The original feature spec's own processing-node wording ("Processor,
+Embedding, Staining, Cover-slipping, Storage") was different from this
+app's own, already-established real workflow-stage vocabulary
+(ScanStation's own SCAN_STATION_WORKFLOW_STAGES: Accessioning ->
+Grossing -> Processing -> Embedding -> Microtomy/Sectioning -> Staining
+-> Slide Archival). Your own new list tracks that established
+vocabulary closely. Aligned BATCH_PROCESSING_NODES to it — one real,
+shared vocabulary for "what stage is this material at" across the
+whole app, not two competing lists — while keeping Staining (a real,
+distinct step, not dropped) and adding Checkout as the batch-specific
+completion/reconciliation stage (the spec's own "Out-of-Process
+Verification" step, genuinely new, not an existing stage renamed).
+Final set: Grossing, Processing, Embedding, Microtomy, Staining,
+Checkout.
 
-## 4 real compile errors found
+## The tiles
 
-1. `src/components/Audit/InterfaceExceptionReviewModal.tsx` — missing
-   entirely.
-2. `IInterfaceExceptionService.ts` — missing the `sourcePatientId`/
-   `targetPatientId` fields.
-3 & 4. `MaterialTreePanel.tsx` / `CreateBiopsyArrayModal.tsx` — both
-   missing the real `onEditBiopsyArray`/`existingCassetteId` props that
-   `SynopticReportPage.tsx` already expects.
+Reused Worklist's own real, established .ps-wl-filter-tile styling
+directly (WorklistPage.tsx) rather than inventing new tile CSS — same
+real visual pattern (colored border/glow when active, real live count,
+click to filter/toggle) users already know from that page. Each
+tile's own count is real — active + reconciling batches currently at
+that node, not a static or cached number.
 
-**Root cause for #1–2**: your server is missing the entire "Phase A —
-never-fabricate-identity" fix from earlier this session (the real bug
-where an ADT A40 with an unrecognized identifier would silently
-fabricate a new patient record). `processPatientManagementMessage.ts`
-on your server is still the pre-fix version.
+## A real bug caught while testing this, not assumed away
 
-**Root cause for #3–4**: confirmed precisely, not guessed —
-`SynopticReportPage.tsx` is byte-for-byte identical between my copy and
-yours, and it already calls these props. That means these two component
-files just fell behind on your server while the page that calls them
-was already updated elsewhere. My versions are the ones your own,
-already-current `SynopticReportPage.tsx` expects.
+Live-testing the tiles surfaced a genuine, pre-existing gap: after
+creating a batch, dismissing the "Batch Created" confirmation via its
+own "✕" (rather than "Continue — Scan Items") never refreshed the
+parent page's own batch list — the batch was really created, but
+invisible until a manual reload. Confirmed directly (not assumed) by
+creating batches via that exact path and observing the list/tile
+counts stay at zero. Fixed: "✕" on the success screen now also
+notifies the parent, same as "Continue," since the batch already,
+genuinely exists by that point regardless of which button dismisses
+the confirmation.
 
-## Verified, on your actual code, not mine
+## Verified
 
-- Applied all 7 files below directly to your extracted zip
-- `npx tsc --noEmit -p .` — clean (confirmed zero errors, not assumed)
-- Full test suite — 776/776 passing, identical result to my own sandbox
+- npx tsc --noEmit -p . - clean
+- Full test suite: 1093/1093 passing, zero regressions
+- Live, real: created batches at different stages via the real UI
+  (including the specific "✕" path that was broken), confirmed each
+  tile's own count matches reality exactly (Embedding: 2, Staining:
+  1), confirmed clicking a tile correctly narrows the list to only
+  that stage's real batches and visually highlights the active tile.
 
-## One more thing, not blocking, worth knowing
-
-A number of other files on your server (`session/ISessionTimeoutService.ts`,
-`ICaseService.ts`, `externalResources/IExternalResourceService.ts`, a few
-others) still reference `clientService`/`Client` where my sandbox has
-`facilityService`/`Facility` — this is a real, app-wide rename from
-earlier this session that partially didn't reach your server. It
-doesn't break the build (confirmed — the compile above is fully clean
-with those files exactly as they are on your server), so it's not
-blocking this push. But it's a real, existing divergence worth knowing
-about, since it suggests your server's baseline predates more of this
-session's work than just the two things above. Also noticed
-`src/hooks/useSynopticAudit.ts` differs substantially (a near-total
-rewrite) — also non-blocking, unclear origin, worth a separate look
-when you have time rather than urgent right now.
-
-## Changed/added files (7)
-- `src/components/Audit/InterfaceExceptionReviewModal.tsx` (new)
-- `src/services/interfaceExceptions/IInterfaceExceptionService.ts`
-- `src/services/interfaceExceptions/README.md`
-- `src/services/hl7/processPatientManagementMessage.ts`
-- `src/services/hl7/processPatientManagementMessage.test.ts`
-- `src/pages/SynopticReportPage/components/MaterialTreePanel.tsx`
-- `src/pages/SynopticReportPage/modals/CreateBiopsyArrayModal.tsx`
+## Changed files (4)
+- src/services/batches/IBatchService.ts
+- src/pages/BatchManagement/BatchManagementPage.tsx
+- src/pages/BatchManagement/CreateBatchModal.tsx
+- src/pathscribe.css

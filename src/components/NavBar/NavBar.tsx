@@ -1,13 +1,17 @@
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import '../../pathscribe.css';
 import { useAuth } from '../../contexts/AuthContext';
 import { useMessaging } from '../../contexts/MessagingContext';
 import { EnhancementRequestButton } from '../EnhancementRequest/EnhancementRequestButton';
 import { loadEnhancementConfig } from '../../services/enhancementRequestService';
 import { VoiceToggleButton } from '../Voice/VoiceToggleButton';
+import { NavBarScanStation } from './NavBarScanStation';
+import LanguageSwitcher from './LanguageSwitcher';
 import CaseSearchBar from '../Search/CaseSearchBar';
+import { useCapabilities } from '@/hooks/useCapabilities';
 import { VoiceCommandOverlay } from '../Voice/VoiceCommandOverlay';
 import { VoiceMissPrompt } from '../Voice/VoiceMissPrompt';
 import { isConstrainedMobileDevice, hasDesktopViewOverride, clearDesktopViewOverride } from '../../utils/deviceDetection';
@@ -74,6 +78,7 @@ const SectionLabel: React.FC<{ children: React.ReactNode }> = ({ children }) => 
 interface SystemInfoModalProps { onClose: () => void; }
 
 export const SystemInfoModal: React.FC<SystemInfoModalProps> = ({ onClose }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [copied,     setCopied]     = useState(false);
   const [structuredMessagesOk, setStructuredMessagesOk] = useState<boolean | null>(null);
@@ -137,20 +142,22 @@ export const SystemInfoModal: React.FC<SystemInfoModalProps> = ({ onClose }) => 
   const modal = (
     <div className="fm-overlay" onClick={onClose}>
       <div
-        className="ps-research-modal"
-        style={{ width: 520, maxHeight: '85vh', display: 'flex', flexDirection: 'column' }}
+        className="ps-research-modal nb-sysinfo-modal"
         onClick={e => e.stopPropagation()}
       >
         {/* Header */}
         <div className="ps-research-header">
           <div>
+            {/* "ForMedrix · PathScribe AI" is the product's own brand
+                names — real proper nouns, not UI copy, left untranslated
+                (same precedent as "PathScribe" elsewhere in this sweep). */}
             <div className="fm-eyebrow">ForMedrix · PathScribe AI</div>
             <div className="fm-title-row">
-              <h2 className="fm-title">System Information</h2>
+              <h2 className="fm-title">{t('navBar.systemInfo.title')}</h2>
               <span className="fm-active-badge">v{__APP_VERSION__}</span>
             </div>
           </div>
-          <button className="ps-close-btn" onClick={onClose} aria-label="Close" title="Close">
+          <button className="ps-close-btn" onClick={onClose} aria-label={t('navBar.close')} title={t('navBar.close')}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M2 2L12 12M12 2L2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
@@ -159,50 +166,52 @@ export const SystemInfoModal: React.FC<SystemInfoModalProps> = ({ onClose }) => 
 
         {/* Body */}
         <div className="ps-sysinfo-body">
-          <SectionLabel>User</SectionLabel>
-          <Row label="Name"          value={user?.name ?? '—'} />
-          <Row label="Role"          value={user?.role ?? '—'} />
-          <Row label="User ID"       value={<code>{user?.id ?? '—'}</code>} />
-          <Row label="Voice Profile" value={user?.voiceProfile ?? '—'} />
+          <SectionLabel>{t('navBar.systemInfo.sectionUser')}</SectionLabel>
+          <Row label={t('navBar.systemInfo.name')}          value={user?.name ?? '—'} />
+          <Row label={t('navBar.systemInfo.role')}          value={user?.role ?? '—'} />
+          <Row label={t('navBar.systemInfo.userId')}        value={<code>{user?.id ?? '—'}</code>} />
+          <Row label={t('navBar.systemInfo.voiceProfile')}  value={user?.voiceProfile ?? '—'} />
 
-          <SectionLabel>Application</SectionLabel>
-          <Row label="Product"     value="PathScribe AI" />
-          <Row label="Company"     value="ForMedrix" />
-          <Row label="Version"     value="0.9.0" />
-          <Row label="Build"       value={buildDate} />
-          <Row label="Environment" value={envMode} />
+          <SectionLabel>{t('navBar.systemInfo.sectionApplication')}</SectionLabel>
+          {/* Product/company/version below are real product-identity
+              literals, not translatable UI copy. */}
+          <Row label={t('navBar.systemInfo.product')}     value="PathScribe AI" />
+          <Row label={t('navBar.systemInfo.company')}     value="ForMedrix" />
+          <Row label={t('navBar.systemInfo.version')}     value="0.9.0" />
+          <Row label={t('navBar.systemInfo.build')}       value={buildDate} />
+          <Row label={t('navBar.systemInfo.environment')} value={envMode} />
 
-          <SectionLabel>AI Provider</SectionLabel>
-          <Row label="Provider" value={aiProvider} />
-          <Row label="Model"    value={<code>{aiModel}</code>} />
-          <Row label="API Mode" value={aiDevMode ? '⚠ Dev — direct API calls' : 'Proxy'} />
-          <Row label="Voice AI" value={geminiKey ? '✓ Gemini active' : 'Local only'} />
+          <SectionLabel>{t('navBar.systemInfo.sectionAiProvider')}</SectionLabel>
+          <Row label={t('navBar.systemInfo.provider')} value={aiProvider} />
+          <Row label={t('navBar.systemInfo.model')}    value={<code>{aiModel}</code>} />
+          <Row label={t('navBar.systemInfo.apiMode')} value={aiDevMode ? t('navBar.systemInfo.devDirectApi') : t('navBar.systemInfo.proxy')} />
+          <Row label={t('navBar.systemInfo.voiceAi')} value={geminiKey ? t('navBar.systemInfo.geminiActive') : t('navBar.systemInfo.localOnly')} />
 
-          <SectionLabel>Browser &amp; System</SectionLabel>
-          <Row label="Browser"    value={getBrowserInfo()} />
-          <Row label="OS"         value={getOSInfo()} />
-          <Row label="Resolution" value={`${window.screen.width} × ${window.screen.height}`} />
-          <Row label="Language"   value={navigator.language} />
+          <SectionLabel>{t('navBar.systemInfo.sectionBrowserSystem')}</SectionLabel>
+          <Row label={t('navBar.systemInfo.browser')}    value={getBrowserInfo()} />
+          <Row label={t('navBar.systemInfo.os')}         value={getOSInfo()} />
+          <Row label={t('navBar.systemInfo.resolution')} value={`${window.screen.width} × ${window.screen.height}`} />
+          <Row label={t('navBar.systemInfo.language')}   value={navigator.language} />
 
-          <SectionLabel>API Connectivity</SectionLabel>
-          <Row label="Anthropic"       value={<><StatusDot ok={structuredMessagesOk} />{structuredMessagesOk === null ? 'Checking…' : structuredMessagesOk ? 'Connected' : 'Failed'}</>} />
-          <Row label="Gemini"          value={<><StatusDot ok={structuredContentOk} />{structuredContentOk ? 'Configured' : 'Not configured'}</>} />
-          <Row label="NLM Terminology" value={<><StatusDot ok={true} />Available</>} />
-          <Row label="Secure Email"    value={<><StatusDot ok={null} />Not wired (stub)</>} />
+          <SectionLabel>{t('navBar.systemInfo.sectionApiConnectivity')}</SectionLabel>
+          <Row label={t('navBar.systemInfo.anthropic')}     value={<><StatusDot ok={structuredMessagesOk} />{structuredMessagesOk === null ? t('navBar.systemInfo.checking') : structuredMessagesOk ? t('navBar.systemInfo.connected') : t('navBar.systemInfo.failed')}</>} />
+          <Row label={t('navBar.systemInfo.gemini')}        value={<><StatusDot ok={structuredContentOk} />{structuredContentOk ? t('navBar.systemInfo.configured') : t('navBar.systemInfo.notConfigured')}</>} />
+          <Row label={t('navBar.systemInfo.nlmTerminology')} value={<><StatusDot ok={true} />{t('navBar.systemInfo.available')}</>} />
+          <Row label={t('navBar.systemInfo.secureEmail')}    value={<><StatusDot ok={null} />{t('navBar.systemInfo.notWiredStub')}</>} />
         </div>
 
         {/* Footer */}
         <div className="ps-sysinfo-footer">
           <span className="ps-sysinfo-footer-hint">
-            ⚠ Name &amp; ID redacted. Share only with PathScribe support.
+            {t('navBar.systemInfo.redactedHint', { brand: 'PathScribe' })}
           </span>
           <button
             onClick={handleCopy}
             className={`ps-sysinfo-copy-btn${copied ? ' ps-sysinfo-copy-btn--copied' : ''}`}
           >
             {copied
-              ? <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg> Copied!</>
-              : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy to Clipboard</>
+              ? <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg> {t('navBar.systemInfo.copied')}</>
+              : <><svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> {t('navBar.systemInfo.copyToClipboard')}</>
             }
           </button>
         </div>
@@ -223,9 +232,12 @@ interface NavBarProps {
 }
 
 const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }) => {
+  const { t } = useTranslation();
   const { user }                                   = useAuth();
+  // Batch 374: the quick case search is shown only to people who may open Search.
+  const capabilities                               = useCapabilities();
   const { unreadCount, hasUrgent, setPortalOpen } = useMessaging();
-  const messagesLabel = unreadCount > 0 ? `Messages, ${unreadCount} unread` : 'Messages';
+  const messagesLabel = unreadCount > 0 ? t('navBar.messagesUnread', { count: unreadCount }) : t('navBar.messages');
   const [linksOpen, setLinksOpen]                 = useState(false);
   // Reference material, not patient context: closeOnUnmount is false so
   // navigating to another page doesn't shut a protocol page the user is
@@ -290,19 +302,22 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
 
   const linksModal = linksOpen && ReactDOM.createPortal(
     <div className="fm-overlay" onClick={() => setLinksOpen(false)}>
-      <div className="ps-research-modal" style={{ width: 360 }} onClick={e => e.stopPropagation()}>
+      <div className="ps-research-modal nb-links-modal" onClick={e => e.stopPropagation()}>
         <div className="ps-research-header">
           <div>
-            <div className="fm-eyebrow">External Resources</div>
-            <h2 className="fm-title">Clinical Links</h2>
+            <div className="fm-eyebrow">{t('navBar.externalResources')}</div>
+            <h2 className="fm-title">{t('navBar.clinicalLinks')}</h2>
           </div>
-          <button className="ps-close-btn" onClick={() => setLinksOpen(false)} aria-label="Close" title="Close">
+          <button className="ps-close-btn" onClick={() => setLinksOpen(false)} aria-label={t('navBar.close')} title={t('navBar.close')}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
               <path d="M2 2L12 12M12 2L2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/>
             </svg>
           </button>
         </div>
         <div>
+          {/* EXTERNAL_LINKS.name values are real third-party resource
+              names (CAP, WHO, PathologyOutlines, UpToDate) — proper
+              nouns, not UI copy, left untranslated. */}
           {EXTERNAL_LINKS.map(link => (
             <a key={link.url} href={link.url} target="_blank" rel="noreferrer"
               onClick={e => handleClinicalLinkClick(e, link.url)}
@@ -316,7 +331,7 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
           ))}
         </div>
         <div className="ps-clinical-links-footer">
-          <button className="fm-btn-cancel" onClick={() => setLinksOpen(false)}>Close</button>
+          <button className="fm-btn-cancel" onClick={() => setLinksOpen(false)}>{t('navBar.close')}</button>
         </div>
       </div>
     </div>,
@@ -329,7 +344,7 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
         {/* Left */}
         <div className="ps-nav-left">
           <img
-            src="/pathscribe-logo-clean.svg"
+            src="/pathscribe-logo-clean.png"
             alt="PathScribe"
             className="ps-nav-logo"
             onClick={onLogoClick}
@@ -341,7 +356,7 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
 
         {/* Centre — case search */}
         <div className="ps-nav-centre">
-          <CaseSearchBar compact />
+          {capabilities.has('screen:search:open') && <CaseSearchBar compact />}
         </div>
 
         {/* Right */}
@@ -354,14 +369,21 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
           {showSwitchBack && (
             <button
               type="button"
-              className="ps-nav-btn"
+              className="ps-nav-btn nb-focused-mode-btn"
               onClick={() => { clearDesktopViewOverride(); navigate('/intraop-queue'); }}
-              title="Switch back to Focused Mode"
-              style={{ fontSize: 12, width: 'auto', padding: '0 10px', whiteSpace: 'nowrap' }}
+              title={t('navBar.switchBackToFocusedMode')}
             >
-              Focused Mode
+              {t('navBar.focusedMode')}
             </button>
           )}
+
+          {/* Real fix, per direct follow-up: "the Current station...
+              should be identified at login. Should be sticky too."
+              Real, always-visible, global place to check/change it —
+              never buried in a specific case again. */}
+          <NavBarScanStation />
+
+          <div className="ps-nav-divider" />
 
           {/* User avatar — opens system info + fires onProfileClick */}
           <div
@@ -369,13 +391,19 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
             onClick={handleAvatarClick}
             role="button"
             tabIndex={0}
-            aria-label="Account and system information"
-            title="Account and system information"
+            aria-label={t('navBar.accountAndSystemInfo')}
+            title={t('navBar.accountAndSystemInfo')}
             onKeyDown={e => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); handleAvatarClick(); } }}
           >
             <div className="ps-nav-user-text">
+              {/* "Dr. Sarah Johnson" is a literal fallback mock-user name,
+                  matching this sweep's established precedent (WorklistPage's
+                  own CURRENT_USER_NAME fallback) — not translatable UI copy.
+                  Batch 374: the credentials line is the signed-in person's
+                  own (from their staff record); it was "MD, FCAP" for
+                  everyone, bench staff included. */}
               <div className="ps-nav-user-name">{user?.name || 'Dr. Sarah Johnson'}</div>
-              <div className="ps-nav-user-role">MD, FCAP</div>
+              {user?.credentials && <div className="ps-nav-user-role">{user.credentials}</div>}
             </div>
             <div className="ps-nav-avatar">{userInitials}</div>
           </div>
@@ -388,12 +416,12 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
           </div>
 
           {/* Messages */}
-          <button type="button" className="ps-nav-btn" onMouseDown={e => e.preventDefault()}
+          <button type="button" className="ps-nav-btn nb-messages-btn" onMouseDown={e => e.preventDefault()}
             onClick={() => setPortalOpen(true)}
             aria-label={messagesLabel}
             title={messagesLabel}
-            style={{ color: hasUrgent ? '#FF453A' : undefined }}>
-            <div style={{ position: 'relative' }}>
+            style={{ '--nb-messages-color': hasUrgent ? '#FF453A' : undefined } as React.CSSProperties}>
+            <div className="nb-messages-icon-wrap">
               <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor"
                 strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                 <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z" />
@@ -404,7 +432,7 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
 
           {/* Clinical Links */}
           <button type="button" className="ps-nav-btn" onMouseDown={e => e.preventDefault()}
-            onClick={() => setLinksOpen(true)} aria-label="Clinical Links" title="Clinical Links">
+            onClick={() => setLinksOpen(true)} aria-label={t('navBar.clinicalLinks')} title={t('navBar.clinicalLinks')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M10 13a5 5 0 0 0 7.54.54l3-3a5 5 0 0 0-7.07-7.07l-1.72 1.71" />
@@ -412,8 +440,12 @@ const NavBar: React.FC<NavBarProps> = ({ onLogoClick, onLogout, onProfileClick }
             </svg>
           </button>
 
+          {/* Real, per the RFP-APLIS-2026-GLOBAL Multi-Language UI &
+              Localization Framework gap. */}
+          <LanguageSwitcher />
+
           {/* Logout */}
-          <button type="button" className="ps-nav-btn" onClick={onLogout} aria-label="Log out" title="Log out">
+          <button type="button" className="ps-nav-btn" onClick={onLogout} aria-label={t('common.signOut')} title={t('common.signOut')}>
             <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor"
               strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
               <path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4" />

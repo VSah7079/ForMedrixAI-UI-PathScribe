@@ -6,6 +6,7 @@ import type { PatientEvent } from './IPatientEventBus';
 const samplePatient = {
   id: 'MPI-1', organisationId: 'ORG-A', mrn: 'MRN-1', firstName: 'John', lastName: 'Doe',
   dateOfBirth: '1990-01-01', createdAt: '2026-01-01T00:00:00.000Z', updatedAt: '2026-01-01T00:00:00.000Z',
+  establishedVia: 'created' as const,
 };
 
 describe('mockPatientEventBus — real fix, Phase 4: the actual real-time broadcasting mechanism', () => {

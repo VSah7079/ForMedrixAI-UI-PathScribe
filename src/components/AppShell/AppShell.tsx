@@ -18,19 +18,37 @@
  */
 
 import React, { useState, useEffect, useCallback, useRef } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
 import ReactDOM from 'react-dom';
 import { useAuditLog } from '@/components/Audit/useAuditLog';
-import { Outlet, useNavigate, useLocation } from 'react-router-dom';
+import { Outlet, useNavigate, useLocation } from 'react-router';
 import { useAuth } from '../../contexts/AuthContext';
 import { useLogout } from '../../hooks/useLogout';
-import { messageService } from '../../services';
+import { mockActionRegistryService } from '../../services/actionRegistry/mockActionRegistryService';
+import { VOICE_CONTEXT } from '@/constants/systemActions';
+import { messageService, caseService } from '../../services';
+import { extractCaseReferencesFromText } from '../../utils/extractCaseReferencesFromText';
 import { useMessaging } from '../../contexts/MessagingContext';
 import NavBar, { SystemInfoModal } from '../NavBar/NavBar';
+import ScanStationPrompt from '../ScanStationPrompt';
+import StationSwitchGuardModal from '../StationSwitchGuardModal';
+// Real fix, per direct report: the real Sign Out button (below) used to
+// call handleLogout() directly, with no unsaved-changes check at all —
+// while Home.tsx separately carried its own copy of this exact modal,
+// wired to a showWarning flag nothing ever set to true. That old
+// Home.tsx copy is now deleted; this is the one, real, live instance,
+// gated by the same DirtyStateContext.isDirty this file's own
+// guardedNavigate() already uses for breadcrumb/logo navigation.
+import LogoutWarningModal from '../Common/LogoutWarningModal';
 import { useBreadcrumb } from '../../contexts/BreadcrumbContext';
 import { useDirtyState } from '../../contexts/DirtyStateContext';
 import '../../pathscribe.css';
-import { openUserGuide, openAdminGuide } from '../../utils/guideAssets';
+import { getUserGuideBlobUrl, getAdminGuideBlobUrl } from '../../utils/guideAssets';
+import { formatDate } from '../../utils/formatDate';
+import { useCompanionWindow } from '../../hooks/useCompanionWindow';
 import ConfirmModal from '../Common/ConfirmModal';
+import { safeInternalPath } from '@/utils/safeInternalPath';
+import { markReturnToSearch } from '@/utils/search/searchSession';
 
 // ─── Internal user directory ─────────────────────────────────────────────────
 interface InternalUser { id: string; name: string; role: string; }
@@ -66,15 +84,29 @@ const avatarInitials = (name: string) => {
 // ═══════════════════════════════════════════════════════════════════════════
 
 // ── Helpers shared by sub-components ────────────────────────────────────────
-const relTime = (ts: Date | string): string => {
+// Real fix, found by this app's own inline-CSS/business-logic sweep:
+// this deliberately reimplements most of utils/formatDate.ts's
+// formatRelative() rather than delegating to it wholesale — for a
+// messaging inbox, today's messages genuinely need their actual
+// time-of-day (e.g. "2:45 PM"), not formatRelative()'s generic
+// "Today", so a straight swap would be a real regression here. The
+// one real gap this file's own copy had was narrower: it lacked
+// formatRelative()'s own >365-day fallback to a full, year-bearing
+// date, so a message over a year old rendered as e.g. "Sep 12" with
+// no year at all — genuinely ambiguous once a mailbox has messages
+// spanning more than one year. Fixed with the same real fallback
+// formatRelative() itself uses (formatDate.ts's own formatDate()),
+// not a hand-rolled second copy of "how to show a full date."
+export const relTime = (ts: Date | string): string => {
   const d = new Date(ts);
   const now = new Date();
   const diffMs = now.getTime() - d.getTime();
   const diffDays = Math.floor(diffMs / 86_400_000);
   if (diffDays === 0) return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
   if (diffDays === 1) return 'Yesterday';
-  if (diffDays < 7)  return d.toLocaleDateString([], { weekday: 'short' });
-  return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  if (diffDays < 7)   return d.toLocaleDateString([], { weekday: 'short' });
+  if (diffDays < 365) return d.toLocaleDateString([], { month: 'short', day: 'numeric' });
+  return formatDate(d.toISOString());
 };
 
 // ── UserSearchOverlay ────────────────────────────────────────────────────────
@@ -84,6 +116,7 @@ interface UserSearchOverlayProps {
   onClose: () => void;
 }
 const UserSearchOverlay: React.FC<UserSearchOverlayProps> = ({ alreadyAdded, onSelect, onClose }) => {
+  const { t } = useTranslation();
   const [q,        setQ]        = React.useState('');
   const [pending,  setPending]  = React.useState<InternalUser[]>([]);
   const ref = React.useRef<HTMLInputElement>(null);
@@ -109,19 +142,17 @@ const UserSearchOverlay: React.FC<UserSearchOverlayProps> = ({ alreadyAdded, onS
   return (
     <div className="ps-user-search-modal">
       <div className="ps-user-search-header">
-        <span className="ps-user-search-title">Find a recipient</span>
-        <button className="ps-user-search-close" onClick={onClose}>×</button>
+        <span className="ps-user-search-title">{t('appShell.userSearch.title')}</span>
+        <button className="ps-user-search-close" onClick={onClose} aria-label={t('appShell.userSearch.closeAriaLabel')}>×</button>
       </div>
 
       {/* Selected chips */}
       {pending.length > 0 && (
-        <div style={{ display:'flex', flexWrap:'wrap', gap:6, padding:'8px 16px 0' }}>
+        <div className="ps-user-search-chips">
           {pending.map(u => (
-            <span key={u.id} style={{ display:'inline-flex', alignItems:'center', gap:5,
-              padding:'3px 10px', borderRadius:999, fontSize:12, fontWeight:600,
-              background:'rgba(8,145,178,0.15)', color:'#38bdf8', border:'1px solid rgba(8,145,178,0.3)' }}>
+            <span key={u.id} className="ps-user-search-chip">
               {u.name}
-              <span onClick={() => toggle(u)} style={{ cursor:'pointer', opacity:0.7, fontSize:13 }}>×</span>
+              <span onClick={() => toggle(u)} className="ps-user-search-chip-remove">×</span>
             </span>
           ))}
         </div>
@@ -130,24 +161,23 @@ const UserSearchOverlay: React.FC<UserSearchOverlayProps> = ({ alreadyAdded, onS
       <div className="ps-user-search-input-wrap">
         <div className="ps-user-search-bar">
           <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-          <input ref={ref} className="ps-user-search-input" type="text" placeholder="Search by name or department…" value={q} onChange={e => setQ(e.target.value)} />
+          <input ref={ref} className="ps-user-search-input" type="text" placeholder={t('appShell.userSearch.searchPlaceholder')} value={q} onChange={e => setQ(e.target.value)} />
         </div>
       </div>
 
       <div className="ps-user-search-results">
         {results.length === 0
-          ? <div className="ps-user-search-empty">No users found.</div>
+          ? <div className="ps-user-search-empty">{t('appShell.userSearch.noResults')}</div>
           : results.map(u => {
               const sel = pendingIds.includes(u.id);
               return (
                 <div key={u.id}
-                  className="ps-user-search-item"
-                  onClick={() => toggle(u)}
-                  style={{ background: sel ? 'rgba(8,145,178,0.08)' : undefined }}>
-                  <div className="ps-user-search-avatar" style={{ background: sel ? 'rgba(8,145,178,0.3)' : undefined }}>
+                  className={`ps-user-search-item${sel ? ' ps-user-search-item--selected' : ''}`}
+                  onClick={() => toggle(u)}>
+                  <div className={`ps-user-search-avatar${sel ? ' ps-user-search-avatar--selected' : ''}`}>
                     {sel ? '✓' : avatarInitials(u.name)}
                   </div>
-                  <div style={{ flex:1 }}>
+                  <div className="ps-flex-1">
                     <div className="ps-user-search-name">{u.name}</div>
                     <div className="ps-user-search-role">{u.role}</div>
                   </div>
@@ -158,15 +188,13 @@ const UserSearchOverlay: React.FC<UserSearchOverlayProps> = ({ alreadyAdded, onS
         }
       </div>
 
-      <div className="ps-user-search-footer" style={{ display:'flex', gap:8, justifyContent:'flex-end' }}>
-        <button className="ps-user-search-cancel" onClick={onClose}>Cancel</button>
+      <div className="ps-user-search-footer">
+        <button className="ps-user-search-cancel" onClick={onClose}>{t('appShell.userSearch.cancelButton')}</button>
         <button
+          className="ps-user-search-add-btn"
           onClick={handleDone}
-          disabled={pending.length === 0}
-          style={{ padding:'8px 20px', borderRadius:8, border:'none', fontSize:13, fontWeight:700, cursor: pending.length > 0 ? 'pointer' : 'default',
-            background: pending.length > 0 ? '#0891b2' : 'rgba(255,255,255,0.05)',
-            color: pending.length > 0 ? '#fff' : '#475569', transition:'all 0.15s' }}>
-          Add {pending.length > 0 ? `${pending.length} recipient${pending.length > 1 ? 's' : ''}` : 'recipients'}
+          disabled={pending.length === 0}>
+          {pending.length > 0 ? t('appShell.userSearch.addButton', { count: pending.length }) : t('appShell.userSearch.addButtonEmpty')}
         </button>
       </div>
     </div>
@@ -204,6 +232,7 @@ const ComposePanel: React.FC<ComposePanelProps> = ({
   onUrgentToggle, onToDropdownOpenChange, onToHighlightIdxChange, onShowUserSearch,
   onCancel, onSend, onSecureEmail,
 }) => {
+  const { t } = useTranslation();
   const suggestions = React.useMemo(() => {
     const q = toInput.toLowerCase().trim();
     if (!q) return [];
@@ -252,7 +281,7 @@ const ComposePanel: React.FC<ComposePanelProps> = ({
 
         {/* To: row */}
         <div className="ps-compose-row ps-compose-row--to">
-          <span className="ps-compose-label">To:</span>
+          <span className="ps-compose-label">{t('appShell.compose.toLabel')}</span>
           <div className="ps-compose-to-field">
             {recipients.map(r => (
               <span key={r.id} className="ps-compose-chip">
@@ -264,14 +293,14 @@ const ComposePanel: React.FC<ComposePanelProps> = ({
               ref={toInputRef}
               className="ps-compose-to-input"
               type="text"
-              placeholder={recipients.length === 0 ? 'Type a name…' : ''}
+              placeholder={recipients.length === 0 ? t('appShell.compose.toPlaceholder') : ''}
               value={toInput}
               onChange={e => onToInputChange(e.target.value)}
               onKeyDown={handleKeyDown}
               onBlur={handleBlur}
               autoComplete="off"
             />
-            <button className="ps-compose-search-btn" onMouseDown={e => e.preventDefault()} onClick={() => onShowUserSearch(true)} title="Browse all internal users">
+            <button className="ps-compose-search-btn" onMouseDown={e => e.preventDefault()} onClick={() => onShowUserSearch(true)} title={t('appShell.compose.browseUsersTitle')}>
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
             </button>
             {toDropdownOpen && (
@@ -292,31 +321,31 @@ const ComposePanel: React.FC<ComposePanelProps> = ({
 
         {/* Subject */}
         <div className="ps-compose-row">
-          <span className="ps-compose-label">Subject</span>
-          <input className="ps-compose-field-input" type="text" placeholder="Enter subject…" value={subject} onChange={e => onSubjectChange(e.target.value)} />
+          <span className="ps-compose-label">{t('appShell.compose.subjectLabel')}</span>
+          <input className="ps-compose-field-input" type="text" placeholder={t('appShell.compose.subjectPlaceholder')} value={subject} onChange={e => onSubjectChange(e.target.value)} />
         </div>
 
         {/* Options bar */}
         <div className="ps-compose-options">
           <button className={`ps-compose-urgent-btn${isUrgent ? ' active' : ''}`} onClick={onUrgentToggle}>
             <svg width="11" height="11" viewBox="0 0 24 24" fill={isUrgent ? '#EF4444' : 'none'} stroke="currentColor" strokeWidth="2.5"><path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
-            Urgent
+            {t('appShell.compose.urgentButton')}
           </button>
           <div className="ps-compose-actions">
-            <button className="ps-compose-cancel-btn" onClick={onCancel}>Cancel</button>
-            <button className={`ps-compose-secure-btn${canSend ? '' : ' disabled'}`} disabled={!canSend} onClick={onSecureEmail} title="Send as secure external email">
+            <button className="ps-compose-cancel-btn" onClick={onCancel}>{t('appShell.compose.cancelButton')}</button>
+            <button className={`ps-compose-secure-btn${canSend ? '' : ' disabled'}`} disabled={!canSend} onClick={onSecureEmail} title={t('appShell.compose.secureEmailTitle')}>
               <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              Secure Email
+              {t('appShell.compose.secureEmailButton')}
             </button>
             <button className={`ps-compose-send-btn${canSend ? '' : ' disabled'}`} disabled={!canSend} onClick={onSend}>
               <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="12" y1="19" x2="12" y2="5"/><polyline points="5 12 12 5 19 12"/></svg>
-              Send
+              {t('appShell.compose.sendButton')}
             </button>
           </div>
         </div>
 
         {/* Body */}
-        <textarea className="ps-compose-textarea" placeholder="Type your message here…" value={body} onChange={e => onBodyChange(e.target.value)} />
+        <textarea className="ps-compose-textarea" placeholder={t('appShell.compose.bodyPlaceholder')} value={body} onChange={e => onBodyChange(e.target.value)} />
       </div>
     </div>
   );
@@ -352,14 +381,16 @@ const MessageListPanel: React.FC<MessageListPanelProps> = ({
   filterType, loading, isComposing, searchText,
   onHover, onSelect, onToggleCheck, onSoftDelete, onRestore, onPermanentDelete,
   onSearchChange, onBulkMarkRead, onBulkDelete, onEmptyDeleted, onCompose, onSecureEmail,
-}) => (
+}) => {
+  const { t } = useTranslation();
+  return (
   <div className="ps-msg-sidebar">
-    <div className="ps-msg-list" tabIndex={0} role="region" aria-label="Message list">
+    <div className="ps-msg-list" tabIndex={0} role="region" aria-label={t('appShell.messageList.regionLabel')}>
       {loading ? (
-        <div className="ps-msg-list-status">Loading…</div>
+        <div className="ps-msg-list-status">{t('appShell.messageList.loading')}</div>
       ) : messages.length === 0 ? (
         <div className="ps-msg-list-status">
-          {filterType === 'deleted' ? 'No deleted messages.' : 'Your inbox is empty.'}
+          {filterType === 'deleted' ? t('appShell.messageList.emptyDeleted') : t('appShell.messageList.emptyInbox')}
         </div>
       ) : messages.map(m => {
         const isChecked  = selectedIds.includes(m.id);
@@ -397,8 +428,8 @@ const MessageListPanel: React.FC<MessageListPanelProps> = ({
                   hoveredMsgId === m.id ? (
                     filterType === 'deleted' ? (
                       <div className="ps-msg-row-hover-actions" onClick={e => e.stopPropagation()}>
-                        <button onClick={e => { e.stopPropagation(); onRestore(m.id); }} className="ps-msg-row-restore-btn">Restore</button>
-                        <button onClick={e => { e.stopPropagation(); onPermanentDelete(m.id); }} className="ps-msg-row-delete-link">Delete</button>
+                        <button onClick={e => { e.stopPropagation(); onRestore(m.id); }} className="ps-msg-row-restore-btn">{t('appShell.messageList.restoreButton')}</button>
+                        <button onClick={e => { e.stopPropagation(); onPermanentDelete(m.id); }} className="ps-msg-row-delete-link">{t('appShell.messageList.deleteButton')}</button>
                       </div>
                     ) : (
                       <button onClick={e => { e.stopPropagation(); onSoftDelete(m.id); }} className="ps-msg-row-delete-icon-btn">
@@ -407,7 +438,7 @@ const MessageListPanel: React.FC<MessageListPanelProps> = ({
                     )
                   ) : (
                     <div className="ps-msg-row-meta">
-                      {m.isUrgent && <span className="ps-msg-urgent-pill">Urgent</span>}
+                      {m.isUrgent && <span className="ps-msg-urgent-pill">{t('appShell.messageList.urgentPill')}</span>}
                       <span className="ps-msg-row-time">{relTime(m.timestamp)}</span>
                     </div>
                   )
@@ -426,26 +457,26 @@ const MessageListPanel: React.FC<MessageListPanelProps> = ({
     <div className="ps-msg-sidebar-footer">
       {isEditing ? (
         <div className="ps-msg-footer-edit-row">
-          <button onClick={onBulkMarkRead} className="ps-msg-footer-readall-btn">Read All</button>
-          <button onClick={onBulkDelete} className="ps-msg-footer-deleteall-btn">Delete</button>
+          <button onClick={onBulkMarkRead} className="ps-msg-footer-readall-btn">{t('appShell.messageList.readAllButton')}</button>
+          <button onClick={onBulkDelete} className="ps-msg-footer-deleteall-btn">{t('appShell.messageList.deleteAllButton')}</button>
         </div>
       ) : filterType === 'deleted' ? (
         <div className="ps-msg-footer-empty-row">
-          <button onClick={onEmptyDeleted} disabled={messages.length === 0} className="ps-msg-footer-deleteall-btn ps-msg-footer-deleteall-btn--centered">Delete All</button>
+          <button onClick={onEmptyDeleted} disabled={messages.length === 0} className="ps-msg-footer-deleteall-btn ps-msg-footer-deleteall-btn--centered">{t('appShell.messageList.deleteAllConfirmButton')}</button>
         </div>
       ) : (
         <div className="ps-msg-footer-normal-row">
           {/* Search */}
           <div className="ps-msg-search">
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8aaccc" strokeWidth="2"><circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/></svg>
-            <input placeholder="Search" value={searchText} onChange={e => onSearchChange(e.target.value)} />
+            <input className="ps-msg-search-input" placeholder={t('appShell.messageList.searchPlaceholder')} value={searchText} onChange={e => onSearchChange(e.target.value)} />
           </div>
           {/* Compose */}
-          <button onClick={onCompose} disabled={isComposing} title="New internal message" className="ps-msg-compose-icon-btn">
+          <button onClick={onCompose} disabled={isComposing} title={t('appShell.messageList.composeTitle')} className="ps-msg-compose-icon-btn">
             <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/></svg>
           </button>
           {/* Secure email */}
-          <button onClick={onSecureEmail} title="Send secure external email" className="ps-msg-footer-secure-btn">
+          <button onClick={onSecureEmail} title={t('appShell.messageList.secureEmailTitle')} className="ps-msg-footer-secure-btn">
             <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
             <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
           </button>
@@ -453,7 +484,8 @@ const MessageListPanel: React.FC<MessageListPanelProps> = ({
       )}
     </div>
   </div>
-);
+  );
+};
 
 // ── ThreadPanel ───────────────────────────────────────────────────────────────
 interface ThreadPanelProps {
@@ -468,6 +500,7 @@ interface ThreadPanelProps {
 }
 
 const ThreadPanel: React.FC<ThreadPanelProps> = ({ message, userId, inputText, onInputChange, onSend, onSoftDelete, onMarkUnread, onCreateTemplate }) => {
+  const { t } = useTranslation();
   // Detect template requests — body contains embedded metadata marker
   const isTemplateRequest = typeof message.body === 'string' && message.body.includes('<!-- TEMPLATE_REQUEST_META:');
   const templateMeta = React.useMemo(() => {
@@ -488,16 +521,16 @@ const ThreadPanel: React.FC<ThreadPanelProps> = ({ message, userId, inputText, o
 
   return (
     <>
-      <div className="ps-thread-body ps-msg-thread" style={{ position: 'relative' }}>
+      <div className="ps-thread-body ps-msg-thread">
         {thread.map((msg: any, idx: number) => {
           const isMe = msg.senderId === userId;
           return (
-            <div key={idx} style={{ display: 'flex', flexDirection: 'column', alignItems: isMe ? 'flex-end' : 'flex-start', marginBottom: 14 }}>
-              <div style={{ fontSize: 11, color: '#7a95b0', marginBottom: 4, display: 'flex', gap: 5 }}>
+            <div key={idx} className={`ps-thread-bubble-wrap${isMe ? ' ps-thread-bubble-wrap--me' : ''}`}>
+              <div className="ps-thread-bubble-meta">
                 <span>{msg.sender}</span><span>·</span>
                 <span>{new Date(msg.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
               </div>
-              <div style={{ maxWidth: '72%', padding: '11px 15px', borderRadius: 14, fontSize: 13.5, lineHeight: 1.6, color: isMe ? '#d8f0f8' : '#d0daea', background: isMe ? '#0d5f79' : '#1a2740', border: isMe ? 'none' : '1px solid rgba(255,255,255,0.07)', borderBottomRightRadius: isMe ? 4 : 14, borderBottomLeftRadius: isMe ? 14 : 4, wordBreak: 'break-word' as const }}>
+              <div className={`ps-thread-bubble${isMe ? ' ps-thread-bubble--me' : ''}`}>
                 {msg.text}
               </div>
             </div>
@@ -507,59 +540,43 @@ const ThreadPanel: React.FC<ThreadPanelProps> = ({ message, userId, inputText, o
 
         {/* ── Template Request Action Banner ── */}
         {isTemplateRequest && templateMeta && (
-          <div style={{
-            margin: '0 0 16px', padding: '12px 16px', borderRadius: 10,
-            background: 'rgba(8,145,178,0.08)', border: '1px solid rgba(8,145,178,0.25)',
-            display: 'flex', alignItems: 'center', gap: 12,
-          }}>
-            <span style={{ fontSize: 18 }}>📋</span>
-            <div style={{ flex: 1, fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>
-              <strong style={{ color: '#e2e8f0', display: 'block', marginBottom: 2 }}>
-                Synoptic Template Request
+          <div className="ps-thread-template-banner">
+            <span className="ps-thread-template-icon">📋</span>
+            <div className="ps-thread-template-text">
+              <strong className="ps-thread-template-title">
+                {t('appShell.thread.templateRequestTitle')}
               </strong>
               {templateMeta.standard} {templateMeta.organ} — {templateMeta.procedure}
               {templateMeta.baseTemplateName && (
-                <span style={{ color: '#38bdf8' }}> · Base: {templateMeta.baseTemplateName}</span>
+                <span className="ps-thread-template-base">{t('appShell.thread.baseTemplateLabel', { name: templateMeta.baseTemplateName })}</span>
               )}
             </div>
             {onCreateTemplate && (
               <button
                 onClick={() => onCreateTemplate(message.id)}
-                style={{
-                  padding: '8px 16px', borderRadius: 8, fontSize: 12, fontWeight: 700,
-                  cursor: 'pointer', border: '1.5px solid rgba(8,145,178,0.5)',
-                  background: 'rgba(8,145,178,0.15)', color: '#38bdf8',
-                  fontFamily: 'inherit', flexShrink: 0, whiteSpace: 'nowrap' as const,
-                  transition: 'all 0.15s',
-                }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(8,145,178,0.28)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'rgba(8,145,178,0.15)')}
+                className="ps-thread-create-template-btn"
               >
-                ＋ Create Template
+                {t('appShell.thread.createTemplateButton')}
               </button>
             )}
           </div>
         )}
 
         {/* ⋯ menu */}
-        <div style={{ position: 'absolute', top: 0, right: 0 }}>
-          <button onClick={() => setMenuOpen(v => !v)} style={{ background: 'none', border: 'none', color: '#7a95b0', cursor: 'pointer', padding: 6, borderRadius: 6, display: 'flex', alignItems: 'center' }}
-            onMouseEnter={e => { (e.currentTarget as HTMLButtonElement).style.color = '#d0daea'; (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.05)'; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLButtonElement).style.color = '#8aaccc'; (e.currentTarget as HTMLButtonElement).style.background = 'none'; }}>
+        <div className="ps-thread-menu-wrap">
+          <button onClick={() => setMenuOpen(v => !v)} className="ps-thread-menu-trigger">
             <svg width="14" height="14" viewBox="0 0 24 24" fill="currentColor"><circle cx="5" cy="12" r="1.5"/><circle cx="12" cy="12" r="1.5"/><circle cx="19" cy="12" r="1.5"/></svg>
           </button>
           {menuOpen && (
             <>
-              <div onClick={() => setMenuOpen(false)} style={{ position: 'fixed', inset: 0, zIndex: 49 }} />
-              <div style={{ position: 'absolute', top: '100%', right: 0, background: '#162036', border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, overflow: 'hidden', minWidth: 175, boxShadow: '0 12px 32px rgba(0,0,0,0.5)', zIndex: 50 }}>
+              <div onClick={() => setMenuOpen(false)} className="ps-thread-menu-backdrop" />
+              <div className="ps-thread-menu-panel">
                 {[
-                  { label: 'Mark as unread', action: () => { onMarkUnread(); setMenuOpen(false); }, danger: false },
-                  { label: 'Delete message',  action: () => { onSoftDelete(); setMenuOpen(false); }, danger: true  },
+                  { label: t('appShell.thread.markUnread'), action: () => { onMarkUnread(); setMenuOpen(false); }, danger: false },
+                  { label: t('appShell.thread.deleteMessage'),  action: () => { onSoftDelete(); setMenuOpen(false); }, danger: true  },
                 ].map(item => (
                   <button key={item.label} onClick={item.action}
-                    style={{ display: 'flex', width: '100%', padding: '11px 14px', background: 'none', border: 'none', color: item.danger ? '#EF4444' : '#d0daea', fontSize: 13, cursor: 'pointer', textAlign: 'left' as const, borderBottom: '1px solid rgba(255,255,255,0.06)', transition: 'background 0.1s' }}
-                    onMouseEnter={e => (e.currentTarget as HTMLButtonElement).style.background = 'rgba(255,255,255,0.04)'}
-                    onMouseLeave={e => (e.currentTarget as HTMLButtonElement).style.background = 'none'}
+                    className={`ps-thread-menu-item${item.danger ? ' ps-thread-menu-item--danger' : ''}`}
                   >{item.label}</button>
                 ))}
               </div>
@@ -569,18 +586,14 @@ const ThreadPanel: React.FC<ThreadPanelProps> = ({ message, userId, inputText, o
       </div>
 
       {/* Reply bar */}
-      <div style={{ padding: '14px 20px 24px', borderTop: '1px solid rgba(255,255,255,0.05)', display: 'flex', alignItems: 'center', gap: 10, background: '#0a1220', flexShrink: 0 }}>
-        <div style={{ flex: 1, display: 'flex', alignItems: 'center', gap: 10, background: '#0f1d2e', border: '1px solid rgba(100,130,160,0.35)', borderRadius: 24, padding: '6px 8px 6px 16px', transition: 'border-color 0.15s' }}
-          onFocusCapture={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(8,145,178,0.5)'}
-          onBlurCapture={e => (e.currentTarget as HTMLDivElement).style.borderColor = 'rgba(80,110,140,0.5)'}
-        >
-          <input className="ps-input" type="text" placeholder="Reply…" value={inputText}
+      <div className="ps-thread-reply-bar">
+        <div className="ps-thread-reply-input-wrap">
+          <input className="ps-input ps-thread-reply-input" type="text" placeholder={t('appShell.thread.replyPlaceholder')} value={inputText}
             onChange={e => onInputChange(e.target.value)}
             onKeyDown={e => { if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); onSend(); } }}
-            style={{ flex: 1, background: 'none', border: 'none', outline: 'none', color: '#d0daea', fontSize: 14 }}
           />
           <button onClick={onSend} disabled={!inputText.trim()}
-            style={{ width: 32, height: 32, borderRadius: '50%', background: inputText.trim() ? '#0891B2' : 'transparent', border: inputText.trim() ? 'none' : '1px solid rgba(80,110,140,0.5)', cursor: inputText.trim() ? 'pointer' : 'default', color: inputText.trim() ? '#FFF' : '#6b8099', display: 'flex', alignItems: 'center', justifyContent: 'center', flexShrink: 0, transition: 'all 0.15s' }}>
+            className={`ps-thread-reply-send-btn${inputText.trim() ? ' ps-thread-reply-send-btn--active' : ''}`}>
             <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
           </button>
         </div>
@@ -610,6 +623,7 @@ interface SecureEmailModalProps {
 const SecureEmailModal: React.FC<SecureEmailModalProps> = ({
   isOpen, fromName, fromEmail, prefillTo = '', prefillSubject = '', prefillBody = '', onClose, onSent,
 }) => {
+  const { t } = useTranslation();
   const [to,      setTo]      = React.useState(prefillTo);
   const [subject, setSubject] = React.useState(prefillSubject);
   const [body,    setBody]    = React.useState(prefillBody);
@@ -637,105 +651,107 @@ const SecureEmailModal: React.FC<SecureEmailModalProps> = ({
 
   return ReactDOM.createPortal(
     <div className="ps-overlay" onClick={onClose}>
-      <div className="ps-modal-dark" style={{ width: 560, padding: 0 }} onClick={e => e.stopPropagation()}>
+      <div className="ps-modal-dark ps-modal-dark--secure-email" onClick={e => e.stopPropagation()}>
         {/* Header */}
-        <div style={{ padding:'18px 24px 14px', borderBottom:'1px solid rgba(51,65,85,0.9)', background:'radial-gradient(circle at top left, rgba(56,189,248,0.08), transparent 55%), #0b1120', display:'flex', alignItems:'center', justifyContent:'space-between' }}>
+        <div className="ps-sem-header">
           <div>
-            <div style={{ fontSize:10, fontWeight:700, textTransform:'uppercase', letterSpacing:'0.12em', color:'#64748b', marginBottom:4 }}>
-              🔒 NHSMail · Secure External Email
+            <div className="ps-sem-eyebrow">
+              {t('appShell.secureEmailModal.eyebrow')}
             </div>
-            <div style={{ fontSize:18, fontWeight:700, color:'#e2e8f0' }}>New Secure Message</div>
+            <div className="ps-sem-title">{t('appShell.secureEmailModal.title')}</div>
           </div>
-          <button onClick={onClose} style={{ background:'transparent', border:'none', color:'#64748b', cursor:'pointer', fontSize:20, padding:4, lineHeight:1 }}>
+          <button onClick={onClose} className="ps-sem-close-btn">
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2L12 12M12 2L2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
         </div>
 
         {status === 'sent' ? (
           /* ── Sent confirmation ── */
-          <div style={{ padding:'48px 24px', textAlign:'center', display:'flex', flexDirection:'column', alignItems:'center', gap:16 }}>
-            <div style={{ width:56, height:56, borderRadius:'50%', background:'rgba(16,185,129,0.15)', border:'2px solid #10B981', display:'flex', alignItems:'center', justifyContent:'center' }}>
+          <div className="ps-sem-sent">
+            <div className="ps-sem-sent-icon">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#10B981" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <div>
-              <div style={{ fontSize:16, fontWeight:700, color:'#e2e8f0', marginBottom:6 }}>Message sent securely</div>
-              <div style={{ fontSize:13, color:'#64748b' }}>Delivered to <strong style={{ color:'#94a3b8' }}>{to}</strong> via NHSMail secure relay.</div>
-              <div style={{ fontSize:11, color:'#475569', marginTop:8 }}>End-to-end encrypted · NHS DSPT compliant · Audit logged</div>
+              <div className="ps-sem-sent-title">{t('appShell.secureEmailModal.sentTitle')}</div>
+              <div className="ps-sem-sent-delivered">
+                <Trans i18nKey="appShell.secureEmailModal.deliveredTo" values={{ to }} components={{ strong: <strong className="ps-sem-sent-delivered-strong" /> }} />
+              </div>
+              <div className="ps-sem-sent-notice">{t('appShell.secureEmailModal.encryptedNotice')}</div>
             </div>
-            <button onClick={onClose} style={{ marginTop:8, padding:'8px 24px', background:'rgba(16,185,129,0.15)', border:'1px solid rgba(16,185,129,0.4)', borderRadius:8, color:'#10B981', fontSize:13, fontWeight:600, cursor:'pointer' }}>
-              Close
+            <button onClick={onClose} className="ps-sem-sent-close-btn">
+              {t('appShell.secureEmailModal.closeButton')}
             </button>
           </div>
         ) : (
           /* ── Compose form ── */
-          <div style={{ padding:'20px 24px', display:'flex', flexDirection:'column', gap:14 }}>
+          <div className="ps-sem-form">
 
             {/* From (read-only) */}
-            <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-              <span style={{ fontSize:11, color:'#475569', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em', width:56, flexShrink:0 }}>From</span>
-              <div style={{ flex:1, padding:'8px 12px', background:'rgba(255,255,255,0.03)', border:'1px solid rgba(255,255,255,0.06)', borderRadius:8, fontSize:13, color:'#64748b' }}>
+            <div className="ps-sem-field-row">
+              <span className="ps-sem-field-label">{t('appShell.secureEmailModal.fromLabel')}</span>
+              <div className="ps-sem-from-value">
                 {fromName} &lt;{fromEmail}&gt;
               </div>
             </div>
 
             {/* To */}
-            <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-              <span style={{ fontSize:11, color:'#475569', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em', width:56, flexShrink:0 }}>To</span>
+            <div className="ps-sem-field-row">
+              <span className="ps-sem-field-label">{t('appShell.secureEmailModal.toLabel')}</span>
               <input
                 type="email"
-                placeholder="recipient@nhs.net or external email…"
+                placeholder={t('appShell.secureEmailModal.toPlaceholder')}
                 value={to}
                 onChange={e => setTo(e.target.value)}
-                style={{ flex:1, padding:'8px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'#e2e8f0', fontSize:13, outline:'none' }}
+                className="ps-sem-field-input"
               />
             </div>
 
             {/* Subject */}
-            <div style={{ display:'flex', gap:12, alignItems:'center' }}>
-              <span style={{ fontSize:11, color:'#475569', fontWeight:600, textTransform:'uppercase', letterSpacing:'0.06em', width:56, flexShrink:0 }}>Subject</span>
+            <div className="ps-sem-field-row">
+              <span className="ps-sem-field-label">{t('appShell.secureEmailModal.subjectLabel')}</span>
               <input
                 type="text"
-                placeholder="Subject…"
+                placeholder={t('appShell.secureEmailModal.subjectPlaceholder')}
                 value={subject}
                 onChange={e => setSubject(e.target.value)}
-                style={{ flex:1, padding:'8px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'#e2e8f0', fontSize:13, outline:'none' }}
+                className="ps-sem-field-input"
               />
             </div>
 
             {/* Body */}
             <textarea
-              placeholder="Message body…"
+              placeholder={t('appShell.secureEmailModal.bodyPlaceholder')}
               value={body}
               onChange={e => setBody(e.target.value)}
               rows={7}
-              style={{ width:'100%', padding:'10px 12px', background:'rgba(255,255,255,0.04)', border:'1px solid rgba(255,255,255,0.1)', borderRadius:8, color:'#e2e8f0', fontSize:13, outline:'none', resize:'vertical', fontFamily:'inherit' }}
+              className="ps-sem-body-textarea"
             />
 
             {/* Security notice */}
-            <div style={{ display:'flex', alignItems:'center', gap:8, padding:'8px 12px', background:'rgba(56,189,248,0.05)', border:'1px solid rgba(56,189,248,0.15)', borderRadius:8 }}>
+            <div className="ps-sem-security-notice">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#38bdf8" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-              <span style={{ fontSize:11, color:'#38bdf8' }}>This message will be sent via NHSMail secure relay · End-to-end encrypted · DSPT compliant</span>
+              <span className="ps-sem-security-notice-text">{t('appShell.secureEmailModal.securityNotice')}</span>
             </div>
 
             {/* Actions */}
-            <div style={{ display:'flex', justifyContent:'flex-end', gap:8, paddingTop:4 }}>
-              <button onClick={onClose} style={{ padding:'8px 16px', background:'transparent', border:'1px solid rgba(255,255,255,0.12)', borderRadius:8, color:'#64748b', fontSize:13, cursor:'pointer' }}>
-                Cancel
+            <div className="ps-sem-actions">
+              <button onClick={onClose} className="ps-sem-cancel-btn">
+                {t('appShell.secureEmailModal.cancelButton')}
               </button>
               <button
                 onClick={handleSend}
                 disabled={!canSend || status === 'sending'}
-                style={{ padding:'8px 20px', background: canSend ? 'rgba(56,189,248,0.15)' : 'rgba(255,255,255,0.04)', border:`1px solid ${canSend ? 'rgba(56,189,248,0.4)' : 'rgba(255,255,255,0.08)'}`, borderRadius:8, color: canSend ? '#38bdf8' : '#475569', fontSize:13, fontWeight:600, cursor: canSend ? 'pointer' : 'default', display:'flex', alignItems:'center', gap:8 }}
+                className={`ps-sem-send-btn${canSend ? ' ps-sem-send-btn--enabled' : ''}`}
               >
                 {status === 'sending' ? (
                   <>
-                    <div style={{ width:12, height:12, border:'2px solid rgba(56,189,248,0.2)', borderTopColor:'#38bdf8', borderRadius:'50%', animation:'wl-spin 0.8s linear infinite' }} />
-                    Sending…
+                    <div className="ps-sem-spinner" />
+                    {t('appShell.secureEmailModal.sendingButton')}
                   </>
                 ) : (
                   <>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
-                    Send Securely
+                    {t('appShell.secureEmailModal.sendButton')}
                   </>
                 )}
               </button>
@@ -751,6 +767,7 @@ const SecureEmailModal: React.FC<SecureEmailModalProps> = ({
 interface AppShellProps { hideNav?: boolean; }
 
 const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
 
   const { user } = useAuth();
@@ -758,7 +775,24 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
   const handleLogout = useLogout();
   const location = useLocation();
   const { crumbs, pushCrumb } = useBreadcrumb();
-  const { requestNavigate } = useDirtyState();
+  // Real, aliased on the way in — this file already has its own,
+  // unrelated local `isDirty` further below (the messaging drawer's own
+  // unsaved-draft flag, a genuinely separate concern), so the shared
+  // DirtyStateContext's real isDirty (case/report unsaved changes) is
+  // renamed here to avoid colliding with it.
+  const { requestNavigate, isDirty: hasUnsavedCaseData } = useDirtyState();
+  const [showLogoutWarning, setShowLogoutWarning] = useState(false);
+
+  // Real fix, per direct report: the Sign Out button used to call
+  // handleLogout() unconditionally — no check at all against real,
+  // in-progress unsaved case/report data (AccessionPage.tsx/
+  // SynopticReportPage.tsx, the only two real setDirty(true) callers).
+  // Same real isDirty this file's own guardedNavigate() already checks
+  // for breadcrumb/logo navigation, applied here too.
+  const handleLogoutClick = React.useCallback(() => {
+    if (hasUnsavedCaseData) { setShowLogoutWarning(true); return; }
+    handleLogout();
+  }, [hasUnsavedCaseData, handleLogout]);
 
   const guardedNavigate = React.useCallback((path: string) => {
     // Tell SearchPage to restore its previous results/filters when
@@ -769,17 +803,17 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     // buttons, and the logo (which all route through this one shared
     // guardedNavigate) bypassed it entirely, silently dropping the
     // search session every time.
-    if (path === '/search') sessionStorage.setItem('pathscribe:searchReturn', '1');
+    if (path === '/search') markReturnToSearch();
     requestNavigate(path, (p) => navigate(p));
   }, [navigate, requestNavigate]);
   const PAGE_LABELS: Record<string, string> = {
-    '/':              'Home',
-    '/worklist':      'Worklist',
-    '/search':        'Case Search',
-    '/audit':         'Audit Log',
-    '/configuration': 'Configuration',
-    '/contribution':  'Contributions',
-    '/intraop-queue': 'Intraop Queue',
+    '/':              t('appShell.pageLabels.home'),
+    '/worklist':      t('appShell.pageLabels.worklist'),
+    '/search':        t('appShell.pageLabels.caseSearch'),
+    '/audit':         t('appShell.pageLabels.auditLog'),
+    '/configuration': t('appShell.pageLabels.configuration'),
+    '/contribution':  t('appShell.pageLabels.contributions'),
+    '/intraop-queue': t('appShell.pageLabels.intraopQueue'),
   };
   React.useEffect(() => {
     const label = PAGE_LABELS[location.pathname];
@@ -794,7 +828,52 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     portalOpen, setPortalOpen,
   } = useMessaging();
 
+  // Real, per direct follow-up ("the actions list is out of sync...
+  // voice control is one of its central pillars. It has to be
+  // flawless"): 24 real messaging voice/keyboard actions (Reply,
+  // Delete, Compose, Send, Mark Urgent, and more) used
+  // category: VOICE_CONTEXT.MESSAGES, but confirmed directly — zero
+  // real components anywhere ever called
+  // setCurrentContext(VOICE_CONTEXT.MESSAGES), the same real bug
+  // class SynopticReportPage.tsx's own equivalent fix already
+  // resolved for the REPORTING/SYNOPTIC mismatch. The drawer's own
+  // real visibility state (portalOpen, from useMessaging() above) is
+  // exactly the right, existing signal — no new state needed, just
+  // the same one-line setCurrentContext pattern every other page
+  // already uses, applied to this drawer's own real open/close state
+  // instead of a page mount/unmount.
+  useEffect(() => {
+    if (portalOpen) {
+      mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.MESSAGES);
+      return () => { mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
+    }
+  }, [portalOpen]);
+
+  // Real fix (PS-299 — "Messages referencing a case should show a link
+  // to that case at the top"): loaded once, lazily, the first time the
+  // drawer is actually opened — never on every page's AppShell mount,
+  // since this data exists purely to scan message text a real user is
+  // about to read. See extractCaseReferencesFromText.ts for why this
+  // matches against real, known accession numbers rather than guessing
+  // from a generic pattern.
+  const [knownAccessions, setKnownAccessions] = useState<string[]>([]);
+  useEffect(() => {
+    if (!portalOpen || knownAccessions.length > 0) return;
+    caseService.getAll().then(res => {
+      if (res.ok) setKnownAccessions(res.data.map(c => c.accession?.fullAccession).filter((a): a is string => !!a));
+    });
+  }, [portalOpen, knownAccessions.length]);
+
 // ─── Drawers & Modals ──────────────────────────────────────────────────────
+  // Real fix (PS-298) — same real, reusable companion-window hook DP/EMR
+  // launches already use (hooks/useCompanionWindow.ts), so Guides open in
+  // a genuine positioned window instead of an ordinary browser tab, and
+  // remember where the user left that window across launches. closeOnUnmount:
+  // false — same real reasoning as the hook's own PubMed-window example:
+  // reference material with no patient context shouldn't vanish just
+  // because the user navigated elsewhere in the main app.
+  const userGuideWindow  = useCompanionWindow({ windowName: 'ps-user-guide',  preferredWidth: 900, preferredHeight: 1000, closeOnUnmount: false });
+  const adminGuideWindow = useCompanionWindow({ windowName: 'ps-admin-guide', preferredWidth: 900, preferredHeight: 1000, closeOnUnmount: false });
   const [aboutOpen, setAboutOpen]             = useState(false);
   const [systemInfoOpen, setSystemInfoOpen]   = useState(false);
   const [newRecipients, setNewRecipients]     = useState<InternalUser[]>([]);
@@ -804,7 +883,6 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
   const [showUserSearch,   setShowUserSearch]   = useState(false);
   const [toDropdownOpen,   setToDropdownOpen]   = useState(false);
   const [toHighlightIdx,   setToHighlightIdx]   = useState(0);
-  const [secureEmailToast, _setSecureEmailToast] = useState<string | null>(null);
   const [secureEmailOpen,  setSecureEmailOpen]  = useState(false);
   const toInputRef = useRef<HTMLInputElement>(null);
 
@@ -854,6 +932,16 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     });
 
   const currentMsg = messages.find(m => m.id === selectedMsgId);
+
+  // Real fix (PS-299) — real accession numbers found in the open
+  // message's own subject/body that AREN'T already the one structured
+  // currentMsg.caseNumber (never double-link the same real case).
+  const detectedCaseRefs = React.useMemo(() => {
+    if (!currentMsg) return [];
+    const refs = extractCaseReferencesFromText(`${currentMsg.subject ?? ''} ${currentMsg.body ?? ''}`, knownAccessions);
+    const already = currentMsg.caseNumber?.toUpperCase();
+    return already ? refs.filter(r => r !== already) : refs;
+  }, [currentMsg, knownAccessions]);
 
   // ─── Handlers ───────────────────────────────────────────────────────────────
 
@@ -1029,7 +1117,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     const openTestingFeedback    = () => window.dispatchEvent(new CustomEvent('PATHSCRIBE_HOME_OPEN_TESTING_FEEDBACK'));
     const viewHelp               = () => window.open('/help/documentation.pdf', '_blank');
     const openResources          = () => window.dispatchEvent(new CustomEvent('PATHSCRIBE_PAGE_OPEN_RESOURCES'));
-    const systemLogout           = () => handleLogout();
+    const systemLogout           = () => handleLogoutClick();
 
     // ── Messages: navigation ─────────────────────────────────────────────────
     const msgNext = () => {
@@ -1075,11 +1163,27 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
       setIsComposing(true);
       setInputText('');
     };
+    // Real fix (PS-304) — see utils/openComposeTo.ts for the full
+    // reasoning. Opens the drawer already addressed and subjected,
+    // same real compose state any other path into compose uses, so
+    // Send/Urgent/etc. all keep working unchanged from here.
+    const msgComposeTo = (e: Event) => {
+      const { staffId, subject } = (e as CustomEvent<{ staffId: string; subject: string }>).detail ?? {};
+      const recipient = INTERNAL_USERS.find(u => u.id === staffId);
+      setPortalOpen(true);
+      setPreviousMsgId(selectedMsgId);
+      setSelectedMsgId(null);
+      setIsComposing(true);
+      setInputText('');
+      setNewRecipients(recipient ? [recipient] : []);
+      setNewToInput(recipient ? '' : (staffId ?? ''));
+      setNewSubject(subject ?? '');
+    };
     const msgSend        = () => { if (isComposing) void handleSendNew(); else void handleSend(); };
     const msgClose       = () => handleCloseDrawer();
     const msgEdit        = () => { setIsEditing(e => !e); if (isEditing) setSelectedIds([]); };
     const msgSearch      = () => {
-      const input = document.querySelector<HTMLInputElement>('.ps-msg-drawer input[placeholder="Search"]');
+      const input = document.querySelector<HTMLInputElement>('.ps-msg-drawer .ps-msg-search-input');
       input?.focus();
     };
     const msgViewDeleted  = () => setFilterType('deleted');
@@ -1092,7 +1196,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
 
     // ── Messages compose: field helpers ──────────────────────────────────────
     const msgGotoSubject     = () => {
-      document.querySelector<HTMLInputElement>('.ps-msg-drawer input[placeholder*="Subject"]')?.focus();
+      document.querySelector<HTMLInputElement>('.ps-msg-drawer .ps-compose-field-input')?.focus();
     };
     const msgGotoBody        = () => {
       document.querySelector<HTMLTextAreaElement>('.ps-msg-drawer textarea')?.focus();
@@ -1129,6 +1233,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     window.addEventListener('PATHSCRIBE_MSG_SECURE_EMAIL',        msgSecureEmail);
     window.addEventListener('PATHSCRIBE_MSG_RECIPIENT_ADD',       msgRecipientAdd);
     window.addEventListener('PATHSCRIBE_MSG_COMPOSE',             msgCompose);
+    window.addEventListener('PATHSCRIBE_MSG_COMPOSE_TO',          msgComposeTo);
     window.addEventListener('PATHSCRIBE_MSG_SEND',                msgSend);
     window.addEventListener('PATHSCRIBE_MSG_CLOSE',               msgClose);
     window.addEventListener('PATHSCRIBE_MSG_EDIT',                msgEdit);
@@ -1171,6 +1276,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
       window.removeEventListener('PATHSCRIBE_MSG_MARK_UNREAD',         msgMarkUnread);
       window.removeEventListener('PATHSCRIBE_MSG_SECURE_EMAIL',        msgSecureEmail);
       window.removeEventListener('PATHSCRIBE_MSG_RECIPIENT_ADD',       msgRecipientAdd);
+      window.removeEventListener('PATHSCRIBE_MSG_COMPOSE_TO',          msgComposeTo);
       window.removeEventListener('PATHSCRIBE_MSG_COMPOSE',             msgCompose);
       window.removeEventListener('PATHSCRIBE_MSG_SEND',                msgSend);
       window.removeEventListener('PATHSCRIBE_MSG_CLOSE',               msgClose);
@@ -1193,20 +1299,56 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
     filterType, isComposing, isEditing,
     handleMarkRead, handleSoftDelete, handlePermanentDelete, handleRestore,
     handleBulkMarkRead, handleBulkDelete, handleEmptyDeleted,
-    handleSend, handleSendNew, handleCloseDrawer, handleLogout,
+    handleSend, handleSendNew, handleCloseDrawer, handleLogoutClick,
   ]);
 
+ // Real, per direct UI-review follow-up ("Fix the root"): this
+ // element's own real, existing .ps-app-root CSS class already fully
+ // defines position/width/height/background/color/font-family — but
+ // the inline style previously here was silently overriding three of
+ // those five with different, worse values: background #020617 vs
+ // the CSS class's own var(--ps-navy-base) (#0b1120, the value
+ // several other pages' own competing backgrounds were actually
+ // trying to match); color #f1f5f9 vs var(--ps-text-primary)
+ // (#e2e8f0); and, most consequentially, a font-family stack that
+ // DROPPED 'Inter' entirely — every AppShell-wrapped page has been
+ // silently falling back to system fonts instead of this app's own
+ // intended typeface. Inline style removed entirely; the
+ // already-correct CSS class now genuinely takes effect.
  return (
-    <div className="ps-app-root" style={{ overflow: 'hidden', display: 'flex', flexDirection: 'column', color: '#f1f5f9', background: '#020617', fontFamily: '-apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif' }}>
+    <div className="ps-app-root">
       
       {/* ── NAVBAR ── */}
       {!hideNav && (
         <NavBar
           onLogoClick={() => guardedNavigate('/')}
-          onLogout={handleLogout}
+          onLogout={handleLogoutClick}
           onProfileClick={() => setAboutOpen(true)}
         />
       )}
+
+      {/* Real, live "unsaved changes" guard on Sign Out — see
+          handleLogoutClick's own comment above for what this replaces. */}
+      <LogoutWarningModal
+        isOpen={showLogoutWarning}
+        onClose={() => setShowLogoutWarning(false)}
+        onLogout={handleLogout}
+      />
+
+      {/* Real fix, per direct follow-up: "the Current station...
+          should be identified at login." Mounted unconditionally
+          (not gated by hideNav) — a tech landing directly on a
+          clinical route (NavBar hidden there) still needs this real,
+          one-time prompt exactly the same as anyone landing on the
+          main app shell. */}
+      <ScanStationPrompt />
+      {/* Real feature, per direct follow-up: "MVP Station-Switching
+          via Barcode Label... interrupts standard barcode
+          processing, and triggers a station switch event." Mounted
+          unconditionally, same as ScanStationPrompt — a station
+          barcode scan must work regardless of which page is active,
+          NavBar hidden or not. */}
+      <StationSwitchGuardModal />
 
       {/* Breadcrumb bar — dynamic */}
       {!hideNav && crumbs.length > 1 && (
@@ -1236,7 +1378,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
         </div>
       )}
       {/* Outlet — flex:1 so it fills remaining height and full width exactly */}
-      <div style={{ flex: 1, minHeight: 0, overflow: hideNav ? 'visible' : 'hidden', width: '100%', isolation: 'isolate' }}>
+      <div className={`ps-app-outlet-wrap${hideNav ? ' ps-app-outlet-wrap--nav-hidden' : ''}`}>
         <Outlet />
       </div>
 
@@ -1255,7 +1397,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
               <div className="ps-msg-topbar-left">
                 <div className="ps-msg-title-row">
                   <h2 className="ps-msg-title">
-                    {filterType === 'deleted' ? 'Recently Deleted' : 'Messages'}
+                    {filterType === 'deleted' ? t('appShell.drawer.titleDeleted') : t('appShell.drawer.titleMessages')}
                   </h2>
                   {unreadCount > 0 && filterType !== 'deleted' && (
                     <span className={`ps-unread-bubble${hasUrgent ? " ps-unread-urgent" : ""}`}>{unreadCount}</span>
@@ -1263,10 +1405,10 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                 </div>
                 <div className="ps-msg-header-actions">
                   <button className="ps-msg-edit-btn" onClick={() => { setIsEditing(!isEditing); if (isEditing) setSelectedIds([]); }}>
-                    {isEditing ? 'Done' : 'Edit'}
+                    {isEditing ? t('appShell.drawer.doneButton') : t('appShell.drawer.editButton')}
                   </button>
                   <div className="ps-msg-filter-wrap">
-                    <button className="ps-msg-filter-btn" onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)} aria-label="Filter messages" title="Filter messages">
+                    <button className="ps-msg-filter-btn" onClick={() => setIsFilterMenuOpen(!isFilterMenuOpen)} aria-label={t('appShell.drawer.filterAriaLabel')} title={t('appShell.drawer.filterAriaLabel')}>
                       <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                         <line x1="21" y1="7" x2="3" y2="7" /><line x1="18" y1="12" x2="6" y2="12" /><line x1="15" y1="17" x2="9" y2="17" />
                       </svg>
@@ -1275,7 +1417,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                       <>
                         <div className="ps-msg-filter-backdrop" onClick={() => setIsFilterMenuOpen(false)} />
                         <div className="ps-msg-filter-menu">
-                          {[{ id: 'all', label: 'Messages' }, { id: 'deleted', label: 'Recently Deleted' }].map((opt) => (
+                          {[{ id: 'all', label: t('appShell.drawer.titleMessages') }, { id: 'deleted', label: t('appShell.drawer.titleDeleted') }].map((opt) => (
                             <div
                               key={opt.id}
                               className={`ps-msg-filter-item${filterType === opt.id ? ' ps-msg-filter-item--active' : ''}`}
@@ -1298,8 +1440,8 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                   type="button"
                   className="ps-msg-mobile-back"
                   onClick={() => { setSelectedMsgId(null); setIsComposing(false); }}
-                  aria-label="Back to message list"
-                  title="Back to message list"
+                  aria-label={t('appShell.drawer.backAriaLabel')}
+                  title={t('appShell.drawer.backAriaLabel')}
                 >
                   <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="15 18 9 12 15 6"/></svg>
                 </button>
@@ -1309,7 +1451,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                       <div className="ps-msg-thread-name-row">
                         <span className="ps-msg-thread-name">{currentMsg.senderName}</span>
                         {currentMsg.isUrgent && (
-                          <span className="ps-msg-urgent-badge">Urgent</span>
+                          <span className="ps-msg-urgent-badge">{t('appShell.drawer.urgentBadge')}</span>
                         )}
                       </div>
                       <div className="ps-msg-thread-meta-row">
@@ -1317,17 +1459,49 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                           <span className="ps-msg-thread-subject">{currentMsg.subject}</span>
                         )}
                         {currentMsg.caseNumber && (
-                          <button className="ps-msg-case-link" onClick={() => { setPortalOpen(false); sessionStorage.setItem('ps_reopen_messages', '1'); navigate(`/case/${currentMsg.caseNumber}/synoptic`); }}>
-                            Case {currentMsg.caseNumber}
+                          <button className="ps-msg-case-link" data-phi="accession" onClick={() => {
+                            setPortalOpen(false);
+                            sessionStorage.setItem('ps_reopen_messages', '1');
+                            // Real fix, per direct follow-up: "I assume
+                            // we will launch the Internal Notes Drawer
+                            // when the case gets selected from the
+                            // worklist or the message." Also finally,
+                            // genuinely sets fromMessages - previously
+                            // FullReportPage.tsx read this flag but
+                            // nothing ever actually set it (confirmed
+                            // directly), so its own "Back" handling for
+                            // messages was real code with no real path
+                            // reaching it. Now it does.
+                            navigate(`/report/${currentMsg.caseNumber}`, { state: { fromMessages: true, openInternalNotes: true } });
+                          }}>
+                            {t('appShell.thread.caseLinkLabel', { caseNumber: currentMsg.caseNumber })}
                             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
                           </button>
                         )}
+                        {/* Real fix (PS-299) — links for real cases this
+                            message's own subject/body mentions in free
+                            text, same UI/navigation as the structured
+                            caseNumber link above, just detected rather
+                            than pre-set. */}
+                        {detectedCaseRefs.map(ref => (
+                          <button key={ref} className="ps-msg-case-link" data-phi="accession" onClick={() => {
+                            setPortalOpen(false);
+                            sessionStorage.setItem('ps_reopen_messages', '1');
+                            navigate(`/report/${ref}`, { state: { fromMessages: true, openInternalNotes: true } });
+                          }}>
+                            {t('appShell.thread.caseLinkLabel', { caseNumber: ref })}
+                            <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/></svg>
+                          </button>
+                        ))}
                         {(currentMsg as any).configLink && (
                           <button
                             className="ps-msg-config-link"
-                            title="Open configuration page"
+                            title={t('appShell.thread.openConfigTitle')}
                             onClick={() => {
-                              const link = (currentMsg as any).configLink as string;
+                              // PS-344: the link comes from stored message data, so only a
+                              // same-site path is followed (utils/safeInternalPath.ts).
+                              const link = safeInternalPath((currentMsg as any).configLink);
+                              if (!link) return;
                               setPortalOpen(false);
                               navigate(link);
                               // If the link targets a system section, fire the nav event after a tick
@@ -1341,24 +1515,24 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                             }}
                           >
                             <svg width="9" height="9" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
-                            Open Configuration
+                            {t('appShell.thread.openConfigButton')}
                           </button>
                         )}
                       </div>
                     </div>
-                    <button className="ps-msg-close-btn ps-msg-close-btn--thread" onClick={handleCloseDrawer} aria-label="Close" title="Close">
+                    <button className="ps-msg-close-btn ps-msg-close-btn--thread" onClick={handleCloseDrawer} aria-label={t('appShell.drawer.closeAriaLabel')} title={t('appShell.drawer.closeAriaLabel')}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                   </>
                 ) : isComposing ? (
                   <>
-                    <span className="ps-msg-compose-title">New Message</span>
-                    <button className="ps-msg-close-btn" onClick={handleCloseDrawer} aria-label="Close" title="Close">
+                    <span className="ps-msg-compose-title">{t('appShell.drawer.composeTitle')}</span>
+                    <button className="ps-msg-close-btn" onClick={handleCloseDrawer} aria-label={t('appShell.drawer.closeAriaLabel')} title={t('appShell.drawer.closeAriaLabel')}>
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                     </button>
                   </>
                 ) : (
-                  <button className="ps-msg-close-btn ps-msg-close-btn--empty" onClick={handleCloseDrawer} aria-label="Close" title="Close">
+                  <button className="ps-msg-close-btn ps-msg-close-btn--empty" onClick={handleCloseDrawer} aria-label={t('appShell.drawer.closeAriaLabel')} title={t('appShell.drawer.closeAriaLabel')}>
                     <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
                   </button>
                 )}
@@ -1437,7 +1611,7 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
                     <svg className="ps-msg-empty-icon" width="44" height="44" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round">
                       <path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/>
                     </svg>
-                    <p className="ps-msg-empty-text">Select a message to read</p>
+                    <p className="ps-msg-empty-text">{t('appShell.drawer.emptyStateText')}</p>
                   </div>
                 )}
               </div>
@@ -1447,14 +1621,6 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
         </>,
         document.body
       )}
-{/* Secure email toast — kept for voice trigger fallback */}
-      {secureEmailToast && (
-        <div style={{ position: 'fixed', bottom: 24, left: '50%', transform: 'translateX(-50%)', background: '#0f1d2e', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 10, padding: '12px 20px', display: 'flex', alignItems: 'center', gap: 10, fontSize: 13, color: '#d0daea', boxShadow: '0 8px 32px rgba(0,0,0,0.5)', zIndex: 10000, whiteSpace: 'nowrap' }}>
-          <span style={{ color: '#38bdf8', fontSize: 16 }}>🔒</span>
-          {secureEmailToast}
-        </div>
-      )}
-
       {/* Secure Email Modal */}
       <SecureEmailModal
         onSent={(to, subject) => log('secure_email_sent', { recipientEmail: to, subject })}
@@ -1483,55 +1649,48 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
 
       {aboutOpen && (
         <div className="ps-overlay" onClick={() => setAboutOpen(false)}>
-          <div className="ps-modal-dark" style={{ width: 340, textAlign: 'center' }} onClick={e => e.stopPropagation()}>
-            <div style={{ width: '64px', height: '64px', borderRadius: '14px', border: '2px solid #0891B2', margin: '0 auto 14px', display: 'flex', alignItems: 'center', justifyContent: 'center', color: '#38bdf8', fontSize: '24px', fontWeight: 800 }}>{userInitials}</div>
-            <h2 style={{ margin: '0 0 4px', color: '#f1f5f9', fontSize: 18 }}>{user?.name || 'Dr. Sarah Johnson'}</h2>
-            <div style={{ fontSize: 12, color: '#94a3b8', marginBottom: 20 }}>{user?.role ?? 'Pathologist'}</div>
+          <div className="ps-modal-dark ps-modal-dark--about" onClick={e => e.stopPropagation()}>
+            <div className="ps-about-avatar">{userInitials}</div>
+            <h2 className="ps-about-name">{user?.name || 'Dr. Sarah Johnson'}</h2>
+            <div className="ps-about-role">{user?.role ?? t('appShell.aboutModal.roleFallback')}</div>
 
-            <div style={{ borderTop: '1px solid rgba(255,255,255,0.07)', borderBottom: '1px solid rgba(255,255,255,0.07)', margin: '0 -24px', padding: '4px 0' }}>
+            <div className="ps-about-menu">
               {/* User Guide */}
               <button
-                onClick={() => { setAboutOpen(false); openUserGuide(); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 24px', color: '#38bdf8', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'background 0.12s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(56,189,248,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                onClick={() => { setAboutOpen(false); userGuideWindow.openCompanion(getUserGuideBlobUrl()); }}
+                className="ps-about-menu-item">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                 </svg>
-                User Guide
+                {t('appShell.aboutModal.userGuide')}
               </button>
-              <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '0 24px' }} />
+              <div className="ps-about-menu-divider" />
               {/* Admin Guide — all users in demo */}
               <button
-                onClick={() => { setAboutOpen(false); openAdminGuide(); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 24px', color: '#c084fc', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'background 0.12s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(139,92,246,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                onClick={() => { setAboutOpen(false); adminGuideWindow.openCompanion(getAdminGuideBlobUrl()); }}
+                className="ps-about-menu-item ps-about-menu-item--admin">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><polyline points="14 2 14 8 20 8"/>
                   <line x1="12" y1="18" x2="12" y2="12"/><line x1="9" y1="15" x2="15" y2="15"/>
                 </svg>
-                Admin Guide
+                {t('appShell.aboutModal.adminGuide')}
               </button>
-              <div style={{ height: '1px', background: 'rgba(255,255,255,0.06)', margin: '0 24px' }} />
+              <div className="ps-about-menu-divider" />
               <button
                 onClick={() => { setAboutOpen(false); setSystemInfoOpen(true); }}
-                style={{ display: 'flex', alignItems: 'center', gap: 10, width: '100%', padding: '11px 24px', color: '#38bdf8', background: 'none', border: 'none', textAlign: 'left', fontSize: 13, fontWeight: 500, cursor: 'pointer', transition: 'background 0.12s' }}
-                onMouseEnter={e => (e.currentTarget.style.background = 'rgba(56,189,248,0.06)')}
-                onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}>
+                className="ps-about-menu-item">
                 <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5">
                   <circle cx="12" cy="12" r="3"/><path d="M12 1v4M12 19v4M4.22 4.22l2.83 2.83M16.95 16.95l2.83 2.83M1 12h4M19 12h4M4.22 19.78l2.83-2.83M16.95 7.05l2.83-2.83"/>
                 </svg>
-                System Information
+                {t('appShell.aboutModal.systemInformation')}
               </button>
             </div>
 
             <button
               onClick={() => setAboutOpen(false)}
-              className="ps-btn-ghost-teal"
-              style={{ marginTop: 16, width: '100%', justifyContent: 'center' }}
+              className="ps-btn-ghost-teal ps-btn-ghost-teal--full"
             >
-              Close
+              {t('appShell.aboutModal.closeButton')}
             </button>
           </div>
         </div>
@@ -1539,33 +1698,33 @@ const AppShell: React.FC<AppShellProps> = ({ hideNav = false }) => {
 
       <ConfirmModal
         show={!!pendingPermanentDeleteId}
-        title="Permanently Delete Message"
-        message="Permanently delete this message? This cannot be undone."
-        confirmLabel="Delete"
+        title={t('appShell.confirmModals.permanentDeleteTitle')}
+        message={t('appShell.confirmModals.permanentDeleteMessage')}
+        confirmLabel={t('common.delete')}
         onConfirm={confirmPermanentDelete}
         onCancel={() => setPendingPermanentDeleteId(null)}
       />
       <ConfirmModal
         show={pendingEmptyDeletedCount !== null}
-        title="Empty Deleted Messages"
-        message={`Permanently delete all ${pendingEmptyDeletedCount ?? 0} messages? This cannot be undone.`}
-        confirmLabel="Delete All"
+        title={t('appShell.confirmModals.emptyDeletedTitle')}
+        message={t('appShell.confirmModals.emptyDeletedMessage', { count: pendingEmptyDeletedCount ?? 0 })}
+        confirmLabel={t('appShell.confirmModals.deleteAllButton')}
         onConfirm={confirmEmptyDeleted}
         onCancel={() => setPendingEmptyDeletedCount(null)}
       />
       <ConfirmModal
         show={pendingBulkDeleteCount !== null}
-        title="Permanently Delete Messages"
-        message={`Permanently delete ${pendingBulkDeleteCount ?? 0} message(s)? This cannot be undone.`}
-        confirmLabel="Delete"
+        title={t('appShell.confirmModals.bulkDeleteTitle')}
+        message={t('appShell.confirmModals.bulkDeleteMessage', { count: pendingBulkDeleteCount ?? 0 })}
+        confirmLabel={t('common.delete')}
         onConfirm={confirmBulkDelete}
         onCancel={() => setPendingBulkDeleteCount(null)}
       />
       <ConfirmModal
         show={pendingCloseDrawer}
-        title="Unsent Message"
-        message="You have an unsent message. Are you sure you want to close?"
-        confirmLabel="Close"
+        title={t('appShell.confirmModals.unsentTitle')}
+        message={t('appShell.confirmModals.unsentMessage')}
+        confirmLabel={t('common.close')}
         onConfirm={confirmCloseDrawer}
         onCancel={() => setPendingCloseDrawer(false)}
       />

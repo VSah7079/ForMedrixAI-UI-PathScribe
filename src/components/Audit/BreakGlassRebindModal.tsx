@@ -16,6 +16,7 @@
 // InterfaceExceptionReviewModal.tsx.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
 import type { MasterPatientRecord } from '@/services/patients/IPatientIndexService';
 import { BREAK_GLASS_REASON_CODES, BREAK_GLASS_MIN_NOTE_LENGTH } from '@/types/patients/BreakGlassReasonCode';
@@ -30,6 +31,7 @@ interface Props {
 }
 
 const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, onClose, onRebound }) => {
+  const { t } = useTranslation();
   const [loading, setLoading] = useState(true);
   const [downtimeRecords, setDowntimeRecords] = useState<MasterPatientRecord[]>([]);
   const [selectedDowntimeId, setSelectedDowntimeId] = useState('');
@@ -98,40 +100,57 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
     setBusy(false);
     setConfirming(false);
     if (rebindResult.rebound) {
-      setResult({ ok: true, message: `Rebound successfully — ${rebindResult.casesRepointed ?? 0} case(s) repointed: ${(rebindResult.caseIds ?? []).join(', ') || 'none'}.` });
+      const count = rebindResult.casesRepointed ?? 0;
+      setResult({
+        ok: true,
+        message: t('breakGlassRebindModal.rebindSuccess', {
+          count,
+          caseIds: (rebindResult.caseIds ?? []).join(', ') || t('breakGlassRebindModal.noneCaseIds'),
+        }),
+      });
       onRebound();
     } else {
-      setResult({ ok: false, message: rebindResult.reason ?? 'Break-Glass rebind failed for an unknown reason.' });
+      setResult({ ok: false, message: rebindResult.reason ?? t('breakGlassRebindModal.rebindFailedUnknown') });
     }
   };
 
+  // Real, per direct feedback: this modal used ps-modal-overlay/
+  // ps-iexc-modal (a real but rare, minority pattern — only 4-5 uses
+  // total across the app) instead of the real, dominant standard
+  // (ps-overlay/ps-modal-dark, confirmed 174/47 uses respectively) —
+  // fixed to match. "Break-Glass Rebind" renamed to "Map Patient"
+  // throughout every real, user-facing string (title, trigger button,
+  // confirm button, result messages) — the underlying
+  // breakGlassRebind() service call and its own real restrictions are
+  // unchanged; only what a user actually reads was confusing, not the
+  // real mechanism itself.
   return (
-    <div className="ps-modal-overlay" onClick={onClose}>
-      <div className="ps-iexc-modal" onClick={e => e.stopPropagation()}>
-        <div className="ps-modal-header">
-          <h2 className="ps-modal-title">⚡ Break-Glass Rebind — Restricted</h2>
-          <button onClick={onClose} className="ps-modal-close">&#x2715;</button>
+    <div className="ps-overlay" onClick={onClose}>
+      <div className="ps-modal-dark bg-rebind-modal" onClick={e => e.stopPropagation()}>
+        <div className="ps-modal-dark-header">
+          <span className="ps-modal-dark-title">{'🔗 '}{t('breakGlassRebindModal.title')}</span>
+          <button onClick={onClose} className="ps-research-close">&#x2715;</button>
         </div>
 
-        <div className="ps-iexc-modal-body">
+        <div className="ps-modal-dark-body">
           <div className="ps-iexc-reason-banner">
-            Attach a real Case created under a temporary/downtime placeholder identity to the real, confirmed EHR patient. This is a rare, restricted, fully audited action — the placeholder record will be retired, not kept active.
+            {t('breakGlassRebindModal.reasonBanner')}
           </div>
 
           {result ? (
             <div className={result.ok ? 'ps-iexc-result-banner' : 'ps-iexc-reason-banner'}>{result.message}</div>
           ) : loading ? (
-            <div className="ps-iexc-loading">Loading downtime records…</div>
+            <div className="ps-iexc-loading">{t('breakGlassRebindModal.loadingDowntimeRecords')}</div>
           ) : (
             <>
               <div className="ps-conf-form-field">
-                <label className="ps-label" htmlFor="bg-downtime-select">Downtime / placeholder identity to resolve</label>
-                <select id="bg-downtime-select" className="ps-input-dark" value={selectedDowntimeId} onChange={e => setSelectedDowntimeId(e.target.value)} disabled={busy}>
+                <label className="ps-label" htmlFor="bg-downtime-select">{t('breakGlassRebindModal.downtimeSelectLabel')}</label>
+                <select id="bg-downtime-select" className="ps-input-dark" data-phi="true" value={selectedDowntimeId} onChange={e => setSelectedDowntimeId(e.target.value)} disabled={busy}>
                   <option value="">
-                    {downtimeRecords.length === 0 ? 'No downtime records awaiting a rebind' : 'Select a downtime record…'}
+                    {downtimeRecords.length === 0 ? t('breakGlassRebindModal.noDowntimeRecords') : t('breakGlassRebindModal.selectDowntimePlaceholder')}
                   </option>
                   {downtimeRecords.map(r => (
-                    <option key={r.id} value={r.id}>{r.lastName}, {r.firstName} — MRN {r.mrn}{r.downtimeReasonCode ? ` (${r.downtimeReasonCode})` : ''}</option>
+                    <option key={r.id} value={r.id}>{t('breakGlassRebindModal.downtimeOption', { name: `${r.lastName}, ${r.firstName}`, mrn: r.mrn })}{r.downtimeReasonCode ? ` (${r.downtimeReasonCode})` : ''}</option>
                   ))}
                 </select>
               </div>
@@ -139,38 +158,38 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
               {selectedDowntimeId && (
                 <>
                   <div className="ps-conf-form-field">
-                    <label className="ps-label" htmlFor="bg-target-search">Real, confirmed target patient (search by name or MRN)</label>
+                    <label className="ps-label" htmlFor="bg-target-search">{t('breakGlassRebindModal.targetSearchLabel')}</label>
                     <input
                       id="bg-target-search"
                       className="ps-input-dark"
                       value={targetQuery}
                       onChange={e => { setTargetQuery(e.target.value); setSelectedTargetId(''); }}
-                      placeholder="e.g. Smith or MRN-987654"
+                      placeholder={t('breakGlassRebindModal.targetSearchPlaceholder')}
                       disabled={busy}
                     />
-                    {searching && <div className="ps-iexc-loading">Searching…</div>}
+                    {searching && <div className="ps-iexc-loading">{t('breakGlassRebindModal.searching')}</div>}
                     {!searching && targetResults.length > 0 && (
                       <div className="ps-iexc-cases-list">
                         {targetResults.map(r => (
                           <label key={r.id} className="ps-iexc-case-row">
                             <input type="radio" name="bg-target" checked={selectedTargetId === r.id} onChange={() => setSelectedTargetId(r.id)} disabled={busy} />
                             <div className="ps-iexc-case-info">
-                              <div className="ps-iexc-case-id">{r.lastName}, {r.firstName}</div>
-                              <div className="ps-iexc-case-detail">MRN {r.mrn} · DOB {r.dateOfBirth}</div>
+                              <div className="ps-iexc-case-id" data-phi="name">{r.lastName}, {r.firstName}</div>
+                              <div className="ps-iexc-case-detail" data-phi="true">MRN {r.mrn} · DOB {r.dateOfBirth}</div>
                             </div>
                           </label>
                         ))}
                       </div>
                     )}
                     {!searching && targetQuery.trim() && targetResults.length === 0 && (
-                      <div className="ps-iexc-no-cases">No matching real patients found.</div>
+                      <div className="ps-iexc-no-cases">{t('breakGlassRebindModal.noMatchingPatients')}</div>
                     )}
                   </div>
 
                   <div className="ps-conf-form-field">
-                    <label className="ps-label" htmlFor="bg-reason-code">Reason code</label>
+                    <label className="ps-label" htmlFor="bg-reason-code">{t('breakGlassRebindModal.reasonCodeLabel')}</label>
                     <select id="bg-reason-code" className="ps-input-dark" value={reasonCode} onChange={e => setReasonCode(e.target.value)} disabled={busy}>
-                      <option value="">Select a reason…</option>
+                      <option value="">{t('breakGlassRebindModal.selectReasonPlaceholder')}</option>
                       {BREAK_GLASS_REASON_CODES.map(r => (
                         <option key={r.code} value={r.code}>{r.label}</option>
                       ))}
@@ -178,18 +197,18 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
                   </div>
 
                   <div className="ps-conf-form-field">
-                    <label className="ps-label" htmlFor="bg-notes">Justification (minimum {BREAK_GLASS_MIN_NOTE_LENGTH} characters)</label>
+                    <label className="ps-label" htmlFor="bg-notes">{t('breakGlassRebindModal.justificationLabel', { min: BREAK_GLASS_MIN_NOTE_LENGTH })}</label>
                     <textarea
                       id="bg-notes"
                       className="ps-input-dark"
                       rows={3}
                       value={notes}
                       onChange={e => setNotes(e.target.value)}
-                      placeholder='e.g. "Rebound Doe_1234 to MRN 987654 per HIM Ticket #4091"'
+                      placeholder={t('breakGlassRebindModal.justificationPlaceholder')}
                       disabled={busy}
                     />
                     {notes.length > 0 && !notesValid && (
-                      <div className="ps-iexc-no-cases">{BREAK_GLASS_MIN_NOTE_LENGTH - notes.trim().length} more character(s) needed.</div>
+                      <div className="ps-iexc-no-cases">{t('breakGlassRebindModal.moreCharactersNeeded', { count: BREAK_GLASS_MIN_NOTE_LENGTH - notes.trim().length })}</div>
                     )}
                   </div>
                 </>
@@ -198,22 +217,22 @@ const BreakGlassRebindModal: React.FC<Props> = ({ organisationId, performedBy, o
           )}
         </div>
 
-        <div className="ps-modal-footer">
+        <div className="ps-modal-dark-footer">
           {result ? (
-            <button onClick={onClose} className="ps-conf-btn-primary">Close</button>
+            <button onClick={onClose} className="ps-conf-btn-primary">{t('breakGlassRebindModal.close')}</button>
           ) : confirming ? (
             <>
-              <span className="ps-iexc-no-cases">Confirm: this will retire the downtime record and repoint its case(s). This cannot be undone from this modal.</span>
-              <button onClick={() => setConfirming(false)} disabled={busy} className="ps-conf-btn-secondary">Back</button>
+              <span className="ps-iexc-no-cases">{t('breakGlassRebindModal.confirmWarning')}</span>
+              <button onClick={() => setConfirming(false)} disabled={busy} className="ps-conf-btn-secondary">{t('breakGlassRebindModal.back')}</button>
               <button onClick={handleConfirm} disabled={busy} className="ps-conf-btn-primary">
-                {busy ? 'Rebinding…' : 'Confirm Break-Glass Rebind'}
+                {busy ? t('breakGlassRebindModal.mapping') : t('breakGlassRebindModal.confirmMapPatient')}
               </button>
             </>
           ) : (
             <>
-              <button onClick={onClose} className="ps-conf-btn-secondary">Cancel</button>
+              <button onClick={onClose} className="ps-conf-btn-secondary">{t('breakGlassRebindModal.cancel')}</button>
               <button onClick={() => setConfirming(true)} disabled={!canSubmit} className="ps-conf-btn-primary">
-                Review &amp; Confirm
+                {t('breakGlassRebindModal.reviewAndConfirm')}
               </button>
             </>
           )}

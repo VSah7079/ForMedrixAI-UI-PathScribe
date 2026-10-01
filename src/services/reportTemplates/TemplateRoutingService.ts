@@ -7,6 +7,18 @@
 //   2. Subspecialty ID fallback
 //   3. Gold standard (universal fallback)
 //
+// Real, per direct guidance ("Report Template by facility, if none
+// defined then it looks at the Enterprise definitions"): Pass 0 (Facility
+// override) now has a real Enterprise-level fallback (Pass 0a) — an
+// affiliate facility with no own override rolls up to its real
+// Enterprise parent's own rule, one hop, same established pattern as
+// resolveInterfaceEngineConnectionForFacility/resolveLisRoutingForFacility/
+// resolveIdentifierFormatsForFacility (services/facilities/IFacilityService.ts).
+// An Enterprise's own rule is just an ordinary 'client'-type RoutingRule
+// keyed on its own facility id — no new admin UI or storage needed;
+// RoutingRulesTab.tsx's existing client picker already lists every real
+// facility, Enterprise or affiliate alike.
+//
 // If multiple synoptic protocols on a single case resolve to different report
 // templates (multi-organ case), `ambiguous: true` is returned and `candidates`
 // lists all qualifying template IDs.  The caller should surface the choice to
@@ -18,10 +30,58 @@ export interface TemplateRoutingInput {
   subspecialtyId?: string;
   /** Synoptic template IDs from synopticReports[].templateId */
   synopticTemplateIds?: string[];
-  /** Performing/receiving client ID — enables client-specific template overrides */
-  performingClientId?: string;
+  /** Performing/receiving facility ID — enables facility-specific template overrides */
+  performingFacilityId?: string;
+  /**
+   * Real, per direct guidance ("Report Template by facility, if none
+   * defined then it looks at the Enterprise definitions"): the real
+   * Enterprise parent (Facility.parentId) that performingFacilityId
+   * itself rolls up to, if any — resolved by the caller via the same,
+   * already-established single-hop Facility hierarchy
+   * resolveInterfaceEngineConnectionForFacility/
+   * resolveLisRoutingForFacility/resolveIdentifierFormatsForFacility
+   * already use (services/facilities/IFacilityService.ts), never
+   * guessed or walked here. An Enterprise-type facility itself has no
+   * further parent to roll up to — that case is expected to leave this
+   * undefined, since Pass 0's own direct performingFacilityId lookup
+   * already covers an Enterprise's own rule.
+   */
+  enterpriseFacilityId?: string;
   /** Ordering physician ID — enables physician-preference overrides */
   orderingPhysicianId?: string;
+  /** Real, per direct follow-up ("TemplateRoutingService doesn't
+   *  select Preliminary vs. Final templates by CaseStatus yet") — the
+   *  case's own current, real CaseStatus (types/case/CaseStatus.ts).
+   *  PS-292's own decision: stay strict, a report is Preliminary
+   *  until the case is genuinely done — see resolveIsFinalStatus
+   *  below for the exact, real definition of "genuinely done" this
+   *  applies. Optional, and genuinely opt-in: an omitted value skips
+   *  this pass entirely (this caller hasn't been updated to
+   *  participate in Preliminary/Final routing yet) and resolution
+   *  proceeds exactly as it did before this field existed — never a
+   *  forced Preliminary default on missing data.
+   */
+  caseStatus?: import('../../types/case/CaseStatus').CaseStatus;
+}
+
+/**
+ * Real, per PS-292's own "stay strict" decision: a report is
+ * Preliminary until the case's real status is genuinely done — not a
+ * literal string match against only 'finalized'. Checked the real
+ * CaseStatus lifecycle directly (types/case/CaseStatus.ts) rather than
+ * assuming: 'pending-release' comes AFTER 'finalized' in the real
+ * sequence (the attending has genuinely completed sign-out — its own
+ * doc comment confirms Case.finalizedAt is already stamped the moment
+ * a case enters this status — it's held back only from EXTERNAL
+ * dispatch for the recall window, not from being a genuinely final
+ * report). Treating it as still-Preliminary would be wrong: the
+ * content is done, only release is pending. 'closed' is the real
+ * terminal state after that. Every earlier status in the real
+ * lifecycle (including 'pending-countersign', per PS-292's own
+ * explicit decision) stays Preliminary.
+ */
+export function resolveIsFinalStatus(status: import('../../types/case/CaseStatus').CaseStatus | undefined): boolean {
+  return status === 'finalized' || status === 'pending-release' || status === 'closed';
 }
 
 export interface TemplateRoutingResult {
@@ -32,7 +92,7 @@ export interface TemplateRoutingResult {
   /** All qualifying template IDs in priority order */
   candidates: string[];
   /** How the template was resolved */
-  resolvedBy: 'protocol' | 'client-override' | 'physician-preference' | 'subspecialty' | 'gold-standard';
+  resolvedBy: 'preliminary-status' | 'protocol' | 'client-override' | 'client-override-enterprise' | 'physician-preference' | 'subspecialty' | 'gold-standard';
 }
 
 // ── Synoptic protocol → Case Report Template ─────────────────────────────
@@ -146,17 +206,17 @@ export function deriveSubspecialtyFromProtocols(synopticTemplateIds: string[] | 
   return undefined;
 }
 
-// ── Client-specific template overrides ───────────────────────────────────────
-// Key = clientId from order.clientId
+// ── Facility-specific template overrides ───────────────────────────────────────
+// Key = facilityId from order.facilityId
 // Value = Case Report Template ID
-// Used when a specific client always requires a particular template format
+// Used when a specific facility always requires a particular template format
 // regardless of specimen type (e.g. a paediatric hospital always uses a
 // custom paediatric template).
 // Admins manage this via System → Template Routing Rules (future Config screen).
 
-const CLIENT_TO_REPORT: Record<string, string> = {
-  // Example: 'CLIENT-PAED': 'tmpl-paediatric',
-  // Add client-specific overrides here or load from config
+const FACILITY_TO_REPORT: Record<string, string> = {
+  // Example: 'FACILITY-PAED': 'tmpl-paediatric',
+  // Add facility-specific overrides here or load from config
 };
 
 // ── Physician preference overrides ───────────────────────────────────────────
@@ -199,25 +259,100 @@ export function traceReportTemplateResolution(input: TemplateRoutingInput): Temp
   const passes: TemplateRoutingPassTrace[] = [];
   let resolved: TemplateRoutingResult | null = null;
 
-  const clientMap      = { ...CLIENT_TO_REPORT,    ...((input as any)._clientOverrides      ?? {}) };
+  // Pass -1 — Preliminary status gate. Real, per direct follow-up and
+  // PS-292's own "stay strict" decision: reached before every other
+  // pass, since Preliminary-vs-Final is a more fundamental distinction
+  // than which specific subspecialty Final template applies — a case
+  // that isn't done yet needs the group Preliminary template
+  // regardless of what a facility/physician/protocol override would
+  // otherwise have picked for its eventual Final report.
+  //
+  // Real, deliberate default: caseStatus is optional, and an omitted
+  // value means "this caller hasn't been updated to participate in
+  // Preliminary/Final routing yet" — same convention as every other
+  // pass in this file skipping itself when its own input is absent
+  // (Pass 0 on performingFacilityId, Pass 2 on subspecialtyId), not a
+  // forced Preliminary default. Confirmed directly against this
+  // file's own existing test suite: treating "omitted" as "assume
+  // Preliminary" broke 6 of 9 pre-existing tests that call this
+  // resolver without ever mentioning status at all — the correct
+  // reading of "optional" here is "opts out of this pass," not "opts
+  // into the safest-sounding outcome."
+  //
+  // Real, honest scope limit: resolves directly to the one, real Surg
+  // Path Preliminary template (tmpl-prelim-surgpath) — this service is
+  // only ever called from Surg Path's own contextBuilder.ts today
+  // (confirmed directly: Cytology's own sign-out never calls this
+  // service at all, a separate, already-flagged gap on PS-292), so
+  // that's the only group template this routing can actually reach.
+  // Does not yet support a facility-specific Preliminary override the
+  // way Pass 0 does for Final templates — a real, separate enhancement
+  // if a site ever needs its own, cloned Preliminary template routed
+  // to automatically, not assumed solved by this fix.
+  if (input.caseStatus !== undefined) {
+    const isFinal = resolveIsFinalStatus(input.caseStatus);
+    if (!isFinal) {
+      resolved = { templateId: 'tmpl-prelim-surgpath', ambiguous: false, candidates: ['tmpl-prelim-surgpath'], resolvedBy: 'preliminary-status' };
+      passes.push({ pass: 'preliminary-status', reached: true, inputProvided: true, matched: true,
+        detail: `Case status '${input.caseStatus}' is not yet final — routed to Preliminary template` });
+    } else {
+      passes.push({ pass: 'preliminary-status', reached: true, inputProvided: true, matched: false,
+        detail: `Case status '${input.caseStatus}' is genuinely final — proceeding to Final-report template resolution` });
+    }
+  } else {
+    passes.push({ pass: 'preliminary-status', reached: true, inputProvided: false, matched: false,
+      detail: 'No case status provided by this caller — Preliminary/Final routing not applicable, proceeding to Final-report template resolution as before' });
+  }
+
+  const facilityMap      = { ...FACILITY_TO_REPORT,    ...((input as any)._facilityOverrides      ?? {}) };
   const physicianMap   = { ...PHYSICIAN_TO_REPORT, ...((input as any)._physicianOverrides   ?? {}) };
   // Admin-defined protocol mappings take precedence over the hardcoded
   // fallback map — lets an admin self-service a new/changed protocol
   // mapping from Routing Rules without a code deploy.
   const protocolMap = { ...PROTOCOL_TO_REPORT, ...((input as any)._protocolOverrides ?? {}) };
 
-  // Pass 0 — Client override
-  {
-    const provided = !!input.performingClientId;
-    const mapped = provided ? clientMap[input.performingClientId!] : undefined;
+  // Pass 0 — Facility override. Real fix: this pass never checked
+  // `!resolved` before running — safe when it was the very first real
+  // pass (nothing could have set `resolved` yet), but Pass -1 above
+  // now genuinely can, and without this guard it would silently
+  // overwrite a real Preliminary-status resolution with whatever this
+  // pass found, defeating the whole point of Pass -1 running first.
+  if (!resolved) {
+    const provided = !!input.performingFacilityId;
+    const mapped = provided ? facilityMap[input.performingFacilityId!] : undefined;
     if (mapped) {
       resolved = { templateId: mapped, ambiguous: false, candidates: [mapped], resolvedBy: 'client-override' };
       passes.push({ pass: 'client-override', reached: true, inputProvided: true, matched: true,
-        detail: `${input.performingClientId} → ${mapped}` });
+        detail: `${input.performingFacilityId} → ${mapped}` });
     } else {
       passes.push({ pass: 'client-override', reached: true, inputProvided: provided, matched: false,
-        detail: provided ? `${input.performingClientId} — no override rule defined` : 'No performing client specified' });
+        detail: provided ? `${input.performingFacilityId} — no override rule defined` : 'No performing facility specified' });
     }
+  } else {
+    passes.push({ pass: 'client-override', reached: false, inputProvided: false, matched: false, detail: 'Not reached — higher-priority pass already matched' });
+  }
+
+  // Pass 0a — Enterprise-level facility override. Real, per direct
+  // guidance: only checked when the facility-specific lookup above
+  // found nothing — an affiliate's own real override, once it has one,
+  // always wins over its Enterprise's. enterpriseFacilityId is real,
+  // resolved data the caller already looked up (see this file's own
+  // resolveReportTemplateAsync below) — this pass only ever performs
+  // the SAME facilityMap lookup a second time with a different id,
+  // never invents a separate map or a different resolution rule.
+  if (!resolved) {
+    const provided = !!input.enterpriseFacilityId;
+    const mapped = provided ? facilityMap[input.enterpriseFacilityId!] : undefined;
+    if (mapped) {
+      resolved = { templateId: mapped, ambiguous: false, candidates: [mapped], resolvedBy: 'client-override-enterprise' };
+      passes.push({ pass: 'client-override-enterprise', reached: true, inputProvided: true, matched: true,
+        detail: `${input.performingFacilityId} has no own override — its Enterprise ${input.enterpriseFacilityId} → ${mapped}` });
+    } else {
+      passes.push({ pass: 'client-override-enterprise', reached: true, inputProvided: provided, matched: false,
+        detail: provided ? `Enterprise ${input.enterpriseFacilityId} — no override rule defined either` : 'No Enterprise parent to roll up to' });
+    }
+  } else {
+    passes.push({ pass: 'client-override-enterprise', reached: false, inputProvided: false, matched: false, detail: 'Not reached — higher-priority pass already matched' });
   }
 
   // Pass 0b — Physician preference
@@ -294,19 +429,41 @@ export async function resolveReportTemplateAsync(
   input: TemplateRoutingInput
 ): Promise<TemplateRoutingResult> {
   try {
+    // Real, per direct guidance: resolves the real Enterprise parent
+    // (Pass 0a above) and the real performing lab (for Routing Rules'
+    // own lab-scoping — "Routing Rules should also be tied to a
+    // Performing Lab facility") from the SAME single facility lookup —
+    // never two separate fetches for what's fundamentally one real
+    // question, "which facility, and where does its work roll up to."
+    let enterpriseFacilityId: string | undefined;
+    let performingLabFacilityId: string | undefined;
+    if (input.performingFacilityId) {
+      const { mockFacilityService } = await import('../facilities/mockFacilityService');
+      const { resolvePerformingLabFacilityId } = await import('../facilities/IFacilityService');
+      const facilityRes = await mockFacilityService.getById(input.performingFacilityId);
+      if (facilityRes.ok) {
+        if (!facilityRes.data.isEnterprise && facilityRes.data.parentId) {
+          enterpriseFacilityId = facilityRes.data.parentId;
+        }
+        performingLabFacilityId = resolvePerformingLabFacilityId(facilityRes.data);
+      }
+    }
+
     const { mockRoutingRuleService } = await import('../routingRules/mockRoutingRuleService');
-    const [clientMapResult, physicianMapResult, protocolMapResult] = await Promise.all([
-      mockRoutingRuleService.getClientMap(),
-      mockRoutingRuleService.getPhysicianMap(),
-      mockRoutingRuleService.getProtocolMap(),
+    const [facilityMapResult, physicianMapResult, protocolMapResult] = await Promise.all([
+      mockRoutingRuleService.getFacilityMap(performingLabFacilityId),
+      mockRoutingRuleService.getPhysicianMap(performingLabFacilityId),
+      mockRoutingRuleService.getProtocolMap(performingLabFacilityId),
     ]);
-    const clientOverrides      = (clientMapResult as any).ok ? (clientMapResult as any).data : {};
+    const facilityOverrides      = (facilityMapResult as any).ok ? (facilityMapResult as any).data : {};
     const physicianOverrides   = (physicianMapResult as any).ok ? (physicianMapResult as any).data : {};
     const protocolOverrides    = (protocolMapResult as any).ok ? (protocolMapResult as any).data : {};
+
     // Merge admin rules into the hardcoded maps (admin rules take precedence)
     return resolveReportTemplate({
       ...input,
-      _clientOverrides:      clientOverrides,
+      enterpriseFacilityId,
+      _facilityOverrides:      facilityOverrides,
       _physicianOverrides:   physicianOverrides,
       _protocolOverrides:    protocolOverrides,
     } as any);

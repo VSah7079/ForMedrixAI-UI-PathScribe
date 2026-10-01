@@ -14,45 +14,65 @@
 // and a collapse toggle per instance's matrix.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import '../../../pathscribe.css';
 import { amendmentService, reportVersionService } from '@/services';
 import { getTemplate } from '@/services/templates/templateService';
-import type { AmendmentRecord } from '@/types/reports/AmendmentRecord';
+import type { AmendmentRecord, NotificationMethod } from '@/types/reports/AmendmentRecord';
 import type { ReportVersionRecord } from '@/types/reports/ReportVersionRecord';
+import { formatOrdinal } from '@/utils/formatOrdinal';
 
-const NOTIFICATION_METHOD_LABEL: Record<string, string> = {
-  verbal_phone: 'Verbal / Phone Call',
-  secure_page: 'Secure Page',
-  direct_lis_flag: 'Direct LIS Flag',
+// Reuses AmendmentModal.tsx's own complete NOTIFICATION_METHOD_LABEL_KEY
+// keys (all 5 NotificationMethod values — this file's previous map only
+// covered 3, silently falling back to the raw enum value for the other
+// two) rather than duplicating that translation content.
+const NOTIFICATION_METHOD_LABEL_KEY: Record<NotificationMethod, string> = {
+  verbal_phone: 'amendmentModal.notificationMethod.verbalPhone',
+  secure_page: 'amendmentModal.notificationMethod.securePage',
+  direct_lis_flag: 'amendmentModal.notificationMethod.directLisFlag',
+  secure_email: 'amendmentModal.notificationMethod.secureEmail',
+  fax: 'amendmentModal.notificationMethod.fax',
 };
 
-const formatValue = (value: unknown): string => {
-  if (value === undefined || value === null || value === '') return '(empty)';
+const formatValue = (value: unknown, t: TFunction): string => {
+  if (value === undefined || value === null || value === '') return t('amendmentModal.delta.emptyValue');
   return String(value);
 };
 
 const formatDateTime = (iso?: string) => iso ? new Date(iso).toLocaleString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit', hour: '2-digit', minute: '2-digit', timeZoneName: 'short' }) : '';
 
-const ordinal = (n: number): string => {
-  const suffixes = ['th', 'st', 'nd', 'rd'];
-  const v = n % 100;
-  return `${n}${suffixes[(v - 20) % 10] || suffixes[v] || suffixes[0]}`;
-};
-
-const versionLabel = (indexFromOriginal: number, total: number): string => {
-  if (indexFromOriginal === 0) return 'Original';
-  if (indexFromOriginal === total - 1) return `${ordinal(indexFromOriginal)} Amended (Most Recent)`;
-  return `${ordinal(indexFromOriginal)} Amended`;
+// Reuses the same amendmentModal.version.* keys and formatOrdinal() util
+// AmendmentModal.tsx's own version-history labels already use ("1st
+// Amended", "2nd Amended (Most Recent)"...) — see formatOrdinal.ts for
+// why a real per-locale ordinal form is needed rather than an English
+// letter suffix. indexFromOriginal is 0-based here (0 = Original) where
+// AmendmentModal's versionNumber is 1-based; ordinal(indexFromOriginal)
+// lines up with ordinal(versionNumber - 1) there.
+const versionLabel = (indexFromOriginal: number, total: number, t: TFunction, lang: string): string => {
+  if (indexFromOriginal === 0) return t('amendmentModal.version.original');
+  const ord = formatOrdinal(indexFromOriginal, lang);
+  if (indexFromOriginal === total - 1) return t('amendmentModal.version.amendedMostRecent', { ordinal: ord });
+  return t('amendmentModal.version.amended', { ordinal: ord });
 };
 
 interface InstanceGroup {
   instanceId: string;
   templateId?: string;
+  /** Real, per direct guidance's own follow-up on the addendum-to-
+   *  report-section display gap: each instance's own real specimen
+   *  label ("Specimen A: Left breast lumpectomy"), when resolvable -
+   *  a case with multiple, independently-amended reports previously
+   *  showed the exact same generic "AMENDED DIAGNOSIS" header for
+   *  each one, with no way to tell them apart. Undefined only when
+   *  the real specimen genuinely can't be resolved (never fabricated). */
+  specimenLabel?: string;
   amendments: AmendmentRecord[]; // released, sorted ascending by initiatedAt
   columns: Record<string, unknown>[]; // ascending: Original -> ... -> Most Recent
 }
 
 const InstanceMatrix: React.FC<{ group: InstanceGroup; liveAnswers: Record<string, unknown> | undefined }> = ({ group, liveAnswers }) => {
+  const { t, i18n } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
   const [sections, setSections] = useState<{ title: string; fieldKeys: string[] }[] | undefined>(undefined);
 
@@ -103,33 +123,35 @@ const InstanceMatrix: React.FC<{ group: InstanceGroup; liveAnswers: Record<strin
   const rowGroups: { title: string | null; fieldKeys: string[] }[] = sections && sections.length > 0
     ? [
         ...sections.map(s => ({ title: s.title, fieldKeys: s.fieldKeys.filter(k => allFieldKeys.includes(k)) })),
-        ...(unsectioned.length > 0 ? [{ title: 'Other', fieldKeys: unsectioned }] : []),
+        ...(unsectioned.length > 0 ? [{ title: t('copilotReportViewModal.otherSectionTitle'), fieldKeys: unsectioned }] : []),
       ]
     : [{ title: null, fieldKeys: allFieldKeys.sort() }];
 
   return (
     <div className="ps-amendment-status-row">
       <div className="ps-amendment-narrative-header-row">
-        <p className="ps-amendment-narrative-header">AMENDED DIAGNOSIS [Timestamp: {formatDateTime(latest.releasedAt)}]</p>
+        <p className="ps-amendment-narrative-header">
+          {t('amendmentStatusBanner.amendedDiagnosisHeader')}{group.specimenLabel ? ` \u2014 ${group.specimenLabel}` : ''} {t('amendmentStatusBanner.timestampSuffix', { time: formatDateTime(latest.releasedAt) })}
+        </p>
         <button type="button" className="ps-amendment-collapse-toggle" onClick={() => setCollapsed(c => !c)}>
-          {collapsed ? '▸ Show details' : '▾ Collapse'}
+          {collapsed ? `▸ ${t('amendmentStatusBanner.showDetailsToggle')}` : `▾ ${t('synopticEditor.common.collapse')}`}
         </button>
       </div>
-      <p className="ps-amendment-narrative-line"><strong>Reason for Amendment:</strong> {latest.explanationOfChange}</p>
+      <p className="ps-amendment-narrative-line"><strong>{t('copilotReportViewModal.reasonForAmendmentLabel')}</strong> {latest.explanationOfChange}</p>
       {latest.notification && (
         <p className="ps-amendment-narrative-line">
-          <strong>Clinician Notified:</strong> {latest.notification.clinicianName} — {NOTIFICATION_METHOD_LABEL[latest.notification.method] ?? latest.notification.method}, {formatDateTime(latest.notification.notifiedAt)}
+          <strong>{t('copilotReportViewModal.clinicianNotifiedLabel')}</strong> {latest.notification.clinicianName} — {t(NOTIFICATION_METHOD_LABEL_KEY[latest.notification.method])}, {formatDateTime(latest.notification.notifiedAt)}
         </p>
       )}
-      <p className="ps-amendment-status-row-author">Amended by {latest.authoringPathologist.userName}</p>
+      <p className="ps-amendment-status-row-author">{t('amendmentModal.summary.amendedBy')} {latest.authoringPathologist.userName}</p>
 
       {!collapsed && (
         <table className="ps-amendment-matrix">
           <thead>
             <tr>
-              <th>Synoptic Element</th>
+              <th>{t('copilotReportViewModal.diffTable.element')}</th>
               {columnsDescending.map((_, i) => (
-                <th key={i}>{versionLabel(total - 1 - i, total)}</th>
+                <th key={i}>{versionLabel(total - 1 - i, total, t, i18n.language)}</th>
               ))}
             </tr>
           </thead>
@@ -149,7 +171,7 @@ const InstanceMatrix: React.FC<{ group: InstanceGroup; liveAnswers: Record<strin
                       <td>{key}</td>
                       {rowValues.map((val, i) => (
                         <td key={i} className={hasChange ? (i === 0 ? 'ps-amendment-matrix-current' : 'ps-amendment-matrix-previous') : undefined}>
-                          {formatValue(val)}
+                          {formatValue(val, t)}
                         </td>
                       ))}
                     </tr>
@@ -164,7 +186,8 @@ const InstanceMatrix: React.FC<{ group: InstanceGroup; liveAnswers: Record<strin
   );
 };
 
-export const AmendmentStatusBanner: React.FC<{ caseId?: string; synopticReports?: any[] }> = ({ caseId, synopticReports }) => {
+export const AmendmentStatusBanner: React.FC<{ caseId?: string; synopticReports?: any[]; specimens?: { id: string; label: string; description?: string }[] }> = ({ caseId, synopticReports, specimens }) => {
+  const { t } = useTranslation();
   const [amendments, setAmendments] = useState<AmendmentRecord[]>([]);
   const [versions, setVersions] = useState<ReportVersionRecord[]>([]);
 
@@ -218,7 +241,22 @@ export const AmendmentStatusBanner: React.FC<{ caseId?: string; synopticReports?
       ];
     }
 
-    return { instanceId, templateId: liveInstance?.templateId, amendments: sorted, columns };
+    return {
+      instanceId,
+      templateId: liveInstance?.templateId,
+      // Real, per direct guidance's own follow-up: the instance's own
+      // real specimenId (SynopticReportInstance.specimenId, already
+      // present on every real synopticReports entry) resolved against
+      // the real, given specimens list. Undefined, never fabricated,
+      // when either piece of real data is missing.
+      specimenLabel: (() => {
+        const specimenId = liveInstance?.specimenId;
+        const sp = specimenId ? specimens?.find(s => s.id === specimenId) : undefined;
+        return sp ? `${sp.label}${sp.description ? `: ${sp.description}` : ''}` : undefined;
+      })(),
+      amendments: sorted,
+      columns,
+    };
   });
 
   const totalAmendments = amendments.length;
@@ -226,9 +264,9 @@ export const AmendmentStatusBanner: React.FC<{ caseId?: string; synopticReports?
   return (
     <div className="ps-amendment-status-banner">
       <div className="ps-amendment-status-banner-header">
-        <span className="ps-amendment-status-flag">AMENDED</span>
+        <span className="ps-amendment-status-flag">{t('copilotReportViewModal.amendedFlag')}</span>
         {totalAmendments > 1 && (
-          <span className="ps-amendment-status-count"> — {totalAmendments} amendments on record</span>
+          <span className="ps-amendment-status-count"> — {t('amendmentStatusBanner.amendmentsCount', { count: totalAmendments })}</span>
         )}
       </div>
       {groups.map(group => (

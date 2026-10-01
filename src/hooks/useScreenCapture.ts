@@ -48,39 +48,79 @@ interface RedactionOverlay {
   overlay: HTMLElement;
 }
 
-function applyRedactionOverlays(): RedactionOverlay[] {
+// Real, direct follow-up (PS-72) — found while verifying the new toast
+// redaction (PhiToastMessage): a freshly-fired react-toastify toast is
+// still mid slide-in/bounce transition for a few hundred ms after it
+// mounts. getBoundingClientRect() below used to run the instant capture()
+// was called, with no allowance for that — so redacting a toast captured
+// quickly after it appeared could measure a stale, smaller-than-final
+// rect, undersizing the overlay and leaving part of the real message
+// visible. Confirmed directly: reproduced with a fast capture, then fixed
+// and reproduced again to confirm the overlay now fully covers the
+// settled toast.
+//
+// Deliberately scoped to the matched element's own ancestor chain
+// (getAnimations() per node, not a page-wide document.getAnimations()) —
+// the fix targets "is THIS element (or whatever is transitioning it in)
+// still moving," not "is anything animating anywhere on the page," which
+// would also catch unrelated, intentionally-infinite animations (e.g. a
+// loading spinner elsewhere on screen) and needlessly delay every real
+// capture waiting for something that was never going to finish. Bounded
+// (maxWaitMs) so a genuinely infinite animation on the element itself
+// can't hang the capture.
+async function waitForElementToSettle(el: Element, maxWaitMs = 800, maxAncestorDepth = 8): Promise<void> {
+  const running: Animation[] = [];
+  let node: Element | null = el;
+  let depth = 0;
+  while (node && depth < maxAncestorDepth) {
+    running.push(...node.getAnimations().filter(a => a.playState === 'running'));
+    node = node.parentElement;
+    depth++;
+  }
+  if (running.length === 0) return;
+  const timeout = new Promise<void>(res => setTimeout(res, maxWaitMs));
+  const settled = Promise.all(running.map(a => a.finished.catch(() => undefined))).then(() => undefined);
+  await Promise.race([settled, timeout]);
+}
+
+async function applyRedactionOverlays(): Promise<RedactionOverlay[]> {
   const overlays: RedactionOverlay[] = [];
 
-  PHI_SELECTORS.forEach(selector => {
+  for (const selector of PHI_SELECTORS) {
+    let matches: Element[];
     try {
-      document.querySelectorAll(selector).forEach(el => {
-        const htmlEl = el as HTMLElement;
-        const rect   = htmlEl.getBoundingClientRect();
-        if (rect.width === 0 && rect.height === 0) return;
+      matches = Array.from(document.querySelectorAll(selector));
+    } catch {
+      continue; // invalid selector — skip
+    }
+    for (const el of matches) {
+      const htmlEl = el as HTMLElement;
+      await waitForElementToSettle(htmlEl);
+      const rect   = htmlEl.getBoundingClientRect();
+      if (rect.width === 0 && rect.height === 0) continue;
 
-        const overlay = document.createElement('div');
-        overlay.setAttribute('data-phi-overlay', 'true');
-        Object.assign(overlay.style, REDACTION_STYLE, {
-          position:       'fixed',
-          left:           `${rect.left + window.scrollX}px`,
-          top:            `${rect.top  + window.scrollY}px`,
-          width:          `${Math.max(rect.width,  80)}px`,
-          height:         `${Math.max(rect.height, 18)}px`,
-          zIndex:         '999999',
-          display:        'flex', // deliberate override of REDACTION_STYLE's inline-block, needed to center the label
-          alignItems:     'center',
-          justifyContent: 'center',
-          pointerEvents:  'none',
-        });
-        const label = document.createElement('span');
-        label.textContent = REDACTION_LABEL;
-        Object.assign(label.style, REDACTION_LABEL_STYLE, { userSelect: 'none' });
-        overlay.appendChild(label);
-        document.body.appendChild(overlay);
-        overlays.push({ element: el, overlay });
+      const overlay = document.createElement('div');
+      overlay.setAttribute('data-phi-overlay', 'true');
+      Object.assign(overlay.style, REDACTION_STYLE, {
+        position:       'fixed',
+        left:           `${rect.left + window.scrollX}px`,
+        top:            `${rect.top  + window.scrollY}px`,
+        width:          `${Math.max(rect.width,  80)}px`,
+        height:         `${Math.max(rect.height, 18)}px`,
+        zIndex:         '999999',
+        display:        'flex', // deliberate override of REDACTION_STYLE's inline-block, needed to center the label
+        alignItems:     'center',
+        justifyContent: 'center',
+        pointerEvents:  'none',
       });
-    } catch { /* invalid selector — skip */ }
-  });
+      const label = document.createElement('span');
+      label.textContent = REDACTION_LABEL;
+      Object.assign(label.style, REDACTION_LABEL_STYLE, { userSelect: 'none' });
+      overlay.appendChild(label);
+      document.body.appendChild(overlay);
+      overlays.push({ element: el, overlay });
+    }
+  }
 
   return overlays;
 }
@@ -272,7 +312,7 @@ export function useScreenCapture(): UseScreenCaptureReturn {
       const html2canvas = (await import('html2canvas')).default;
 
       // 1. Apply PHI overlays
-      phiOverlays.push(...applyRedactionOverlays());
+      phiOverlays.push(...(await applyRedactionOverlays()));
 
       // 2. Swap PDF viewers with placeholders
       pdfSwaps.push(...applyPdfSwaps());

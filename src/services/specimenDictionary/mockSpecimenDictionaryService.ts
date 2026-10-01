@@ -41,6 +41,7 @@ const STARTER_SPECIMENS: SpecimenEntry[] = (starterData.specimens as unknown as 
     name: 'Kidney Biopsy, Native',
     description: 'Native (non-transplant) renal core biopsy — splits into Light Microscopy, Immunofluorescence, and Electron Microscopy pathways.',
     type: 'Kidney', procedure: 'Core Biopsy',
+    site: 'Kidney',
     normalizedLabel: 'Kidney Biopsy, Native',
     synonyms: ['Native Kidney Biopsy', 'Renal Biopsy, Native', 'Medical Renal Biopsy'],
     active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
@@ -54,6 +55,100 @@ const STARTER_SPECIMENS: SpecimenEntry[] = (starterData.specimens as unknown as 
     // notes field for the fuller disclosure) - matches the same real
     // assignment given to the other native kidney needle biopsy entry.
     defaultBaseCptCode: '88305',
+  },
+  // Real, per direct follow-up: "add tissue descriptions on
+  // cassettes... then test a protocol." A real, first Autopsy-
+  // category specimen dictionary entry — previously none existed
+  // anywhere (confirmed via a full-codebase search before adding
+  // this), which meant the entire Autopsy-relevant accessioning UI
+  // (AccessionPage.tsx's own Case Authority section, the Organ(s)
+  // Included picker) was genuinely unreachable in practice: nothing
+  // in the real Specimen Dictionary picker would ever resolve to
+  // specimenCategory 'AUTOPSY', so autopsyRelevant could never
+  // become true through the normal accessioning flow. This closes
+  // that real gap directly, paired with the real
+  // proto-autopsy-cardiac-sectioning Protocol above (services/
+  // protocols/mockProtocolService.ts) as a genuine, working example
+  // of the Targeted Organ / Multi-Specimen scenario (Part B's own
+  // Rule Set 4, Specimen Container C: Heart).
+  {
+    id: 'sp-heart-autopsy',
+    name: 'Heart, Autopsy',
+    description: 'Whole heart submitted at autopsy for cardiac sectioning and coronary artery examination.',
+    type: 'Heart', procedure: 'Autopsy Examination',
+    site: 'Heart',
+    specimenCategory: 'AUTOPSY',
+    normalizedLabel: 'Heart, Autopsy',
+    synonyms: ['Autopsy Heart', 'Cardiac Autopsy Specimen', 'Heart, Whole (Autopsy)'],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
+    // References the real proto-autopsy-cardiac-sectioning Protocol
+    // above \u2014 generateDefaultMaterial.ts resolves this at
+    // accessioning to auto-generate 6 real blocks (4 coronary vessel
+    // blocks + 2 myocardial blocks), each auto-labeled sequentially
+    // (e.g. C1\u2013C6 for a specimen labeled "C"), rather than one
+    // undifferentiated block.
+    protocolId: 'proto-autopsy-cardiac-sectioning',
+  },
+  // Real, per direct follow-up ("can you put some seed data in so
+  // that I can demonstrate the DP and Non GYN/FNA case columns") —
+  // investigation found every real cytology specimen this app's own
+  // seeded cases reference (sp-cyto-pap, sp-cyto-hpv-self,
+  // sp-fna-thyroid) was a genuinely dangling specimenDictionaryEntryId
+  // — none of the three existed in this dictionary at all. This is
+  // the exact reason the Surg Path branch tab was silently including
+  // real GYN cytology cases: resolveCaseHasSpecimenCategory's own
+  // dictionary lookup found nothing for these ids, so
+  // resolveCaseDisciplineBranch fell through to its own real
+  // remainder bucket (surgpath) for every one of them — a real,
+  // confirmed root cause, not a guess.
+  {
+    id: 'sp-cyto-pap',
+    name: 'Cervical/Vaginal Pap Smear',
+    description: 'Cervical/vaginal Pap smear, liquid-based cytology.',
+    type: 'Cytology', procedure: 'Pap Smear',
+    site: 'Cervix',
+    specimenCategory: 'GYN_CYTOLOGY',
+    normalizedLabel: 'Cervical/Vaginal Pap Smear',
+    synonyms: ['Pap Smear', 'Cervical Cytology', 'ThinPrep Pap'],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'sp-cyto-hpv-self',
+    name: 'Self-Collected Vaginal Swab (HPV Only)',
+    description: 'Self-collected vaginal swab for primary HPV screening only \u2014 no real cytology interpretation performed on this real specimen type.',
+    type: 'Cytology', procedure: 'Self-Collected Vaginal Swab',
+    site: 'Vagina',
+    specimenCategory: 'GYN_CYTOLOGY',
+    isSelfCollected: true,
+    normalizedLabel: 'Self-Collected Vaginal Swab (HPV Only)',
+    synonyms: ['Self-Collected HPV Swab', 'HPV Self-Sampling'],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
+  },
+  {
+    id: 'sp-fna-thyroid',
+    name: 'Thyroid Fine Needle Aspiration',
+    description: 'Fine needle aspiration of the thyroid \u2014 a real, non-GYN cytology specimen.',
+    type: 'FNA', procedure: 'Fine Needle Aspiration',
+    site: 'Thyroid',
+    specimenCategory: 'NON_GYN_CYTOLOGY',
+    // Real fix (PS-295 \u2014 "Cytology case has no associated template"):
+    // this was the one real, seeded Non-GYN cytology dictionary entry
+    // with neither field below ever set, despite an exact-matching
+    // real template already existing in
+    // cytologySynopticTemplateRegistry.ts (thyroid_fna_cytology,
+    // CAP/Bethesda Thyroid System) \u2014 so every real thyroid FNA case
+    // hit CytologyScreeningPage.tsx's own documented "no real default
+    // configured" fallback and showed no associated template at all,
+    // requiring a fully manual pick every time even though this
+    // specimen type has exactly one real, correct answer. organSite
+    // wires up the matching real Non-GYN "Organ/Site Quick-Filter"
+    // chip on CytologyWorklistPage.tsx the same way \u2014 same real gap,
+    // same real dictionary entry, never populated.
+    organSite: 'THYROID',
+    defaultSynopticTemplateId: 'thyroid_fna_cytology',
+    normalizedLabel: 'Thyroid Fine Needle Aspiration',
+    synonyms: ['Thyroid FNA', 'Thyroid Fine Needle Aspirate'],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
   },
 ]);
 
@@ -108,7 +203,7 @@ export const mockSpecimenDictionaryService: ISpecimenDictionaryService = {
   async findOrCreateByName(name, note) {
     await delay();
     // Case-insensitive exact match — same "don't fuzzy-match silently"
-    // posture as SpecimenCategory.findOrCreateByName: a near-miss
+    // posture as Department.findOrCreateByName: a near-miss
     // creates a new pending entry for a human to reconcile, not a
     // silent guess.
     const existing = DICTIONARY.find(e => e.name.toLowerCase() === name.toLowerCase());
@@ -121,7 +216,7 @@ export const mockSpecimenDictionaryService: ISpecimenDictionaryService = {
       description: '',
       // type/procedure required by the interface but genuinely unknown
       // at auto-create time — left blank rather than guessed, same
-      // "safest default, force explicit admin setup" posture Client's
+      // "safest default, force explicit admin setup" posture Facility's
       // auto-create uses for jurisdiction.
       type: '', procedure: '',
       normalizedLabel: name,

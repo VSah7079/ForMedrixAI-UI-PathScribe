@@ -27,3 +27,7 @@ ForMedrix-staff-only write access) — the backend schema anticipated
 this data existing; the frontend fix (this folder) is what actually
 makes use of it once a real Firestore-backed implementation replaces
 the mock.
+
+## Batch 371
+
+`governingBodyAdministration.ts`: `saveGoverningBodies` needs `platform:governing-bodies:manage` (Superadmin only). This setting is platform-wide, not a hospital's. `@/services` exports `governingBodyService`.

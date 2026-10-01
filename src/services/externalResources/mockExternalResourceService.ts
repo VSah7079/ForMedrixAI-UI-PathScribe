@@ -79,7 +79,7 @@ export const mockExternalResourceService: IExternalResourceService = {
     const relevant = all.filter(r => {
       if (r.organisationId !== context.organisationId) return false;
       if (r.scope === 'enterprise') return true;
-      return !!r.clientId && !!context.performingLabClientIds?.includes(r.clientId);
+      return !!r.facilityId && !!context.performingLabFacilityIds?.includes(r.facilityId);
     });
     const grouped: Record<ExternalResourceCategory, ExternalResource[]> = { protocols: [], references: [], systems: [] };
     relevant.forEach(r => grouped[r.category].push(r));

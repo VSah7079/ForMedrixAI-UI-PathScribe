@@ -25,6 +25,13 @@ non-trivial open bug (now fixed — see Notes).
   correctly fixed every place in the file that renders `<ModalOverlay>`,
   with no risk of missing a duplicate instance.
 
+  **Real, found-and-fixed accessibility bug, per direct report
+  ("occasional text that is dark and pretty much impossible to
+  read")**: the same lifecycle-stepper separator (here an arrow, `→`,
+  rather than a dash) used `#1e293b` — the exact same copied pattern
+  fixed in `AllProtocolsSection.tsx`/`ActiveProtocolsSection.tsx` (see
+  `../Protocols/README.md`). Fixed to `#64748b`.
+
 ## Notes
 
 - **BUG FIXED (July 2026).** `TemplateRenderer.tsx` was fully rewritten to
@@ -53,6 +60,20 @@ non-trivial open bug (now fixed — see Notes).
   genuinely deprecated template would just render with draft styling
   rather than something more explicit. Pre-existing, not introduced by
   this rewrite.
+
+## Batch 328 (PS-63): review rules and no inline CSS
+
+- **`TemplateRenderer.tsx` now waits for the service.** Approve, Publish, Needs Changes, Submit and Reset each wait for `transitionTemplate` before changing the page. Before, the page updated first and a service error was only logged.
+  - **A refusal** (no approver role, self-approval, too few approvals, SNOMED below 80%) is shown in the confirm box as translated text (`templateRenderer.governance.*`), and nothing changes.
+  - **Approval that needs more reviewers:** the page shows "Approval recorded (n of m)" and stays In Review.
+  - **Registry status wins:** the status from the registry now wins over the page's local `ps_state_<id>` copy.
+- **No inline CSS.** The per-state colours were an inline-style map; they are now `ps-tmplr-state--<state>` classes that set `--tmplr-bg/fg/border`, used by:
+  - the badge;
+  - the transition buttons (the disabled look is `:disabled`);
+  - the flow steps (`--current` / `--past`);
+  - the confirm button (`--destructive`).
+
+  Selected answer options use `ps-tmplr-option-label--selected`. Checked in the browser against the previous look.
 
 ---
 *See [components/Config/README.md](../README.md) for how this folder fits Config/.*

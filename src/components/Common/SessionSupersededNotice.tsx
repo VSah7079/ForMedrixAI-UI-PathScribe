@@ -8,30 +8,32 @@
 // renders this once, on arrival.
 // ─────────────────────────────────────────────────────────────────────────────
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 
 interface SessionSupersededNoticeProps {
   onDismiss: () => void;
 }
 
-const SessionSupersededNotice: React.FC<SessionSupersededNoticeProps> = ({ onDismiss }) => (
-  <div className="ps-overlay">
-    <div className="ps-modal-dark ps-modal-sm">
-      <span className="ps-modal-dark-title" style={{ display: 'block', marginBottom: 10 }}>
-        Signed out — logged in elsewhere
-      </span>
-      <p className="ps-modal-dark-body" style={{ marginBottom: 24 }}>
-        You were signed out here because this account was signed in from another tab or window on this
-        browser. Any unsaved work in this tab was preserved — sign back in and it'll be offered for review
-        on the case you were working on.
-      </p>
-      <div className="ps-modal-dark-footer">
-        <button type="button" className="ps-btn-amber" onClick={onDismiss}>
-          OK
-        </button>
+const SessionSupersededNotice: React.FC<SessionSupersededNoticeProps> = ({ onDismiss }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-overlay">
+      <div className="ps-modal-dark ps-modal-sm">
+        <span className="ps-modal-dark-title ps-modal-dark-title--session-superseded">
+          {t('sessionSupersededNotice.title')}
+        </span>
+        <p className="ps-modal-dark-body ps-modal-dark-body--session-superseded">
+          {t('sessionSupersededNotice.body')}
+        </p>
+        <div className="ps-modal-dark-footer">
+          <button type="button" className="ps-btn-amber" onClick={onDismiss}>
+            {t('sessionSupersededNotice.okButton')}
+          </button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 export default SessionSupersededNotice;

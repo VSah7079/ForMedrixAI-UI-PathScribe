@@ -45,6 +45,21 @@ specific to this page.
   divider bars inside the table also show their own restricted-count
   breakdown, mirroring the tile fix above.
 
+  **Real, per direct UI-review follow-up ("Fix the root" — background
+  inconsistency across pages): this page's own, fully inline-styled
+  background-image/gradient (and the `backgroundColor`/`color` pairing
+  that went with them) removed entirely.** This was the most involved
+  of the five pages fixed in that pass — the only one with no CSS
+  class behind its background at all, just raw `style={{...}}`. Falls
+  through to `AppShell.tsx`'s own, real `.ps-app-root` background now
+  (see that folder's own README for the fuller account of the
+  inline-style bug this whole pass traced back to) — matching
+  Configuration/Quality Assurance/Intraop Queue/Contribution. The rest
+  of this page's inline style block (position/width/height/font-
+  family/display/flex-direction) deliberately left as-is — a full
+  inline-style-to-CSS-class conversion for this page is separate,
+  larger, pre-existing work, not part of this pass.
+
 - **`AmendedAddendaTriageTile.tsx`** (94 lines) — the "Amendment &
   Addenda Triage" summary tile, built to an explicit spec documented in
   its own header: inbound LIS amendment notices awaiting review, open
@@ -54,6 +69,19 @@ specific to this page.
   documented directly in the file rather than left implicit. Not
   reviewed in depth this session beyond confirming it's real, wired-up,
   and not dead code.
+
+- **`PendingGrossingTriageTile.tsx`** — **New (Sep 2026)**, Protocol-
+  Driven Workflow Infrastructure story Part 2c: "cases with pending
+  triage show a distinct indicator so they don't sit silently." A
+  deliberately separate tile from `AmendedAddendaTriageTile.tsx` above
+  — that one's own "triage" is an editorial amendment/addendum review
+  queue; this one is a genuinely different real concept, a bench-tech
+  grossing checklist gate (`Specimen.triage`, `types/case/Specimen.ts`,
+  gated by `useSpecimenBlockManagement.ts`'s own
+  `handleReleaseGrossingBlocks`). Takes `WorklistPage.tsx`'s own
+  already-loaded `realCases` as a prop and filters client-side
+  (`isTriagePending`, exported and unit-tested) rather than issuing a
+  second, redundant fetch.
 
 - **`ResourcesModal.tsx`** (45 lines) — the shared quick-links modal
   (protocols/references/internal systems), opened via the global
@@ -73,6 +101,36 @@ specific to this page.
   claim-workflow modal all live in `components/Worklist/`, documented
   there rather than duplicated here — this page owns filtering/tiles/
   context, that folder owns the table and its row-level behavior.
+- **Real, per direct guidance ("Yes we should scope 'Return to
+  Trainee'/'Reject with Notes'... one unified tile instead of two" →
+  "let's not display tiles with 0 entries"): a new "Needs Revision"
+  tile**, deliberately one, role-neutral tile rather than two
+  permanently-visible ones — `needsRevisionCount` counts BOTH real
+  sides of the same real event (cases returned TO this user as the
+  resident, OR returned BY this user as the attending, still awaiting
+  the resident's revision), since a given viewer is usually only ever
+  on one side for any real case but the same real filter correctly
+  serves both. **The first tile in this row with real, conditional
+  visibility** — filtered out entirely when its count is 0, deliberately
+  scoped to just this new tile rather than retrofitted onto the other
+  14 tiles above, all of which keep their own established "always
+  visible, count included" behavior unchanged, per direct guidance. The
+  tile's own real filter still works correctly if a viewer had it
+  active and its count later drops to 0 — the table below just shows
+  its own real "no cases" state, it doesn't reset or silently break.
+  Deep brown (`#78350F`), deliberately not amber/orange — see
+  `services/cases/README.md`'s own fuller account of the color
+  decision and the "Return to Trainee" feature this tile surfaces.
+
+## Batch 353
+
+- **"Delegated to me"** comes from `delegationService` and `pendingDelegationsTo` (it imported the demo case service).
+- **Layout:** the page's inline styles are now the `.ps-wl-page`, `-content`, `-main` and `-main-inner` classes, plus `.ps-wl-header--page`.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`AmendedAddendaTriageTile.tsx`: each item's case number is tagged.
 
 ---
 *When this folder's contents change meaningfully, update THIS file.*

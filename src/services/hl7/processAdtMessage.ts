@@ -72,6 +72,13 @@ export interface ProcessAdtResult {
    *  not the encounter. Genuinely undefined when the encounter itself
    *  couldn't be resolved (no matching encounterNumber). */
   encounterMetadataApplied?: boolean;
+  /** Real feature, per direct, detailed correction: whether a real
+   *  A08's DG1 (diagnosis) segment actually applied to the encounter
+   *  — genuinely undefined both when the encounter couldn't be
+   *  resolved AND when the A08 simply carried no real DG1 at all
+   *  (most won't), distinct from `false`, which specifically means "a
+   *  real DG1 was present but rejected as stale/out-of-order." */
+  encounterDiagnosesApplied?: boolean;
   /** Whether a real A12 (Cancel Transfer) actually restored a prior
    *  location — false (not an error) when the encounter had nothing
    *  to restore (never transferred, or already restored once). */
@@ -183,6 +190,7 @@ export async function processAdtMessage(raw: string, organisationId: string, fac
   let encounterLocationApplied: boolean | undefined;
   let encounterClassApplied: boolean | undefined;
   let encounterMetadataApplied: boolean | undefined;
+  let encounterDiagnosesApplied: boolean | undefined;
   let transferCancelled: boolean | undefined;
   let locationId: string | undefined;
   let locationOutcome: 'matched' | 'created' | undefined;
@@ -239,6 +247,15 @@ export async function processAdtMessage(raw: string, organisationId: string, fac
       bed: parsed.encounter.bed,
       locationId: resolvedLocationId,
       attendingProvider: parsed.encounter.attendingProvider,
+      // Real feature, per direct, detailed correction: DG1 legitimately
+      // rides with the creating A01/A04/A05 — see adtParser.ts's own
+      // parseDG1 comment. Only passed when the message actually
+      // carried at least one real diagnosis; resolveOrCreateEncounter
+      // is also the real "return the existing encounter" path for a
+      // repeat reference to the same visit, where passing an empty
+      // array here would be harmless either way (diagnoses is only
+      // ever consumed on genuine creation).
+      diagnoses: parsed.diagnoses.length > 0 ? parsed.diagnoses : undefined,
       eventTimestamp: parsed.recordedAt,
     });
     if (encounterResult.ok) encounterId = encounterResult.data.id;
@@ -347,6 +364,22 @@ export async function processAdtMessage(raw: string, organisationId: string, fac
         parsed.recordedAt
       );
       if (metaResult.ok) encounterMetadataApplied = metaResult.data.applied;
+
+      // Real feature, per direct, detailed correction: DG1 legitimately
+      // rides with A08 too — an updated/corrected diagnosis on an
+      // already-open visit. Only called when this specific message
+      // actually carried a real DG1; an A08 with no DG1 shouldn't
+      // silently wipe out a diagnosis a prior message already
+      // recorded (updateDiagnoses replaces the full list — see that
+      // method's own doc comment).
+      if (parsed.diagnoses.length > 0) {
+        const diagnosesResult = await mockEncounterService.updateDiagnoses(
+          existing.data.id,
+          parsed.diagnoses,
+          parsed.recordedAt
+        );
+        if (diagnosesResult.ok) encounterDiagnosesApplied = diagnosesResult.data.applied;
+      }
     }
   }
 
@@ -360,6 +393,7 @@ export async function processAdtMessage(raw: string, organisationId: string, fac
     encounterLocationApplied,
     encounterClassApplied,
     encounterMetadataApplied,
+    encounterDiagnosesApplied,
     transferCancelled,
     locationId,
     locationOutcome,

@@ -20,9 +20,12 @@
 // Requesting Clinician, External Reviewer, Preliminary Report, Observer,
 // Tumour Board.
 //
-// INTERNATIONAL NAMING REFERENCE (not yet implemented as real localization
-// -- captured here so it isn't lost, for whenever jurisdiction-aware
-// labels become a real feature):
+// INTERNATIONAL NAMING REFERENCE — originally captured here as "not yet
+// implemented." Now superseded by real, per-jurisdiction data: see
+// `jurisdictionProfiles` below (built from Pete's own AU/NZ/EU/UK/IE/CA/KR
+// role hierarchy, Sep 2026), resolved via resolveParticipationTypeLabel().
+// The table is kept for its PA/Grossing and Cytotechnologist rows, which
+// that data doesn't yet cover:
 //   Standard Role              | UK & Ireland                          | Canada                          | Australia & NZ                | EU
 //   Attending/Primary Path.    | Consultant Pathologist                | Attending/Staff Pathologist     | Consultant Pathologist        | Pathologist/Specialist Doctor (e.g. Facharzt, Germany)
 //   Resident/Fellow            | Specialty Registrar (StR)/Fellow      | Resident/Clinical Fellow        | Pathology Registrar/Fellow    | Resident/Trainee Specialist
@@ -37,7 +40,102 @@
 
 import type { IParticipationTypeService, ParticipationTypeRecord, NewParticipationType } from './IParticipationTypeService';
 import type { ServiceResult, ID } from '../types';
+import type { Jurisdiction } from '../../types/systemConfig';
 import { storageGet, storageSet } from '../mockStorage';
+
+// ─── Jurisdiction profiles — real, per Pete's own per-country data (Sep 2026) ──
+//
+// Real, per direct guidance: "they absolutely should be associated with
+// their countries, because healthcare regulatory frameworks, college
+// requirements, and legal liabilities are strictly jurisdiction-bound."
+// Pete's own three-tier structure — Screener / Second Reviewer /
+// Supervisor (Attending Mandate) — maps onto the existing GLOBAL types
+// wherever the authority behavior is genuinely identical everywhere
+// ("Define Base Participants Globally"):
+//   Screener        → 'resident'   (drafts; cannot finalize; countersign required)
+//   Second Reviewer → 'consultant' (reviews; cannot finalize independently)
+//   Supervisor      → 'primary' and 'attending' (the specialist who signs off)
+// ...with each country's own real local title and regulatory citation
+// recorded per jurisdiction. The one role in Pete's data that is NOT a
+// local title for a universal role — the Biomedical Scientist, a
+// non-physician with a real, jurisdiction-specific reporting scope — is
+// modeled as its own country-scoped type below instead ("Country-Scope
+// Regional Roles"), never a label on a global one.
+//
+// Authority flags are recorded EXPLICITLY per jurisdiction even where
+// they equal the platform default (every one of these seven
+// jurisdictions' stated rule — trainee drafts, specialist signs off —
+// matches the default today). Deliberate, not redundant: an explicit
+// entry is a real, inspectable compliance record ("this is what NATA/
+// RCPath/RCPI/CPSO/MHW requires here"), and it pins that jurisdiction's
+// behavior so a future change to the platform default can never
+// silently change who may sign out in a country whose rule didn't change.
+
+const EU_MEMBER_STATES: Jurisdiction[] = ['BE', 'NL', 'DE', 'FR'];
+const UK_JURISDICTIONS: Jurisdiction[] = ['GB_EW', 'GB_SCT', 'GB_NIR'];
+
+/** Pete's own "Key Regulatory Nuance" text, per jurisdiction. */
+const REGULATORY_NOTE: Partial<Record<Jurisdiction, string>> = {
+  AU: 'NATA accreditation standards require strict pathology supervision; junior registrars cannot finalise primary diagnostic reports independently. Specialist Pathologist (FRCPA) must sign off.',
+  NZ: 'Aligned closely with Australian (RCPA) standards; robust dual-signing rules for cytopathology and screening. Fellow of RCPA (FRCPA) / Designated Specialist signs off.',
+  ...Object.fromEntries(EU_MEMBER_STATES.map(j => [j, 'Varies by member state, but general EU directives and national medical acts require an independent medical specialist validation step (Attending / Consultant Pathologist).'])),
+  ...Object.fromEntries(UK_JURISDICTIONS.map(j => [j, 'Royal College of Pathologists (RCPath) guidelines explicitly dictate task-shifting limits — BMS primary reporting requires strict credentialing and supervision. Consultant Histopathologist signs off.'])),
+  IE: 'Medical Council of Ireland rules mandate that only specialists on the Specialist Division can assume ultimate legal liability and final sign-off (Consultant Histopathologist, RCPI registered).',
+  CA: 'Provincial medical colleges (such as the CPSO) and RCPSC guidelines enforce attending oversight for all resident diagnostic sign-outs (FRCPC).',
+  KR: 'Ministry of Health and Welfare (MHW) regulations dictate that official medical reports must be validated and legally signed by a board-certified specialist (Jeon-mun-ui).',
+};
+
+type TierFlags = { canFinalize: boolean; requiresCountersign: boolean };
+const SCREENER:   TierFlags = { canFinalize: false, requiresCountersign: true  };
+const REVIEWER:   TierFlags = { canFinalize: false, requiresCountersign: false };
+const SUPERVISOR: TierFlags = { canFinalize: true,  requiresCountersign: false };
+
+/** Builds a real jurisdictionProfiles map from per-jurisdiction local titles. */
+function profiles(labels: Partial<Record<Jurisdiction, string>>, flags: TierFlags): ParticipationTypeRecord['jurisdictionProfiles'] {
+  return Object.fromEntries(
+    (Object.keys(labels) as Jurisdiction[]).map(j => [j, { label: labels[j], regulatoryNote: REGULATORY_NOTE[j], ...flags }]),
+  );
+}
+const eu = (label: string) => Object.fromEntries(EU_MEMBER_STATES.map(j => [j, label])) as Partial<Record<Jurisdiction, string>>;
+const uk = (label: string) => Object.fromEntries(UK_JURISDICTIONS.map(j => [j, label])) as Partial<Record<Jurisdiction, string>>;
+
+const SCREENER_PROFILES = profiles({
+  AU: 'Registrar / Trainee',
+  NZ: 'Registrar / Trainee',
+  ...eu('Resident / Trainee'),
+  ...uk('Trainee Pathologist'),
+  IE: 'Registrar / Trainee',
+  CA: 'Resident / Fellow',
+  KR: 'Resident (Jeon-gong-ui)',
+}, SCREENER);
+
+const REVIEWER_PROFILES = profiles({
+  AU: 'Senior Registrar / Fellow / Consultant',
+  NZ: 'Senior Registrar / Specialist',
+  ...eu('Senior Resident / Specialist Pathologist'),
+  ...uk('Consultant (Second Reviewer)'),
+  IE: 'Senior Registrar / Consultant',
+  CA: 'Senior Fellow / Attending Pathologist',
+  KR: 'Senior Resident / Fellow',
+}, REVIEWER);
+
+const SUPERVISOR_TITLES: Partial<Record<Jurisdiction, string>> = {
+  AU: 'Specialist Pathologist (FRCPA)',
+  NZ: 'Specialist Pathologist (FRCPA)',
+  ...eu('Attending / Consultant Pathologist'),
+  ...uk('Consultant Histopathologist'),
+  IE: 'Consultant Histopathologist (RCPI)',
+  CA: 'Attending Pathologist (FRCPC)',
+  KR: 'Specialist Pathologist (Jeon-mun-ui)',
+};
+const PRIMARY_PROFILES = profiles(SUPERVISOR_TITLES, SUPERVISOR);
+// 'attending' is the co-signing/supervising variant of the same
+// specialist tier — suffixed so the two stay distinguishable on a case
+// team in the same jurisdiction, never shown as two identical labels.
+const ATTENDING_PROFILES = profiles(
+  Object.fromEntries(Object.entries(SUPERVISOR_TITLES).map(([j, l]) => [j, `${l} — Supervising / Co-Signer`])),
+  SUPERVISOR,
+);
 
 // ─── Seed data — the ONE canonical list, per Pete's final refined role list ──
 
@@ -51,13 +149,70 @@ const SEED: ParticipationTypeRecord[] = [
   { id: 'frozen',           label: 'Frozen Section Pathologist',      description: 'Pathologist who performed/interpreted the intraoperative frozen section diagnosis.',                                                                                       color: '#4ade80', icon: '🧊',   allowsMultiple: false, requiresNote: false, active: true, isSystem: true, sortOrder: 7, abbreviation: 'FS',    requiresCountersign: true,  canFinalize: false, canBeAssignedTemplate: true,  canViewWholeCase: false },
   { id: 'second_opinion',   label: 'Second Opinion',                  description: 'Secondary attending performing a mandatory QA double-read (e.g. breast/prostate core QA).',                                                                               color: '#818cf8', icon: '🔎',   allowsMultiple: true,  requiresNote: false, active: true, isSystem: true, sortOrder: 8, abbreviation: '2nd Op', requiresCountersign: false, canFinalize: false, canBeAssignedTemplate: true,  canViewWholeCase: true  },
   { id: 'provisional_hire', label: 'Provisional Hire (FPPE)',         description: 'Fully credentialed pathologist under initial Focused Professional Practice Evaluation — proctor countersign required until the defined FPPE review period concludes. Not a trainee; the countersign requirement is a temporary onboarding policy, not a credentialing limitation.', color: '#fbbf24', icon: '🪪',   allowsMultiple: true,  requiresNote: false, active: true, isSystem: true, sortOrder: 9, abbreviation: 'FPPE',  requiresCountersign: true,  canFinalize: false, canBeAssignedTemplate: true,  canViewWholeCase: true  },
+
+  // ── Country-scoped regional roles (real, per Pete's own per-country data) ──
+  // Not a local title for a universal role — a non-physician scientist
+  // with a real, jurisdiction-specific reporting scope that has no
+  // equivalent legal standing in the US, Canada, or South Korea's models.
+  // Pete's data lists the Biomedical Scientist as a Screener in both the
+  // UK and the EU; the Advanced Practitioner tier as a Second Reviewer
+  // in the UK only. Both default to "cannot finalize, countersign
+  // required" (RCPath: BMS primary reporting requires strict
+  // credentialing and supervision) — a lab that has actually credentialed
+  // a specific BMS for independent reporting grants that through the
+  // facility-level authorityOverrides, the genuine lab-level exception
+  // mechanism, never by loosening this country-wide default.
+  { id: 'biomedical_scientist',      label: 'Biomedical Scientist (BMS)',   description: 'Non-physician scientist performing primary screening/reporting under supervision — a real, jurisdiction-specific role (UK RCPath/IBMS; EU member-state national frameworks). Not offered outside its scoped jurisdictions.', color: '#2dd4bf', icon: '🧪', allowsMultiple: true, requiresNote: false, active: true, isSystem: true, sortOrder: 10, abbreviation: 'BMS',    requiresCountersign: true, canFinalize: false, canBeAssignedTemplate: true, canViewWholeCase: true,
+    scopedJurisdictions: [...UK_JURISDICTIONS, ...EU_MEMBER_STATES],
+    jurisdictionProfiles: profiles({ ...uk('Biomedical Scientist (BMS)'), ...eu('Biomedical Scientist') }, SCREENER) },
+  { id: 'bms_advanced_practitioner', label: 'Advanced Practitioner BMS',    description: 'UK Advanced Practitioner Biomedical Scientist acting as Second Reviewer under RCPath task-shifting guidelines — strictly UK-scoped; this role and its reporting scope have no legal equivalent elsewhere.', color: '#14b8a6', icon: '🧬', allowsMultiple: true, requiresNote: false, active: true, isSystem: true, sortOrder: 11, abbreviation: 'AP-BMS', requiresCountersign: true, canFinalize: false, canBeAssignedTemplate: true, canViewWholeCase: true,
+    scopedJurisdictions: [...UK_JURISDICTIONS],
+    jurisdictionProfiles: profiles(uk('Advanced Practitioner BMS'), SCREENER) },
 ];
+
+// Attach the per-jurisdiction profiles to the global baseline types
+// (kept out of the literal rows above so those rows stay readable).
+const JURISDICTION_PROFILES_BY_TYPE: Record<string, ParticipationTypeRecord['jurisdictionProfiles']> = {
+  resident:   SCREENER_PROFILES,
+  consultant: REVIEWER_PROFILES,
+  primary:    PRIMARY_PROFILES,
+  attending:  ATTENDING_PROFILES,
+};
+for (const t of SEED) {
+  if (JURISDICTION_PROFILES_BY_TYPE[t.id]) t.jurisdictionProfiles = JURISDICTION_PROFILES_BY_TYPE[t.id];
+}
+
+/**
+ * Real, non-destructive upgrade of an already-persisted list: an
+ * existing browser's stored list predates the jurisdiction data above,
+ * and `storageGet` would otherwise keep serving that old list forever
+ * (the new BMS types and every jurisdiction profile would silently never
+ * appear). Bumping the storage key instead would throw away any real
+ * admin edits. So: append any system seed type missing entirely, and
+ * backfill `jurisdictionProfiles`/`scopedJurisdictions` onto a stored
+ * system type only where the stored record has none — an admin's own
+ * edits (including a deliberately-cleared profile set to {}) are never
+ * overwritten. Exported for direct testing.
+ */
+export function mergeSeedJurisdictionData(stored: ParticipationTypeRecord[], seed: ParticipationTypeRecord[] = SEED): ParticipationTypeRecord[] {
+  const merged = stored.map(s => {
+    const seedRow = seed.find(x => x.id === s.id);
+    if (!seedRow || !s.isSystem) return s;
+    return {
+      ...s,
+      jurisdictionProfiles: s.jurisdictionProfiles ?? seedRow.jurisdictionProfiles,
+      scopedJurisdictions:  s.scopedJurisdictions  ?? seedRow.scopedJurisdictions,
+    };
+  });
+  const missing = seed.filter(x => x.isSystem && !stored.some(s => s.id === x.id));
+  return [...merged, ...missing];
+}
 
 // ─── Storage ──────────────────────────────────────────────────────────────────
 
 const STORE_KEY = 'pathscribe_participation_types_v2';
 
-const load    = () => storageGet<ParticipationTypeRecord[]>(STORE_KEY, SEED);
+const load    = () => mergeSeedJurisdictionData(storageGet<ParticipationTypeRecord[]>(STORE_KEY, SEED));
 const persist = (data: ParticipationTypeRecord[]) => storageSet(STORE_KEY, data);
 
 let _cache: ParticipationTypeRecord[] = load();

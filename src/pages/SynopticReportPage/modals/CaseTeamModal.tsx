@@ -28,10 +28,22 @@
 //   .ps-ctm-* (staff card, drop zone, participant row, rejection banner,
 //     drag overlay) -- genuinely new, this modal's own specific content
 //     with no reasonable existing equivalent found.
+//
+// i18n (file-by-file sweep):
+//   Role names (staff.roles), participation-type labels/abbreviations
+//   (type.label/type.abbreviation), subspecialty display strings, and all
+//   patient/case identifiers are real admin-configured or persisted data,
+//   not UI chrome, and stay untranslated per this sweep's convention —
+//   only the sentence scaffolding around them (e.g. the role-ineligible
+//   rejection message, the replace-confirmation dialog) is translated,
+//   with the data values passed through as interpolation. The replace-
+//   confirmation dialog's bolded staff names are handled with <Trans>
+//   since the sentence has two separate bold data interpolations.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useMemo, useRef, useCallback } from 'react';
 import ReactDOM from 'react-dom';
+import { useTranslation, Trans } from 'react-i18next';
 import {
   DndContext, DragEndEvent, DragStartEvent, DragOverlay,
   useDraggable, useDroppable, PointerSensor, useSensor, useSensors,
@@ -42,21 +54,21 @@ import { syncPrimaryAssignee }           from '@/services/cases/caseAssignmentSy
 import { userService, roleService, subspecialtyService } from '@/services';
 import type { Subspecialty } from '@/services/subspecialties/ISubspecialtyService';
 import { getStaffSubspecialtyDisplay } from '@/utils/staffSubspecialties';
-import { mockParticipationTypeService } from '@/services/participationTypes/mockParticipationTypeService';
+import { participationTypeService } from '@/services';
 import type { ParticipationTypeRecord as ParticipationType } from '@/services/participationTypes/IParticipationTypeService';
+import { resolveCaseTeamParticipationTypes } from '@/services/participationTypes/IParticipationTypeService';
+import { resolveCasePerformingLabScope } from '@/services/facilities/resolveCasePerformingLabScope';
 import type { StaffUser }                from '@/services/users/IUserService';
 import type { Role }                     from '@/services/roles/IRoleService';
 import { useAuth }                       from '@/contexts/AuthContext';
+import { resolveEligibleParticipationTypeIds } from '@/services/cases/resolveClaimParticipationType';
 
 type DragEligibility = 'eligible' | 'role-ineligible' | 'occupied';
 
+/** A participation type's colour. The .ps-ctm-hued rule derives the badge
+ *  tints from it (Batch 367: colours are no longer built in JSX). */
 function colorVars(hex: string): React.CSSProperties {
-  return {
-    '--badge-bg': hex + '18',
-    '--badge-border': hex + '33',
-    '--badge-border-strong': hex + '66',
-    '--badge-color': hex,
-  } as React.CSSProperties;
+  return { '--ps-hue': hex } as React.CSSProperties;
 }
 
 // ─── Draggable staff card ─────────────────────────────────────────────────────
@@ -74,10 +86,10 @@ interface StaffCardProps {
 }
 
 const StaffCard: React.FC<StaffCardProps & { id: string }> = ({ id, staff, roles, allTypes, allSubspecialties, disabled, isDragging }) => {
+  const { t } = useTranslation();
   const { attributes, listeners, setNodeRef } = useDraggable({ id, disabled });
-  const staffRoles   = roles.filter(r => staff.roles.includes(r.name));
-  const allowedTypeIds = new Set(staffRoles.flatMap(r => (r as any).participationTypeIds ?? []));
-  const allowedTypes = allTypes.filter(t => allowedTypeIds.has(t.id));
+  const allowedTypeIds = resolveEligibleParticipationTypeIds(staff.roles, roles);
+  const allowedTypes = allTypes.filter(pt => allowedTypeIds.has(pt.id));
   const subspecialtyDisplay = getStaffSubspecialtyDisplay(staff.id, allSubspecialties);
 
   return (
@@ -94,12 +106,12 @@ const StaffCard: React.FC<StaffCardProps & { id: string }> = ({ id, staff, roles
           <div className="ps-ctm-staff-meta">{staff.roles.join(', ')}{subspecialtyDisplay ? ` · ${subspecialtyDisplay}` : ''}</div>
         </div>
         {!disabled && <div className="ps-ctm-staff-grip">⠿</div>}
-        {disabled  && <span className="ps-ctm-staff-oncase-badge">on case</span>}
+        {disabled  && <span className="ps-ctm-staff-oncase-badge">{t('caseTeamModal.staffCard.onCaseBadge')}</span>}
       </div>
       {allowedTypes.length > 0 && !disabled && (
         <div className="ps-ctm-staff-badges">
-          {allowedTypes.map(t => (
-            <span key={t.id} className="ps-ctm-staff-badge" style={colorVars(t.color)}>{t.abbreviation}</span>
+          {allowedTypes.map(pt => (
+            <span key={pt.id} className="ps-ctm-staff-badge ps-ctm-hued" style={colorVars(pt.color)}>{pt.abbreviation}</span>
           ))}
         </div>
       )}
@@ -124,6 +136,7 @@ interface DropZoneProps {
 const DropZone: React.FC<DropZoneProps> = ({
   type, participants, currentUserId, isOver, dragEligibility, onRemove, onUndoRemove, removedKeys, onDelegate,
 }) => {
+  const { t } = useTranslation();
   const { setNodeRef } = useDroppable({ id: `type-${type.id}` });
   const inType = participants.filter(p => p.status === 'active' && p.participationTypeIds.includes(type.id));
 
@@ -131,33 +144,33 @@ const DropZone: React.FC<DropZoneProps> = ({
   const hoverClass = (dragEligibility && isOver) ? ' ps-ctm-dropzone--hover' : '';
 
   const previewLabel =
-    dragEligibility === 'role-ineligible' ? '⊘ Not eligible for this role' :
-    dragEligibility === 'occupied' ? (isOver ? 'Drop to replace' : 'Already assigned — will offer to replace') :
-    dragEligibility === 'eligible' ? (isOver ? 'Drop to assign' : null) :
+    dragEligibility === 'role-ineligible' ? t('caseTeamModal.dropZone.preview.roleIneligible') :
+    dragEligibility === 'occupied' ? (isOver ? t('caseTeamModal.dropZone.preview.occupiedHover') : t('caseTeamModal.dropZone.preview.occupiedIdle')) :
+    dragEligibility === 'eligible' ? (isOver ? t('caseTeamModal.dropZone.preview.eligibleHover') : null) :
     null;
 
   return (
     <div
       ref={setNodeRef}
-      className={`ps-ctm-dropzone${stateClass}${hoverClass}`}
+      className={`ps-ctm-dropzone${stateClass}${hoverClass}${dragEligibility === 'eligible' ? ' ps-ctm-hued' : ''}`}
       style={dragEligibility === 'eligible' ? colorVars(type.color) : undefined}
     >
       <div className="ps-ctm-dropzone-header">
-        <span className="ps-ctm-dropzone-type-badge" style={colorVars(type.color)}>{type.abbreviation}</span>
+        <span className="ps-ctm-dropzone-type-badge ps-ctm-hued" style={colorVars(type.color)}>{type.abbreviation}</span>
         <span className="ps-ctm-dropzone-label">{type.label}</span>
-        {!type.allowsMultiple && <span className="ps-ctm-dropzone-single-badge">SINGLE</span>}
-        {type.requiresCountersign && <span className="ps-ctm-dropzone-countersign-badge">Countersign req.</span>}
-        {type.canFinalize        && <span className="ps-ctm-dropzone-finalize-badge">Can finalise</span>}
+        {!type.allowsMultiple && <span className="ps-ctm-dropzone-single-badge">{t('caseTeamModal.dropZone.singleBadge')}</span>}
+        {type.requiresCountersign && <span className="ps-ctm-dropzone-countersign-badge">{t('caseTeamModal.dropZone.countersignBadge')}</span>}
+        {type.canFinalize        && <span className="ps-ctm-dropzone-finalize-badge">{t('caseTeamModal.dropZone.finalizeBadge')}</span>}
       </div>
 
       {previewLabel && (
-        <div className={`ps-ctm-dropzone-preview ps-ctm-dropzone-preview--${dragEligibility}`} style={dragEligibility === 'eligible' ? colorVars(type.color) : undefined}>
+        <div className={`ps-ctm-dropzone-preview ps-ctm-dropzone-preview--${dragEligibility}${dragEligibility === 'eligible' ? ' ps-ctm-hued' : ''}`} style={dragEligibility === 'eligible' ? colorVars(type.color) : undefined}>
           {previewLabel}
         </div>
       )}
 
       {inType.length === 0 && !previewLabel && (
-        <div className="fm-empty-hint" style={{ textAlign: 'center', padding: '8px 0', fontStyle: 'italic' }}>Drag staff here</div>
+        <div className="fm-empty-hint ps-ctm-dropzone-empty-hint">{t('caseTeamModal.dropZone.emptyHint')}</div>
       )}
 
       <div className="ps-case-team-list">
@@ -175,24 +188,24 @@ const DropZone: React.FC<DropZoneProps> = ({
               </div>
               <span className={`ps-ctm-participant-name${isRemoved ? ' ps-ctm-participant-name--removed' : ''}`}>
                 {p.staffName}
-                {isSelf         && <span className="ps-ctm-participant-tag--you">(you)</span>}
-                {p.source === 'system' && <span className="ps-ctm-participant-tag--auto">· auto</span>}
+                {isSelf         && <span className="ps-ctm-participant-tag--you">{t('caseTeamModal.dropZone.youTag')}</span>}
+                {p.source === 'system' && <span className="ps-ctm-participant-tag--auto">{t('caseTeamModal.dropZone.autoTag')}</span>}
               </span>
 
               {isRemoved ? (
-                <button onClick={() => onUndoRemove(p.staffId!, type.id)} className="ps-ctm-undo-btn">Undo</button>
+                <button onClick={() => onUndoRemove(p.staffId!, type.id)} className="ps-ctm-undo-btn">{t('caseTeamModal.dropZone.undoButton')}</button>
               ) : isSelf && isOnlyPrimary ? (
                 <button onClick={() => onDelegate?.()}
-                  title="Removing yourself from Primary requires Delegate — click to open"
+                  title={t('caseTeamModal.dropZone.delegateTooltip')}
                   className="ps-ctm-delegate-btn"
                 >
                   <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
                     <rect x="3" y="11" width="18" height="11" rx="2" ry="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/>
                   </svg>
-                  Delegate
+                  {t('caseTeamModal.dropZone.delegateButton')}
                 </button>
               ) : (
-                <button onClick={() => onRemove(p.staffId!, type.id)} title="Remove from this participation type" className="ps-ctm-remove-btn">
+                <button onClick={() => onRemove(p.staffId!, type.id)} title={t('caseTeamModal.dropZone.removeTooltip')} className="ps-ctm-remove-btn">
                   <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
                     <polyline points="3 6 5 6 21 6"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6"/><path d="M14 11v6"/><path d="M9 6V4a1 1 0 0 1 1-1h4a1 1 0 0 1 1 1v2"/>
                   </svg>
@@ -208,26 +221,29 @@ const DropZone: React.FC<DropZoneProps> = ({
 
 // ─── Self-removal blocked modal ───────────────────────────────────────────────
 
-const SelfRemoveBlockedModal: React.FC<{ onClose: () => void; onDelegate: () => void }> = ({ onClose, onDelegate }) => (
-  <div className="ps-overlay" style={{ zIndex: 9000 }}>
-    <div className="ps-modal-dark" style={{ width: 'min(460px, 90vw)' }}>
-      <div className="ps-modal-dark-header">
-        <span style={{ fontSize: 18 }}>⚠</span>
-        <span className="ps-modal-dark-title">Cannot Remove Primary</span>
-      </div>
-      <p className="ps-modal-dark-body">
-        Removing yourself from <strong style={{ color: '#e2e8f0' }}>Primary</strong> is not allowed while you are the sole primary pathologist on this case.
-      </p>
-      <p className="ps-modal-dark-hint">
-        To transfer ownership of this case to another pathologist or pool, use <strong style={{ color: '#e2e8f0' }}>Delegate</strong>.
-      </p>
-      <div className="ps-modal-dark-footer">
-        <button className="ps-btn-ghost-dark" onClick={onClose}>Cancel</button>
-        <button className="ps-btn-primary" onClick={onDelegate}>Open Delegate →</button>
+const SelfRemoveBlockedModal: React.FC<{ onClose: () => void; onDelegate: () => void }> = ({ onClose, onDelegate }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-overlay ps-ctm-overlay--z9000">
+      <div className="ps-modal-dark ps-modal-dark--sm">
+        <div className="ps-modal-dark-header">
+          <span className="ps-ctm-modal-icon">⚠</span>
+          <span className="ps-modal-dark-title">{t('caseTeamModal.selfBlockModal.title')}</span>
+        </div>
+        <p className="ps-modal-dark-body">
+          <Trans i18nKey="caseTeamModal.selfBlockModal.body" components={{ strong: <strong /> }} />
+        </p>
+        <p className="ps-modal-dark-hint">
+          <Trans i18nKey="caseTeamModal.selfBlockModal.hint" components={{ strong: <strong /> }} />
+        </p>
+        <div className="ps-modal-dark-footer">
+          <button className="ps-btn-ghost-dark" onClick={onClose}>{t('caseTeamModal.selfBlockModal.cancelButton')}</button>
+          <button className="ps-btn-primary" onClick={onDelegate}>{t('caseTeamModal.selfBlockModal.openDelegateButton')}</button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Replace confirmation modal ───────────────────────────────────────────────
 
@@ -237,27 +253,32 @@ interface ReplaceConfirmState {
   existingStaffId: string; existingStaffName: string;
 }
 
-const ReplaceConfirmModal: React.FC<{ state: ReplaceConfirmState; onConfirm: () => void; onCancel: () => void }> = ({ state, onConfirm, onCancel }) => (
-  <div className="ps-overlay" style={{ zIndex: 9500 }}>
-    <div className="ps-modal-dark" style={{ width: 'min(460px, 90vw)' }}>
-      <div className="ps-modal-dark-header">
-        <span style={{ fontSize: 18 }}>⚠</span>
-        <span className="ps-modal-dark-title">{state.typeLabel} already assigned</span>
-      </div>
-      <p className="ps-modal-dark-body">
-        <strong style={{ color: '#e2e8f0' }}>{state.existingStaffName}</strong> is currently the {state.typeLabel}.
-        Replace with <strong style={{ color: '#e2e8f0' }}>{state.newStaffName}</strong>?
-      </p>
-      <p className="ps-modal-dark-hint">
-        This only changes the draft — nothing is saved until you click Save below.
-      </p>
-      <div className="ps-modal-dark-footer">
-        <button className="ps-btn-ghost-dark" onClick={onCancel}>Cancel</button>
-        <button className="ps-btn-primary" onClick={onConfirm}>Replace</button>
+const ReplaceConfirmModal: React.FC<{ state: ReplaceConfirmState; onConfirm: () => void; onCancel: () => void }> = ({ state, onConfirm, onCancel }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-overlay ps-ctm-overlay--z9500">
+      <div className="ps-modal-dark ps-modal-dark--sm">
+        <div className="ps-modal-dark-header">
+          <span className="ps-ctm-modal-icon">⚠</span>
+          <span className="ps-modal-dark-title">{t('caseTeamModal.replaceModal.title', { typeLabel: state.typeLabel })}</span>
+        </div>
+        <p className="ps-modal-dark-body">
+          <Trans i18nKey="caseTeamModal.replaceModal.body"
+            values={{ existingStaffName: state.existingStaffName, typeLabel: state.typeLabel, newStaffName: state.newStaffName }}
+            components={{ strong: <strong /> }}
+          />
+        </p>
+        <p className="ps-modal-dark-hint">
+          {t('caseTeamModal.replaceModal.hint')}
+        </p>
+        <div className="ps-modal-dark-footer">
+          <button className="ps-btn-ghost-dark" onClick={onCancel}>{t('caseTeamModal.replaceModal.cancelButton')}</button>
+          <button className="ps-btn-primary" onClick={onConfirm}>{t('caseTeamModal.replaceModal.replaceButton')}</button>
+        </div>
       </div>
     </div>
-  </div>
-);
+  );
+};
 
 // ─── Main Component ───────────────────────────────────────────────────────────
 
@@ -270,6 +291,7 @@ interface Props {
 }
 
 export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, onDelegate, onDirtyChange }) => {
+  const { t } = useTranslation();
   const { user } = useAuth();
   const [staffList,    setStaffList]    = useState<StaffUser[]>([]);
   const [roles,        setRoles]        = useState<Role[]>([]);
@@ -294,12 +316,16 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
   const sensors = useSensors(useSensor(PointerSensor, { activationConstraint: { distance: 8 } }));
 
   useEffect(() => {
-    Promise.all([userService.getAll(), roleService.getAll(), mockParticipationTypeService.getActive(), subspecialtyService.getAll()]).then(([usersRes, rolesRes, typesRes, subsRes]) => {
+    Promise.all([userService.getAll(), roleService.getAll(), participationTypeService.getActive(), subspecialtyService.getAll(), resolveCasePerformingLabScope(caseData.order?.facilityId)]).then(([usersRes, rolesRes, typesRes, subsRes, scope]) => {
       const users     = usersRes.ok ? usersRes.data : [];
       const rolesData = rolesRes.ok ? rolesRes.data : [];
       setStaffList(users);
       setRoles(rolesData);
-      setAllTypes(typesRes.ok ? typesRes.data : []);
+      // Jurisdiction-aware lanes: local titles + effective authority
+      // badges, only types valid in this case's performing-lab
+      // jurisdiction — see resolveCaseTeamParticipationTypes().
+      const heldTypeIds = new Set((caseData.participants ?? []).filter(p => p.status === 'active').flatMap(p => p.participationTypeIds));
+      setAllTypes(resolveCaseTeamParticipationTypes(typesRes.ok ? typesRes.data : [], scope, heldTypeIds));
       setSubspecialties(subsRes.ok ? subsRes.data : []);
       const existing: CaseParticipant[] = caseData.participants ?? [];
       const assignedId = caseData.order?.assignedTo;
@@ -330,13 +356,12 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
     const ids = new Set<string>();
     participants.filter(p => p.status === 'active').forEach(p => p.participationTypeIds.forEach((id: string) => ids.add(id)));
     staffList.filter(s => s.status === 'Active').forEach(s => {
-      const staffRoles = roles.filter(r => s.roles.includes(r.name));
-      staffRoles.flatMap(r => (r as any).participationTypeIds ?? []).forEach((id: string) => ids.add(id));
+      resolveEligibleParticipationTypeIds(s.roles, roles).forEach(id => ids.add(id));
     });
     return ids;
   }, [staffList, roles, participants]);
 
-  const visibleTypes  = useMemo(() => allTypes.filter(t => relevantTypeIds.has(t.id)), [allTypes, relevantTypeIds]);
+  const visibleTypes  = useMemo(() => allTypes.filter(pt => relevantTypeIds.has(pt.id)), [allTypes, relevantTypeIds]);
   const filteredStaff = useMemo(() =>
     staffList
       .filter(s => s.status === 'Active')
@@ -357,10 +382,9 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
 
   const getDragEligibility = useCallback((staffId: string, typeId: string): DragEligibility => {
     const staffMember = staffList.find(s => s.id === staffId);
-    const type = allTypes.find(t => t.id === typeId);
+    const type = allTypes.find(pt => pt.id === typeId);
     if (!staffMember || !type) return 'role-ineligible';
-    const staffRoles = roles.filter(r => staffMember.roles.includes(r.name));
-    const allowedIds = new Set(staffRoles.flatMap(r => (r as any).participationTypeIds ?? []));
+    const allowedIds = resolveEligibleParticipationTypeIds(staffMember.roles, roles);
     if (!allowedIds.has(typeId)) return 'role-ineligible';
     const occupant = activeParticipants.find(p => p.participationTypeIds.includes(typeId) && p.staffId !== staffId);
     if (occupant && !type.allowsMultiple) return 'occupied';
@@ -399,14 +423,19 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
     const staffId = String(active.id).replace('staff-', '');
     const typeId  = String(over.id).replace('type-', '');
     const staff   = staffList.find(s => s.id === staffId);
-    const type    = allTypes.find(t => t.id === typeId);
+    const type    = allTypes.find(pt => pt.id === typeId);
     if (!staff || !type) return;
 
     const eligibility = getDragEligibility(staffId, typeId);
 
     if (eligibility === 'role-ineligible') {
-      const roleName = staff.roles[0] ?? 'This role';
-      showRejection(`${roleName}s cannot be assigned as ${type.label}.`);
+      // roleName/type.label are persisted role/participation-type data
+      // (not UI chrome), passed through as interpolation values —
+      // see file header. The plural "s" is appended here (not in the
+      // translated string) since it's an English-specific suffix on an
+      // otherwise-untranslated data value.
+      const roleName = staff.roles[0] ?? t('caseTeamModal.rejection.defaultRole');
+      showRejection(t('caseTeamModal.rejection.roleIneligible', { role: `${roleName}s`, type: type.label }));
       return;
     }
 
@@ -555,23 +584,23 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
   return (
     <>
       <div className="ps-overlay" onClick={handleClose}>
-        <div onClick={e => e.stopPropagation()} style={{ width: '100%', maxWidth: 960, height: '88vh' }} className="ps-research-modal">
+        <div onClick={e => e.stopPropagation()} className="ps-research-modal ps-ctm-modal">
 
           {/* Header */}
           <div className="ps-research-header">
             <div>
-              <div className="fm-eyebrow">Case Team</div>
+              <div className="fm-eyebrow">{t('caseTeamModal.header.eyebrow')}</div>
               <div className="fm-title-row">
-                <h2 className="fm-title">{caseData.accession?.fullAccession ?? caseData.id}</h2>
+                <h2 className="fm-title" data-phi="accession">{caseData.accession?.fullAccession ?? caseData.id}</h2>
               </div>
               <div className="ps-ctm-header-subtitle">
-                {caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : ''}
+                <span data-phi="name">{caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : ''}</span>
                 {' · '}
-                <span className="ps-ctm-header-subtitle-hint">Drag staff cards onto participation types to assign · Removing yourself from Primary requires </span>
-                <span onClick={() => { onDelegate?.(); }} className="ps-ctm-header-subtitle-link">Delegate</span>
+                <span className="ps-ctm-header-subtitle-hint">{t('caseTeamModal.header.subtitleHint')} </span>
+                <span onClick={() => { onDelegate?.(); }} className="ps-ctm-header-subtitle-link">{t('caseTeamModal.header.subtitleDelegateLink')}</span>
               </div>
             </div>
-            <button className="ps-research-close" onClick={handleClose} aria-label="Close">✕</button>
+            <button className="ps-research-close" onClick={handleClose} aria-label={t('caseTeamModal.header.closeAriaLabel')}>✕</button>
           </div>
 
           {rejectionMessage && (
@@ -587,13 +616,13 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
             <div className="fm-body">
 
               <div className="fm-left fm-left--caseteam">
-                <div className="fm-eyebrow" style={{ marginBottom: 4 }}>Participation Types</div>
+                <div className="fm-eyebrow ps-ctm-types-eyebrow">{t('caseTeamModal.body.typesEyebrow')}</div>
                 {loading ? (
-                  <div className="fm-empty"><span className="fm-empty-heading">Loading…</span></div>
+                  <div className="fm-empty"><span className="fm-empty-heading">{t('caseTeamModal.body.loading')}</span></div>
                 ) : visibleTypes.length === 0 ? (
                   <div className="fm-empty">
-                    <span className="fm-empty-heading">No participation types configured</span>
-                    <span className="fm-empty-hint">Set up types in System → Participation Types.</span>
+                    <span className="fm-empty-heading">{t('caseTeamModal.body.noTypesConfigured')}</span>
+                    <span className="fm-empty-hint">{t('caseTeamModal.body.noTypesHint')}</span>
                   </div>
                 ) : visibleTypes.map(type => (
                   <DropZone
@@ -607,18 +636,17 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
               </div>
 
               <div className="fm-right">
-                <div style={{ padding: '16px 16px 10px', flexShrink: 0 }}>
-                  <div className="fm-eyebrow" style={{ marginBottom: 8 }}>Staff Directory</div>
+                <div className="ps-ctm-staffdir-head">
+                  <div className="fm-eyebrow ps-ctm-staffdir-eyebrow">{t('caseTeamModal.body.staffDirectoryEyebrow')}</div>
                   <input
                     value={search} onChange={e => setSearch(e.target.value)}
-                    placeholder="Search staff…"
-                    className="fm-search-input"
-                    style={{ width: '100%', boxSizing: 'border-box' }}
+                    placeholder={t('caseTeamModal.body.searchPlaceholder')}
+                    className="fm-search-input ps-ctm-search-input"
                   />
                 </div>
-                <div style={{ flex: 1, overflowY: 'auto', padding: '0 16px 16px', display: 'flex', flexDirection: 'column', gap: 6 }}>
+                <div className="ps-ctm-staff-list">
                   {filteredStaff.length === 0 ? (
-                    <div className="fm-empty"><span className="fm-empty-heading">No staff found</span></div>
+                    <div className="fm-empty"><span className="fm-empty-heading">{t('caseTeamModal.body.noStaffFound')}</span></div>
                   ) : filteredStaff.map(s => {
                     const isOnCase = staffOnCase.has(s.id);
                     return (
@@ -651,25 +679,17 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
           {/* Footer — reuses .fm-footer's existing space-between layout and .fm-footer-status's existing .dirty modifier */}
           <div className="fm-footer">
             <span className={`fm-footer-status${isDraftDirty ? ' dirty' : ''}`}>
-              {activeParticipants.length} team member{activeParticipants.length !== 1 ? 's' : ''}
-              {isDraftDirty ? ' · Unsaved changes' : ''}
+              {t('caseTeamModal.footer.teamMemberCount', { count: activeParticipants.length })}
+              {isDraftDirty ? <> · {t('caseTeamModal.footer.unsavedChanges')}</> : ''}
             </span>
             <div className="fm-footer-actions">
-              <button className="fm-btn-cancel" onClick={handleClose}>Cancel</button>
+              <button className="fm-btn-cancel" onClick={handleClose}>{t('caseTeamModal.footer.cancelButton')}</button>
               <button
-                className="fm-btn-cancel"
+                className={`fm-btn-cancel ps-ctm-save-btn${isDraftDirty ? ' ps-ctm-save-btn--dirty' : ''}${isSaving ? ' ps-ctm-save-btn--saving' : ''}`}
                 onClick={handleSave}
                 disabled={!isDraftDirty || isSaving}
-                style={{
-                  background: isDraftDirty ? 'rgba(34,197,94,0.15)' : undefined,
-                  borderColor: isDraftDirty ? 'rgba(34,197,94,0.5)' : undefined,
-                  color: isDraftDirty ? '#4ade80' : undefined,
-                  fontWeight: 700,
-                  opacity: isSaving ? 0.6 : 1,
-                  cursor: (!isDraftDirty || isSaving) ? 'default' : 'pointer',
-                }}
               >
-                {isSaving ? 'Saving…' : 'Save'}
+                {isSaving ? t('caseTeamModal.footer.savingButton') : t('caseTeamModal.footer.saveButton')}
               </button>
             </div>
           </div>
@@ -693,16 +713,16 @@ export const CaseTeamModal: React.FC<Props> = ({ caseData, onClose, onUpdated, o
       )}
 
       {showDirtyWarn && ReactDOM.createPortal(
-        <div className="ps-overlay" style={{ zIndex: 9500 }}>
+        <div className="ps-overlay ps-ctm-overlay--z9500">
           <div className="ps-modal-dark ps-modal-dark--sm">
             <div className="ps-modal-dark-header">
               <span className="ps-modal-dark-emoji">⚠️</span>
-              <span className="ps-modal-dark-title">Discard changes?</span>
+              <span className="ps-modal-dark-title">{t('caseTeamModal.dirtyWarnModal.title')}</span>
             </div>
-            <p className="ps-modal-dark-body">You have unsaved team changes. Closing will discard them — nothing has been saved yet.</p>
+            <p className="ps-modal-dark-body">{t('caseTeamModal.dirtyWarnModal.body')}</p>
             <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch">
-              <button className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn" onClick={() => setShowDirtyWarn(false)}>Keep editing</button>
-              <button className="ps-btn-red ps-modal-dark-footer__flex-btn" onClick={handleDiscardConfirm}>Discard changes</button>
+              <button className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn" onClick={() => setShowDirtyWarn(false)}>{t('caseTeamModal.dirtyWarnModal.keepEditingButton')}</button>
+              <button className="ps-btn-red ps-modal-dark-footer__flex-btn" onClick={handleDiscardConfirm}>{t('caseTeamModal.dirtyWarnModal.discardButton')}</button>
             </div>
           </div>
         </div>,

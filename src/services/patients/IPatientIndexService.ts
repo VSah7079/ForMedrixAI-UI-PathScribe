@@ -44,7 +44,7 @@ export interface PatientMatchCandidate {
    * own MRN schemes happen to produce the same string now share one
    * matching pool, with no way to tell them apart. When provided, this
    * scopes the match to a real, specific source system
-   * (Client.assigningAuthority - e.g. 'EPIC_MAIN', 'CERNER_WEST'), so
+   * (Facility.assigningAuthority - e.g. 'EPIC_MAIN', 'CERNER_WEST'), so
    * "MRN 12345 at Hospital A" is never confused with "MRN 12345 at
    * Hospital B." Optional, for real backward compatibility with
    * callers (manual entry, older integrations) that genuinely don't
@@ -107,6 +107,29 @@ export interface MasterPatientRecord {
   dateOfBirth: string;
   createdAt: string;
   updatedAt: string;
+  /** Real, per PathScribe Interface Specification v1.2 §2.6 (patient
+   *  data minimization) - the real resolveOrCreatePatient() outcome
+   *  that first established this identity, persisted here since a
+   *  much-later consumer (a billing payload built weeks after
+   *  accession, at sign-out) needs this same signal and the outcome
+   *  itself is otherwise only ever returned transiently, in the
+   *  moment, by resolveOrCreatePatient() - never stored anywhere
+   *  before this field. Set once, at creation, never changed
+   *  afterward - a patient's own later cases at this org are always
+   *  real re-matches against this same, already-established identity,
+   *  regardless of how THIS record first came to exist.
+   *
+   *  Real, per direct guidance (Outside Client Support: "completely
+   *  bypassing the identity reconciliation queue"): 'created_unmatched'
+   *  is genuinely distinct from 'created' - both mean this identity
+   *  didn't exist before, but 'created' means resolveOrCreatePatient()
+   *  actually ran its real fuzzy matching first and confidently found
+   *  nothing; 'created_unmatched' means no matching was ever attempted
+   *  at all (resolvePatientWithoutMatching(), Outside/Contract Case
+   *  accessioning only). A real, honest, permanent record of HOW this
+   *  identity came to exist, not silently indistinguishable from a
+   *  genuinely-checked new patient. */
+  establishedVia: 'matched' | 'created' | 'ambiguous' | 'created_unmatched';
   /**
    * Real fix, per direct follow-up on Phase 3 (idempotency & sequence
    * control, per the original spec's own "EVN-2" framing): the real,
@@ -209,11 +232,28 @@ export interface MasterPatientRecord {
  * confirmed represent the same real person - neither is deprecated,
  * both keep matching new orders under their own MRN going forward.
  * Never automatic - always a real, human-confirmed action.
+ *
+ * Real, per direct guidance: relationshipType is what makes a Link
+ * safe to reuse for a genuinely different real purpose - two DISTINCT
+ * real people who are clinically related (e.g. a newborn and their
+ * mother), not the same person under two identities. This distinction
+ * is load-bearing, not cosmetic: getLinkedPatientIds() below requires
+ * an explicit relationshipType filter specifically so a consumer that
+ * merges linked patients' own case histories together
+ * (patientHistoryQuery.ts) can never accidentally include a
+ * 'family_relation' link's own, genuinely separate patient - that
+ * would silently fold a mother's and her baby's own, real, distinct
+ * clinical histories into one view. See PatientHistoryModal.tsx's own
+ * real "Related Patients" section (distinct from its case-history
+ * list) for the real, separate UI treatment 'family_relation' gets.
  */
+export type PatientLinkRelationshipType = 'same_person' | 'family_relation';
+
 export interface PatientLink {
   id: string;
   patientIdA: string;
   patientIdB: string;
+  relationshipType: PatientLinkRelationshipType;
   linkedBy: string;
   linkedAt: string;
   /** The real reason this link was suggested in the first place -
@@ -257,6 +297,34 @@ export interface IPatientIndexService {
    *  not found, and returns 'ambiguous' — never a silent guess — for
    *  anything in between. */
   resolveOrCreatePatient(candidate: PatientMatchCandidate): Promise<PatientMatchResult>;
+
+  /**
+   * Real, per direct guidance (Outside Client Support & International
+   * Financial Class Architecture Specification: "completely bypassing
+   * the identity reconciliation queue"). A real, deliberate, second
+   * entry point — NOT a parameter on resolveOrCreatePatient() above,
+   * since the two represent genuinely different real intents: that
+   * one actively tries to find an existing person first; this one
+   * never does, by design. Always creates a fresh, real, persistent
+   * identity — never matches, never returns 'ambiguous', never flags
+   * for review. The real reason this exists, worked through directly
+   * before building: an Outside/Contract Case's demographics come
+   * from a source system this lab has no real relationship with — an
+   * NIR, an NHS Number, a foreign MRN scheme — forcing them through
+   * this lab's own domestic MRN/name/DOB matching logic risks a false
+   * 'ambiguous' flag with real administrative review overhead and no
+   * real clinical benefit. Scoped to real, explicit accessioner intent
+   * (AccessionPage.tsx's own intakeType === 'outside' only) — never
+   * the default path for any other real accession. Real, deliberate
+   * design choice, not a functional gap: this does NOT replace the
+   * genuinely valuable real "Check for Existing Patient" search
+   * (PatientLinkSearch.tsx, same_person) already available on the same
+   * Outside Patient Data tab — a human explicitly recognizing a real,
+   * returning outside patient and confirming a real linkPatients()
+   * call afterward is a completely different, complementary real
+   * mechanism from this one, not a substitute for it.
+   */
+  resolvePatientWithoutMatching(candidate: PatientMatchCandidate): Promise<PatientMatchResult>;
 
   getById(patientId: string): Promise<MasterPatientRecord | null>;
 
@@ -317,8 +385,28 @@ export interface IPatientIndexService {
    *  provisional record as merged (kept, not deleted — a real audit
    *  trail of "this id used to exist and where it went" matters here,
    *  the same reasoning already applied to audit logs elsewhere in this
-   *  app) rather than erasing it outright. */
-  mergeIntoExistingPatient(provisionalPatientId: string, confirmedPatientId: string): Promise<{ casesRepointed: number; caseIds: string[] }>;
+   *  app) rather than erasing it outright.
+   *
+   *  Real, found-and-fixed gap: also repoints every real Encounter
+   *  record under the provisional id (services/encounters/) —
+   *  previously left silently orphaned, still pointing at the
+   *  deprecated id, even though every one of its own cases correctly
+   *  moved. A merge means "same real person," so there's no real
+   *  sharing ambiguity the way moveCaseToPatient() below has to
+   *  account for — every encounter genuinely belongs to the one real,
+   *  now-canonical person.
+   *
+   *  Real, per direct guidance ("we trigger the json packages and the
+   *  interface engine generates the formatted messages" / Pathology
+   *  HL7 Outbound Feature Spec §4, ADT^A40): also enqueues a real
+   *  outbound ADT^A40 payload reference
+   *  (services/patients/IOutboundPatientAdtQueueService.ts) — unless
+   *  suppressAdtEnqueue is true. That flag exists specifically for
+   *  breakGlassRebind() below, which calls this method internally but
+   *  represents a genuinely different real HL7 event (A47, not A40) —
+   *  without it, a rebind would incorrectly also enqueue a merge
+   *  event alongside its own, correct identifier-change one. */
+  mergeIntoExistingPatient(provisionalPatientId: string, confirmedPatientId: string, suppressAdtEnqueue?: boolean): Promise<{ casesRepointed: number; caseIds: string[]; encountersRepointed: number }>;
 
   /**
    * Real feature, per direct architecture confirmation: ADT^A43 (Move
@@ -340,13 +428,27 @@ export interface IPatientIndexService {
    * the source patient id, target patient id, and the specific case
    * id — real, standard CAP/CLIA traceability requirement for moving a
    * diagnostic report across patient charts.
+   *
+   * Real, found-and-fixed gap: also handles the moved case's own
+   * linked Encounter (services/encounters/), not just the case itself
+   * — previously left silently pointing at the source patient even
+   * after the case moved. Genuinely careful about a real Encounter
+   * being shareable by more than one Case (multiple specimens from the
+   * same real clinical visit): `encounterOutcome` reports which of the
+   * three real outcomes happened — `'reassigned'` (the encounter
+   * belonged exclusively to this case, so it moved too), `
+   * 'unlinked_shared'` (another real case under the source patient
+   * still needs this same encounter, so it correctly stays there, and
+   * the just-moved case's own encounterId is cleared rather than left
+   * stale and cross-patient), or `'none'` (the case had no linked
+   * encounter to begin with).
    */
   moveCaseToPatient(
     caseId: string,
     sourcePatientId: string,
     targetPatientId: string,
     eventTimestamp: string
-  ): Promise<{ moved: boolean; reason?: string }>;
+  ): Promise<{ moved: boolean; reason?: string; encounterOutcome?: 'reassigned' | 'unlinked_shared' | 'none' }>;
 
   /**
    * Real feature, per direct confirmation, building Phase B of the
@@ -390,14 +492,31 @@ export interface IPatientIndexService {
    * under their own real MRN. Clears the review flag on the provisional
    * record, same as the other two resolutions, but never repoints
    * cases and never sets mergedInto on either side.
+   *
+   * Real, per direct guidance: relationshipType is required, not
+   * defaulted — every real caller must be explicit about which of the
+   * two genuinely different real relationships this link represents.
+   * See PatientLink's own doc comment for why this distinction is
+   * load-bearing, not cosmetic.
    */
-  linkPatients(patientIdA: string, patientIdB: string, linkedBy: string, reason?: string): Promise<PatientLink>;
+  linkPatients(patientIdA: string, patientIdB: string, relationshipType: PatientLinkRelationshipType, linkedBy: string, reason?: string): Promise<PatientLink>;
 
   /** Real fix: every patientId transitively linked to the given one
    *  (including itself), for real "Patient History" queries that need
    *  to pull cases from every linked identity, not just one. Follows
-   *  chains (A linked to B, B linked to C) rather than only one hop. */
-  getLinkedPatientIds(patientId: string): Promise<string[]>;
+   *  chains (A linked to B, B linked to C) rather than only one hop.
+   *
+   *  Real, per direct guidance: relationshipType is a required filter,
+   *  not optional — the graph traversal itself only follows edges of
+   *  the requested type, so a chain mixing both real relationship
+   *  types (e.g. A-B same_person, B-C family_relation) never lets an
+   *  unrelated relationship type leak into the result through a
+   *  shared intermediate patient. patientHistoryQuery.ts always
+   *  requests 'same_person' — the only type that should ever merge
+   *  case histories together; a caller building a "Related Patients"
+   *  cross-reference (PatientHistoryModal.tsx) requests
+   *  'family_relation' separately. */
+  getLinkedPatientIds(patientId: string, relationshipType: PatientLinkRelationshipType): Promise<string[]>;
 
   /** Every confirmed link involving this organisation's patients - the
    *  real audit trail of who linked what, when, and why. */

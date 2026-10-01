@@ -14,6 +14,7 @@ export interface IFppeAssignmentService {
     provisionalUserName: string;
     proctorUserId: string;
     proctorUserName: string;
+    facilityId: string;
     subspecialtyId?: string;
     endCondition: FppeEndCondition;
   }): Promise<ServiceResult<FppeAssignment>>;

@@ -1,10 +1,16 @@
 import React, {
   createContext, useContext, useState, useRef, useEffect, useCallback,
 } from 'react';
+import { useTranslation } from 'react-i18next';
 import { mockActionRegistryService } from '../services/actionRegistry/mockActionRegistryService';
 import { useSystemConfig } from './SystemConfigContext';
 import { callAi } from '../services/aiIntegration/aiProviderService';
 import { resolveVoiceAiConfig } from '../components/Config/AI/resolveVoiceAiModel';
+import { getSessionUser } from '../services/auth/caseAccessControl';
+import { MockVoiceMacroService } from '../services/voicemacro/mockVoiceMacroService';
+import { isVoiceMacroVisibleTo, applyVoiceMacroSubstitutions, type VoiceMacro } from '../types/voiceMacros';
+import { getVoiceProfileRecognitionLang, getVoiceProfileLanguage } from '../constants/voiceProfiles';
+import { getPunctuationMapForLanguage } from './punctuationMaps';
 
 export type VoicePhase = 'standby' | 'ai' | 'local' | 'dictate';
 
@@ -17,6 +23,18 @@ export interface DictationTarget {
   onCorrection?: (original: string, corrected: string) => void;
   /** Context hint for the AI refinement prompt (e.g. 'gross', 'micro', 'diagnosis') */
   context?: string;
+  /**
+   * Real, per direct guidance (voice-trigger recognition wiring —
+   * "Personal Quick Text"): the real performing lab of whatever this
+   * dictation target actually belongs to, if any — e.g.
+   * OrchestratorSectionEditor.tsx passes the current case's own
+   * already-resolved performing lab. Used to filter which real voice
+   * macros (Enterprise/Facility/Personal — see
+   * types/voiceMacros.ts's own isVoiceMacroVisibleTo()) apply to this
+   * dictation session. Undefined means only Enterprise-wide macros
+   * apply — never guessed or defaulted to "any facility."
+   */
+  performingLabFacilityId?: string;
 }
 
 export interface VoiceContextType {
@@ -94,7 +112,12 @@ async function checkStructuredContentAvailable(): Promise<boolean> {
 }
 
 function norm(s: string) {
-  return s.toLowerCase().replace(/[^a-z0-9 ]/g, '').replace(/\s+/g, ' ').trim();
+  // Real, per direct follow-up — same real Unicode-awareness fix as
+  // services/actionRegistry/mockActionRegistryService.ts's own norm()
+  // (see that file's own fuller comment): the previous ASCII-only
+  // regex destroyed non-Latin-script transcripts entirely (Korean
+  // normalized to an empty string) and mangled accented Latin text.
+  return s.normalize('NFKC').toLowerCase().replace(/[^\p{L}\p{N} ]/gu, '').replace(/\s+/g, ' ').trim();
 }
 
 function parseShortcut(shortcut: string) {
@@ -108,63 +131,30 @@ function parseShortcut(shortcut: string) {
   };
 }
 
-// ── Punctuation substitution map ──────────────────────────────────────────────
-const PUNCT_MAP: Record<string, string> = {
-  'period':              '. ',
-  'comma':               ', ',
-  'question mark':       '? ',
-  'exclamation mark':    '! ',
-  'exclamation point':   '! ',
-  'colon':               ': ',
-  'semicolon':           '; ',
-  'new line':            '\n',
-  'new paragraph':       '\n\n',
-  'open paren':          '(',
-  'close paren':         ') ',
-  'open parenthesis':    '(',
-  'close parenthesis':   ') ',
-  'hyphen':              '-',
-  'dash':                ' \u2014 ',
-  'em dash':             ' \u2014 ',
-  'percent':             '% ',
-  'percent sign':        '% ',
-  'slash':               '/',
-  'backslash':           '\\',
-  'open bracket':        '[',
-  'close bracket':       '] ',
-  'open brace':          '{',
-  'close brace':         '} ',
-  'equals':              ' = ',
-  'plus':                ' + ',
-  'asterisk':            '*',
-  'at sign':             '@',
-  'hash':                '#',
-  'ampersand':           '&',
-  'tab':                 '\t',
-  'space':               ' ',
-  'ellipsis':            '\u2026 ',
-  'dot dot dot':         '\u2026 ',
-};
+// ── Punctuation substitution map (real, per-language — see
+//    ./punctuationMaps.ts's own header for the full account of the
+//    real, deliberate French/German/Dutch/Korean additions) ─────────
 
 /**
  * Apply punctuation substitution + smart capitalization.
  * - Capitalizes the first character of the segment
  * - Capitalizes the character after sentence-ending punctuation (. ? !)
  */
-function applyPunctuation(text: string): string {
+function applyPunctuation(text: string, language: import('../constants/voiceProfiles').VoiceProfileLanguage = 'en'): string {
+  const punctMap = getPunctuationMapForLanguage(language);
   const tokens = text.split(/\s+/);
   const out: string[] = [];
   let i = 0;
   while (i < tokens.length) {
     const twoWord = tokens.slice(i, i + 2).join(' ').toLowerCase();
-    if (PUNCT_MAP[twoWord] !== undefined) {
-      out.push(PUNCT_MAP[twoWord]);
+    if (punctMap[twoWord] !== undefined) {
+      out.push(punctMap[twoWord]);
       i += 2;
       continue;
     }
     const oneWord = tokens[i].toLowerCase();
-    if (PUNCT_MAP[oneWord] !== undefined) {
-      out.push(PUNCT_MAP[oneWord]);
+    if (punctMap[oneWord] !== undefined) {
+      out.push(punctMap[oneWord]);
       i++;
       continue;
     }
@@ -260,6 +250,7 @@ async function refineWithStructuredContent(
 // ── Component ──────────────────────────────────────────────────────────────────
 
 export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ children }) => {
+  const { t } = useTranslation();
   const { config } = useSystemConfig();
   const voiceEnabled = config.voiceEnabled ?? true;
 
@@ -273,7 +264,21 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const [commandPhase, setCommandPhase]         = useState<'ai' | 'local'>('ai');
   const [transcript, setTranscript]             = useState('');
   const [isFinal, setIsFinal]                   = useState(false);
-  const [accent, setAccent]                     = useState('en-US');
+  // Real fix, per direct follow-up: persist the user's chosen voice
+  // accent/locale across reloads. Confirmed directly: this genuinely
+  // drives the real SpeechRecognition engine (recognition.lang =
+  // accent, below) — not a cosmetic setting — but had zero
+  // persistence, resetting to 'en-US' on every reload regardless of
+  // what the user had actually picked. Client-side only (no real
+  // server-side user-profile store exists in this mock app to persist
+  // to instead).
+  const [accent, setAccentState] = useState(() => {
+    try { return localStorage.getItem('pathscribe_voice_accent') || 'en-US'; } catch { return 'en-US'; }
+  });
+  const setAccent = useCallback((next: string) => {
+    setAccentState(next);
+    try { localStorage.setItem('pathscribe_voice_accent', next); } catch { /* persistence is an optimisation, not a requirement */ }
+  }, []);
   const [dictationTarget, setDictationTarget]   = useState<DictationTarget | null>(null);
   const [isRefining, setIsRefining]             = useState(false);
   const [justHeardLiteral, setJustHeardLiteral] = useState(false);
@@ -282,6 +287,13 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
   const recognitionRef     = useRef<any>(null);
   const streamRef          = useRef<MediaStream | null>(null);
   const dictationTargetRef = useRef<DictationTarget | null>(null);
+  // Real, per direct guidance (voice-trigger recognition wiring —
+  // "Personal Quick Text"): a real, cached list of active voice
+  // macros, refreshed once per dictation session (see startDictation
+  // below) — never re-fetched per spoken segment, since the LOCAL PATH
+  // substitution needs to be near-instant.
+  const voiceMacroServiceRef = useRef(new MockVoiceMacroService());
+  const voiceMacrosRef = useRef<VoiceMacro[]>([]);
   const phaseRef           = useRef<VoicePhase>('standby');
   const commandPhaseRef    = useRef<'ai' | 'local'>('ai');
   const pendingMissRef     = useRef<{ id: string; expiresAt: number } | null>(null);
@@ -300,7 +312,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     recognitionRef.current = null;
     if (recognition) { try { recognition.stop(); } catch {} }
     if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current.getTracks().forEach(track => track.stop());
       streamRef.current = null;
     }
   }, []);
@@ -314,6 +326,49 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       setTranscript('');
     }
   }, [voiceEnabled, killMic]);
+
+  // ── Real, missing keyboard shortcut dispatcher ──────────────────────────────
+  // Per direct follow-up: "are we not mapping keyboard commands in the
+  // Action Registry?" Confirmed directly, after a genuinely thorough
+  // trace (every real keydown listener in the app, every use of
+  // parseShortcut, every caller of executeAction): the shortcut field
+  // was real, stored, admin-editable data that never actually fired
+  // anything on a real, physical key press — only voice commands ever
+  // called executeAction. This is the real, missing receiving half.
+  // Shares mockActionRegistryService's own getEligibleActions() — the
+  // exact same isActive + GLOBAL_CATEGORIES-or-current-context rule
+  // voice matching already uses — so keyboard and voice can never
+  // silently drift apart on which actions are eligible right now.
+  useEffect(() => {
+    const handleGlobalShortcut = (e: KeyboardEvent) => {
+      // Real, deliberate rule: ignore while genuinely typing into a
+      // real field — a bare-key shortcut (e.g. 'S', 'Escape') that
+      // happens to collide with normal typing must never fire
+      // mid-keystroke. Modifier-bearing combos (Alt/Ctrl/Meta) are
+      // exempt — normal typing never holds those down.
+      const hasModifier = e.altKey || e.ctrlKey || e.metaKey;
+      const target = e.target as HTMLElement | null;
+      const isTyping = !!target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+      if (isTyping && !hasModifier) return;
+
+      const eligible = mockActionRegistryService.getEligibleActions();
+      const matched = eligible.find(a => {
+        if (!a.shortcut) return false;
+        const sc = parseShortcut(a.shortcut);
+        return (
+          e.ctrlKey  === sc.ctrl  && e.shiftKey === sc.shift &&
+          e.altKey   === sc.alt   && e.metaKey  === sc.meta  &&
+          e.key.toLowerCase() === sc.key
+        );
+      });
+      if (matched) {
+        e.preventDefault();
+        mockActionRegistryService.executeAction(matched);
+      }
+    };
+    window.addEventListener('keydown', handleGlobalShortcut);
+    return () => window.removeEventListener('keydown', handleGlobalShortcut);
+  }, []);
 
   // ── Shortcut confirmation for missed voice commands ────────────────────────
   useEffect(() => {
@@ -356,7 +411,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     // "literal" one-shot flag
     if (normed === 'literal') {
       setJustHeardLiteral(true);
-      setTranscript('\uD83D\uDD24 Literal\u2026');
+      setTranscript(t('voiceProvider.status.literal'));
       setTimeout(() => setTranscript(''), 1500);
       return;
     }
@@ -371,9 +426,31 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       return;
     }
 
-    // Apply local punctuation + capitalization + learned corrections
-    const localExpanded     = applyPunctuation(text);
-    const localWithLearning = applyDictationLearning(text, localExpanded);
+    // Apply local punctuation + capitalization + learned corrections.
+    // Real, per this file's own new language-aware punctuation-map
+    // wiring — resolves the real, current voice profile's own real
+    // language (not always English) so a French/German/Dutch/Korean
+    // dictation session's own real punctuation vocabulary is actually
+    // recognized, not silently defaulted to the English map.
+    const localExpanded     = applyPunctuation(text, getVoiceProfileLanguage(accent));
+    const localWithLearning0 = applyDictationLearning(text, localExpanded);
+
+    // Real, per direct guidance (voice-trigger recognition wiring —
+    // "Personal Quick Text"): applies real, active voice-macro
+    // substitution (spoken → written) as the final real local step,
+    // after punctuation/learned-corrections and before the AI-
+    // refinement/direct-insertion branch below — a spoken trigger
+    // expands the same way whether or not AI refinement also runs
+    // afterward. Filtered to exactly the real macros this session user
+    // can actually see right now (Enterprise + this dictation target's
+    // own real facility + their own personal ones) — never applies a
+    // macro scoped to a different facility or a different person's
+    // own personal one.
+    const sessionUserId = getSessionUser()?.id ?? '';
+    const visibleVoiceMacros = voiceMacrosRef.current.filter(m =>
+      isVoiceMacroVisibleTo(m, sessionUserId, dictationTargetRef.current?.performingLabFacilityId)
+    );
+    const localWithLearning = applyVoiceMacroSubstitutions(localWithLearning0, visibleVoiceMacros);
 
     lastRawRef.current       = text;
     lastLocalTextRef.current = localWithLearning;
@@ -382,7 +459,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       // ── AI PATH ────────────────────────────────────────────────────────────
       dictationTargetRef.current?.onText(localWithLearning, true); // interim
       setIsRefining(true);
-      setTranscript('\u2728 Refining\u2026');
+      setTranscript(t('voiceProvider.status.refining'));
 
       const context       = dictationTargetRef.current?.context ?? 'Pathology Report';
       const structuredContentPromise = refineWithStructuredContent(text, context, dictationCorrections);
@@ -403,7 +480,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       dictationTargetRef.current?.onText(localWithLearning);
       setTranscript('');
     }
-  }, []);
+  }, [t]);
 
   // ── Speech recognition lifecycle ───────────────────────────────────────────
   useEffect(() => {
@@ -416,7 +493,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     const recognition           = new SpeechRecognition();
     recognition.continuous      = true;
     recognition.interimResults  = true;
-    recognition.lang            = accent;
+    recognition.lang            = getVoiceProfileRecognitionLang(accent);
 
     recognition.onend = () => {
       if (recognitionRef.current === recognition && phaseRef.current !== 'standby') {
@@ -448,11 +525,16 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
         }
 
         // ── COMMAND ──────────────────────────────────────────────────────────
-        const action = mockActionRegistryService.findActionByTrigger(text);
+        // Real, per src/MULTILANG_VOICE_COMMANDS_PLAN.md's own scoped
+        // pieces 1-2 — the current voice profile's own real language,
+        // so a genuine, real French/German/Dutch/Korean command
+        // trigger (once translated content exists) is actually
+        // matched, not silently only ever checked against English.
+        const action = mockActionRegistryService.findActionByTrigger(text, getVoiceProfileLanguage(accent));
         if (action) {
           pendingMissRef.current = null;
           mockActionRegistryService.executeAction(action, text);
-          setTranscript(`\u2714\uFE0F ${action.label}`);
+          setTranscript(t('voiceProvider.status.actionExecuted', { label: action.label }));
           setTimeout(() => setTranscript(''), 1200);
         } else {
           const miss = mockActionRegistryService.recordMiss(text);
@@ -485,7 +567,7 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
       .catch(() => { recognitionRef.current = null; setPhase('standby'); });
 
     return () => killMic();
-  }, [phase, accent, killMic, handleDictationSegment]);
+  }, [phase, accent, killMic, handleDictationSegment, t]);
 
   // ── Public API ─────────────────────────────────────────────────────────────
 
@@ -511,6 +593,14 @@ export const VoiceProvider: React.FC<{ children: React.ReactNode }> = ({ childre
     setDictationTarget(target);
     setTranscript('');
     setPhase('dictate');
+    // Real, per direct guidance (voice-trigger recognition wiring):
+    // refreshes the real, cached voice-macro list once per real
+    // dictation session, not on every single spoken segment — a
+    // dictation segment needs this substitution to be near-instant
+    // (see handleDictationSegment's own LOCAL PATH), and macro edits
+    // mid-dictation are a genuinely rare real case this session-level
+    // refresh already covers well enough.
+    voiceMacroServiceRef.current.getMacros().then(macros => { voiceMacrosRef.current = macros; });
   }, []);
 
   const stopDictation = useCallback(() => {

@@ -9,9 +9,17 @@
 //
 // Lives inside the AI Behavior tab as a collapsible section.
 // Admin-only: clinical users see a read-only summary.
+//
+// i18n note: `step.title`/`step.aiInstruction`/`f.name`/
+// `f.cardinality` come from narrativeTemplateConfig.ts's own
+// admin-authored step schema — `aiInstruction` in particular is
+// literal AI-prompt text — and stay untouched, same posture this
+// sweep already takes for schema-driven/AI-prompt content elsewhere.
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation, Trans } from 'react-i18next';
+import '../../../pathscribe.css';
 import { narrativeTemplateConfig } from '../../Config/NarrativeTemplates/narrativeTemplateConfig';
 import { getOrgOrchestratorDefault, setOrgOrchestratorDefault } from './orchestratorModeConfig';
 
@@ -24,55 +32,36 @@ interface StepCardProps {
 }
 
 const StepCard: React.FC<StepCardProps> = ({ step, index, isAdmin }) => {
+  const { t } = useTranslation();
   const [expanded, setExpanded] = useState(false);
 
   return (
-    <div style={{
-      border:        '1px solid rgba(255,255,255,0.08)',
-      borderRadius:  10,
-      background:    'rgba(255,255,255,0.03)',
-      overflow:      'hidden',
-      marginBottom:  8,
-    }}>
+    <div className="ps-orchcfg-step-card">
       {/* Header row */}
       <button
         onClick={() => setExpanded(e => !e)}
-        style={{
-          width: '100%', display: 'flex', alignItems: 'center',
-          gap: 12, padding: '12px 16px', background: 'none',
-          border: 'none', cursor: 'pointer', textAlign: 'left',
-        }}
+        className="ps-orchcfg-step-header"
       >
         {/* Step number */}
-        <span style={{
-          width: 24, height: 24, borderRadius: '50%',
-          background: step.enabled ? 'rgba(8,145,178,0.2)' : 'rgba(255,255,255,0.05)',
-          color:      step.enabled ? '#38bdf8' : '#475569',
-          display: 'flex', alignItems: 'center', justifyContent: 'center',
-          fontSize: 11, fontWeight: 700, flexShrink: 0,
-        }}>
+        <span className={`ps-orchcfg-step-number${step.enabled ? ' ps-orchcfg-step-number--enabled' : ''}`}>
           {index + 1}
         </span>
 
         {/* Title */}
-        <span style={{ flex: 1, fontSize: 14, fontWeight: 600, color: step.enabled ? '#f1f5f9' : '#475569' }}>
+        <span className={`ps-orchcfg-step-title${step.enabled ? ' ps-orchcfg-step-title--enabled' : ''}`}>
           {step.title}
         </span>
 
         {/* Status badge */}
-        <span style={{
-          fontSize: 9, fontWeight: 700, padding: '2px 8px', borderRadius: 10,
-          background: step.enabled ? 'rgba(16,185,129,0.12)' : 'rgba(255,255,255,0.05)',
-          color:      step.enabled ? '#34d399' : '#475569',
-        }}>
-          {step.enabled ? 'ACTIVE' : 'DISABLED'}
+        <span className={`ps-orchcfg-step-badge${step.enabled ? ' ps-orchcfg-step-badge--enabled' : ''}`}>
+          {step.enabled ? t('orchestratorConfigSection.stepCard.activeLabel') : t('orchestratorConfigSection.stepCard.disabledLabel')}
         </span>
 
         {/* Chevron */}
         <svg
           width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="#64748b" strokeWidth="2.5"
-          style={{ transition: 'transform 0.2s', transform: expanded ? 'rotate(90deg)' : 'rotate(0deg)', flexShrink: 0 }}
+          className={`ps-orchcfg-chevron${expanded ? ' ps-orchcfg-chevron--open' : ''}`}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
@@ -80,30 +69,26 @@ const StepCard: React.FC<StepCardProps> = ({ step, index, isAdmin }) => {
 
       {/* Expanded detail */}
       {expanded && (
-        <div style={{ padding: '0 16px 14px', borderTop: '1px solid rgba(255,255,255,0.06)' }}>
-          <div style={{ paddingTop: 12 }}>
-            <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-              AI Instruction
+        <div className="ps-orchcfg-detail">
+          <div className="ps-orchcfg-detail-section">
+            <div className="ps-orchcfg-detail-heading">
+              {t('orchestratorConfigSection.stepCard.aiInstructionHeading')}
             </div>
-            <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, background: 'rgba(0,0,0,0.2)', borderRadius: 6, padding: '8px 12px' }}>
+            <div className="ps-orchcfg-ai-instruction">
               {step.aiInstruction}
             </div>
           </div>
 
           {step.fields && step.fields.length > 0 && (
-            <div style={{ marginTop: 12 }}>
-              <div style={{ fontSize: 11, fontWeight: 700, color: '#64748b', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 6 }}>
-                Context Fields ({step.fields.length})
+            <div className="ps-orchcfg-fields-section">
+              <div className="ps-orchcfg-detail-heading">
+                {t('orchestratorConfigSection.stepCard.contextFieldsHeading', { count: step.fields.length })}
               </div>
-              <div style={{ display: 'flex', flexWrap: 'wrap', gap: 6 }}>
+              <div className="ps-orchcfg-fields-row">
                 {step.fields.map((f: any) => (
-                  <span key={f.name} style={{
-                    fontSize: 11, padding: '2px 8px', borderRadius: 6,
-                    background: 'rgba(255,255,255,0.05)', color: '#64748b',
-                    border: '1px solid rgba(255,255,255,0.08)',
-                  }}>
+                  <span key={f.name} className="ps-orchcfg-field-chip">
                     {f.name}
-                    <span style={{ marginLeft: 4, color: '#334155', fontSize: 10 }}>
+                    <span className="ps-orchcfg-field-cardinality">
                       {f.cardinality}
                     </span>
                   </span>
@@ -113,8 +98,8 @@ const StepCard: React.FC<StepCardProps> = ({ step, index, isAdmin }) => {
           )}
 
           {isAdmin && (
-            <div style={{ marginTop: 12, fontSize: 11, color: '#334155', fontStyle: 'italic' }}>
-              Step ordering and field mapping configurable in a future release.
+            <div className="ps-orchcfg-future-note">
+              {t('orchestratorConfigSection.stepCard.futureReleaseNote')}
             </div>
           )}
         </div>
@@ -130,6 +115,7 @@ interface OrchestratorConfigSectionProps {
 }
 
 const OrchestratorConfigSection: React.FC<OrchestratorConfigSectionProps> = ({ isAdmin }) => {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
   const cfg = narrativeTemplateConfig;
 
@@ -148,78 +134,59 @@ const OrchestratorConfigSection: React.FC<OrchestratorConfigSectionProps> = ({ i
   const enabledCount = cfg.sections.filter(s => s.enabled).length;
 
   return (
-    <div style={{ marginTop: 32, borderTop: '1px solid rgba(255,255,255,0.08)', paddingTop: 28 }}>
+    <div className="ps-orchcfg-section">
 
       {/* Section header — collapsible */}
       <button
         onClick={() => setOpen(o => !o)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: 10, background: 'none',
-          border: 'none', cursor: 'pointer', padding: 0, width: '100%', textAlign: 'left',
-        }}
+        className="ps-orchcfg-header-btn"
       >
         <svg
           width="14" height="14" viewBox="0 0 24 24" fill="none"
           stroke="#64748b" strokeWidth="2.5"
-          style={{ transition: 'transform 0.2s', transform: open ? 'rotate(90deg)' : 'rotate(0deg)' }}
+          className={`ps-orchcfg-chevron${open ? ' ps-orchcfg-chevron--open' : ''}`}
         >
           <polyline points="9 18 15 12 9 6" />
         </svg>
 
-        <span style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0' }}>
-          Orchestrator Config
+        <span className="ps-orchcfg-header-title">
+          {t('orchestratorConfigSection.title')}
         </span>
 
         {isAdmin ? (
           <span
             role="switch"
             aria-checked={orchestratorOn}
-            aria-label={`Orchestrator Config ${orchestratorOn ? 'On' : 'Off'}`}
+            aria-label={orchestratorOn ? t('orchestratorConfigSection.toggle.ariaLabelOn') : t('orchestratorConfigSection.toggle.ariaLabelOff')}
             onClick={(e) => { e.stopPropagation(); handleToggle(); }}
-            title="Org-level default — internal facilities (labs) can override this individually in Facility Configuration"
-            style={{
-              fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-              cursor: 'pointer',
-              background: orchestratorOn ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)',
-              color:      orchestratorOn ? '#34d399' : '#475569',
-              border: `1px solid ${orchestratorOn ? 'rgba(16,185,129,0.3)' : 'rgba(255,255,255,0.1)'}`,
-            }}
+            title={t('orchestratorConfigSection.toggle.tooltip')}
+            className={`ps-orchcfg-toggle-badge${orchestratorOn ? ' ps-orchcfg-toggle-badge--on' : ''}`}
           >
-            {orchestratorOn ? 'ON' : 'OFF'} — click to toggle
+            {orchestratorOn ? t('orchestratorConfigSection.toggle.badgeOn') : t('orchestratorConfigSection.toggle.badgeOff')}
           </span>
         ) : (
-          <span style={{
-            fontSize: 10, fontWeight: 600, padding: '2px 8px', borderRadius: 10,
-            background: orchestratorOn ? 'rgba(16,185,129,0.1)' : 'rgba(255,255,255,0.05)',
-            color:      orchestratorOn ? '#34d399' : '#475569',
-          }}>
-            {orchestratorOn ? 'ON' : 'OFF'}
+          <span className={`ps-orchcfg-status-badge${orchestratorOn ? ' ps-orchcfg-status-badge--on' : ''}`}>
+            {orchestratorOn ? t('orchestratorConfigSection.toggle.statusOn') : t('orchestratorConfigSection.toggle.statusOff')}
           </span>
         )}
 
-        <span style={{ fontSize: 11, color: '#475569', marginLeft: 'auto' }}>
-          {enabledCount} of {cfg.sections.length} generation steps active
+        <span className="ps-orchcfg-steps-summary">
+          {t('orchestratorConfigSection.stepsActiveSummary', { enabled: enabledCount, total: cfg.sections.length })}
         </span>
       </button>
 
       {open && (
-        <div style={{ marginTop: 16 }}>
-          <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.6 }}>
-            Controls which AI generation steps run when Orchestrator mode is active, and what
-            instructions each step receives. Steps run in order — earlier steps provide context
-            to later ones. This is <strong style={{ color: '#94a3b8' }}>AI configuration</strong>,
-            not report layout (that lives in Report Templates → Part Library).
+        <div className="ps-orchcfg-body">
+          <p className="ps-orchcfg-intro-text">
+            <Trans i18nKey="orchestratorConfigSection.intro1" components={{ strong: <strong className="ps-orchcfg-emphasis" /> }} />
           </p>
-          <p style={{ fontSize: 12, color: '#64748b', marginBottom: 16, lineHeight: 1.6 }}>
-            The ON/OFF badge above is the <strong style={{ color: '#94a3b8' }}>org-wide default</strong>.
-            Individual internal clients (performing labs) can override it in the Client
-            Dictionary — see that client's General tab — for trusts where not every site
-            wants AI narrative auto-draft enabled.
+          <p className="ps-orchcfg-intro-text">
+            <Trans i18nKey="orchestratorConfigSection.intro2" components={{ strong: <strong className="ps-orchcfg-emphasis" /> }} />
           </p>
 
           {!isAdmin && (
-            <div style={{ fontSize: 12, color: '#475569', fontStyle: 'italic', marginBottom: 12, padding: '8px 12px', background: 'rgba(255,255,255,0.03)', borderRadius: 6, border: '1px solid rgba(255,255,255,0.06)' }}>
-              Read-only — contact your lab administrator to modify generation steps.
+            <div className="ps-orchcfg-readonly-note">
+              {t('orchestratorConfigSection.readOnlyNote')}
             </div>
           )}
 

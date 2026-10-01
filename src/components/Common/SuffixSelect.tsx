@@ -9,9 +9,20 @@
 // props rather than hardcoding classes, since it's reused across
 // AccessionPage.tsx (ps-input-dark) and the Config screens (ps-conf-input)
 // which use two different class systems.
+//
+// i18n note: `SUFFIX_PRESETS` ('Jr.', 'Sr.', 'II', 'III', 'IV', 'V')
+// are real, selectable name-suffix data appended to a real person's
+// name — left as literal data, not translated, same as any other
+// real proper-name content. The default `ariaLabel` reuses
+// `physiciansSection.modal.suffixLabel` (exact-text match, the label
+// already shown next to this component in PhysiciansSection.tsx);
+// the placeholder and "Use list"/"Other…" reuse
+// `facilityEditorModal.general.*` (exact-text matches); "None"
+// reuses the generic `common.none`.
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { SUFFIX_PRESETS, isPresetSuffix } from '../../utils/personName';
 
@@ -23,8 +34,10 @@ interface SuffixSelectProps {
   ariaLabel?: string;
 }
 
-export const SuffixSelect: React.FC<SuffixSelectProps> = ({ value, onChange, selectClassName, inputClassName, ariaLabel = 'Suffix' }) => {
+export const SuffixSelect: React.FC<SuffixSelectProps> = ({ value, onChange, selectClassName, inputClassName, ariaLabel }) => {
+  const { t } = useTranslation();
   const [customMode, setCustomMode] = useState(!isPresetSuffix(value));
+  const resolvedAriaLabel = ariaLabel ?? t('physiciansSection.modal.suffixLabel');
 
   if (customMode) {
     return (
@@ -33,11 +46,11 @@ export const SuffixSelect: React.FC<SuffixSelectProps> = ({ value, onChange, sel
           className={inputClassName}
           value={value}
           onChange={e => onChange(e.target.value)}
-          placeholder="e.g. Esq., MD"
-          aria-label={ariaLabel}
+          placeholder={t('facilityEditorModal.general.contactSuffixPlaceholder')}
+          aria-label={resolvedAriaLabel}
         />
         <button type="button" className="ps-suffix-back-link" onClick={() => { setCustomMode(false); onChange(''); }}>
-          Use list
+          {t('facilityEditorModal.general.useList')}
         </button>
       </div>
     );
@@ -47,15 +60,15 @@ export const SuffixSelect: React.FC<SuffixSelectProps> = ({ value, onChange, sel
     <select
       className={selectClassName}
       value={value}
-      aria-label={ariaLabel}
+      aria-label={resolvedAriaLabel}
       onChange={e => {
         if (e.target.value === '__other__') { setCustomMode(true); onChange(''); }
         else onChange(e.target.value);
       }}
     >
-      <option value="">None</option>
+      <option value="">{t('common.none')}</option>
       {SUFFIX_PRESETS.map(s => <option key={s} value={s}>{s}</option>)}
-      <option value="__other__">Other…</option>
+      <option value="__other__">{t('facilityEditorModal.general.other')}</option>
     </select>
   );
 };

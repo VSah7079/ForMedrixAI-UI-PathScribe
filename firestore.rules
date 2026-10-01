@@ -52,6 +52,10 @@ service cloud.firestore {
     function sameOrg(caseData) {
       return isSignedIn() && caseOrgId(caseData) == callerOrgId();
     }
+    // The caller belongs to the organisation named in the document path.
+    function isOrgMember(orgId) {
+      return isSignedIn() && callerOrgId() == orgId;
+    }
     // Vendor staff can read across every tenant for support purposes, but
     // per ACCESS_CONTROL_PLAN.md this is scoped to the two platform-config
     // screens elsewhere in this file, NOT blanket case access — a
@@ -158,6 +162,44 @@ service cloud.firestore {
     match /terminologyServiceConfig/{docId} {
       allow read: if isSignedIn();
       allow write: if isVendorStaff();
+    }
+
+    // ── AI models: global catalog + per-tenant adoption (PS-58, Option 2) ─
+    // The catalog is platform data ForMedrixAI publishes once for every
+    // customer, so no tenant can write it. What an organisation decides
+    // about a model (Beta/Active/Retired, its default, case counts, config
+    // and threshold overrides) lives on its own adoption record under its
+    // organisationId, and nowhere else.
+    match /modelCatalog/{modelId} {
+      allow read: if isSignedIn();
+      allow write: if isVendorStaff();
+    }
+
+    match /organisations/{orgId}/adoptedModels/{modelId} {
+      // Vendor staff may read adoptions (which customers run which model
+      // matters for deprecation notices and support); they don't write them.
+      allow read: if isOrgMember(orgId) || isVendorStaff();
+
+      // Adoption: only into the caller's own organisation, only for a model
+      // that exists in the catalog, and always as a Beta, non-default record
+      // with no cases (mirrors modelAdoption.ts → buildAdoption).
+      allow create: if isOrgMember(orgId) &&
+        request.resource.data.organisationId == orgId &&
+        request.resource.data.modelId == modelId &&
+        exists(/databases/$(database)/documents/modelCatalog/$(modelId)) &&
+        request.resource.data.status == 'Beta' &&
+        request.resource.data.isDefault == false &&
+        request.resource.data.casesProcessed == 0;
+
+      // Tenant-side changes; the record can't be moved to another
+      // organisation or repointed at another model.
+      allow update: if isOrgMember(orgId) &&
+        request.resource.data.organisationId == orgId &&
+        request.resource.data.modelId == resource.data.modelId;
+
+      // Retire, never delete: validation studies and audit history refer to
+      // the adoption.
+      allow delete: if false;
     }
 
     // Default deny — anything not explicitly matched above is denied,

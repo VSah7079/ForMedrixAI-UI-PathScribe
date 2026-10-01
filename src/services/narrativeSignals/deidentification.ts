@@ -116,7 +116,7 @@ export function stripHtml(html: string): string {
 
 // ── Apply replacements ────────────────────────────────────────────────────────
 
-function deidentifyText(text: string): { clean: string; replacementCount: number } {
+export function deidentifyText(text: string): { clean: string; replacementCount: number } {
   let clean = stripHtml(text);
   let replacementCount = 0;
 

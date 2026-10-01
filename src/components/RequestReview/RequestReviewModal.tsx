@@ -22,12 +22,15 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import ReactDOM from 'react-dom';
 import { mockMessageService } from '@/services/messages/mockMessageService';
+import { informalReviewService } from '@/services';
 import { userService, subspecialtyService } from '@/services';
 import type { StaffUser } from '@/services/users/IUserService';
 import type { ServiceResult } from '@/services/types';
 import { getStaffSubspecialtyDisplay } from '@/utils/staffSubspecialties';
+import { mockCodeReviewPoolService } from '@/services/billing/mockCodeReviewPoolService';
 
 interface ReviewerOption { id: string; name: string; role: string; }
 
@@ -42,12 +45,50 @@ const toReviewerOption = (u: StaffUser, allSubspecialties: import('@/services/su
   role: getStaffSubspecialtyDisplay(u.id, allSubspecialties) || 'Pathologist',
 });
 
+// `label` stays a fixed English string on every entry — it composes the
+// message body/subject sent to the colleague (mockMessageService.send
+// below), which is persisted data a different recipient reads later in
+// their own session, not UI re-rendered per viewer's locale. Only
+// `labelKey` (the on-screen type-picker button text) is translated —
+// same "exported/persisted data stays English" call this sweep already
+// makes for CSV headers and AI-prompt text.
 const NOTE_TYPES = [
-  { value: 'informal_review',      label: 'Informal Review'      },
-  { value: 'consultation',         label: 'Consultation'         },
-  { value: 'clinical_observation', label: 'Clinical Observation' },
-  { value: 'second_opinion',       label: 'Second Opinion'       },
+  { value: 'informal_review',      label: 'Informal Review',      labelKey: 'requestReviewModal.noteType.informalReview'      },
+  { value: 'consultation',         label: 'Consultation',         labelKey: 'requestReviewModal.noteType.consultation'         },
+  { value: 'clinical_observation', label: 'Clinical Observation', labelKey: 'requestReviewModal.noteType.clinicalObservation'  },
+  { value: 'second_opinion',       label: 'Second Opinion',       labelKey: 'requestReviewModal.noteType.secondOpinion'        },
+  // Real, per direct guidance: reuses this same modal/entry point
+  // rather than a new button on an already-crowded page. Routes to
+  // the real billing review pool (mockCodeReviewPoolService.ts,
+  // Trigger C) instead of a colleague - every branch below that reads
+  // noteType checks for this value specifically.
+  { value: 'code_review',          label: 'Code Review',          labelKey: 'requestReviewModal.noteType.codeReview'           },
 ];
+
+// Wraps each occurrence of the given substrings (in the order they
+// appear in `text`) in a <strong> — for interpolated values placed
+// inside a translated sentence. Resolves the sentence via t() first,
+// then locates each value by indexOf, so it's correct regardless of a
+// given locale's word order (same pattern as the clickable-link-inside-
+// a-sentence case in MolecularPlateBuilderPage).
+const boldSubstrings = (text: string, values: string[]): React.ReactNode => {
+  const positions = values
+    .filter(Boolean)
+    .map(v => ({ v, i: text.indexOf(v) }))
+    .filter(p => p.i !== -1)
+    .sort((a, b) => a.i - b.i);
+  if (positions.length === 0) return text;
+  const parts: React.ReactNode[] = [];
+  let cursor = 0;
+  positions.forEach(({ v, i }, idx) => {
+    if (i < cursor) return;
+    parts.push(text.slice(cursor, i));
+    parts.push(<strong key={idx} className="rrm-strong">{v}</strong>);
+    cursor = i + v.length;
+  });
+  parts.push(text.slice(cursor));
+  return parts;
+};
 
 const avatarInitials = (name: string) =>
   name.replace(/^(Dr\.|Mr\.|Ms\.|Mrs\.)\s*/i, '')
@@ -67,6 +108,7 @@ interface RequestReviewModalProps {
 const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
   isOpen, caseId, caseLabel, fromUserId, fromUserName, onClose, onSent,
 }) => {
+  const { t } = useTranslation();
   const [selectedId,  setSelectedId]  = useState<string>('');
   const [noteType,    setNoteType]    = useState('informal_review');
   const [message,     setMessage]     = useState('');
@@ -102,13 +144,29 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
   );
 
   const selected = reviewers.find(r => r.id === selectedId);
-  const canSend  = !!selectedId;
+  const isCodeReview = noteType === 'code_review';
+  const canSend  = isCodeReview ? true : !!selectedId;
 
   const handleSend = async () => {
-    if (!canSend || !selected) return;
+    if (!canSend) return;
+    if (isCodeReview) {
+      setStatus('sending');
+      await mockCodeReviewPoolService.create({
+        caseId,
+        caseLabel,
+        source: 'MANUAL',
+        flaggedBy: fromUserId,
+        flaggedByName: fromUserName,
+        notes: message.trim() || undefined,
+      });
+      setStatus('sent');
+      onSent?.();
+      return;
+    }
+    if (!selected) return;
     setStatus('sending');
 
-    const typeLabel = NOTE_TYPES.find(t => t.value === noteType)?.label ?? 'Review';
+    const typeLabel = NOTE_TYPES.find(nt => nt.value === noteType)?.label ?? 'Review';
     const body = message.trim()
       ? `${typeLabel} requested for case ${caseId}${caseLabel ? ` (${caseLabel})` : ''}.\n\n${message.trim()}\n\nPlease open the case link below to review the report and leave an internal note.`
       : `${typeLabel} requested for case ${caseId}${caseLabel ? ` (${caseLabel})` : ''}.\n\nPlease open the case link below to review the report and leave an internal note.`;
@@ -124,6 +182,26 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
       timestamp:     new Date(),
       isUrgent:      false,
     });
+
+    // Real feature, per direct follow-up: "I want informal reviews to
+    // be handled differently than delegations types... queue these
+    // informal requests on the worklist with a Tile." The message
+    // above is still real and useful (an immediate "heads up"), but
+    // it alone can't power a real, trackable Worklist tile — only
+    // informal_review specifically gets this real, separate,
+    // dedicated request record. Every other note type here stays
+    // message-only, unchanged.
+    if (noteType === 'informal_review') {
+      await informalReviewService.create({
+        caseId,
+        caseLabel,
+        fromUserId,
+        fromUserName,
+        toUserId:   selected.id,
+        toUserName: selected.name,
+        note:       message.trim() || undefined,
+      });
+    }
 
     setStatus('sent');
     onSent?.();
@@ -141,132 +219,171 @@ const RequestReviewModal: React.FC<RequestReviewModalProps> = ({
         className="ps-modal-dark ps-review-req-shell"
       >
         {/* Header */}
-        <div style={{ padding: '18px 24px 14px', borderBottom: '1px solid rgba(51,65,85,0.9)', background: 'radial-gradient(circle at top left, rgba(139,92,246,0.08), transparent 55%), #0b1120', display: 'flex', alignItems: 'center', justifyContent: 'space-between' }}>
+        <div className="rrm-header">
           <div>
-            <div style={{ fontSize: 10, fontWeight: 700, textTransform: 'uppercase', letterSpacing: '0.12em', color: '#64748b', marginBottom: 4 }}>
-              Informal Review Request
+            <div className="rrm-header-eyebrow">
+              {t('requestReviewModal.eyebrow')}
             </div>
-            <div style={{ fontSize: 18, fontWeight: 700, color: '#e2e8f0' }}>Request Colleague Review</div>
-            {caseLabel && <div style={{ fontSize: 12, color: '#64748b', marginTop: 3 }}>{caseId} · {caseLabel}</div>}
+            <div className="rrm-header-title">{t('requestReviewModal.title')}</div>
+            {caseLabel && <div className="rrm-header-case" data-phi="true">{caseId} · {caseLabel}</div>}
           </div>
-          <button onClick={onClose} className="ps-close-btn" aria-label="Close">
+          <button onClick={onClose} className="ps-close-btn" aria-label={t('requestReviewModal.close')}>
             <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 2L12 12M12 2L2 12" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round"/></svg>
           </button>
         </div>
 
         {status === 'sent' ? (
           /* ── Sent confirmation ── */
-          <div style={{ padding: '48px 24px', textAlign: 'center', display: 'flex', flexDirection: 'column', alignItems: 'center', gap: 16 }}>
-            <div style={{ width: 56, height: 56, borderRadius: '50%', background: 'rgba(139,92,246,0.15)', border: '2px solid #8B5CF6', display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+          <div className="rrm-sent-wrap">
+            <div className="rrm-sent-icon-circle">
               <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
             </div>
             <div>
-              <div style={{ fontSize: 16, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>Review request sent</div>
-              <div style={{ fontSize: 13, color: '#64748b' }}>
-                <strong style={{ color: '#94a3b8' }}>{selected?.name}</strong> has been sent a message with a link to case <strong style={{ color: '#94a3b8' }}>{caseId}</strong>.
+              <div className="rrm-sent-title">
+                {isCodeReview ? t('requestReviewModal.sentToCodeReview') : t('requestReviewModal.requestSent')}
               </div>
-              <div style={{ fontSize: 11, color: '#475569', marginTop: 8 }}>They can open the case and leave an internal note when reviewed.</div>
+              <div className="rrm-sent-desc" data-phi="accession">
+                {isCodeReview
+                  ? boldSubstrings(t('requestReviewModal.addedToPool', { caseId }), [caseId])
+                  : boldSubstrings(t('requestReviewModal.messageSentBody', { name: selected?.name ?? '', caseId }), [selected?.name ?? '', caseId])}
+              </div>
+              <div className="rrm-sent-hint">
+                {isCodeReview ? t('requestReviewModal.codeReviewHint') : t('requestReviewModal.reviewSentHint')}
+              </div>
             </div>
-            <button onClick={onClose} style={{ marginTop: 8, padding: '8px 24px', background: 'rgba(139,92,246,0.15)', border: '1px solid rgba(139,92,246,0.4)', borderRadius: 8, color: '#8B5CF6', fontSize: 13, fontWeight: 600, cursor: 'pointer' }}>
-              Close
+            <button onClick={onClose} className="rrm-sent-close-btn">
+              {t('requestReviewModal.close')}
             </button>
           </div>
         ) : (
-          <div style={{ padding: '20px 24px', display: 'flex', flexDirection: 'column', gap: 16 }}>
+          <div className="rrm-body">
 
             {/* Review type */}
             <div>
-              <div className="fm-eyebrow">Review Type</div>
-              <div style={{ display: 'flex', gap: 6, flexWrap: 'wrap' }}>
-                {NOTE_TYPES.map(t => (
+              <div className="fm-eyebrow">{t('requestReviewModal.reviewType')}</div>
+              <div className="rrm-type-row">
+                {NOTE_TYPES.map(nt => (
                   <button
-                    key={t.value}
-                    onClick={() => setNoteType(t.value)}
-                    style={{ padding: '5px 12px', borderRadius: 6, fontSize: 12, fontWeight: 600, cursor: 'pointer', border: `1px solid ${noteType === t.value ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)'}`, background: noteType === t.value ? 'rgba(139,92,246,0.15)' : 'transparent', color: noteType === t.value ? '#a78bfa' : '#64748b', transition: 'all 0.15s' }}
+                    key={nt.value}
+                    onClick={() => setNoteType(nt.value)}
+                    className="rrm-type-btn"
+                    style={{
+                      '--rrm-type-border': noteType === nt.value ? 'rgba(139,92,246,0.6)' : 'rgba(255,255,255,0.1)',
+                      '--rrm-type-bg':     noteType === nt.value ? 'rgba(139,92,246,0.15)' : 'transparent',
+                      '--rrm-type-color':  noteType === nt.value ? '#a78bfa' : '#64748b',
+                    } as React.CSSProperties}
                   >
-                    {t.label}
+                    {t(nt.labelKey)}
                   </button>
                 ))}
               </div>
             </div>
 
-            {/* Colleague picker */}
+            {isCodeReview ? (
+              /* Real, per direct guidance: no colleague to pick for
+                 Code Review - it routes to the billing review pool,
+                 not a person. */
+              <div className="rrm-noreview-notice">
+                <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#10b981" strokeWidth="2" className="rrm-flex-shrink0"><path d="M20 12V8a2 2 0 0 0-2-2H6a2 2 0 0 0-2 2v12a2 2 0 0 0 2 2h8"/><path d="M18 21v-6M15 18h6"/></svg>
+                <span className="rrm-notice-text">{t('requestReviewModal.routesToPool')}</span>
+              </div>
+            ) : (
+            /* Colleague picker */
             <div>
-              <div className="fm-eyebrow">Send To</div>
+              <div className="fm-eyebrow">{t('requestReviewModal.sendTo')}</div>
               <input
                 type="text"
-                placeholder="Search colleagues…"
+                placeholder={t('requestReviewModal.searchColleagues')}
                 value={query}
                 onChange={e => setQuery(e.target.value)}
                 className="ps-modal-dark-input"
               />
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 4, maxHeight: 180, overflowY: 'auto' }}>
+              <div className="rrm-colleague-list">
                 {loadingReviewers ? (
-                  <div style={{ padding: '16px 12px', fontSize: 12, color: '#64748b', textAlign: 'center' }}>
-                    Loading colleagues…
+                  <div className="rrm-colleague-empty">
+                    {t('requestReviewModal.loadingColleagues')}
                   </div>
                 ) : filtered.length === 0 ? (
-                  <div style={{ padding: '16px 12px', fontSize: 12, color: '#64748b', textAlign: 'center' }}>
-                    No active pathologists found{query ? ' matching your search' : ''}.
+                  <div className="rrm-colleague-empty">
+                    {query ? t('requestReviewModal.noResultsMatching') : t('requestReviewModal.noResultsFound')}
                   </div>
                 ) : filtered.map(r => (
                   <div
                     key={r.id}
                     onClick={() => setSelectedId(r.id)}
-                    style={{ display: 'flex', alignItems: 'center', gap: 10, padding: '8px 12px', borderRadius: 8, cursor: 'pointer', border: `1px solid ${selectedId === r.id ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.06)'}`, background: selectedId === r.id ? 'rgba(139,92,246,0.12)' : 'rgba(255,255,255,0.02)', transition: 'all 0.15s' }}
+                    className="rrm-colleague-row"
+                    style={{
+                      '--rrm-row-border': selectedId === r.id ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.06)',
+                      '--rrm-row-bg':     selectedId === r.id ? 'rgba(139,92,246,0.12)' : 'rgba(255,255,255,0.02)',
+                    } as React.CSSProperties}
                   >
-                    <div style={{ width: 32, height: 32, borderRadius: '50%', background: selectedId === r.id ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.08)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontSize: 11, fontWeight: 700, color: selectedId === r.id ? '#a78bfa' : '#64748b', flexShrink: 0 }}>
+                    <div
+                      className="rrm-avatar"
+                      style={{
+                        '--rrm-avatar-bg':    selectedId === r.id ? 'rgba(139,92,246,0.3)' : 'rgba(255,255,255,0.08)',
+                        '--rrm-avatar-color': selectedId === r.id ? '#a78bfa' : '#64748b',
+                      } as React.CSSProperties}
+                    >
                       {avatarInitials(r.name)}
                     </div>
-                    <div style={{ minWidth: 0 }}>
-                      <div style={{ fontSize: 13, fontWeight: 600, color: '#e2e8f0' }}>{r.name}</div>
-                      <div style={{ fontSize: 11, color: '#94a3b8' }}>{r.role}</div>
+                    <div className="rrm-colleague-info">
+                      <div className="rrm-colleague-name">{r.name}</div>
+                      <div className="rrm-colleague-role">{r.role}</div>
                     </div>
                     {selectedId === r.id && (
-                      <svg style={{ marginLeft: 'auto', flexShrink: 0 }} width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
+                      <svg className="rrm-check-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2.5" strokeLinecap="round"><polyline points="20 6 9 17 4 12"/></svg>
                     )}
                   </div>
                 ))}
               </div>
             </div>
+            )}
 
             {/* Optional note */}
             <div>
-              <div className="fm-eyebrow">Additional Context <span style={{ fontWeight: 400, color: '#334155' }}>(optional)</span></div>
+              <div className="fm-eyebrow">{t('requestReviewModal.additionalContext')} <span className="rrm-optional-label">{t('requestReviewModal.optional')}</span></div>
               <textarea
-                placeholder="e.g. Please review the deep margin — uncertain if pT1 or muscularis invasion…"
+                placeholder={t('requestReviewModal.notePlaceholder')}
                 value={message}
                 onChange={e => setMessage(e.target.value)}
                 rows={3}
-                className="ps-modal-dark-input" style={{ resize: 'vertical' }}
+                className="ps-modal-dark-input rrm-textarea"
               />
             </div>
 
             {/* Info notice */}
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, padding: '8px 12px', background: 'rgba(139,92,246,0.05)', border: '1px solid rgba(139,92,246,0.15)', borderRadius: 8 }}>
+            <div className="rrm-info-notice">
               <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#8B5CF6" strokeWidth="2"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
-              <span style={{ fontSize: 11, color: '#a78bfa' }}>This does not transfer case ownership. The colleague will receive a message with a link to the case report.</span>
+              <span className="rrm-info-text">
+                {isCodeReview ? t('requestReviewModal.codeReviewNotice') : t('requestReviewModal.ownershipNotice')}
+              </span>
             </div>
 
             {/* Actions */}
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8 }}>
-              <button onClick={onClose} style={{ padding: '8px 16px', background: 'transparent', border: '1px solid rgba(255,255,255,0.12)', borderRadius: 8, color: '#64748b', fontSize: 13, cursor: 'pointer' }}>
-                Cancel
+            <div className="rrm-actions-row">
+              <button onClick={onClose} className="rrm-cancel-btn">
+                {t('requestReviewModal.cancel')}
               </button>
               <button
                 onClick={handleSend}
                 disabled={!canSend || status === 'sending'}
-                style={{ padding: '8px 20px', background: canSend ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)', border: `1px solid ${canSend ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.08)'}`, borderRadius: 8, color: canSend ? '#a78bfa' : '#475569', fontSize: 13, fontWeight: 600, cursor: canSend ? 'pointer' : 'default', display: 'flex', alignItems: 'center', gap: 8 }}
+                className="rrm-send-btn"
+                style={{
+                  '--rrm-send-bg':     canSend ? 'rgba(139,92,246,0.2)' : 'rgba(255,255,255,0.04)',
+                  '--rrm-send-border': canSend ? 'rgba(139,92,246,0.5)' : 'rgba(255,255,255,0.08)',
+                  '--rrm-send-color':  canSend ? '#a78bfa' : '#475569',
+                  '--rrm-send-cursor': canSend ? 'pointer' : 'default',
+                } as React.CSSProperties}
               >
                 {status === 'sending' ? (
                   <>
-                    <div style={{ width: 12, height: 12, border: '2px solid rgba(139,92,246,0.2)', borderTopColor: '#8B5CF6', borderRadius: '50%', animation: 'wl-spin 0.8s linear infinite' }} />
-                    Sending…
+                    <div className="rrm-spinner" />
+                    {t('requestReviewModal.sending')}
                   </>
                 ) : (
                   <>
                     <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round"><line x1="22" y1="2" x2="11" y2="13"/><polygon points="22 2 15 22 11 13 2 9 22 2"/></svg>
-                    Send Request
+                    {t('requestReviewModal.sendRequest')}
                   </>
                 )}
               </button>

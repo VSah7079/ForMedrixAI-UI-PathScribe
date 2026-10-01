@@ -1,6 +1,6 @@
 // src/pages/SynopticReportPage/components/MarkersPanel.tsx
 // ─────────────────────────────────────────────────────────────────────────────
-// Phase D of the biomarker display work (see PRIORITY_FIXES.md). Shows
+// Phase D of the biomarker display work. Shows
 // resolved biomarker values grouped by marker (e.g. all ER-related fields --
 // Status, % Positivity, Intensity -- under one "ER" card with those details
 // listed together), rather than as separate, disconnected badges. Grouping
@@ -9,12 +9,19 @@
 // haven't been tagged yet still degrade gracefully.
 //
 // No provenance/block-slide linking yet — that's a real, separate future
-// piece (see PRIORITY_FIXES.md's note on CoPilot mode needing real LIS
+// piece (CoPilot mode needing real LIS
 // material-list data, not PathScribe's own mock blocks, before that's
 // safe to build for CoPilot cases specifically).
+//
+// i18n note: `groupName` (a real markerGroup tag or a field's own
+// label, both template-authored data) and `f.fieldLabel`/
+// `f.displayValue` are real, resolved report data — left as-is. Only
+// the "Biomarkers" panel heading is UI chrome.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+import '@/pathscribe.css';
 import type { MarkerAnswer } from '@/orchestrator/contextBuilder';
 
 interface MarkersPanelProps {
@@ -22,6 +29,7 @@ interface MarkersPanelProps {
 }
 
 const MarkersPanel: React.FC<MarkersPanelProps> = ({ markers }) => {
+  const { t } = useTranslation();
   if (markers.length === 0) return null;
 
   // Group markers by their markerGroup, preserving first-seen order
@@ -32,23 +40,20 @@ const MarkersPanel: React.FC<MarkersPanelProps> = ({ markers }) => {
   }
 
   return (
-    <div style={{ background: 'rgba(8,145,178,0.06)', borderRadius: '8px', padding: '14px 16px', marginBottom: '20px', border: '1px solid rgba(8,145,178,0.2)' }}>
-      <div style={{ fontSize: '10px', fontWeight: 700, color: '#0891B2', textTransform: 'uppercase', letterSpacing: '0.4px', marginBottom: '10px' }}>
-        Biomarkers
+    <div className="ps-markers-panel">
+      <div className="ps-markers-panel-title">
+        {t('markersPanel.title')}
       </div>
-      <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(170px, 1fr))', gap: '10px' }}>
+      <div className="ps-markers-panel-grid">
         {[...groups.entries()].map(([groupName, fields]) => (
-          <div
-            key={groupName}
-            style={{ padding: '10px 14px', background: 'rgba(8,145,178,0.08)', borderRadius: '8px', border: '1px solid rgba(8,145,178,0.2)' }}
-          >
-            <div style={{ fontSize: '12px', fontWeight: 700, color: '#0891B2', marginBottom: '6px', paddingBottom: '4px', borderBottom: '1px solid rgba(8,145,178,0.2)' }}>
+          <div key={groupName} className="ps-markers-panel-group">
+            <div className="ps-markers-panel-group-title">
               {groupName}
             </div>
             {fields.map(f => (
-              <div key={f.fieldId} style={{ display: 'flex', justifyContent: 'space-between', gap: '10px', fontSize: '12px', padding: '3px 0' }}>
-                <span style={{ color: '#94a3b8' }}>{f.fieldLabel}</span>
-                <span style={{ color: '#e2e8f0', fontWeight: 600, textAlign: 'right', whiteSpace: 'nowrap' }}>{f.displayValue || '—'}</span>
+              <div key={f.fieldId} className="ps-markers-panel-field">
+                <span className="ps-markers-panel-field-label">{f.fieldLabel}</span>
+                <span className="ps-markers-panel-field-value">{f.displayValue || '—'}</span>
               </div>
             ))}
           </div>

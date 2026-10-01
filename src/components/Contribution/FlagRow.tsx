@@ -18,6 +18,7 @@
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React from "react";
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { pathscribeTheme } from "@theme/pathscribeTheme";
 import type { ContributionFlag, Severity } from "../../types/ContributionDashboard";
@@ -43,6 +44,12 @@ const SEVERITY_COLOR: Record<Severity, string> = {
   low:    pathscribeTheme.colors.semantic.success,
 };
 
+const SEVERITY_LABEL_KEY: Record<Severity, string> = {
+  high:   'flagRow.severity.high',
+  medium: 'flagRow.severity.medium',
+  low:    'flagRow.severity.low',
+};
+
 // ─────────────────────────────────────────────────────────────────────────────
 // Component
 // ─────────────────────────────────────────────────────────────────────────────
@@ -52,49 +59,31 @@ const FlagRow: React.FC<FlagRowProps> = ({
   severity = "low",
   onClick,
 }) => {
+  const { t } = useTranslation();
   const bg    = SEVERITY_BG[severity];
   const color = SEVERITY_COLOR[severity];
 
   return (
     <div
       onClick={onClick}
-      style={{
-        padding: "10px 12px",
-        borderRadius: "10px",
-        background: pathscribeTheme.colors.surfaceSubtle,
-        border: `1px solid ${pathscribeTheme.colors.border.subtle}`,
-        display: "flex",
-        justifyContent: "space-between",
-        alignItems: "center",
-        fontSize: "13px",
-        cursor: onClick ? "pointer" : "default",
-      }}
+      className={`fr-row${onClick ? ' fr-row--clickable' : ''}`}
     >
       {/* Left: case ID + issue description */}
-      <div style={{ display: "flex", flexDirection: "column", gap: "2px" }}>
-        <span style={{ fontWeight: 600, color: pathscribeTheme.colors.text.primary }}>
+      <div className="fr-row-info">
+        <span className="fr-row-label">
           {label}
         </span>
-        <span style={{ color: pathscribeTheme.colors.text.muted }}>
+        <span className="fr-row-value">
           {value}
         </span>
       </div>
 
       {/* Right: severity badge */}
       <span
-        style={{
-          padding: "4px 10px",
-          borderRadius: "999px",
-          fontSize: "11px",
-          fontWeight: 600,
-          textTransform: "uppercase",
-          letterSpacing: "0.04em",
-          background: bg,
-          color,
-          whiteSpace: "nowrap",
-        }}
+        className="fr-row-badge"
+        style={{ '--fr-badge-bg': bg, '--fr-badge-color': color } as React.CSSProperties}
       >
-        {severity}
+        {t(SEVERITY_LABEL_KEY[severity])}
       </span>
     </div>
   );

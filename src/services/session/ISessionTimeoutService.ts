@@ -2,13 +2,12 @@
 // ─────────────────────────────────────────────────────────────────────────────
 // Service interface for idle-session-timeout resolution.
 // Dev: mockSessionTimeoutService (localStorage-backed org default +
-//   per-performing-lab override lookup via clientService)
+//   per-performing-lab override lookup via facilityService)
 // Live: FirestoreSessionTimeoutService (not yet built — stub only)
 //
-// Phase 1 of the Inactivity Timeout & Draft Recovery spec (see
-// PRIORITY_FIXES.md #13). Structurally mirrors
+// Phase 1 of the Inactivity Timeout & Draft Recovery spec. Structurally mirrors
 // components/Config/AI/orchestratorModeConfig.ts's proven org-default/
-// per-client-override shape, but as a real services/ interface/mock pair
+// per-facility-override shape, but as a real services/ interface/mock pair
 // rather than a components/-local module — that earlier version lived
 // directly under services/session/ without following this codebase's
 // established interface/mock/firestore-stub pattern, caught and
@@ -25,14 +24,14 @@ export interface ISessionTimeoutService {
   setOrgDefault(minutes: number): Promise<ServiceResult<void>>;
 
   /** Full resolution for the currently-open case: org default, overridden
-   *  by whichever internal client actually performs the work on this case
-   *  (resolved via resolvePerformingLabClientId(), same as every other
-   *  lab-scoped setting) if that client has Client.idleTimeoutMinutesOverride
+   *  by whichever internal facility actually performs the work on this case
+   *  (resolved via resolvePerformingLabFacilityId(), same as every other
+   *  lab-scoped setting) if that facility has Facility.idleTimeoutMinutesOverride
    *  set. Pass undefined when no case is currently open (Worklist, Home,
    *  Configuration, etc.) — resolves straight to the org default.
    *  Fails safe toward the org default (the stricter, known-good value)
    *  on any lookup failure, rather than an unbounded session. */
-  resolveEffectiveMinutes(orderingClientId?: string): Promise<ServiceResult<number>>;
+  resolveEffectiveMinutes(orderingFacilityId?: string): Promise<ServiceResult<number>>;
 }
 
 // ── Shared utility, not implementation-specific ─────────────────────────────

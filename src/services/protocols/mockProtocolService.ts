@@ -16,7 +16,7 @@ const load = () => storageGet<Protocol[]>('pathscribe_protocols', [
     ],
     pathways: [
       {
-        id: 'path-renal-lm', pathwayName: 'Light Microscopy',
+        id: 'path-renal-lm', pathwayName: 'Light Microscopy', materialKind: 'block',
         fixativeType: '10% Neutral Buffered Formalin', requiresDecal: false, processingFormat: 'Standard',
         tasks: [
           { id: 't1', stepOrder: 1, action: 'Cut Level 1', stainTypeIds: ['st-he'] },
@@ -27,17 +27,60 @@ const load = () => storageGet<Protocol[]>('pathscribe_protocols', [
         ],
       },
       {
-        id: 'path-renal-if', pathwayName: 'Immunofluorescence',
+        id: 'path-renal-if', pathwayName: 'Immunofluorescence', materialKind: 'block',
         fixativeType: "Michel's Transport Medium", requiresDecal: false, processingFormat: 'Frozen Block',
         tasks: [
           { id: 't6', stepOrder: 1, action: 'Frozen Section', stainTypeIds: ['st-igg', 'st-iga', 'st-igm', 'st-c3', 'st-c1q', 'st-kappa', 'st-lambda'] },
         ],
       },
       {
-        id: 'path-renal-em', pathwayName: 'Electron Microscopy',
+        id: 'path-renal-em', pathwayName: 'Electron Microscopy', materialKind: 'block',
         fixativeType: 'Glutaraldehyde', requiresDecal: false, processingFormat: 'Resin Grid',
         tasks: [
           { id: 't7', stepOrder: 1, action: 'Ultra-thin Sectioning', stainTypeIds: ['st-uranyl-lead'] },
+        ],
+      },
+    ],
+    active: true, version: 1, updatedBy: 'system', updatedAt: new Date().toISOString(),
+  },
+  // Real, per direct follow-up: "add tissue descriptions on
+  // cassettes... then test a protocol." A real, second example
+  // Protocol — Autopsy Cardiac Sectioning — chosen deliberately to
+  // match content already built: the Autopsy Grossing Synoptic's own
+  // Cardiovascular section already documents all 4 real coronary
+  // vessels (LAD/LCX/RCA/PDA) by name; this Protocol is what would
+  // actually generate one real block per vessel at accessioning,
+  // rather than a single undifferentiated cardiac block. Illustrative
+  // "preference card" seed data, not asserted clinical fact — same
+  // as the Medical Renal Protocol above, editable the same way.
+  {
+    id: 'proto-autopsy-cardiac-sectioning',
+    name: 'Autopsy \u2014 Cardiac Sectioning Protocol',
+    description: 'Whole heart at autopsy \u2014 standard sectioning for coronary artery examination (one block per major vessel: LAD, LCX, RCA, PDA) plus representative myocardial blocks.',
+    requiresTriage: false,
+    pathways: [
+      {
+        id: 'path-autopsy-coronary-arteries', pathwayName: 'Coronary Arteries', materialKind: 'block',
+        fixativeType: '10% Neutral Buffered Formalin', requiresDecal: false, processingFormat: 'Standard',
+        // Real, deliberate defaultCount: 4 \u2014 one real block per
+        // real, named vessel (LAD, LCX, RCA, PDA), matching the
+        // Autopsy Grossing Synoptic's own Cardiovascular section
+        // exactly rather than an arbitrary count.
+        defaultCount: 4,
+        tasks: [
+          { id: 't1', stepOrder: 1, action: 'Cut Section', stainTypeIds: ['st-he'] },
+        ],
+      },
+      {
+        id: 'path-autopsy-myocardium', pathwayName: 'Myocardium', materialKind: 'block',
+        fixativeType: '10% Neutral Buffered Formalin', requiresDecal: false, processingFormat: 'Standard',
+        // Real, deliberate defaultCount: 2 \u2014 representative LV
+        // free wall and septum, the two real sites the Autopsy
+        // Grossing Synoptic's own Myocardium & Valvular Apparatus
+        // field already documents findings against.
+        defaultCount: 2,
+        tasks: [
+          { id: 't2', stepOrder: 1, action: 'Cut Section', stainTypeIds: ['st-he'] },
         ],
       },
     ],

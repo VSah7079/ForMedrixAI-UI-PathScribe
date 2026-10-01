@@ -1,10 +1,13 @@
 // src/components/Voice/VoiceToggleButton.tsx
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../pathscribe.css';
 import { useVoice } from '../../contexts/VoiceProvider';
 
 const IS_DEV = (import.meta as any).env?.DEV ?? false;
 
 export const VoiceToggleButton: React.FC = () => {
+  const { t } = useTranslation();
   const { phase, commandPhase, toggleVoice, aiAvailable, voiceEnabled } = useVoice();
   const [showTooltip, setShowTooltip] = useState(false);
 
@@ -19,34 +22,25 @@ export const VoiceToggleButton: React.FC = () => {
 
   const title = isStandby
     ? aiAvailable
-      ? 'Voice AI — click to enable'
+      ? t('voiceToggleButton.aiClickToEnable')
       : IS_DEV
-        ? 'Voice Local only (active voice model unavailable — check its provider API key)'
-        : 'Click to enable voice'
+        ? t('voiceToggleButton.localOnlyDev')
+        : t('voiceToggleButton.clickToEnable')
     : isAi
-      ? 'Voice AI active — click for Local'
+      ? t('voiceToggleButton.aiActiveClickForLocal')
       : isDictate
-        ? 'Dictating — click to stop'
-        : 'Voice Local — click to stop';
+        ? t('voiceToggleButton.dictatingClickToStop')
+        : t('voiceToggleButton.localClickToStop');
 
   // ── Disabled (master switch off) ──────────────────────────────────────────
   if (!voiceEnabled) {
     return (
       <div
-        style={{ position: 'relative', display: 'inline-flex' }}
+        className="vtb-wrap"
         onMouseEnter={() => setShowTooltip(true)}
         onMouseLeave={() => setShowTooltip(false)}
       >
-        <button
-          disabled
-          style={{
-            background: 'transparent', border: 'none',
-            color: '#334155', cursor: 'not-allowed',
-            width: '40px', height: '40px', borderRadius: '10px',
-            display: 'flex', alignItems: 'center', justifyContent: 'center',
-            opacity: 0.4,
-          }}
-        >
+        <button disabled className="vtb-btn vtb-btn--disabled">
           <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
             stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
             <rect x="9" y="2" width="6" height="12" rx="3"/>
@@ -57,16 +51,8 @@ export const VoiceToggleButton: React.FC = () => {
           </svg>
         </button>
         {showTooltip && (
-          <div style={{
-            position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
-            transform: 'translateX(-50%)',
-            background: '#0f172a', border: '1px solid rgba(255,255,255,0.1)',
-            borderRadius: '8px', padding: '8px 12px',
-            fontSize: '11px', color: '#94a3b8',
-            whiteSpace: 'nowrap', zIndex: 10000, pointerEvents: 'none',
-            boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-          }}>
-            Voice is disabled for this deployment
+          <div className="vtb-tooltip">
+            {t('voiceToggleButton.disabledForDeployment')}
           </div>
         )}
       </div>
@@ -76,23 +62,16 @@ export const VoiceToggleButton: React.FC = () => {
   // ── Active button ─────────────────────────────────────────────────────────
   return (
     <div
-      style={{ position: 'relative', display: 'inline-flex' }}
+      className="vtb-wrap"
       onMouseEnter={() => { if (!aiAvailable && IS_DEV) setShowTooltip(true); }}
       onMouseLeave={() => setShowTooltip(false)}
     >
       <button
         type="button"
         onClick={toggleVoice}
-        title={title}
-        style={{
-          background:   isStandby ? 'transparent' : `${color}18`,
-          border:       `1.5px solid ${isStandby ? 'rgba(255,255,255,0.1)' : color}`,
-          color,
-          cursor:       'pointer',
-          width:        '40px', height: '40px', borderRadius: '10px',
-          display:      'flex', alignItems: 'center', justifyContent: 'center',
-          transition:   'all 0.15s', position: 'relative',
-        }}
+        title={(!aiAvailable && IS_DEV) ? undefined : title}
+        className={`vtb-btn${isStandby ? ' vtb-btn--standby' : ''}`}
+        style={{ '--vtb-color': color } as React.CSSProperties}
       >
         <svg width="18" height="18" viewBox="0 0 24 24" fill="none"
           stroke="currentColor" strokeWidth="2.5" strokeLinecap="round">
@@ -104,43 +83,23 @@ export const VoiceToggleButton: React.FC = () => {
 
         {/* AI badge */}
         {isAi && (
-          <span style={{
-            position: 'absolute', top: '-5px', right: '-5px',
-            fontSize: '8px', fontWeight: 800,
-            padding: '1px 4px', borderRadius: '99px',
-            background: color, color: '#fff',
-            letterSpacing: '0.04em', lineHeight: 1.4,
-            border: '1.5px solid #0f172a',
-          }}>
-            AI
+          <span className="vtb-ai-badge" style={{ '--vtb-badge-bg': color } as React.CSSProperties}>
+            {t('voiceToggleButton.aiBadge')}
           </span>
         )}
 
         {/* Dictating pulse dot */}
         {isDictate && (
-          <span style={{
-            position: 'absolute', bottom: '-3px', right: '-3px',
-            width: '8px', height: '8px', borderRadius: '50%',
-            background: color, border: '1.5px solid #0f172a',
-            animation: 'dictPulse 1s ease-in-out infinite',
-          }} />
+          <span className="vtb-pulse-dot" style={{ '--vtb-dot-bg': color } as React.CSSProperties} />
         )}
       </button>
 
       {/* Dev-only tooltip when AI unavailable */}
       {showTooltip && !aiAvailable && IS_DEV && (
-        <div style={{
-          position: 'absolute', bottom: 'calc(100% + 8px)', left: '50%',
-          transform: 'translateX(-50%)',
-          background: '#0f172a', border: '1px solid rgba(245,158,11,0.4)',
-          borderRadius: '8px', padding: '8px 12px',
-          fontSize: '11px', color: '#fbbf24',
-          whiteSpace: 'nowrap', zIndex: 10000, pointerEvents: 'none',
-          boxShadow: '0 4px 16px rgba(0,0,0,0.4)',
-        }}>
-          ⚠️ AI refinement unavailable
-          <div style={{ color: '#94a3b8', marginTop: '2px', fontSize: '10px' }}>
-            No validated voice model configured, or its provider API key isn't set
+        <div className="vtb-tooltip vtb-tooltip--warn">
+          {'⚠️ '}{t('voiceToggleButton.aiRefinementUnavailable')}
+          <div className="vtb-tooltip-sub">
+            {t('voiceToggleButton.noValidatedModel')}
           </div>
         </div>
       )}

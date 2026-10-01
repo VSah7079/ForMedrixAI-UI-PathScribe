@@ -19,18 +19,19 @@
 // focused — same principle as the old version, just retargeted dynamically.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import React, { useRef, useEffect, useCallback, useState, useMemo } from 'react';
+import React, { useRef, useEffect, useCallback, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../../pathscribe.css';
 import NarrativeEditor from '@/components/Editor/NarrativeEditor';
 import { useVoice } from '@/contexts/VoiceProvider';
 import type { PathScribeEditorHandle } from '@/components/Editor/PathScribeEditorRef';
 import type { LabelConfig } from '@/types/template';
-import { labelStyle } from '@/pages/ReportPreview/ReportPreviewRenderer';
+import { labelStyleVars } from '@/utils/labelStyleVars';
 import type { Case } from '@/types/case/Case';
-import { mockMacroService } from '@/services/macros/mockMacroService';
-import { useSystemConfig } from '@/contexts/SystemConfigContext';
-import { PathScribeAIService, type SpellingFlag } from '@/services/aiIntegration/PathScribeAIService';
-import { facilityService } from '@/services';
-import type { Jurisdiction } from '@/types/systemConfig';
+import { facilityService, macroService, voiceMacroService } from '@/services';
+import { resolvePerformingLabFacilityId } from '@/services/facilities/IFacilityService';
+import { getSessionUser } from '@/services/auth/caseAccessControl';
+import { SpellingLanguageControl } from '@/components/SpellCheck/SpellingLanguageControl';
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 
@@ -84,18 +85,22 @@ function getSectionStatus(s: OrchestratorSection): SectionStatus {
   return 'empty';
 }
 
-const STATUS_META: Record<SectionStatus, { color: string; title: string; icon: string }> = {
-  'empty':           { color: '#475569', title: 'Empty',          icon: '○' },
-  'ai-generated':    { color: '#0891b2', title: 'AI generated',   icon: '◉' },
+// Status titles are UI-chrome badge labels for a computed section
+// status (not itself a persisted field) — translated via the same
+// label-key indirection used for other computed display statuses in
+// this sweep, resolved with t() wherever STATUS_META is read.
+const STATUS_META: Record<SectionStatus, { color: string; titleKey: string; icon: string }> = {
+  'empty':           { color: '#475569', titleKey: 'orchestratorSectionEditor.status.empty',        icon: '○' },
+  'ai-generated':    { color: '#0891b2', titleKey: 'orchestratorSectionEditor.status.aiGenerated',   icon: '◉' },
   // Matches RightSynopticPanel's field-level convention exactly: once
   // accepted, the badge still names the AI's involvement explicitly
   // ("AI Confirmed") rather than going generic ("Accepted") — provenance
   // stays visible permanently, only the styling/urgency settles down.
-  'accepted':        { color: '#10b981', title: 'AI Confirmed',   icon: '✓' },
+  'accepted':        { color: '#10b981', titleKey: 'orchestratorSectionEditor.status.aiConfirmed',   icon: '✓' },
   // Pathologist wrote this section themselves — AI had no draft for it.
   // Distinct purple styling, same as RightSynopticPanel's "Manual — AI
   // missed" field badge.
-  'accepted-manual': { color: '#c084fc', title: 'Manual entry',   icon: '✎' },
+  'accepted-manual': { color: '#c084fc', titleKey: 'orchestratorSectionEditor.status.manualEntry',   icon: '✎' },
 };
 
 // ── HTML helpers — unchanged from the original implementation ────────────────
@@ -145,68 +150,6 @@ function isWellFormedBlockHtml(html: string): boolean {
   return depth === 0;
 }
 
-// ── Spell-check review popover ────────────────────────────────────────────────
-// Shows one flagged word at a time, highlighted in its surrounding sentence
-// for context, with the AI's suggestion and three actions: apply the fix,
-// keep the original wording, or skip (move on without deciding either way —
-// functionally same as keep, but visually distinct so the pathologist knows
-// they explicitly chose not to engage with this one).
-
-function getWordContext(plainText: string, original: string, radius = 40): { before: string; after: string } {
-  const idx = plainText.indexOf(original);
-  if (idx === -1) return { before: '', after: '' };
-  const start = Math.max(0, idx - radius);
-  const end   = Math.min(plainText.length, idx + original.length + radius);
-  return {
-    before: (start > 0 ? '…' : '') + plainText.slice(start, idx),
-    after:  plainText.slice(idx + original.length, end) + (end < plainText.length ? '…' : ''),
-  };
-}
-
-const SpellCheckPopover: React.FC<{
-  sectionLabel: string;
-  text: string;       // current working HTML — used to derive plain-text context
-  flag: SpellingFlag;
-  index: number;
-  total: number;
-  onFix: () => void;
-  onKeep: () => void;
-  onSkip: () => void;
-  onCancel: () => void;
-}> = ({ sectionLabel, text, flag, index, total, onFix, onKeep, onSkip, onCancel }) => {
-  const plainText = useMemo(() => text.replace(/<[^>]+>/g, ' ').replace(/\s+/g, ' ').trim(), [text]);
-  const { before, after } = useMemo(() => getWordContext(plainText, flag.original), [plainText, flag.original]);
-
-  return (
-    <div className="ps-ose-spellcheck-overlay">
-      <div className="ps-ose-spellcheck-popover">
-        <div className="ps-ose-spellcheck-header">
-          <span className="ps-ose-spellcheck-eyebrow">✦ Spelling check · {sectionLabel}</span>
-          <span className="ps-ose-spellcheck-counter">{index + 1} of {total}</span>
-        </div>
-
-        <div className="ps-ose-spellcheck-context">
-          {before}<mark className="ps-ose-spellcheck-flagged">{flag.original}</mark>{after}
-        </div>
-
-        <div className="ps-ose-spellcheck-suggestion-row">
-          <span className="ps-ose-spellcheck-arrow">→</span>
-          <span className="ps-ose-spellcheck-suggestion">{flag.suggestion}</span>
-        </div>
-        <div className="ps-ose-spellcheck-reason">{flag.reason}</div>
-
-        <div className="ps-ose-spellcheck-actions">
-          <button className="ps-ose-spellcheck-btn ps-ose-spellcheck-btn--skip" onClick={onSkip} title="Move on without deciding">Skip</button>
-          <button className="ps-ose-spellcheck-btn ps-ose-spellcheck-btn--keep" onClick={onKeep} title="Keep original wording">Keep original</button>
-          <button className="ps-ose-spellcheck-btn ps-ose-spellcheck-btn--fix" onClick={onFix} title="Apply suggested correction">✓ Apply fix</button>
-        </div>
-
-        <button className="ps-ose-spellcheck-cancel" onClick={onCancel}>Cancel review — accept as written</button>
-      </div>
-    </div>
-  );
-};
-
 // ── Props ─────────────────────────────────────────────────────────────────────
 
 interface Props {
@@ -223,7 +166,12 @@ interface Props {
   // bug: a no-op text pass-through could fail to flip userEdited, leaving
   // the Accept button visibly "active" on an already-accepted section.
   onAcceptSection?:     (sectionId: string, finalText: string) => void;
-  onRegenerateSection?: (sectionId: string) => void;
+  /** Real, honest note: the real implementation (useReportGeneration.ts's
+   *  handleRegenerateSection) is async and returns a Promise — declared
+   *  here as returning void | Promise<void> (rather than plain void) so
+   *  "Regen all" below can genuinely await each call in turn instead of
+   *  firing every section's regeneration at once. */
+  onRegenerateSection?: (sectionId: string) => void | Promise<void>;
   onEditSynoptic?:      (instanceId: string) => void;
   lastGeneratedAt?:     Date | null;
   caseData?:            Case | null;
@@ -270,26 +218,11 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   tabWidthChars = 4, onTabWidthChange, onAcceptSection,
   onGenerateReport, onStartManualEntry, documentStyle,
 }) => {
+  const { t } = useTranslation();
   // ── Refs ─────────────────────────────────────────────────────────────────────
   const editorRefs    = useRef<Record<string, PathScribeEditorHandle | null>>({});
   const sectionRefs   = useRef<Record<string, HTMLDivElement | null>>({});
   const pageScrollRef = useRef<HTMLDivElement>(null);
-
-  // ── Jurisdiction — for locale-aware spelling checks ──────────────────────────
-  const { config: systemConfig } = useSystemConfig();
-  const aiService = useMemo(() => new PathScribeAIService(), []);
-
-  // ── Spell-check review state ─────────────────────────────────────────────────
-  // When Accept is clicked, we run a spelling check before actually committing.
-  // If flags come back, spellCheckReview holds the in-progress review so the
-  // popover can render; null means no review is active.
-  const [spellCheckReview, setSpellCheckReview] = useState<{
-    sectionId: string;
-    text: string;            // working copy — edited as flags are resolved
-    flags: SpellingFlag[];
-    flagIndex: number;
-  } | null>(null);
-  const [spellCheckLoading, setSpellCheckLoading] = useState<string | null>(null); // sectionId currently being checked
 
   // ── View mode ─────────────────────────────────────────────────────────────────
   const [viewMode, setViewMode] = useState<'tabs' | 'page'>('page');
@@ -334,42 +267,6 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
   // ── Voice dictation ───────────────────────────────────────────────────────────
   const { startDictation, phase, dictationTarget } = useVoice();
 
-  const registerDictationTarget = useCallback((section: OrchestratorSection) => {
-    const editorHandle = editorRefs.current[section.id];
-    const editor = editorHandle?.getEditor?.();
-    if (!editor) return;
-    startDictation({
-      fieldId: section.id,
-      label:   section.label,
-      context: section.label.toLowerCase().replace(/[^a-z]/g, ' ').trim(),
-      onText: (text: string, isInterim?: boolean) => {
-        editor.chain().focus().insertContent(text + (isInterim ? '' : ' ')).run();
-        onSectionChange(section.id, editor.getHTML());
-      },
-      onDone: () => { /* VoiceProvider handles phase reset */ },
-    });
-  }, [startDictation, onSectionChange]);
-
-  // ── Bind NavBar mic to the focused section ────────────────────────────────────
-  // The mic button lives outside this component (NavBar/VoiceToggleButton) and
-  // we deliberately don't import or modify it — everything here reacts to
-  // VoiceProvider's shared state instead, via useVoice().
-  //
-  // When the pathologist presses the mic with no specific target already set
-  // (dictationTarget === null) and a section in THIS editor currently has
-  // focus, we register that section as the dictation target — wiring the
-  // editor's onText handler into the stream that's already running.
-  //
-  // CRITICAL: this only runs when phase has ALREADY transitioned to 'dictate'
-  // — i.e. in response to the mic being pressed — never as a side effect of
-  // focusing a field. Focusing a field on its own does nothing here.
-  useEffect(() => {
-    if (phase !== 'dictate' || dictationTarget) return;
-    const section = sections.find(s => s.id === focusedSectionId);
-    if (!section || section.committed) return;
-    registerDictationTarget(section);
-  }, [phase, dictationTarget, focusedSectionId, sections, registerDictationTarget]);
-
   // ── Insert Specimen (IS) ───────────────────────────────────────────────────────
   // Inserts one line per specimen on the case, in the exact format:
   //   Specimen A: [Right hemicolectomy]
@@ -394,111 +291,161 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
     onSectionChange(section.id, editor.getHTML());
   }, [caseData, onSectionChange]);
 
-  // ── Case's real jurisdiction, for spell-check ─────────────────────────────────
-  // Resolved from the case's own Submitting Client, not the system-wide
-  // SystemConfig.jurisdiction default — that field is a single global
-  // value nothing meaningfully sets (see Client.jurisdiction, the real
-  // per-case mechanism, added earlier this session). A Fenwick case
-  // should get British spelling regardless of what the system default
-  // happens to be; a Metro General case should get US spelling. Falls
-  // back to the system default only when the client can't be resolved
-  // (e.g. clientId missing, or the lookup fails) — same fail-safe
-  // posture as everywhere else this session, not a fail-open guess.
-  //
-  // clientName/clientLocaleLabel are kept alongside caseJurisdiction
-  // purely for the visible badge below — deliberate design decision
-  // (see conversation): the report conforms to the receiving
-  // institution's convention regardless of who wrote it, same as a
-  // specialist's consult letter follows the referring GP's own
-  // conventions. The real risk in that design isn't that it's wrong,
-  // it's that it's a silent surprise to the pathologist writing the
-  // report — this badge is the fix for that, not a reversal of the
-  // decision.
-  const [caseJurisdiction, setCaseJurisdiction] = useState<Jurisdiction | undefined>(undefined);
-  const [jurisdictionClientName, setJurisdictionClientName] = useState<string | undefined>(undefined);
+  // ── Case's performing lab (for personal quick text) ──────────────────────────
+  // Real, per direct guidance ("Personal Quick Text" — Enterprise then
+  // Facility then Staff): this case's own real performing lab —
+  // resolvePerformingLabFacilityId's real single-hop resolution
+  // (services/facilities/IFacilityService.ts), since the ordering
+  // facility itself may not be the one that actually performs the
+  // work. Auto-attributed, never asked of the pathologist — the whole
+  // point of "their name and facility would be known." Set from the
+  // from one facility fetch below.
+  const [casePerformingLabFacilityId, setCasePerformingLabFacilityId] = useState<string | undefined>(undefined);
+  const [casePerformingLabName, setCasePerformingLabName] = useState<string | undefined>(undefined);
 
   useEffect(() => {
-    const clientId = caseData?.order?.clientId;
-    if (!clientId) { setCaseJurisdiction(undefined); setJurisdictionClientName(undefined); return; }
+    const clientId = caseData?.order?.facilityId;
+    if (!clientId) { setCasePerformingLabFacilityId(undefined); setCasePerformingLabName(undefined); return; }
     let cancelled = false;
     facilityService.getById(clientId).then(res => {
       if (cancelled) return;
-      setCaseJurisdiction(res.ok ? res.data.jurisdiction : undefined);
-      setJurisdictionClientName(res.ok ? res.data.name : undefined);
+      const labId = res.ok ? resolvePerformingLabFacilityId(res.data) : undefined;
+      setCasePerformingLabFacilityId(labId);
+      if (!labId) { setCasePerformingLabName(undefined); return; }
+      // Real, per direct guidance: the resolved performing lab can be a
+      // genuinely different facility than the ordering one
+      // (Facility.performingLabFacilityId's own real override) — only
+      // reuse this same fetch's name when it resolved to itself;
+      // otherwise fetch the actual performing lab's own real name
+      // rather than showing the wrong facility in the confirmation UI.
+      if (res.ok && labId === res.data.id) { setCasePerformingLabName(res.data.name); return; }
+      facilityService.getById(labId).then(labRes => {
+        if (!cancelled) setCasePerformingLabName(labRes.ok ? labRes.data.name : undefined);
+      });
     });
     return () => { cancelled = true; };
-  }, [caseData?.order?.clientId]);
+  }, [caseData?.order?.facilityId]);
 
-  const effectiveJurisdiction = caseJurisdiction ?? systemConfig?.jurisdiction;
-  const spellLocaleLabel = effectiveJurisdiction === 'US' ? 'American English'
-    : effectiveJurisdiction ? 'British English' // GB_EW/GB_SCT/IE all resolve to en-GB spelling; CA/AU/NZ not yet distinguished here
-    : undefined;
+  const registerDictationTarget = useCallback((section: OrchestratorSection) => {
+    const editorHandle = editorRefs.current[section.id];
+    const editor = editorHandle?.getEditor?.();
+    if (!editor) return;
+    startDictation({
+      fieldId: section.id,
+      label:   section.label,
+      context: section.label.toLowerCase().replace(/[^a-z]/g, ' ').trim(),
+      // Real, per direct guidance (voice-trigger recognition wiring):
+      // this case's own real, already-resolved performing lab —
+      // VoiceProvider.tsx uses this to filter which real voice macros
+      // (Enterprise/Facility/Personal) apply to this dictation session.
+      performingLabFacilityId: casePerformingLabFacilityId,
+      onText: (text: string, isInterim?: boolean) => {
+        editor.chain().focus().insertContent(text + (isInterim ? '' : ' ')).run();
+        onSectionChange(section.id, editor.getHTML());
+      },
+      onDone: () => { /* VoiceProvider handles phase reset */ },
+    });
+  }, [startDictation, onSectionChange, casePerformingLabFacilityId]);
 
-  // ── Accept with spell check ───────────────────────────────────────────────────
-  // Runs a locale-aware spelling check before committing the Accept. If the
-  // check finds nothing, accept proceeds immediately (no added friction for
-  // the common case). If it finds flags, we open the review popover instead
-  // of accepting — the section only actually commits once the pathologist
-  // has stepped through every flag (fix, keep, or skip).
-  const handleAcceptWithSpellCheck = useCallback(async (section: OrchestratorSection) => {
-    setSpellCheckLoading(section.id);
+  // ── Bind NavBar mic to the focused section ────────────────────────────────────
+  // The mic button lives outside this component (NavBar/VoiceToggleButton) and
+  // we deliberately don't import or modify it — everything here reacts to
+  // VoiceProvider's shared state instead, via useVoice().
+  //
+  // When the pathologist presses the mic with no specific target already set
+  // (dictationTarget === null) and a section in THIS editor currently has
+  // focus, we register that section as the dictation target — wiring the
+  // editor's onText handler into the stream that's already running.
+  //
+  // CRITICAL: this only runs when phase has ALREADY transitioned to 'dictate'
+  // — i.e. in response to the mic being pressed — never as a side effect of
+  // focusing a field. Focusing a field on its own does nothing here.
+  useEffect(() => {
+    if (phase !== 'dictate' || dictationTarget) return;
+    const section = sections.find(s => s.id === focusedSectionId);
+    if (!section || section.committed) return;
+    registerDictationTarget(section);
+  }, [phase, dictationTarget, focusedSectionId, sections, registerDictationTarget]);
+
+  // ── Personal Quick Text — real, per direct guidance ─────────────────────────
+  // "It would be easiest for them to select text they may have entered
+  // in a case, select a button, their name and facility would be
+  // known, all they would need is to create a voice trigger." Real
+  // ownership (getSessionUser) and real facility
+  // (casePerformingLabFacilityId, resolved above) are auto-attributed —
+  // the only thing this modal actually asks for is the spoken trigger.
+  // Saved as a real VoiceMacro (types/voiceMacros.ts) with
+  // ownerUserId set — the Personal tier of the same three-tier
+  // Enterprise/Facility/Personal model "My Macros" itself now uses
+  // (services/macros/IMacroService.ts's own isMacroVisibleTo()).
+  const [quickTextDraft, setQuickTextDraft] = useState<{ sectionId: string; selectedText: string } | null>(null);
+  const [quickTextTrigger, setQuickTextTrigger] = useState('');
+  const [savingQuickText, setSavingQuickText] = useState(false);
+
+  const handleOpenSaveAsQuickText = useCallback((section: OrchestratorSection) => {
+    const editorHandle = editorRefs.current[section.id];
+    const editor = editorHandle?.getEditor?.();
+    if (!editor) return;
+    const { from, to, empty } = editor.state.selection;
+    if (empty) { alert(t('orchestratorSectionEditor.quickText.selectTextFirstAlert')); return; }
+    const selectedText = editor.state.doc.textBetween(from, to, ' ').trim();
+    if (!selectedText) return;
+    setQuickTextTrigger('');
+    setQuickTextDraft({ sectionId: section.id, selectedText });
+  }, []);
+
+  const handleConfirmSaveAsQuickText = useCallback(async () => {
+    if (!quickTextDraft || !quickTextTrigger.trim()) return;
+    setSavingQuickText(true);
+    const sessionUser = getSessionUser();
     try {
-      const result = await aiService.checkSpelling(section.text, effectiveJurisdiction, caseData?.order?.clientId);
-      const commit = (finalText: string) => {
-        if (onAcceptSection) onAcceptSection(section.id, finalText);
-        else onSectionChange(section.id, finalText); // fallback for parents not yet wired
-      };
-      if (result.success && result.data.flags.length > 0) {
-        setSpellCheckReview({
-          sectionId: section.id,
-          text: section.text,
-          flags: result.data.flags,
-          flagIndex: 0,
-        });
-      } else {
-        // No flags (or check failed) — accept as-is rather than blocking
-        // the pathologist on an AI service hiccup.
-        commit(section.text);
-      }
+      await voiceMacroService.addMacro({
+        spoken: quickTextTrigger.trim(),
+        written: quickTextDraft.selectedText,
+        isActive: true,
+        name: quickTextDraft.selectedText.length > 40 ? quickTextDraft.selectedText.slice(0, 40) + '…' : quickTextDraft.selectedText,
+        ownerUserId: sessionUser?.id,
+        performingLabFacilityId: casePerformingLabFacilityId,
+        sourceCaseId: caseData?.id,
+        createdBy: sessionUser?.id,
+        createdAt: new Date().toISOString(),
+      });
+      setQuickTextDraft(null);
+      setQuickTextTrigger('');
     } finally {
-      setSpellCheckLoading(null);
+      setSavingQuickText(false);
     }
-  }, [aiService, effectiveJurisdiction, onSectionChange, onAcceptSection]);
-
-  // Resolve the current flag in an active review: apply the suggestion,
-  // keep the original wording, or just move on (skip = same as keep, but
-  // tracked separately in case we want different telemetry later).
-  const resolveSpellCheckFlag = useCallback((action: 'fix' | 'keep' | 'skip') => {
-    setSpellCheckReview(prev => {
-      if (!prev) return prev;
-      const flag = prev.flags[prev.flagIndex];
-      const nextText = action === 'fix' && flag
-        ? prev.text.split(flag.original).join(flag.suggestion)
-        : prev.text;
-
-      const nextIndex = prev.flagIndex + 1;
-      if (nextIndex >= prev.flags.length) {
-        // All flags resolved — commit the section now, explicitly
-        if (onAcceptSection) onAcceptSection(prev.sectionId, nextText);
-        else onSectionChange(prev.sectionId, nextText);
-        return null;
-      }
-      return { ...prev, text: nextText, flagIndex: nextIndex };
-    });
+  }, [quickTextDraft, quickTextTrigger, casePerformingLabFacilityId, caseData?.id]);
+  // ── Accept ─────────────────────────────────────────────────────────────────────
+  // PS-342 (Batch 338): Accept commits the section directly. The AI spelling
+  // pass that used to run here first is retired: the report editor now
+  // checks spelling as the pathologist types (components/SpellCheck/), in
+  // the case's own spelling language.
+  const acceptSection = useCallback((section: OrchestratorSection) => {
+    if (onAcceptSection) onAcceptSection(section.id, section.text);
+    else onSectionChange(section.id, section.text); // fallback for parents not yet wired
   }, [onSectionChange, onAcceptSection]);
 
-  const cancelSpellCheckReview = useCallback(() => {
-    // Cancel = accept the section as originally written, flags un-applied.
-    // The pathologist saw the flags existed (via the popover) and chose not
-    // to act on them right now — that's a legitimate outcome, not an error.
-    setSpellCheckReview(prev => {
-      if (prev) {
-        if (onAcceptSection) onAcceptSection(prev.sectionId, prev.text);
-        else onSectionChange(prev.sectionId, prev.text);
-      }
-      return null;
-    });
-  }, [onSectionChange, onAcceptSection]);
+  // Real fix (PS-317 — "Regen All" appearing to put Gross Description in
+  // the wrong place): both real triggers (this button, and the voice
+  // command below) used to call onRegenerateSection(s.id) once per
+  // section inside a plain forEach — since the real handler
+  // (useReportGeneration.ts's handleRegenerateSection) is async and
+  // guards re-entry with `if (isOrchestrating) return`, and isOrchestrating
+  // is ordinary React state (not a ref), every iteration of that forEach
+  // read the SAME stale, pre-loop value of isOrchestrating — so every
+  // section's regeneration actually started at once, as N fully
+  // concurrent AI calls all writing into the same orchSections state
+  // through the same callbacks, instead of one at a time. Awaiting each
+  // call before starting the next is the real fix — sections regenerate
+  // in the same order they're listed, one real AI call in flight at a
+  // time, matching what "Regen ALL" should mean.
+  const regenerateAllSequentially = useCallback(async () => {
+    if (!onRegenerateSection) return;
+    for (const s of sections) {
+      await onRegenerateSection(s.id);
+    }
+  }, [sections, onRegenerateSection]);
 
   // ── Voice / keyboard event listeners ─────────────────────────────────────────
   useEffect(() => {
@@ -518,7 +465,7 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
       if (prev) jumpToSection(prev.id);
     };
     const onRegenAll = () => {
-      if (onRegenerateSection) sections.forEach(s => onRegenerateSection(s.id));
+      void regenerateAllSequentially();
     };
     const onDictateSection = (e: Event) => {
       const detail = (e as CustomEvent).detail as {
@@ -551,12 +498,12 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
       window.removeEventListener('PATHSCRIBE_ORCH_REGEN_ALL',       onRegenAll);
       window.removeEventListener('PATHSCRIBE_ORCH_DICTATE_SECTION', onDictateSection);
     };
-  }, [sections, activeId, jumpToSection, onRegenerateSection, registerDictationTarget]);
+  }, [sections, activeId, jumpToSection, onRegenerateSection, registerDictationTarget, regenerateAllSequentially]);
 
   // ── Macros — loaded from service ────────────────────────────────────────────
   const [macros, setMacros] = useState<{ id: string; trigger: string; name: string; content: string }[]>([]);
   useEffect(() => {
-    mockMacroService.getAll().then(r => {
+    macroService.getAll().then(r => {
       if (r.ok) {
         setMacros(
           r.data.filter(m => m.status === 'Active').map(m => ({
@@ -604,37 +551,52 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
       >
         {showHeader && (
           <div className="ps-ose-section-card-header">
-            <span className="ps-ose-section-card-title" style={section.specimenId ? labelStyle(documentStyle?.body) : undefined}>{section.label}</span>
-            <span className="ps-ose-section-card-status" style={{ color: meta.color }} title={meta.title}>
-              {meta.icon} {meta.title}
+            <span
+              className={`ps-ose-section-card-title${section.specimenId ? ' ps-ose-section-card-title--specimen' : ''}`}
+              style={section.specimenId ? labelStyleVars(documentStyle?.body) : undefined}
+            >{section.label}</span>
+            <span className={`ps-ose-section-card-status ps-ose-section-card-status--${status}`} title={t(meta.titleKey)}>
+              {meta.icon} {t(meta.titleKey)}
             </span>
             {section.required && status !== 'accepted' && status !== 'accepted-manual' && (
-              <span className="ps-ose-section-card-required" title="Required">⚠ Required</span>
+              <span className="ps-ose-section-card-required" title={t('common.required')}>⚠ {t('common.required')}</span>
             )}
             {isLocked && (
-              <span className="ps-ose-section-card-locked-badge" title="Committed — locked. Editing requires an Amendment.">
-                🔒 Locked
+              <span className="ps-ose-section-card-locked-badge" title={t('orchestratorSectionEditor.lockedTooltip')}>
+                🔒 {t('orchestratorSectionEditor.lockedBadge')}
               </span>
             )}
             {/* Insert Specimen — available on any unlocked section, independent of accept status */}
             {!isLocked && (caseData?.specimens?.length ?? 0) > 0 && (
               <button
                 className="ps-ose-section-insert-specimen-btn"
-                title={`Insert all ${caseData?.specimens?.length} specimen(s) as "Specimen [Letter]: [Description]"`}
+                title={t('orchestratorSectionEditor.insertSpecimensTooltip', { count: caseData?.specimens?.length ?? 0 })}
                 onClick={() => insertSpecimens(section)}
               >
-                IS
+                {t('orchestratorSectionEditor.insertSpecimensAbbr')}
+              </button>
+            )}
+            {/* Real, per direct guidance ("Personal Quick Text"): save
+                the currently-selected text as a real, personal quick
+                text entry — name/facility auto-attributed, only a
+                voice trigger needs to be entered. */}
+            {!isLocked && (
+              <button
+                className="ps-ose-section-insert-specimen-btn"
+                title={t('orchestratorSectionEditor.saveQuickTextTooltip')}
+                onClick={() => handleOpenSaveAsQuickText(section)}
+              >
+                {t('orchestratorSectionEditor.quickTextAbbr')}
               </button>
             )}
             {/* Per-section accept — only shown for AI-generated, unaccepted sections */}
             {!isLocked && status === 'ai-generated' && !isGenerating && (
               <button
                 className="ps-ose-section-accept-btn"
-                title="Check spelling and accept this section"
-                disabled={spellCheckLoading === section.id}
-                onClick={() => handleAcceptWithSpellCheck(section)}
+                title={t('orchestratorSectionEditor.acceptSectionTooltip')}
+                onClick={() => acceptSection(section)}
               >
-                {spellCheckLoading === section.id ? '⋯ Checking' : '✓ Accept'}
+                {`✓ ${t('orchestratorSectionEditor.acceptButton')}`}
               </button>
             )}
 
@@ -664,7 +626,7 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
         >
           {isLocked && (
             <div className="ps-ose-locked-overlay-note">
-              This section is committed and read-only. Use Delegate → Amendment to make changes after sign-out.
+              {t('orchestratorSectionEditor.lockedOverlayNote')}
             </div>
           )}
           <NarrativeEditor
@@ -673,7 +635,7 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
             onChange={html => onSectionChange(section.id, html)}
             readOnly={isGenerating || isLocked}
             minHeight="120px"
-            placeholder={section.hint ?? `Begin ${section.label.toLowerCase()}…`}
+            placeholder={section.hint ?? t('orchestratorSectionEditor.beginSectionPlaceholder', { sectionLabel: section.label.toLowerCase() })}
             macros={macros}
             suppressToolbar
             theme="dark"
@@ -684,25 +646,12 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
         </div>
         {section.pendingDraft && (
           <div className="ps-ose-pending-banner">
-            <span>New AI draft available for this section.</span>
+            <span>{t('orchestratorSectionEditor.pendingDraftAvailable')}</span>
             <div className="ps-ose-pending-actions">
-              <button onClick={() => onAcceptDraft(section.id)} className="ps-ose-pending-btn ps-ose-pending-btn--accept">Use new draft</button>
-              <button onClick={() => onKeepVersion(section.id)} className="ps-ose-pending-btn">Keep my version</button>
+              <button onClick={() => onAcceptDraft(section.id)} className="ps-ose-pending-btn ps-ose-pending-btn--accept">{t('orchestratorSectionEditor.useNewDraftButton')}</button>
+              <button onClick={() => onKeepVersion(section.id)} className="ps-ose-pending-btn">{t('orchestratorSectionEditor.keepMyVersionButton')}</button>
             </div>
           </div>
-        )}
-        {spellCheckReview && spellCheckReview.sectionId === section.id && (
-          <SpellCheckPopover
-            sectionLabel={section.label}
-            text={spellCheckReview.text}
-            flag={spellCheckReview.flags[spellCheckReview.flagIndex]}
-            index={spellCheckReview.flagIndex}
-            total={spellCheckReview.flags.length}
-            onFix={() => resolveSpellCheckFlag('fix')}
-            onKeep={() => resolveSpellCheckFlag('keep')}
-            onSkip={() => resolveSpellCheckFlag('skip')}
-            onCancel={cancelSpellCheckReview}
-          />
         )}
       </div>
     );
@@ -717,81 +666,72 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
         {/* Single row: [Tabs/Page — left] [Jump to — center] [counts/actions — right] */}
         <div className="ps-ose-summary-row">
 
-          {/* Group 1: jurisdiction badge + Tabs / Page toggle — left justified */}
+          {/* Group 1: spelling language + Tabs / Page toggle — left justified */}
           <div className="ps-ose-group-left">
-            {spellLocaleLabel && (
-              <span
-                className="ps-ose-jurisdiction-badge"
-                title={jurisdictionClientName
-                  ? `Spelling and terminology on this report follow ${jurisdictionClientName}'s convention, not the reviewing pathologist's own — the report has to conform to the receiving institution's record system.`
-                  : 'No Submitting Client resolved for this case — using the system default convention.'}
-              >
-                ✎ {spellLocaleLabel}{jurisdictionClientName ? ` — ${jurisdictionClientName}` : ''}
-              </span>
-            )}
+            <SpellingLanguageControl className="ps-ose-spelllang" />
             <div className="ps-ose-view-toggle">
               <button
                 className={`ps-ose-view-toggle-btn${viewMode === 'tabs' ? ' ps-ose-view-toggle-btn--active' : ''}`}
                 onClick={() => setViewMode('tabs')}
-                title="Tab view — one section at a time"
-              >⊟ Tabs</button>
+                title={t('orchestratorSectionEditor.tabViewTooltip')}
+              >⊟ {t('orchestratorSectionEditor.tabsButton')}</button>
               <button
                 className={`ps-ose-view-toggle-btn${viewMode === 'page' ? ' ps-ose-view-toggle-btn--active' : ''}`}
                 onClick={() => setViewMode('page')}
-                title="Page view — all sections scrollable"
-              >☰ Page</button>
+                title={t('orchestratorSectionEditor.pageViewTooltip')}
+              >☰ {t('orchestratorSectionEditor.pageButton')}</button>
             </div>
           </div>
 
           {/* Group 2: Jump to — center */}
           <div className="ps-ose-summary-centre">
-            <span className="ps-ose-jumpto-label">Jump to:</span>
+            <span className="ps-ose-jumpto-label">{t('orchestratorSectionEditor.jumpToLabel')}</span>
             <button
               className="ps-ose-jumpto-btn ps-ose-jumpto-btn--unanswered"
               onClick={jumpToNextEmpty}
               disabled={totalSections - sections.filter(s => s.text).length === 0}
-              title={totalSections === 0 ? 'No sections yet — run Generate Report' : undefined}
+              title={totalSections === 0 ? t('orchestratorSectionEditor.noSectionsYetTooltip') : undefined}
             >
-              → Next Empty {totalSections - sections.filter(s => s.text).length > 0 ? `(${totalSections - sections.filter(s => s.text).length})` : '✓'}
+              → {t('orchestratorSectionEditor.nextEmptyButton')} {totalSections - sections.filter(s => s.text).length > 0 ? `(${totalSections - sections.filter(s => s.text).length})` : '✓'}
             </button>
             <button
               className={`ps-ose-jumpto-btn ps-ose-jumpto-btn--required${requiredDone < requiredSections.length ? ' ps-ose-jumpto-btn--required-pending' : ''}`}
               onClick={jumpToNextRequired}
               disabled={requiredSections.length - requiredDone === 0}
-              title={requiredSections.length === 0 ? 'No required sections yet — run Generate Report' : undefined}
+              title={requiredSections.length === 0 ? t('orchestratorSectionEditor.noRequiredSectionsYetTooltip') : undefined}
             >
-              → Next Required {requiredSections.length - requiredDone > 0 ? `(${requiredSections.length - requiredDone})` : '✓'}
+              → {t('orchestratorSectionEditor.nextRequiredButton')} {requiredSections.length - requiredDone > 0 ? `(${requiredSections.length - requiredDone})` : '✓'}
             </button>
           </div>
 
           {/* Group 3: counts + actions — right justified */}
           <div className="ps-ose-summary-right">
             {isGenerating && (
-              <span className="ps-ose-generating-badge"><span className="ps-ose-dot-pulse" />Generating…</span>
+              <span className="ps-ose-generating-badge"><span className="ps-ose-dot-pulse" />{t('orchestratorSectionEditor.generatingLabel')}</span>
             )}
             {!isGenerating && lastGeneratedAt && (
               <span className="ps-ose-generated-time">
-                Generated {lastGeneratedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                {t('orchestratorSectionEditor.generatedAtLabel', { time: lastGeneratedAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) })}
               </span>
             )}
             <span className="ps-ose-summary-count">
-              {acceptedCount}/{totalSections} sections
+              {t('orchestratorSectionEditor.sectionsCount', { done: acceptedCount, total: totalSections })}
             </span>
             {requiredSections.length > 0 && (
               <span className={`ps-ose-summary-count${requiredDone < requiredSections.length ? ' ps-ose-summary-count--warn' : ' ps-ose-summary-count--ok'}`}>
-                {requiredDone}/{requiredSections.length} required
+                {t('orchestratorSectionEditor.requiredCount', { done: requiredDone, total: requiredSections.length })}
               </span>
             )}
             {onRegenerateSection && !isGenerating && (
               <button
                 className="ps-ose-summary-btn ps-ose-regen-btn"
-                onClick={() => sections.forEach(s => onRegenerateSection(s.id))}
-                title="Regenerate all sections"
-              >↺ Regen all</button>
+                onClick={() => { void regenerateAllSequentially(); }}
+                title={t('orchestratorSectionEditor.regenAllTooltip')}
+              >↺ {t('orchestratorSectionEditor.regenAllButton')}</button>
             )}
             {onAcceptAll && !isGenerating && sections.some(s => s.aiGenerated && !s.userEdited && !s.committed) && (
-              <button className="ps-ose-summary-btn ps-ose-accept-btn" onClick={onAcceptAll} title="Accept all AI-generated sections">
-                ✓ Accept all
+              <button className="ps-ose-summary-btn ps-ose-accept-btn" onClick={onAcceptAll} title={t('orchestratorSectionEditor.acceptAllTooltip')}>
+                ✓ {t('orchestratorSectionEditor.acceptAllButton')}
               </button>
             )}
           </div>
@@ -811,7 +751,7 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
                     onClick={() => jumpToSection(s.id)}
                   >
                     {s.label}
-                    <span className="ps-ose-pill-dot" style={{ color: activeId === s.id ? 'currentColor' : meta.color }}>{meta.icon}</span>
+                    <span className={`ps-ose-pill-dot ps-ose-pill-dot--${status}`}>{meta.icon}</span>
                   </button>
                 );
               })}
@@ -833,25 +773,25 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
         {sections.length === 0 ? (
           <div className="ps-ose-empty">
             <div className="ps-ose-empty-icon">✍️</div>
-            <div className="ps-ose-empty-title">Report Draft</div>
+            <div className="ps-ose-empty-title">{t('orchestratorSectionEditor.emptyState.title')}</div>
             <div className="ps-ose-empty-text">
               {onGenerateReport ? (
-                <>Complete the synoptic fields, then press{' '}
-                  <button className="ps-ose-empty-link" onClick={onGenerateReport}>⚡ Generate Report</button>
-                  {' '}to create an AI-drafted narrative.</>
+                <>{t('orchestratorSectionEditor.emptyState.completeFieldsThenPress')}{' '}
+                  <button className="ps-ose-empty-link" onClick={onGenerateReport}>⚡ {t('orchestratorSectionEditor.emptyState.generateReportButton')}</button>
+                  {' '}{t('orchestratorSectionEditor.emptyState.toCreateNarrative')}</>
               ) : (
-                <>Complete the synoptic fields, then press <strong>⚡ Generate Report</strong> to create an AI-drafted narrative.</>
+                <>{t('orchestratorSectionEditor.emptyState.completeFieldsThenPress')} <strong>⚡ {t('orchestratorSectionEditor.emptyState.generateReportButton')}</strong> {t('orchestratorSectionEditor.emptyState.toCreateNarrative')}</>
               )}
             </div>
             {onStartManualEntry && (
-              <div className="ps-ose-empty-text" style={{ marginTop: 4 }}>
-                Prefer to dictate the Gross directly instead?{' '}
-                <button className="ps-ose-empty-link" onClick={onStartManualEntry}>✍️ Start writing manually</button>
-                {' '}— opens blank sections with no AI involved; AI can update the synoptic from what you write once you're done.
+              <div className="ps-ose-empty-text ps-ose-empty-text--tight">
+                {t('orchestratorSectionEditor.emptyState.preferToDictate')}{' '}
+                <button className="ps-ose-empty-link" onClick={onStartManualEntry}>✍️ {t('orchestratorSectionEditor.emptyState.startWritingManuallyButton')}</button>
+                {' '}{t('orchestratorSectionEditor.emptyState.startWritingManuallyNote')}
               </div>
             )}
             <div className="ps-ose-empty-hint">
-              Sections appear here as they generate. Every section is fully editable — your changes are preserved if you regenerate.
+              {t('orchestratorSectionEditor.emptyState.hint')}
             </div>
           </div>
         ) : viewMode === 'tabs' ? (
@@ -860,6 +800,37 @@ const OrchestratorSectionEditor: React.FC<Props> = ({
           sections.map(s => renderSectionCard(s, true))
         )}
       </div>
+
+      {/* Real, per direct guidance ("Personal Quick Text"): only asks
+          for the one thing that isn't already known — the voice
+          trigger. Name and facility are shown, not asked for, since
+          they're already resolved from the real session/case context. */}
+      {quickTextDraft && (
+        <div className="ps-conf-backdrop" onClick={() => setQuickTextDraft(null)}>
+          <div className="ps-ose-quicktext-modal" onClick={e => e.stopPropagation()}>
+            <div className="ps-ose-quicktext-title">{t('orchestratorSectionEditor.quickText.modalTitle')}</div>
+            <div className="ps-ose-quicktext-preview">{quickTextDraft.selectedText}</div>
+            <div className="ps-ose-quicktext-meta">
+              {getSessionUser()?.firstName ?? t('orchestratorSectionEditor.quickText.youFallback')} {getSessionUser()?.lastName ?? ''} · {casePerformingLabName ?? (casePerformingLabFacilityId ? casePerformingLabFacilityId : t('orchestratorSectionEditor.quickText.noFacilityResolved'))}
+            </div>
+            <label className="ps-conf-label">{t('orchestratorSectionEditor.quickText.voiceTriggerLabel')}</label>
+            <input
+              autoFocus
+              className="ps-conf-input"
+              value={quickTextTrigger}
+              onChange={e => setQuickTextTrigger(e.target.value)}
+              placeholder={t('orchestratorSectionEditor.quickText.voiceTriggerPlaceholder')}
+              onKeyDown={e => { if (e.key === 'Enter') handleConfirmSaveAsQuickText(); }}
+            />
+            <div className="ps-ose-quicktext-actions">
+              <button className="ps-btn-ghost-dark" onClick={() => setQuickTextDraft(null)}>{t('common.cancel')}</button>
+              <button className="ps-conf-btn-primary" disabled={!quickTextTrigger.trim() || savingQuickText} onClick={handleConfirmSaveAsQuickText}>
+                {savingQuickText ? t('orchestratorSectionEditor.quickText.savingLabel') : t('common.save')}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

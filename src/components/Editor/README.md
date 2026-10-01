@@ -31,7 +31,7 @@ is pure logic (no React) bridging the editor to the AI orchestrator.
   screen. `allowThemeToggle` prop shows a real sun/moon button in the
   toolbar; `theme` prop is now only the *starting point* — once a user
   has ever clicked the toggle anywhere it appears, that becomes their
-  real preference (persisted to `localStorage`), shared across every
+  real preference (persisted through `utils/uiPreferences.ts` since Batch 338), shared across every
   editor instance that opts in, overriding whatever default any
   individual screen was built with. Off by default so contexts that
   shouldn't show it (e.g. a small font preview box) don't get one
@@ -41,6 +41,23 @@ is pure logic (no React) bridging the editor to the AI orchestrator.
   — the one pre-existing consumer already using `theme="dark"` — is
   completely unaffected**, since it doesn't pass `allowThemeToggle` and
   therefore never enters the new stateful/persisted code path at all.
+
+  **Real, found-and-fixed follow-up gap in this exact same fix, per direct
+  report ("occasional text that is dark and pretty much impossible to
+  read")**: the earlier `DARK_THEME.contentText` fix above corrected the
+  theme *token* itself, but the injected `<style>{...}</style>` block
+  that actually applies `.ps-editor-content`'s real text color still
+  hardcoded the light theme's own `#1e293b` directly, never referencing
+  `theme.contentText` at all — meaning a real user clicking the real
+  sun/moon toggle button *while actively writing a report* would see
+  the toolbar chrome correctly switch to dark, while the actual report
+  text they were typing became nearly invisible, silently forced back
+  to the light theme's own dark text color regardless of which theme
+  was genuinely active. Fixed by interpolating `${theme.contentText}`
+  into the same template string, alongside the `${minHeight}`/
+  `${approvedFonts[0]}` interpolations already there — the real fix is
+  one line, using infrastructure that already existed and was already
+  correct everywhere else in this same component.
 
 - **`NarrativeEditor.tsx`** — Thin wrapper forwarding props/ref to
   `PathScribeEditor.tsx`. No issues.
@@ -64,6 +81,12 @@ is pure logic (no React) bridging the editor to the AI orchestrator.
   cancellation mid-stream. Sole external consumer:
   `orchestrator/orchestratorEngine.ts`. No issues.
 
+## Batch 338 (Sep 2026, PS-342): spell checking; styles moved to CSS
+
+- **Spell checking:** inside a report screen's `SpellCheckProvider`, the editor draws the report checker's squiggles and turns the browser's own spell check off; the right-click menu offers suggestions and the dictionaries. Outside a provider nothing changes. The extension is always installed and reads the context through a ref (see [`components/SpellCheck/`](../SpellCheck/README.md)).
+- **No inline CSS left:** the theme now reaches CSS as `--pse-*` custom properties (`themeVars()`), so the toolbar-button hover handlers, the per-element theme styles and the embedded `<style>` block (the `.ps-editor-content` rules and the formatting marks) are real rules in `pathscribe.css`. Showing formatting marks toggles a `pse-editor-wrap--marks` class. The theme context became unused and was removed.
+- **Deployment-neutral:** the theme preference goes through `utils/uiPreferences.ts` (key `editorTheme`), so the file is off the browser-storage baseline.
+
 ## Notes
 
 - **Real duplicate-type drift risk, fixed:** `PathScribeEditor.tsx` used
@@ -84,6 +107,10 @@ is pure logic (no React) bridging the editor to the AI orchestrator.
   `integration/` didn't signal "Tiptap-specific" to someone skimming
   folder names. All internal path comments + the one external import
   (`orchestratorEngine.ts`) updated; confirmed zero dangling references.
+
+## Batch 367 (PS-74): no inline CSS
+
+`PathScribeEditor.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
 
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

@@ -18,7 +18,7 @@
 // separate role check is needed here beyond that resolution itself.
 //
 // Deliberately distinct from the Orchestration *case-routing* concept
-// (O26-/S26- prefixes, CaseRouter.ts, Role.canViewOrchestration) — see
+// (O26-/S26- prefixes, CaseRouter.ts, StaffUser.canViewOrchestration) — see
 // Facility.internalAiOrchestratorEnabled's own doc comment.
 // ─────────────────────────────────────────────────────────────
 
@@ -50,7 +50,7 @@ export function setOrgOrchestratorDefault(enabled: boolean): void {
 
 // ── Effective, per-case resolution (async — needs a Facility lookup) ───────
 //
-// Pass the case's ordering facility id (caseData?.order?.clientId).
+// Pass the case's ordering facility id (caseData?.order?.facilityId).
 // Resolves through to whichever facility's lab actually performs the
 // work, same as jurisdiction resolution in OrchestratorSectionEditor.tsx.
 // Falls back to the org default whenever no facility can be resolved

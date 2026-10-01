@@ -1,11 +1,11 @@
 # src/services/referenceCheck/
 
 One file: `referenceCheckService.ts` — checks whether a foundational
-config entity (Client, Subspecialty, Specimen Category) is still
+config entity (Client, Subspecialty, Department) is still
 referenced elsewhere before it gets deactivated.
 
 Closes a real, confirmed gap noted in its own header:
-`ClientDictionaryPage`'s deactivate used to just flip status with zero
+`FacilityDictionaryPage`'s deactivate used to just flip status with zero
 check for whether Physicians, TAT entries, or Grossing Route
 Overrides still pointed at it. Deliberately scoped to only the
 dependency edges actually verified in the codebase — its header
@@ -17,8 +17,8 @@ static compile-time lookup table, not a live stored reference that
 could go stale).
 
 Confirmed genuinely used by 3 real components:
-`SpecimenCategoriesSection.tsx`, `SubspecialtiesSection.tsx`, and
-`ClientDictionaryPage.tsx`. Worth noting `checkSubspecialtyReferences`
+`DepartmentsSection.tsx`, `SubspecialtiesSection.tsx`, and
+`FacilityDictionaryPage.tsx`. Worth noting `checkSubspecialtyReferences`
 here reads from real, live data sources (`loadRoutingRules()`,
 localStorage-backed TAT entries) — confirmed it has no relationship to
 the disconnected subspecialty data-source bug found and fixed
@@ -29,3 +29,11 @@ never affected by that.
 (`(p: any)`/`(o: any)`/`(e: any)` on `.filter()` callbacks) — the
 underlying service results were already properly typed, confirmed via
 clean compilation after removing each cast.
+
+## Batch 317
+
+`referenceCheckService.ts` now imports `TATEntry` from `types/quality/TatConfigEntry.ts` instead of from the `TATConfigSection.tsx` component. The types moved there with the TAT rules (`services/tatConfig/`). Behaviour is unchanged.
+
+## Batch 353
+
+TAT entries now come from `mockTatTargetService` (`services/tatConfig/`). This file used to import the storage key from the TAT settings component and read browser storage itself.

@@ -1,0 +1,18 @@
+{
+  "clientEditorModal": {
+    "general": {
+      "addressPlaceholder": "Rue et numéro, code postal, commune"
+    }
+  },
+  "facilityEditorModal": {
+    "general": {
+      "addressPlaceholder": "Rue de l'Église 12, 5000 Namur"
+    }
+  },
+  "physiciansSection": {
+    "modal": {
+      "smsCarrierLabel": "Opérateur GSM (États-Unis)",
+      "smsLabel": "Numéro de GSM pour les SMS"
+    }
+  }
+}

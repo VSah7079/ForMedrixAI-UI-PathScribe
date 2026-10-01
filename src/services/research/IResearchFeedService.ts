@@ -29,6 +29,14 @@ export interface IResearchFeedService {
    * unavailable feed as a non-event, not an error to surface.
    *
    * @param signal Aborts the in-flight request when the caller unmounts.
+   * @param subspecialtyNames Real feature, per direct follow-up: "I would
+   *   like the Users subspeciality be taken into consideration when
+   *   finding recent pubmed articles." The current user's own real,
+   *   assigned Subspecialty names (Subspecialty.name, via
+   *   subspecialtyService — Subspecialty.userIds is the real
+   *   membership list, the user has no field of its own). Optional —
+   *   a user with none set, or an implementation that ignores this
+   *   entirely, still gets the admin-configured base query.
    */
-  getLatestArticle(signal?: AbortSignal): Promise<ResearchArticle | null>;
+  getLatestArticle(signal?: AbortSignal, subspecialtyNames?: string[]): Promise<ResearchArticle | null>;
 }

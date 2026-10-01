@@ -8,8 +8,7 @@
 //   mockDraftCacheService.ts's own header for why a fake obfuscation now
 //   would be worse than being honest this is plaintext today)
 //
-// Phase 2 of the Inactivity Timeout & Draft Recovery spec (see
-// PRIORITY_FIXES.md). Generic and reusable — keyed by an arbitrary entity
+// Phase 2 of the Inactivity Timeout & Draft Recovery spec. Generic and reusable — keyed by an arbitrary entity
 // id (a caseId, in the intended usage) so any future page could use this,
 // not just SynopticReportPage.tsx specifically.
 // ─────────────────────────────────────────────────────────────────────────────

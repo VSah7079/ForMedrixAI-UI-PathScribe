@@ -45,12 +45,18 @@ export type AssemblyRole =
   | 'footer-p2plus'  // continuation footer
   | 'body';          // report body section (multiple allowed)
 
-export const ASSEMBLY_ROLE_LABELS: Record<AssemblyRole, string> = {
-  'header-p1':     'Page 1 — Header',
-  'header-p2plus': 'Pages 2+ — Header',
-  'body':          'Body',
-  'footer-p2plus': 'Pages 2+ — Footer',
-  'footer-p1':     'Page 1 — Footer',
+// Real i18n indirection, per the file-by-file i18n sweep of
+// TemplateAssemblyPage.tsx (this map's only real consumer, confirmed
+// via a repo-wide search before renaming it here) — translates only
+// the displayed label, not the underlying AssemblyRole value itself,
+// same textKey pattern used throughout that sweep for persisted/
+// computed enum displays.
+export const ASSEMBLY_ROLE_LABEL_KEY: Record<AssemblyRole, string> = {
+  'header-p1':     'templateAssemblyPage.role.headerP1',
+  'header-p2plus': 'templateAssemblyPage.role.headerP2Plus',
+  'body':          'templateAssemblyPage.role.body',
+  'footer-p2plus': 'templateAssemblyPage.role.footerP2Plus',
+  'footer-p1':     'templateAssemblyPage.role.footerP1',
 };
 
 export const ASSEMBLY_ROLE_ICONS: Record<AssemblyRole, string> = {
@@ -136,6 +142,20 @@ export interface ReportPart {
 
   /** Institution this part belongs to */
   institutionId: string;
+
+  /**
+   * Real, per direct guidance: which real performing lab this part
+   * belongs to — same Global/scoped convention as everywhere else in
+   * this app (ContainerType/RoutingRule/PrinterProfile). Undefined =
+   * Global, available to every performing lab; set = only offered when
+   * assembling a template for that lab's own cases. Deliberately a new,
+   * dedicated field rather than repurposing institutionId above — that
+   * field is always an empty string in every real call site today
+   * (mockReportPartService.ts), confirmed directly, and its own
+   * original intent is undocumented; safer to leave it alone than
+   * guess at overloading it.
+   */
+  performingLabFacilityId?: string;
 
   /** Who created / last edited this part */
   createdBy: string;

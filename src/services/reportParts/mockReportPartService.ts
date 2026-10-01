@@ -81,8 +81,8 @@ const storeAll = (): ReportPart[] => {
 
 // ── Node builders ──────────────────────────────────────────────
 
-const e  = (label: string, tmpl: string, fb = '—', span = 12): TemplateNode =>
-  ({ id: uid(), type: 'expression-value', label, template: tmpl, fallback: fb, colSpan: span });
+const e  = (label: string, tmpl: string, fb = '—', span = 12, hideIfEmpty = false): TemplateNode =>
+  ({ id: uid(), type: 'expression-value', label, template: tmpl, fallback: fb, colSpan: span, hideIfEmpty });
 
 const p  = (label: string, key: string, ai = true, span = 12): TemplateNode =>
   ({ id: uid(), type: 'paragraph', label, bindingKey: key, richText: true, aiWritable: ai, colSpan: span });
@@ -232,7 +232,7 @@ const demoPart = part(DEMO_ID, 'Patient & Order Demographics', 'body', [
       e('MRN',              '{{patient.mrn}}',                            '—',         12),
       // Right column: order info
       e('Requesting provider', '{{order.requestingProvider}}',            '—',         12),
-      e('Referring facility',  '{{order.clientName}}',                    '—',         12),
+      e('Referring facility',  '{{order.facilityName}}',                  '—',         12),
       e('Received date',       '{{order.receivedDate}}',                  '—',         12),
       e('Priority',            '{{order.priority}}',                      'Routine',   12),
       e('Report date',         '{{diagnostic.issuedDate}}',               '—',         12),
@@ -288,7 +288,16 @@ const diagnosisPart = part(DIAGNOSIS_ID, 'Diagnosis', 'body', [
   sec('Diagnosis', [
     rg('Per-specimen diagnoses', 'specimens', [
       sl('Specimen label', '{{specimen.label}}.', 'h3', true, 12),
-      p('Diagnosis text', 'specimen.diagnosis', true, 12),
+      // Real, per direct correction ("a text field on the report
+      // should be declared as the final diagnosis... we need to
+      // audit those changes") — the one, real, explicitly-declared
+      // Final Diagnosis field for every Final-category template that
+      // uses this shared part (confirmed directly: all 5 real Final
+      // templates reference std_body_diagnosis by the same partId).
+      // Spread onto p()'s own real, unmodified output rather than
+      // changing that shared helper's own signature, since it's used
+      // widely elsewhere for fields with nothing to do with this.
+      { ...p('Diagnosis text', 'specimen.diagnosis', true, 12), isFinalDiagnosisField: true },
       col([
         dd('Diagnostic category', 'specimen.diagnosticCategory', [
           { value: 'benign',               label: 'Benign' },
@@ -449,6 +458,187 @@ const signoffPart = part(SIGNOFF_ID, 'Pathologist Sign-off', 'body', [
   ]),
 ], { description: 'Pathologist sign-off block. Auto-populated. One-click finalisation.' });
 
+// ══════════════════════════════════════════════════════════════
+//  PRELIMINARY REPORT PART LIBRARY
+//  Real, per direct spec ("build a compliant base template for an
+//  Anatomic Pathology Preliminary Report across Surgical Pathology,
+//  GYN Cytology, and Non-GYN/FNA") — PS-292's own three-group
+//  decision. Universal sections (demographics, clinical history,
+//  specimen source) reuse the existing standard parts directly —
+//  parts are assembled by reference, not copied, so nothing new was
+//  needed for those. Only the genuinely Preliminary-specific and
+//  discipline-specific sections below are new.
+// ══════════════════════════════════════════════════════════════
+
+// ── HEADER: Preliminary status banner ──────────────────────────
+// Real, per direct spec: "Prominent header explicitly stating
+// 'PRELIMINARY REPORT - NOT FINAL DIAGNOSIS' to prevent clinical
+// misinterpretation in the EHR." Shared across all three groups —
+// the wording and prominence don't vary by discipline.
+
+const PRELIM_BANNER_ID = 'prelim_header_banner';
+
+const prelimBannerPart = part(PRELIM_BANNER_ID, 'Preliminary Status Banner', 'header', [
+  sl('Preliminary banner', 'PRELIMINARY REPORT — NOT FINAL DIAGNOSIS', 'h1', true, 12),
+], { description: 'Prominent, non-suppressible status banner marking a report as preliminary — shown on every page.', specialty: 'General' });
+
+// ── BODY: Surgical Pathology — Preliminary Impression ──────────
+// Real, per direct spec: "Preliminary Microscopic / Impression:
+// initial findings or provisional classification prior to special
+// stains, IHC, or recuts." Deliberately lighter than the existing,
+// final-report microPart — no margin/LVI/PNI detail expected yet.
+
+const PRELIM_SURGPATH_IMPRESSION_ID = 'prelim_body_surgpath_impression';
+
+const prelimSurgPathImpressionPart = part(PRELIM_SURGPATH_IMPRESSION_ID, 'Preliminary Diagnosis / Impression', 'body', [
+  sec('Preliminary Diagnosis', [
+    // Real fix, per direct follow-up ("does a Preliminary Diagnosis
+    // Text Field exist?"): this originally bound to the non-existent
+    // specimen.preliminaryImpression inside a repeat-group — no such
+    // per-specimen field exists anywhere in the real data model.
+    // grossDescription/microscopicDescription (DiagnosticMetadata,
+    // types/case/Case.ts) are themselves case-level, single-string
+    // fields, not per-specimen ones, despite the existing grossPart/
+    // microPart templates wrapping them in a specimen repeat-group —
+    // matching that same real, case-level shape here (diagnostic.
+    // preliminaryImpression, now real), not perpetuating the
+    // per-specimen framing those two also use.
+    p('Preliminary impression', 'diagnostic.preliminaryImpression', true, 12),
+  ], {
+    enabled: true,
+    maxTokens: 300,
+    systemInstruction:
+      'Write a brief, provisional diagnostic impression based on gross findings and any '
+      + 'initial microscopic review available. State clearly that special stains, IHC, or recuts may still '
+      + 'be pending. Do not state a final diagnostic category. 2–4 sentences.',
+  }),
+], { description: 'Provisional diagnostic impression, prior to ancillary studies. Real, deliberate case-level counterpart to std_body_diagnosis, not a copy of it.' });
+
+// ── BODY: Surgical Pathology — Ancillary Testing Status ────────
+// Real, per direct spec: "Clear indication of pending studies (e.g.
+// 'IHC pending,' 'Decalcification in progress,' 'Molecular studies
+// ordered')." Deliberately the inverse of the existing ancillaryPart
+// (which shows RESULTS once performed) — this shows STATUS while
+// still pending. hideIfEmpty on each line means a study never
+// ordered for this case simply never appears, rather than showing a
+// literal "N/A" — real, existing engine behavior
+// (ReportPreviewRenderer.tsx), not new to build.
+
+const PRELIM_ANCILLARY_STATUS_ID = 'prelim_body_ancillary_status';
+
+const prelimAncillaryStatusPart = part(PRELIM_ANCILLARY_STATUS_ID, 'Ancillary Testing Status', 'body', [
+  sec('Ancillary Testing Status', [
+    // Real fix, per direct follow-up ("I'm not sure pending for a
+    // text field makes sense unless it is a required field for the
+    // final report"): none of these five are required for every
+    // final report — most cases never order most of them. hideIfEmpty
+    // now actually set (it wasn't before, despite this part's own
+    // description already claiming it was) so a study never ordered
+    // for this case simply never appears, rather than showing
+    // "Pending" for something that was never coming in the first
+    // place, or a blank line for it.
+    e('Special stains',       '{{diagnostic.specialStainsStatus}}',       '', 12, true),
+    e('Immunohistochemistry', '{{diagnostic.ihcStatus}}',                 '', 12, true),
+    e('Decalcification',      '{{diagnostic.decalcificationStatus}}',     '', 12, true),
+    e('Molecular studies',    '{{diagnostic.molecularStatus}}',           '', 12, true),
+    e('Recuts / deeper levels', '{{diagnostic.recutStatus}}',             '', 12, true),
+  ]),
+], { description: 'Real-time status of pending ancillary studies — special stains, IHC, decal, molecular, recuts. Each line hides automatically when not applicable to this case (hideIfEmpty).' });
+
+// ── BODY: GYN Cytology — Preliminary Interpretation ────────────
+// Real, per direct spec's own §2 (Cytology GYN — Pap Tests):
+// Specimen Adequacy Statement, Preliminary Interpretation/
+// Categorization (Bethesda), General Categorization Indicator.
+
+const PRELIM_GYN_CYTOLOGY_ID = 'prelim_body_gyn_cytology';
+
+const prelimGynCytologyPart = part(PRELIM_GYN_CYTOLOGY_ID, 'GYN Cytology — Preliminary Interpretation', 'body', [
+  sec('Specimen Adequacy', [
+    // "Pending evaluation" correctly kept here, unlike the ancillary
+    // status fields above: adequacy, general categorization, and
+    // Bethesda category are mandatory, structural components of
+    // EVERY Bethesda-system Pap report, final or preliminary — never
+    // case-dependent the way IHC/molecular/decal are. "Pending"
+    // honestly signals "this will be filled in," not "this study may
+    // never have been ordered."
+    e('Adequacy statement', '{{cytology.adequacyStatement}}', 'Pending evaluation', 12),
+  ]),
+  sec('Preliminary Interpretation', [
+    e('General categorization',  '{{cytology.generalCategorization}}', 'Pending evaluation', 12),
+    e('Bethesda preliminary category', '{{cytology.bethesdaPreliminaryCategory}}', 'Pending evaluation', 12),
+    p('Preliminary interpretation notes', 'cytology.preliminaryNotes', true, 12),
+  ]),
+], { description: 'GYN (Pap) preliminary screening result — adequacy, general categorization, and Bethesda provisional classification.', specialty: 'cytology', subspecialty: 'gyn' });
+
+// ── BODY: Non-GYN / FNA Cytology — Preliminary Interpretation ──
+// Real, per direct spec's own §3 (Non-GYN & FNA): ROSE/adequacy
+// assessment, preliminary diagnostic impression, preparation
+// details (smear/LBP/cell block counts and type).
+
+const PRELIM_NONGYN_CYTOLOGY_ID = 'prelim_body_nongyn_cytology';
+
+const prelimNonGynCytologyPart = part(PRELIM_NONGYN_CYTOLOGY_ID, 'Non-GYN/FNA Cytology — Preliminary Interpretation', 'body', [
+  sec('Specimen Adequacy', [
+    // Real fix, per direct follow-up ("I'm not sure pending for a
+    // text field makes sense unless it is a required field for the
+    // final report"): the original, single "ROSE / adequacy
+    // assessment" field conflated two genuinely different things —
+    // ROSE itself (on-site evaluation) is never performed at every
+    // site or on every FNA, so it's optional and hides when absent;
+    // a real adequacy determination, in some form, is expected for
+    // every FNA/non-GYN specimen regardless of whether ROSE was
+    // used, so "Pending evaluation" is honestly kept there.
+    e('ROSE performed', '{{cytology.rosePerformed}}', '', 12, true),
+    e('Adequacy assessment', '{{cytology.adequacyAssessment}}', 'Pending evaluation', 12),
+  ]),
+  sec('Preparation Details', [
+    // Real fix, same reasoning as the ancillary status part: a given
+    // case may only use one of these three preparation types, not
+    // all — each hides independently rather than showing blank for
+    // preparations that were never made for this specimen.
+    e('Direct smears',            '{{cytology.directSmearCount}}',      '', 12, true),
+    e('Liquid-based preparations', '{{cytology.lbpCount}}',             '', 12, true),
+    e('Cell block',               '{{cytology.cellBlockStatus}}',       '', 12, true),
+  ]),
+  sec('Preliminary Diagnostic Impression', [
+    p('Preliminary impression', 'cytology.preliminaryImpression', true, 12),
+  ]),
+], { description: 'Non-GYN/FNA preliminary result — ROSE/adequacy, preparation counts, and provisional narrative impression.', specialty: 'cytology', subspecialty: 'non_gyn' });
+
+// ── BODY: Preliminary Sign-off & Critical Value Log ────────────
+// Real, per direct spec's own footer requirements — deliberately
+// separate from the existing, final-report signoffPart, whose own
+// language ("Electronically signed... authorised by the reporting
+// pathologist") is final-report attestation language, not
+// appropriate for a preliminary, non-final document.
+
+const PRELIM_SIGNOFF_ID = 'prelim_body_signoff';
+
+const prelimSignoffPart = part(PRELIM_SIGNOFF_ID, 'Preliminary Reviewer Attestation', 'body', [
+  sec('Preliminary Reviewer', [
+    col([
+      e('Reviewed by',       '{{order.assignedTo}}',        '—', 12),
+      e('Role',              '{{diagnostic.reviewerRole}}', 'Pathologist', 12),
+      e('Preliminary findings recorded', '{{diagnostic.preliminaryRecordedAt}}', '—', 12),
+    ], 2),
+    sl('Prelim notice',
+      'This is a preliminary report reflecting findings available at the time of issue. It is subject to revision upon completion of pending studies and is not a final diagnosis.',
+      'caption', false, 12),
+  ]),
+  sec('Critical Value / Verbal Notification Log', [
+    // Real fix, same reasoning throughout this file: a critical
+    // finding is the exception, not the rule — most preliminary
+    // reports have nothing to log here at all. hideIfEmpty now
+    // actually set to match what this part's own description already
+    // claimed.
+    e('Critical finding communicated', '{{diagnostic.criticalValueCommunicated}}', '', 12, true),
+    e('Notified to',                   '{{diagnostic.criticalValueRecipient}}',    '', 12, true),
+    e('Notified at',                   '{{diagnostic.criticalValueNotifiedAt}}',   '', 12, true),
+    p('Notification notes', 'diagnostic.criticalValueNotes', false, 12),
+  ]),
+], { description: 'Preliminary reviewer attestation (never final-report signature language) plus the critical-value/verbal-notification audit log. Each critical-value line hides automatically when no notification was made (hideIfEmpty).' });
+
+
 // ── Seed all parts ─────────────────────────────────────────────
 
 const SEED_PARTS: ReportPart[] = [
@@ -458,6 +648,8 @@ const SEED_PARTS: ReportPart[] = [
   diagnosisPart, synopticPart,
   grossPart, microPart, ancillaryPart,
   commentPart, signoffPart,
+  prelimBannerPart, prelimSurgPathImpressionPart, prelimAncillaryStatusPart,
+  prelimGynCytologyPart, prelimNonGynCytologyPart, prelimSignoffPart,
 ];
 
 for (const p of SEED_PARTS) store.set(p.id, p);
@@ -556,14 +748,14 @@ class MockReportPartService implements IReportPartService {
     return ok(updated);
   }
 
-  async clone(id: ID, newName?: string): Promise<ServiceResult<ReportPart>> {
+  async clone(id: ID, newName: string): Promise<ServiceResult<ReportPart>> {
     await delay(400);
     const source = storeGet(id);
     if (!source) return err(`Part '${id}' not found`, 'NOT_FOUND');
     const cloned: ReportPart = {
       ...JSON.parse(JSON.stringify(source)),
       id: uid(),
-      name: newName ?? `${source.name} (Copy)`,
+      name: newName,
       status: 'draft' as ReportPartStatus,
       createdBy: 'current-user',
       createdAt: now(), updatedAt: now(),

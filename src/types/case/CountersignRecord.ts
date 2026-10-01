@@ -22,7 +22,7 @@ export interface CountersignRecord {
   /** Real Subspecialty.id, derived from Case.subspecialtyId at release
    *  time — same pattern as ReconciliationRecord, for the same reason
    *  (a per-subspecialty competency breakdown needs this, not
-   *  SpecimenCategory). */
+   *  Department). */
   subspecialtyId?: string;
 
   residentId: string;
@@ -35,6 +35,11 @@ export interface CountersignRecord {
 
   releasedAt: string;
   countersignedAt?: string;
+  /** Real, per direct guidance ("Return to Trainee"/"Reject with
+   *  Notes"): populated once, when the attending rejects rather than
+   *  countersigns — same real "moment the decision was actually made"
+   *  semantics as countersignedAt above. */
+  returnedAt?: string;
 
   /** Snapshot of every synoptic instance's answers at the moment the
    *  resident released the case — keyed by instanceId. This is what a
@@ -54,5 +59,24 @@ export interface CountersignRecord {
    *  written later. Optional; an attending isn't required to write one. */
   attendingFeedback?: string;
 
-  status: 'pending' | 'countersigned';
+  /** Real, per direct guidance ("Yes we should scope 'Return to
+   *  Trainee'/'Reject with Notes'"): the real, third terminal-or-not
+   *  state — an attending declined to countersign as-is and sent the
+   *  case back. Distinct from 'countersigned' (the attending accepted
+   *  it, possibly with edits) — this is a genuine rejection, always
+   *  carrying real attendingFeedback (required for this transition,
+   *  unlike the optional feedback a real countersign can carry) so
+   *  the resident knows what to fix. */
+  /** Real, per direct follow-up ("let's get that signing") — present
+   *  only when this release came from Autopsy's own PAD/FAD signing
+   *  flow (signAutopsyReport.ts), never from the generic Surg
+   *  Path/Cytology countersign gate. Without this, the attending's
+   *  eventual countersign completion would have no way to know
+   *  whether to produce a padSnapshot or an fadSnapshot — an Autopsy
+   *  case can genuinely have two, separate countersign releases many
+   *  weeks apart (PAD, then later FAD), never conflated with each
+   *  other or with a regular synoptic release. */
+  autopsyReportTier?: 'PAD' | 'FAD';
+
+  status: 'pending' | 'countersigned' | 'returned';
 }

@@ -14,9 +14,9 @@ export interface AddSpecimenPayload {
   caseId: string;
 
   specimenLetter: string;              // 'A'
-  /** References SpecimenCategory.id — real seeded ids look like
+  /** References Department.id — real seeded ids look like
    *  'cat-surgical-tissue', not an invented constant like 'SURGICAL'. */
-  categoryId: string;
+  departmentId: string;
   description: string;                 // 'Lung, right lower lobe, wedge resection'
   containerType: string;
   fixative: string;

@@ -25,16 +25,34 @@
  *   types/systemConfig.ts            ← approvedFonts: string[] field
  *   contexts/SystemConfigContext.tsx ← useSystemConfig hook
  *   components/Editor/PathScribeEditor.tsx ← reads approvedFonts for toolbar
+ *
+ * Real fix (batch 37, i18n sweep): this file's own Toggle turned out NOT to
+ * be the same pattern as VoiceSection.tsx's (batch 36) despite sharing the
+ * same 40×22px track and #0891B2 on-color — that batch's README claim that
+ * the two were "identical" was based on a shallow grep match and didn't
+ * hold up once this file was actually read: this Toggle has a third,
+ * distinct disabled/greyed state VoiceSection's doesn't, a different
+ * thumb size (18px vs 14px), and a solid (not translucent) off-color. So
+ * this batch gives it its own small `.config-toggle-btn*` class family
+ * instead of reusing batch 36's `.config-toggle-track*` — see the CSS
+ * comment there for the correction.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { useSystemConfig } from '../../../contexts/SystemConfigContext';
 
 // ─── Full available font pool ─────────────────────────────────────────────────
 // These are the fonts admins can choose to approve or disable.
 // Add new entries here to expand the pool — no other changes needed.
+// `name`/`label` are real font-family values and display names (proper
+// nouns — not translated); `category` stays an internal English grouping
+// id used for filtering, with its display text resolved via
+// CATEGORY_LABEL_KEY + t() at render time (same "data key stays English,
+// display label is translated" pattern used for AIContributionTab.tsx's
+// SUBSPECIALTY_LABELS in batch 34).
 
 interface FontEntry {
   name: string;       // CSS font-family value
@@ -67,44 +85,40 @@ const AVAILABLE_FONTS: FontEntry[] = [
 // Derive sorted category list preserving insertion order
 const CATEGORIES = Array.from(new Set(AVAILABLE_FONTS.map(f => f.category)));
 
+const CATEGORY_LABEL_KEY: Record<string, string> = {
+  'Serif':      'fontsSection.categories.serif',
+  'Sans-Serif': 'fontsSection.categories.sansSerif',
+  'Monospace':  'fontsSection.categories.monospace',
+};
+
 // ─── Toggle component ─────────────────────────────────────────────────────────
 
 interface ToggleProps {
   enabled: boolean;
   onChange: (val: boolean) => void;
   disabled?: boolean;
+  title?: string;
   ariaLabel: string;
 }
 
-const Toggle: React.FC<ToggleProps> = ({ enabled, onChange, disabled = false, ariaLabel }) => (
+const Toggle: React.FC<ToggleProps> = ({ enabled, onChange, disabled = false, title, ariaLabel }) => (
   <button
     role="switch"
     aria-checked={enabled}
     aria-label={ariaLabel}
     disabled={disabled}
     onClick={() => !disabled && onChange(!enabled)}
-    title={disabled ? 'At least one font must remain enabled' : undefined}
-    style={{
-      width: '40px', height: '22px', borderRadius: '11px', border: 'none',
-      background: disabled ? '#334155' : enabled ? '#0891B2' : '#475569',
-      cursor: disabled ? 'not-allowed' : 'pointer',
-      position: 'relative', transition: 'background 0.2s', flexShrink: 0,
-      opacity: disabled ? 0.5 : 1,
-    }}
+    title={title}
+    className={`config-toggle-btn config-toggle-btn--${disabled ? 'disabled' : enabled ? 'on' : 'off'}`}
   >
-    <span style={{
-      position: 'absolute', top: '2px',
-      left: enabled ? '20px' : '2px',
-      width: '18px', height: '18px', borderRadius: '50%',
-      background: 'white', transition: 'left 0.2s',
-      boxShadow: '0 1px 3px rgba(0,0,0,0.3)',
-    }} />
+    <span className={`config-toggle-btn__thumb${enabled ? ' config-toggle-btn__thumb--on' : ''}`} />
   </button>
 );
 
 // ─── Main component ───────────────────────────────────────────────────────────
 
 const FontsSection: React.FC = () => {
+  const { t } = useTranslation();
   const { config, updateConfig } = useSystemConfig();
   const [search, setSearch] = useState('');
 
@@ -129,32 +143,26 @@ const FontsSection: React.FC = () => {
 
   const approvedCount = approvedFonts.length;
   const totalCount    = AVAILABLE_FONTS.length;
+  const lastFontWarning = t('fontsSection.warning');
 
   return (
-    <div style={{ padding: '4px 0', maxWidth: '900px' }}>
+    <div className="config-fonts-page">
 
       {/* ── Header ── */}
-      <div style={{ marginBottom: '16px' }}>
-        <h2 style={{ fontSize: '18px', fontWeight: 700, color: '#f1f5f9', margin: '0 0 4px' }}>
-          🔤 Approved Fonts
+      <div className="config-fonts-header">
+        <h2 className="config-fonts-title">
+          🔤 {t('fontsSection.title')}
         </h2>
-        <p style={{ fontSize: '13px', color: '#94a3b8', margin: '0 0 8px', lineHeight: '1.5' }}>
-          Toggle fonts on or off to control what appears in the PathScribeEditor
-          toolbar. Disabled fonts are preserved here but hidden from pathologists.
+        <p className="config-fonts-description">
+          {t('fontsSection.description')}
         </p>
-        <div style={{ display: 'flex', alignItems: 'center', gap: '8px' }}>
-          <span style={{
-            fontSize: '12px', fontWeight: 600,
-            color: '#10B981',
-            background: 'rgba(16,185,129,0.1)',
-            border: '1px solid rgba(16,185,129,0.25)',
-            padding: '2px 10px', borderRadius: '99px',
-          }}>
-            {approvedCount} of {totalCount} enabled
+        <div className="config-fonts-status-row">
+          <span className="config-fonts-count-badge">
+            {t('fontsSection.countBadge', { approved: approvedCount, total: totalCount })}
           </span>
           {approvedCount <= 1 && (
-            <span style={{ fontSize: '11px', color: '#F59E0B' }}>
-              ⚠ At least one font must remain enabled
+            <span className="ps-conf-hint ps-conf-hint--warning">
+              ⚠ {lastFontWarning}
             </span>
           )}
         </div>
@@ -163,76 +171,58 @@ const FontsSection: React.FC = () => {
       {/* ── Search ── */}
       <input
         type="text"
-        placeholder="Search fonts…"
+        placeholder={t('fontsSection.searchPlaceholder')}
         value={search}
         onChange={e => setSearch(e.target.value)}
-        style={{
-          width: '100%', padding: '8px 12px', marginBottom: '16px',
-          borderRadius: '7px', border: '1px solid rgba(255,255,255,0.12)',
-          background: 'rgba(255,255,255,0.05)', color: '#f1f5f9',
-          fontSize: '13px', outline: 'none', boxSizing: 'border-box',
-        }}
+        className="ps-conf-input config-fonts-search"
       />
 
       {/* ── Font groups ── */}
       {CATEGORIES.map(category => {
         const fonts = filteredFonts(category);
         if (fonts.length === 0) return null;
+        const categoryLabel = t(CATEGORY_LABEL_KEY[category] ?? category);
 
         return (
-          <div key={category} style={{ marginBottom: '20px' }}>
+          <div key={category} className="config-fonts-category-group">
             {/* Category label */}
-            <div style={{
-              fontSize: '11px', fontWeight: 700, color: '#94a3b8',
-              textTransform: 'uppercase', letterSpacing: '0.6px',
-              marginBottom: '8px', paddingLeft: '2px',
-            }}>
-              {category}
+            <div className="config-fonts-category-label">
+              {categoryLabel}
             </div>
 
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: '8px' }}>
+            <div className="config-fonts-grid">
             {fonts.map(font => {
               const enabled  = isApproved(font.name);
               const isLast   = enabled && approvedCount <= 1;
 
               return (
-                <div key={font.name} style={{
-                  display: 'flex', justifyContent: 'space-between', alignItems: 'center',
-                  padding: '10px 14px',
-                  border: `1px solid ${enabled ? 'rgba(8,145,178,0.25)' : 'rgba(255,255,255,0.06)'}`,
-                  borderRadius: '8px',
-                  background: enabled ? 'rgba(8,145,178,0.06)' : 'rgba(255,255,255,0.02)',
-                  transition: 'all 0.15s',
-                }}>
+                <div key={font.name} className={`config-fonts-card config-fonts-card--${enabled ? 'enabled' : 'disabled'}`}>
                   {/* Font name rendered in its own typeface */}
                   <div>
-                    <span style={{
-                      fontFamily: font.name,
-                      fontSize: '15px',
-                      color: enabled ? '#f1f5f9' : '#94a3b8',
-                      display: 'block',
-                      marginBottom: '1px',
-                    }}>
+                    <span
+                      style={{ '--font-name': font.name } as React.CSSProperties}
+                      className={`config-fonts-card__name config-fonts-card__name--${enabled ? 'enabled' : 'disabled'}`}
+                    >
                       {font.label}
                     </span>
-                    <span style={{ fontSize: '11px', color: '#94a3b8', fontFamily: 'inherit' }}>
-                      {font.category}
+                    <span className="config-fonts-card__category">
+                      {categoryLabel}
                     </span>
                   </div>
 
                   {/* Status + toggle */}
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '10px' }}>
-                    <span style={{
-                      fontSize: '11px', fontWeight: 600,
-                      color: enabled ? '#10B981' : '#94a3b8',
-                    }}>
-                      {enabled ? 'Active' : 'Inactive'}
+                  <div className="config-fonts-card__meta">
+                    <span className={`config-fonts-card__status config-fonts-card__status--${enabled ? 'enabled' : 'disabled'}`}>
+                      {enabled ? t('fontsSection.status.active') : t('fontsSection.status.inactive')}
                     </span>
                     <Toggle
                       enabled={enabled}
                       onChange={val => toggleFont(font.name, val)}
                       disabled={isLast}
-                      ariaLabel={`${enabled ? 'Disable' : 'Enable'} ${font.label} font`}
+                      title={isLast ? lastFontWarning : undefined}
+                      ariaLabel={enabled
+                        ? t('fontsSection.toggle.ariaDisable', { font: font.label })
+                        : t('fontsSection.toggle.ariaEnable', { font: font.label })}
                     />
                   </div>
                 </div>

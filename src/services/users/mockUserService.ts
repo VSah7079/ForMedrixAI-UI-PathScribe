@@ -55,11 +55,23 @@ const SEED_USERS: StaffUser[] = [
   // user to log in as and verify against. canViewOrchestration: true
   // mirrors the pattern already used on PATH-001/US-001/UK-001 above —
   // this is a flat per-user flag, not derived from the role string.
+  // Batch 371: Dr. Sarah Johnson's demo sign-in (PATH-SJ-001) had no staff
+  // record. It worked only because her account was superadmin; as a
+  // pathologist she needs an organisation to open any case.
+  { id: 'PATH-SJ-001', firstName: 'Sarah', lastName: 'Johnson', credentials: 'MD, FCAP', canViewPediatric: false, email: 'sarah.johnson@demo.pathscribe.ai', roles: ['Pathologist'], npi: '', license: '', phone: '', status: 'Active', voiceProfile: 'EN-US', organisationId: 'ORG-DVMC' },
+  // Batch 374: bench staff (one per new built-in bench role) and a staff
+  // record for Michelle Nimmo's pathologist-admin sign-in, which had none and
+  // so held no role at all.
+  { id: 'ACC-001', firstName: 'Maria', lastName: 'Lopez', credentials: '', email: 'maria.lopez@demo.pathscribe.ai', roles: ['Accessioner'], npi: '', license: '', phone: '', status: 'Active', voiceProfile: 'EN-US', organisationId: 'ORG-DVMC' },
+  { id: 'HT-001', firstName: 'Kevin', lastName: 'Brooks', credentials: 'HT(ASCP)', email: 'kevin.brooks@demo.pathscribe.ai', roles: ['Histotechnologist'], npi: '', license: '', phone: '', status: 'Active', voiceProfile: 'EN-US', organisationId: 'ORG-DVMC' },
+  { id: 'CT-001', firstName: 'Priya', lastName: 'Desai', credentials: 'CT(ASCP)', email: 'priya.desai@demo.pathscribe.ai', roles: ['Cytotechnologist'], npi: '', license: '', phone: '', status: 'Active', voiceProfile: 'EN-US', organisationId: 'ORG-DVMC' },
+  { id: 'MT-001', firstName: 'Daniel', lastName: 'Kim', credentials: 'MB(ASCP)', email: 'daniel.kim@demo.pathscribe.ai', roles: ['Molecular Technologist'], npi: '', license: '', phone: '', status: 'Active', voiceProfile: 'EN-US', organisationId: 'ORG-DVMC' },
+  { id: 'PATH-MN-001', firstName: 'Michelle', lastName: 'Nimmo', credentials: '', email: 'michelle.nimmo@ai.com', roles: ['Pathologist', 'Admin'], npi: '', license: '', phone: '', status: 'Active', voiceProfile: 'EN-US', organisationId: 'ORG-DVMC' },
   { id: 'PA-001', firstName: 'Connor', lastName: 'Whitlock', credentials: "PA(ASCP)", canViewOrchestration: true, canViewPediatric: false, email: 'connor.whitlock@pathscribe.ai', roles: ["Pathologists' Assistant (PA)"], npi: '', license: '', phone: '', status: 'Active', voiceProfile: 'EN-US', organisationId: 'ORG-DVMC' },
 ];
 
 // Increment USERS_VERSION whenever SEED_USERS is changed.
-const USERS_VERSION = '9'; // bumped: added Bronwyn Prior (PATH-UK-003)
+const USERS_VERSION = '11'; // bumped: bench staff (ACC-001, HT-001, CT-001, MT-001) and Michelle Nimmo (PATH-MN-001), Batch 374. (10: Dr. Sarah Johnson, Batch 371.)
 const USERS_VERSION_KEY = 'pathscribe_users_version';
 if (localStorage.getItem(USERS_VERSION_KEY) !== USERS_VERSION) {
   localStorage.removeItem('pathscribe_mock_pathscribe_users');

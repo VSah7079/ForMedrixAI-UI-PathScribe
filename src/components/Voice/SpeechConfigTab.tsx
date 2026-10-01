@@ -1,4 +1,6 @@
 import React, { useState, useMemo, useRef, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../pathscribe.css';
 import { Trash2, Plus, Search, Upload, Loader2 } from 'lucide-react';
 import { VoiceMacro } from '../../types/voiceMacros';
 import { MockVoiceMacroService } from '../../services/voicemacro/mockVoiceMacroService';
@@ -8,6 +10,7 @@ import { usePathScribeSpeech }   from '../../hooks/usepathscribeSpeech';
 const macroService = new MockVoiceMacroService();
 
 const SpeechConfigTab: React.FC = () => {
+  const { t } = useTranslation();
   // --- State ---
   const [voiceMacros, setVoiceMacros] = useState<VoiceMacro[]>([]);
   const [searchTerm, setSearchTerm] = useState("");
@@ -17,7 +20,7 @@ const SpeechConfigTab: React.FC = () => {
 
   // 1. Hook into the Voice Engine here
   const { isListening, transcript, startListening } = usePathScribeSpeech();
-  
+
   // Hover states for UI feedback
   const [hoveredTrashId, setHoveredTrashId] = useState<string | null>(null);
 
@@ -85,12 +88,12 @@ const SpeechConfigTab: React.FC = () => {
           const [spoken, written] = row.split(',').map(s => s.trim());
           return { spoken: spoken || "New Macro", written: written || "", isActive: true };
         });
-        
+
         await macroService.bulkImport(newMacrosRaw);
         const refreshedData = await macroService.getMacros();
         setVoiceMacros(refreshedData);
       } catch (err) {
-        alert("Check your file format. Use a CSV with: name, resulting text");
+        alert(t('speechConfigTab.csvFormatAlert'));
       }
     };
     reader.readAsText(file);
@@ -99,9 +102,9 @@ const SpeechConfigTab: React.FC = () => {
   // --- Filtering Logic ---
   const filteredMacros = useMemo(() => {
     return voiceMacros.filter(m => {
-      const matchesSearch = m.spoken.toLowerCase().includes(searchTerm.toLowerCase()) || 
+      const matchesSearch = m.spoken.toLowerCase().includes(searchTerm.toLowerCase()) ||
                             m.written.toLowerCase().includes(searchTerm.toLowerCase());
-      const matchesStatus = statusFilter === "all" ? true : 
+      const matchesStatus = statusFilter === "all" ? true :
                             statusFilter === "active" ? m.isActive : !m.isActive;
       return matchesSearch && matchesStatus;
     });
@@ -109,15 +112,15 @@ const SpeechConfigTab: React.FC = () => {
 
   if (loading) {
     return (
-      <div style={{ display: 'flex', alignItems: 'center', justifyContent: 'center', height: '200px', color: '#64748b' }}>
-        <Loader2 size={24} className="animate-spin" style={{ marginRight: '8px' }} />
-        <span>Loading voice macros...</span>
+      <div className="sct-loading">
+        <Loader2 size={24} className="animate-spin sct-loading-icon" />
+        <span>{t('speechConfigTab.loadingMacros')}</span>
       </div>
     );
   }
 
   return (
-    <div style={{ padding: '0px', color: '#fff' }}>
+    <div className="sct-root">
       {/* CSS Pulse Animation */}
       <style>
         {`
@@ -130,171 +133,155 @@ const SpeechConfigTab: React.FC = () => {
       </style>
 
       {/* HEADER */}
-      <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: '24px' }}>
+      <div className="sct-header">
         <div>
-          <h2 style={{ fontSize: '20px', fontWeight: 600, margin: 0 }}>Voice & Speech Macros</h2>
-          <p style={{ color: '#64748b', fontSize: '14px', marginTop: '4px' }}>Manage custom shorthand and voice triggers.</p>
+          <h2 className="sct-title">{t('speechConfigTab.title')}</h2>
+          <p className="sct-subtitle">{t('speechConfigTab.subtitle')}</p>
         </div>
-        
-        <div style={{ display: 'flex', gap: '10px', alignItems: 'center' }}>
+
+        <div className="sct-header-actions">
           {/* Transcript Feedback */}
           {transcript && (
-            <div style={{ 
-              padding: '6px 12px', 
-              background: 'rgba(34, 197, 94, 0.1)', 
-              border: '1px solid rgba(34, 197, 94, 0.2)', 
-              borderRadius: '6px', 
-              color: '#22c55e', 
-              fontSize: '13px',
-              marginRight: '8px'
-            }}>
-              Heard: <strong>"{transcript}"</strong>
+            <div className="sct-transcript-chip">
+              {t('speechConfigTab.heardPrefix')} <strong>"{transcript}"</strong>
             </div>
           )}
 
           {/* Test Voice Button */}
-          <button 
+          <button
             onClick={startListening}
             className={`ps-voice-test-btn${isListening ? ' ps-voice-test-btn--listening' : ''}`}
           >
-            <div style={{ 
-              width: '8px', height: '8px', borderRadius: '50%', 
-              background: isListening ? '#ef4444' : '#0891B2',
-              animation: isListening ? 'pulse-red 1.5s infinite' : 'none'
-            }} />
-            {isListening ? "Listening..." : "Test Voice"}
+            <div
+              className="sct-test-dot"
+              style={{
+                '--sct-dot-bg':   isListening ? '#ef4444' : '#0891B2',
+                '--sct-dot-anim': isListening ? 'pulse-red 1.5s infinite' : 'none',
+              } as React.CSSProperties}
+            />
+            {isListening ? t('speechConfigTab.listening') : t('speechConfigTab.testVoice')}
           </button>
 
-          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" style={{ display: 'none' }} />
-          <button 
+          <input type="file" ref={fileInputRef} onChange={handleFileUpload} accept=".csv" className="sct-file-input-hidden" />
+          <button
             onClick={() => fileInputRef.current?.click()}
-            className="ps-conf-btn-secondary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            className="ps-conf-btn-secondary sct-bulk-btn"
           >
-            <Upload size={16} /> Bulk Import
+            <Upload size={16} /> {t('speechConfigTab.bulkImport')}
           </button>
-          <button 
+          <button
             onClick={handleAddMacro}
-            className="ps-conf-btn-primary"
-            style={{ display: 'flex', alignItems: 'center', gap: '8px' }}
+            className="ps-conf-btn-primary sct-add-btn"
           >
-            <Plus size={16} /> Add Macro
+            <Plus size={16} /> {t('speechConfigTab.addMacro')}
           </button>
         </div>
       </div>
       {/* TOOLBAR */}
-      <div style={{ display: 'flex', gap: '12px', marginBottom: '24px' }}>
-        <div style={{ position: 'relative', flex: 1, maxWidth: '500px' }}>
-          <Search size={14} style={{ position: 'absolute', left: '12px', top: '50%', transform: 'translateY(-50%)', color: '#475569' }} />
-          <input 
-            type="text" 
-            placeholder="Search macros..." 
+      <div className="sct-toolbar">
+        <div className="sct-search-wrap">
+          <Search size={14} className="sct-search-icon" />
+          <input
+            type="text"
+            placeholder={t('speechConfigTab.searchPlaceholder')}
             value={searchTerm}
             onChange={(e) => setSearchTerm(e.target.value)}
-            style={{ 
-              width: '100%', height: '32px', paddingLeft: '36px', 
-              background: '#090e1a', border: '1px solid #1e293b', 
-              borderRadius: '4px', color: '#fff', fontSize: '13px', outline: 'none' 
-            }}
+            className="sct-search-input"
           />
         </div>
 
-        <select 
+        <select
           value={statusFilter}
           onChange={(e) => setStatusFilter(e.target.value as any)}
-          style={{ 
-            height: '32px', background: '#090e1a', border: '1px solid #1e293b', 
-            borderRadius: '4px', color: '#cbd5e1', padding: '0 12px', 
-            fontSize: '12px', cursor: 'pointer', outline: 'none', minWidth: '120px'
-          }}
+          className="sct-status-select"
         >
-          <option value="all">All Status</option>
-          <option value="active">Active Only</option>
-          <option value="inactive">Inactive Only</option>
+          <option value="all">{t('speechConfigTab.statusAll')}</option>
+          <option value="active">{t('speechConfigTab.statusActiveOnly')}</option>
+          <option value="inactive">{t('speechConfigTab.statusInactiveOnly')}</option>
         </select>
       </div>
 
       {/* TABLE */}
-      <table style={{ width: '100%', borderCollapse: 'collapse', tableLayout: 'fixed' }}>
+      <table className="sct-table">
         <thead>
-          <tr style={{ borderBottom: '1px solid #1e293b' }}>
-            <th style={{ width: '25%', textAlign: 'left', padding: '12px 16px', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Name</th>
-            <th style={{ width: '45%', textAlign: 'left', padding: '12px 16px', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Resulting Text</th>
-            <th style={{ width: '15%', textAlign: 'left', padding: '12px 16px', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Status</th>
-            <th style={{ width: '15%', textAlign: 'center', padding: '12px 16px', color: '#475569', fontSize: '11px', textTransform: 'uppercase', letterSpacing: '0.05em' }}>Actions</th>
+          <tr className="sct-thead-row">
+            <th className="sct-th sct-th--name">{t('speechConfigTab.colName')}</th>
+            <th className="sct-th sct-th--text">{t('speechConfigTab.colResultingText')}</th>
+            <th className="sct-th sct-th--status">{t('speechConfigTab.colStatus')}</th>
+            <th className="sct-th sct-th--actions">{t('speechConfigTab.colActions')}</th>
           </tr>
         </thead>
         <tbody>
           {filteredMacros.map((macro) => {
             const isEditing = editingId === macro.id;
             return (
-              <tr key={macro.id} style={{ borderBottom: '1px solid #0f172a', height: '60px' }}>
-                <td style={{ padding: '0 16px' }}>
+              <tr key={macro.id} className="sct-row">
+                <td className="sct-cell">
                   {isEditing ? (
-                    <input 
+                    <input
                       autoFocus
-                      value={macro.spoken} 
+                      value={macro.spoken}
                       onChange={(e) => setVoiceMacros(prev => prev.map(m => m.id === macro.id ? {...m, spoken: e.target.value} : m))}
-                      style={{ width: '100%', background: '#020617', border: '1px solid #334155', color: '#fff', padding: '6px 8px', borderRadius: '4px', fontSize: '13px', outline: 'none' }}
+                      className="sct-cell-input"
                     />
                   ) : (
-                    <span style={{ fontWeight: 600, fontSize: '14px' }}>{macro.spoken}</span>
+                    <span className="sct-spoken-text">{macro.spoken}</span>
                   )}
                 </td>
-                <td style={{ padding: '0 16px' }}>
+                <td className="sct-cell">
                   {isEditing ? (
-                    <input 
-                      value={macro.written} 
+                    <input
+                      value={macro.written}
                       onChange={(e) => setVoiceMacros(prev => prev.map(m => m.id === macro.id ? {...m, written: e.target.value} : m))}
-                      style={{ width: '100%', background: '#020617', border: '1px solid #334155', color: '#fff', padding: '6px 8px', borderRadius: '4px', fontSize: '13px', outline: 'none' }}
+                      className="sct-cell-input"
                     />
                   ) : (
-                    <span style={{ color: '#94a3b8', fontSize: '14px' }}>{macro.written}</span>
+                    <span className="sct-written-text">{macro.written}</span>
                   )}
                 </td>
-                <td style={{ padding: '0 16px' }}>
-                  <button 
+                <td className="sct-cell">
+                  <button
                     disabled={!isEditing}
                     onClick={() => setVoiceMacros(prev => prev.map(m => m.id === macro.id ? {...m, isActive: !m.isActive} : m))}
-                    style={{ 
-                      display: 'flex', alignItems: 'center', gap: '8px', fontSize: '13px', 
-                      background: isEditing ? 'rgba(255,255,255,0.05)' : 'transparent', 
-                      border: isEditing ? '1px solid #1e293b' : '1px solid transparent',
-                      padding: '4px 8px', borderRadius: '4px', color: macro.isActive ? '#22c55e' : '#94a3b8',
-                      cursor: isEditing ? 'pointer' : 'default',
-                      width: 'fit-content'
-                    }}
+                    className="sct-status-btn"
+                    style={{
+                      '--sct-status-bg':     isEditing ? 'rgba(255,255,255,0.05)' : 'transparent',
+                      '--sct-status-border': isEditing ? '1px solid #1e293b' : '1px solid transparent',
+                      '--sct-status-color':  macro.isActive ? '#22c55e' : '#94a3b8',
+                      '--sct-status-cursor': isEditing ? 'pointer' : 'default',
+                    } as React.CSSProperties}
                   >
-                    <div style={{ width: '6px', height: '6px', borderRadius: '50%', background: macro.isActive ? '#22c55e' : '#475569' }} />
-                    {macro.isActive ? 'Active' : 'Inactive'}
+                    <div className="sct-status-dot" style={{ '--sct-status-dot-bg': macro.isActive ? '#22c55e' : '#475569' } as React.CSSProperties} />
+                    {macro.isActive ? t('speechConfigTab.active') : t('speechConfigTab.inactive')}
                   </button>
                 </td>
-                <td style={{ padding: '0 16px' }}>
-                  <div style={{ display: 'flex', justifyContent: 'center', alignItems: 'center', gap: '16px' }}>
+                <td className="sct-cell">
+                  <div className="sct-actions-cell">
                     {isEditing ? (
-                      <button 
+                      <button
                         onClick={() => handleSave(macro.id)}
                         className="ps-conf-btn-primary"
                       >
-                        Save
+                        {t('speechConfigTab.save')}
                       </button>
                     ) : (
                       <>
-                        <button 
+                        <button
                           onClick={() => setEditingId(macro.id)}
                           className="ps-conf-btn-row"
                         >
-                          Edit
+                          {t('speechConfigTab.edit')}
                         </button>
-                        <button 
+                        <button
                           onClick={() => handleDelete(macro.id)}
                           onMouseEnter={() => setHoveredTrashId(macro.id)}
                           onMouseLeave={() => setHoveredTrashId(null)}
-                          aria-label={`Delete macro: ${macro.spoken}`}
-                          style={{ 
-                            background: 'transparent', border: 'none', padding: 0, cursor: 'pointer',
-                            color: hoveredTrashId === macro.id ? '#ef4444' : '#94a3b8', opacity: hoveredTrashId === macro.id ? 1 : 0.65
-                          }}
+                          aria-label={t('speechConfigTab.deleteMacroAriaLabel', { spoken: macro.spoken })}
+                          className="sct-delete-btn"
+                          style={{
+                            '--sct-delete-color':   hoveredTrashId === macro.id ? '#ef4444' : '#94a3b8',
+                            '--sct-delete-opacity': hoveredTrashId === macro.id ? 1 : 0.65,
+                          } as React.CSSProperties}
                         >
                           <Trash2 size={16} strokeWidth={2} />
                         </button>

@@ -18,6 +18,10 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act, cleanup } from '@testing-library/react';
+// Initializes the real i18next instance so t() resolves to actual English
+// text at test time — this hook's "Draft saved" toast is now i18n-driven,
+// and several assertions below require exact-text equality.
+import '@/i18n/config';
 import { useOrchestratorDraft, writeCaseDraft } from '../useOrchestratorDraft';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
 import type { Case } from '@/types/case/Case';
@@ -35,6 +39,14 @@ function makeTestCase(overrides: Partial<Case> = {}): Case {
     id: 'ORCH-TEST-CASE',
     status: 'in-progress',
     synopticReports: [{ instanceId: 'SR-1', answers: {} }],
+    // Real fix, per direct follow-up: "the case prefix can't
+    // determine assist vs. orchestration case, we need to use a real
+    // flag." writeCaseDraft() now reads caseData.reportingMode, not
+    // the id string — this default matches this file's own real
+    // intent (its own test names call this "an Orchestration-mode
+    // case"), individual tests override it explicitly for the
+    // CoPilot-mode case.
+    reportingMode: 'orchestrator',
     ...overrides,
   } as unknown as Case;
 }
@@ -94,9 +106,13 @@ describe('writeCaseDraft — standalone function', () => {
     expect(localStorage.getItem('ps_orch_sections_ORCH-TEST-CASE')).toBe(JSON.stringify(sections));
   });
 
-  it('writes synopticReports instead, for a CoPilot-mode case ID — the real fix this consolidation exists for', async () => {
+  it('writes synopticReports instead, for a CoPilot (Assist-mode) case — the real fix this consolidation exists for', async () => {
     const { caseRouter } = await import('@/services/cases/CaseRouter');
-    const caseData = makeTestCase({ id: 'LIS-COPILOT-CASE', synopticReports: [{ instanceId: 'SR-9', answers: { a: 'b' } }] as any });
+    // Real fix, per direct follow-up: "the case prefix can't
+    // determine assist vs. orchestration case, we need to use a real
+    // flag." Explicitly 'assist' here, not just a differently-shaped
+    // id string — writeCaseDraft() no longer reads the id at all.
+    const caseData = makeTestCase({ id: 'LIS-COPILOT-CASE', reportingMode: 'assist', synopticReports: [{ instanceId: 'SR-9', answers: { a: 'b' } }] as any });
 
     await writeCaseDraft(caseData, 'LIS-COPILOT-CASE', [makeSection()], 3);
 

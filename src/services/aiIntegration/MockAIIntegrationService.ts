@@ -1,5 +1,7 @@
 import { IAIIntegrationService, AIProcessingOptions, AiFieldSuggestionResult, SynopticEvaluationInput, SynopticEvaluationResult } from './IAIIntegrationService';
-import { ServiceResult, VoiceMacro } from '../../types';
+import type { VoiceMacro } from '../../types';
+// PS-67 (Batch 348): the app's one result shape, { ok, data } | { ok: false, error }.
+import type { ServiceResult } from '../types';
 
 export class MockAIIntegrationService implements IAIIntegrationService {
   /**
@@ -29,7 +31,7 @@ export class MockAIIntegrationService implements IAIIntegrationService {
         }
 
         resolve({
-          success: true,
+          ok: true,
           data: refined.trim()
         });
       }, 600); 
@@ -43,7 +45,7 @@ export class MockAIIntegrationService implements IAIIntegrationService {
   async suggestMacros(text: string): Promise<ServiceResult<Partial<VoiceMacro>[]>> {
     console.log("Mock identifying macro suggestions for:", text);
     return {
-      success: true,
+      ok: true,
       data: [
         { id: 'm1', keyword: 'GG', expansion: 'Gleason Grade' },
         { id: 'm2', keyword: 'LVI', expansion: 'Lymphovascular Invasion' },
@@ -71,7 +73,7 @@ export class MockAIIntegrationService implements IAIIntegrationService {
         };
       }
     });
-    return { success: true, data: result };
+    return { ok: true, data: result };
   }
 
   /**
@@ -80,7 +82,7 @@ export class MockAIIntegrationService implements IAIIntegrationService {
   async generateNarrative(_system: string, _prompt: string): Promise<ServiceResult<string>> {
     await new Promise(r => setTimeout(r, 800));
     return {
-      success: true,
+      ok: true,
       data: '[Mock narrative] The specimen is consistent with the provided synoptic data. Final diagnosis pending pathologist review.',
     };
   }
@@ -101,7 +103,7 @@ export class MockAIIntegrationService implements IAIIntegrationService {
   ): Promise<ServiceResult<SynopticEvaluationResult>> {
     await new Promise(r => setTimeout(r, 500)); // simulate latency
     return {
-      success: true,
+      ok: true,
       data: { changes: [], warnings: [] },
     };
   }

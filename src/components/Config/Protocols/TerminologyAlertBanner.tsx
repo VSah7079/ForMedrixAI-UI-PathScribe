@@ -5,25 +5,26 @@
  * Also exports TerminologyAlertBadge for compact use in protocol cards.
  *
  * Drop-in path: src/components/Config/Protocols/TerminologyAlertBanner.tsx
+ *
+ * i18n note: `alert.system`/`alert.code`/`alert.fieldLabel`/
+ * `alert.optionLabel`/`r.code`/`r.display` are real SNOMED CT/ICD
+ * terminology data and real protocol field/option labels — never
+ * translated. `alert.message` is a diagnostic string produced by
+ * validateTerminologyCodes() (templateService.ts) — persisted
+ * validation-service output, same "stays literal" rule as other
+ * backend diagnostic text in this codebase.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { TerminologyAlert } from '../../../hooks/useTerminologyAlerts';
 
-// ─── Shared style tokens (matches SynopticEditor) ─────────────────────────────
-const ERROR_COLOR   = '#f87171';
-const ERROR_BG      = 'rgba(239,68,68,0.08)';
-const ERROR_BORDER  = 'rgba(239,68,68,0.25)';
-const WARN_COLOR    = '#fbbf24';
-const WARN_BG       = 'rgba(245,158,11,0.08)';
-const WARN_BORDER   = 'rgba(245,158,11,0.25)';
-
 function alertStyles(severity: 'error' | 'warning') {
   return severity === 'error'
-    ? { color: ERROR_COLOR, bg: ERROR_BG, border: ERROR_BORDER, icon: '🚫' }
-    : { color: WARN_COLOR,  bg: WARN_BG,  border: WARN_BORDER,  icon: '⚠️' };
+    ? { icon: '🚫' }
+    : { icon: '⚠️' };
 }
 
 // ─── Individual alert row ─────────────────────────────────────────────────────
@@ -32,38 +33,31 @@ const AlertRow: React.FC<{
   alert:   TerminologyAlert;
   onDismiss: (id: string) => void;
 }> = ({ alert, onDismiss }) => {
+  const { t } = useTranslation();
   const s = alertStyles(alert.severity);
   return (
-    <div style={{
-      display: 'flex', gap: '10px', alignItems: 'flex-start',
-      padding: '10px 12px', borderRadius: '8px',
-      background: s.bg, border: `1px solid ${s.border}`,
-      marginBottom: '6px',
-    }}>
-      <span style={{ fontSize: '14px', flexShrink: 0, marginTop: '1px' }}>{s.icon}</span>
-      <div style={{ flex: 1, minWidth: 0 }}>
-        <div style={{ fontSize: '12px', fontWeight: 700, color: s.color, marginBottom: '2px' }}>
+    <div className={`ps-termalert-row ps-termalert--${alert.severity}`}>
+      <span className="ps-termalert-row-icon">{s.icon}</span>
+      <div className="ps-termalert-row-content">
+        <div className="ps-termalert-row-title">
           {alert.system.toUpperCase()} {alert.code}
           {alert.fieldLabel && (
-            <span style={{ fontWeight: 400, color: '#94a3b8', marginLeft: '6px' }}>
+            <span className="ps-termalert-row-field">
               — {alert.fieldLabel}
               {alert.optionLabel && ` › "${alert.optionLabel}"`}
             </span>
           )}
         </div>
-        <div style={{ fontSize: '11px', color: '#94a3b8', lineHeight: 1.5 }}>
+        <div className="ps-termalert-row-message">
           {alert.message}
         </div>
         {alert.replacements && alert.replacements.length > 0 && (
-          <div style={{ marginTop: '5px', display: 'flex', gap: '6px', flexWrap: 'wrap', alignItems: 'center' }}>
-            <span style={{ fontSize: '10px', color: '#64748b' }}>Suggested replacement{alert.replacements.length > 1 ? 's' : ''}:</span>
+          <div className="ps-termalert-replacements">
+            <span className="ps-termalert-replacements-label">
+              {t('terminologyAlertBanner.suggestedReplacements', { count: alert.replacements.length })}
+            </span>
             {alert.replacements.map(r => (
-              <span key={r.code} style={{
-                fontSize: '10px', fontFamily: 'monospace', fontWeight: 700,
-                padding: '1px 7px', borderRadius: '4px',
-                background: 'rgba(16,185,129,0.12)', color: '#10B981',
-                border: '1px solid rgba(16,185,129,0.25)',
-              }}>
+              <span key={r.code} className="ps-termalert-replacement-chip">
                 {r.code} — {r.display}
               </span>
             ))}
@@ -72,14 +66,8 @@ const AlertRow: React.FC<{
       </div>
       <button
         onClick={() => onDismiss(alert.id)}
-        title="Dismiss this alert"
-        style={{
-          background: 'none', border: 'none', cursor: 'pointer',
-          color: '#475569', fontSize: '14px', padding: '0 2px',
-          lineHeight: 1, flexShrink: 0,
-        }}
-        onMouseEnter={e => (e.currentTarget.style.color = '#94a3b8')}
-        onMouseLeave={e => (e.currentTarget.style.color = '#475569')}
+        title={t('terminologyAlertBanner.dismissTooltip')}
+        className="ps-termalert-dismiss-btn"
       >
         ✕
       </button>
@@ -95,19 +83,14 @@ export const TerminologyAlertBanner: React.FC<{
   onDismiss: (id: string) => void;
   onRevalidate: () => void;
 }> = ({ alerts, isLoading, onDismiss, onRevalidate }) => {
+  const { t } = useTranslation();
   const [collapsed, setCollapsed] = useState(false);
 
   if (isLoading) {
     return (
-      <div style={{
-        padding: '10px 14px', marginBottom: '16px', borderRadius: '9px',
-        border: '1px solid rgba(255,255,255,0.08)',
-        background: 'rgba(255,255,255,0.02)',
-        fontSize: '12px', color: '#64748b',
-        display: 'flex', alignItems: 'center', gap: '8px',
-      }}>
-        <span style={{ fontSize: '14px' }}>🔍</span>
-        Validating terminology codes…
+      <div className="ps-termalert-loading">
+        <span className="ps-termalert-loading-icon">🔍</span>
+        {t('terminologyAlertBanner.validating')}
       </div>
     );
   }
@@ -119,53 +102,35 @@ export const TerminologyAlertBanner: React.FC<{
   const hasErrors    = errorCount > 0;
 
   return (
-    <div style={{
-      marginBottom: '16px', borderRadius: '10px',
-      border: `1px solid ${hasErrors ? ERROR_BORDER : WARN_BORDER}`,
-      background: hasErrors ? ERROR_BG : WARN_BG,
-      overflow: 'hidden',
-    }}>
+    <div className={`ps-termalert-banner ps-termalert--${hasErrors ? 'error' : 'warning'}`}>
       {/* Header */}
       <div
         onClick={() => setCollapsed(c => !c)}
-        style={{
-          display: 'flex', alignItems: 'center', gap: '10px',
-          padding: '10px 14px', cursor: 'pointer',
-        }}
+        className="ps-termalert-header"
       >
-        <span style={{ fontSize: '15px' }}>{hasErrors ? '🚫' : '⚠️'}</span>
-        <div style={{ flex: 1 }}>
-          <span style={{ fontSize: '13px', fontWeight: 700, color: hasErrors ? ERROR_COLOR : WARN_COLOR }}>
-            Terminology Alerts
+        <span className="ps-termalert-header-icon">{hasErrors ? '🚫' : '⚠️'}</span>
+        <div className="ps-termalert-header-text">
+          <span className="ps-termalert-header-title">
+            {t('terminologyAlertBanner.title')}
           </span>
-          <span style={{ fontSize: '11px', color: '#64748b', marginLeft: '10px' }}>
-            {errorCount > 0   && `${errorCount} deprecated code${errorCount > 1 ? 's' : ''}`}
+          <span className="ps-termalert-header-count">
+            {errorCount > 0   && t('terminologyAlertBanner.deprecatedCodeCount', { count: errorCount })}
             {errorCount > 0 && warningCount > 0 && ' · '}
-            {warningCount > 0 && `${warningCount} warning${warningCount > 1 ? 's' : ''}`}
+            {warningCount > 0 && t('terminologyAlertBanner.warningCount', { count: warningCount })}
           </span>
         </div>
         <button
           onClick={e => { e.stopPropagation(); onRevalidate(); }}
-          style={{
-            padding: '3px 10px', borderRadius: '5px', fontSize: '10px', fontWeight: 600,
-            border: '1px solid rgba(255,255,255,0.12)', background: 'rgba(255,255,255,0.05)',
-            color: '#64748b', cursor: 'pointer', fontFamily: 'inherit',
-          }}
-          onMouseEnter={e => e.currentTarget.style.color = '#94a3b8'}
-          onMouseLeave={e => e.currentTarget.style.color = '#64748b'}
+          className="ps-termalert-recheck-btn"
         >
-          ↻ Re-check
+          ↻ {t('terminologyAlertBanner.recheckButton')}
         </button>
-        <span style={{
-          fontSize: '12px', color: '#475569',
-          transform: collapsed ? 'rotate(-90deg)' : 'rotate(0deg)',
-          transition: 'transform 0.15s', display: 'inline-block',
-        }}>▾</span>
+        <span className={`ps-termalert-chevron${collapsed ? ' ps-termalert-chevron--collapsed' : ''}`}>▾</span>
       </div>
 
       {/* Alert list */}
       {!collapsed && (
-        <div style={{ padding: '0 14px 12px' }}>
+        <div className="ps-termalert-list">
           {alerts.map(alert => (
             <AlertRow key={alert.id} alert={alert} onDismiss={onDismiss} />
           ))}
@@ -181,20 +146,16 @@ export const TerminologyAlertBadge: React.FC<{
   errorCount:   number;
   warningCount: number;
 }> = ({ errorCount, warningCount }) => {
+  const { t } = useTranslation();
   if (errorCount === 0 && warningCount === 0) return null;
   const hasErrors = errorCount > 0;
   const s = alertStyles(hasErrors ? 'error' : 'warning');
   const label = hasErrors
-    ? `${errorCount} deprecated code${errorCount > 1 ? 's' : ''}`
-    : `${warningCount} terminology warning${warningCount > 1 ? 's' : ''}`;
+    ? t('terminologyAlertBanner.deprecatedCodeCount', { count: errorCount })
+    : t('terminologyAlertBanner.terminologyWarningCount', { count: warningCount });
 
   return (
-    <span style={{
-      fontSize: '10px', fontWeight: 700,
-      padding: '2px 8px', borderRadius: '99px',
-      background: s.bg, color: s.color, border: `1px solid ${s.border}`,
-      whiteSpace: 'nowrap',
-    }}>
+    <span className={`ps-termalert-badge ps-termalert--${hasErrors ? 'error' : 'warning'}`}>
       {s.icon} {label}
     </span>
   );

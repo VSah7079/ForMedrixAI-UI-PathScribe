@@ -5,197 +5,17 @@
 //   My data only  — clears only data belonging to the current user's hospital,
 //                   preserving other testers' work
 //
-// Both paths require a confirmation step before executing.
+// Both paths require a confirmation step before executing. The reset logic
+// lives in services/demoReset/demoReset.ts (Batch 370); the full reset needs
+// the capability config:demo-data:reset.
 
 import React, { useState, useEffect } from 'react';
+import { useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
-
-// ─── Reset utilities ──────────────────────────────────────────────────────────
-
-const MOCK_PREFIX   = 'pathscribe_mock_';
-const SESSION_KEY   = 'pathscribe-user';
-// Real fix, per direct report: "reset the demo data, logged back in,
-// got an 'Already signed in elsewhere' message." That marker
-// (services/session/sessionSupersedeService.ts) is deliberately its
-// own key namespace, not under MOCK_PREFIX and not in SESSION_KEY —
-// so neither existing cleanup path ever touched it. A reset cleared
-// the user's own session but left the stale active-session marker
-// from before the reset sitting in localStorage; the very next login
-// found that stale marker and incorrectly concluded the account was
-// already signed in elsewhere. clearActiveSessionId()'s own doc
-// comment already warned about exactly this failure mode ("without
-// this, a perfectly normal future login would incorrectly detect a
-// conflict against a stale marker nobody ever cleared") — this reset
-// flow was the gap that comment was warning about.
-const ACTIVE_SESSION_KEY_PREFIX = 'pathscribe_active_session_';
-
-const VERSIONED_KEYS = [
-  'pathscribe_users_version',
-  'pathscribe_messages_version',
-  'pathscribe_mock_cases_version',
-  'pathscribe_flags_version',
-];
-
-const SETTINGS_KEYS = [
-  'specimen_dictionary',
-  'container_types',
-  'pathscribe_delegation_types_v2',
-  'pathscribe_internal_notes_v2',
-  'pathscribe_subspecialties',
-  'pathscribe_report_templates',
-  'pathscribe_participation_types_v2', // the real, canonical key (services/participationTypes/mockParticipationTypeService.ts)
-  'pathscribe_participation_types',    // orphaned old key from ParticipationTypesSection.tsx's now-removed separate local list -- included so any stale leftover data gets cleared too
-  // Added after a full audit of every storageGet/storageSet key across
-  // services/ against this list -- these 16 real service storage keys
-  // were previously missing entirely, meaning this data silently
-  // survived a "Demo Reset". Deliberately NOT included:
-  // pathscribe_audit_logs / pathscribe_error_logs (shouldn't reset with
-  // demo data -- an audit trail and error log surviving a demo reset is
-  // the correct behavior, not a gap).
-  'pathscribe_roles',
-  'pathscribe_users',
-  'pathscribe_clients',
-  'pathscribe_physicians',
-  'pathscribe_protocols',
-  'pathscribe_macros',
-  'pathscribe_fonts',
-  'pathscribe_models',
-  'pathscribe_deficiency_types',
-  'pathscribe_resolution_types',
-  'pathscribe_specimen_categories',
-  'pathscribe_specimen_crosswalk',
-  'pathscribe_specimen_deficiencies',
-  'pathscribe_grossing_routing_overrides',
-  'pathscribe_incoming_orders',
-  'pathscribe_management_reviews',
-];
-
-const CASE_KEYS = [
-  'cases', // CRITICAL FIX: was 'ps_cases', which mockCaseService.ts never actually wrote to — Demo Reset had never actually been clearing primary case data
-  'orch_cases_v3',
-  // Found via a full storageGet/storageSet audit across services/ that
-  // wasn't limited to the pathscribe_ prefix (that earlier, narrower
-  // search is exactly how 'cases' and everything below was missed):
-  'discordance_records',
-  'amendment_records',
-  'report_version_records',
-  'lis_amendment_notices',
-  'intraop_entries',
-  'pathscribe_drafts',
-];
-
-const FLAG_KEYS = [
-  'pathscribe_flags',
-  'pathscribe_flags_v2',
-];
-
-const STATE_KEYS = [
-  'pathscribe_ped_requested',
-  'ps_learned_triggers',
-];
-
-// Hospital → user mapping (mirrors mockCaseService USER_HOSPITAL_MAP)
-const HOSPITAL_MAP: Record<string, string> = {
-  'PATH-001':    'HOSP-001',   // Pete Nimmo — US demo
-  'PATH-UK-001': 'HOSP-MFT',  // Paul Carter   — UK
-  'PATH-UK-002': 'HOSP-MFT',
-  'PATH-US-001': 'HOSP-MPA',  // Amber Fehrs-Battey — US
-  'PATH-US-002': 'HOSP-HFHS',  // J. Mark Tuthill
-  'PATH-RB-001': 'HOSP-RB',    // Rossana Babakhani
-};
-
-/** Read current user id from localStorage session */
-function getCurrentUserId(): string | null {
-  try {
-    const raw = localStorage.getItem(SESSION_KEY);
-    if (!raw) return null;
-    const parsed = JSON.parse(raw);
-    return parsed?.id ?? parsed?.userId ?? null;
-  } catch {
-    return null;
-  }
-}
-
-/** Full reset — clears all mock data for all users */
-function executeFullReset(): string[] {
-  const cleared: string[] = [];
-  const remove = (k: string) => {
-    if (localStorage.getItem(k) !== null) {
-      localStorage.removeItem(k);
-      cleared.push(k);
-    }
-  };
-
-  VERSIONED_KEYS.forEach(remove);
-  SETTINGS_KEYS.forEach(remove);
-  CASE_KEYS.forEach(remove);
-  FLAG_KEYS.forEach(remove);
-  STATE_KEYS.forEach(remove);
-  remove(SESSION_KEY);
-
-  Object.keys(localStorage)
-    .filter(k => k.startsWith(MOCK_PREFIX))
-    .forEach(k => { localStorage.removeItem(k); cleared.push(k); });
-
-  // Real fix — see ACTIVE_SESSION_KEY_PREFIX's own comment above for
-  // why this needs its own sweep, separate from the MOCK_PREFIX one.
-  Object.keys(localStorage)
-    .filter(k => k.startsWith(ACTIVE_SESSION_KEY_PREFIX))
-    .forEach(k => { localStorage.removeItem(k); cleared.push(k); });
-
-  sessionStorage.clear();
-  return cleared;
-}
-
-/**
- * Partial reset — removes only the current user's cases from the mock case
- * store, then forces a version bump so their cases re-seed from defaults.
- * Other users' work is preserved.
- */
-function executeUserReset(userId: string): string[] {
-  const cleared: string[] = [];
-  const hospitalId = HOSPITAL_MAP[userId];
-
-  // Load and filter the cases store
-  const casesKey = `${MOCK_PREFIX}cases`;
-  const raw = localStorage.getItem(casesKey);
-  if (raw) {
-    try {
-      const cases = JSON.parse(raw);
-      const filtered = cases.filter(
-        (c: any) => c.originHospitalId !== hospitalId && c.hospitalId !== hospitalId
-      );
-      if (filtered.length !== cases.length) {
-        localStorage.setItem(casesKey, JSON.stringify(filtered));
-        cleared.push(`${casesKey} (removed ${cases.length - filtered.length} cases)`);
-      }
-    } catch {
-      // If corrupt, remove the whole store — it will re-seed
-      localStorage.removeItem(casesKey);
-      cleared.push(casesKey);
-    }
-  }
-
-  // Clear the cases version so the full seed re-runs on next load
-  // (seed data is additive — it won't duplicate cases already present)
-  localStorage.removeItem('pathscribe_mock_cases_version');
-  cleared.push('pathscribe_mock_cases_version (version reset)');
-
-  // Real fix — same gap as executeFullReset above, scoped correctly
-  // here: only this user's own marker, since other testers' sessions
-  // must survive a "my data only" reset.
-  const ownActiveSessionKey = `${ACTIVE_SESSION_KEY_PREFIX}${userId}`;
-  if (localStorage.getItem(ownActiveSessionKey) !== null) {
-    localStorage.removeItem(ownActiveSessionKey);
-    cleared.push(ownActiveSessionKey);
-  }
-
-  // Clear any user-specific session state
-  sessionStorage.clear();
-  cleared.push('sessionStorage');
-
-  return cleared;
-}
+import { IS_MOCK_BACKEND, authorizationService } from '@/services/index';
+import { HOSPITAL_MAP, executeUserReset, getCurrentUserId, resetAllDemoData } from '@/services/demoReset/demoReset';
+import { CapabilityButton } from '@/components/Common/CapabilityButton';
 
 // ─── Component ────────────────────────────────────────────────────────────────
 
@@ -205,6 +25,8 @@ type UIState = 'idle' | 'confirm-full' | 'confirm-user' | 'done';
 interface ResetResult { mode: Mode; cleared: string[]; }
 
 const DemoResetTab: React.FC = () => {
+  const { t } = useTranslation();
+  const navigate = useNavigate();
   const [uiState,    setUiState]    = useState<UIState>('idle');
   const [result,     setResult]     = useState<ResetResult | null>(null);
   const [userId,     setUserId]     = useState<string | null>(null);
@@ -218,13 +40,16 @@ const DemoResetTab: React.FC = () => {
   useEffect(() => {
     if (uiState !== 'done') return;
     if (countdown <= 0) { window.location.href = '/worklist'; return; }
-    const t = setTimeout(() => setCountdown(c => c - 1), 1000);
-    return () => clearTimeout(t);
+    const timer = setTimeout(() => setCountdown(c => c - 1), 1000);
+    return () => clearTimeout(timer);
   }, [uiState, countdown]);
 
-  const handleFullReset = () => {
-    const cleared = executeFullReset();
-    setResult({ mode: 'full', cleared });
+  // PS-356: the full reset (everyone's data) needs config:demo-data:reset,
+  // checked and audited by the service; a refusal returns to idle.
+  const handleFullReset = async () => {
+    const res = await resetAllDemoData({ authorization: authorizationService });
+    if (res.ok === false) { setUiState('idle'); return; }
+    setResult({ mode: 'full', cleared: res.cleared });
     setUiState('done');
   };
 
@@ -237,6 +62,11 @@ const DemoResetTab: React.FC = () => {
   };
 
   const hospitalId = userId ? HOSPITAL_MAP[userId] : null;
+  // Real demo-account labels — actual names of the real people these
+  // demo hospital accounts belong to (Pete Nimmo, Paul Carter, Amber
+  // Fehrs-Battey, J. Mark Tuthill, Rossana Babakhani). Left in English
+  // as real reference data, same treatment as other real names/
+  // identifiers elsewhere in this sweep.
   const hospitalLabel: Record<string, string> = {
     'HOSP-001': 'PathScribe Demo (Pete Nimmo)',
     'HOSP-MFT': 'Manchester Foundation Trust (Paul Carter)',
@@ -253,19 +83,16 @@ const DemoResetTab: React.FC = () => {
     onConfirm: () => void; onCancel: () => void;
     confirmLabel: string; confirmColor: string;
   }) => (
-    <div role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" style={{
-      background: 'rgba(0,0,0,0.2)', border: '1px solid var(--ps-conf-border)',
-      borderRadius: 8, padding: '20px 24px', marginTop: 16,
-    }}>
-      <h4 id="confirm-dialog-title" style={{ margin: '0 0 8px', fontSize: 15, fontWeight: 700 }}>{title}</h4>
-      <p style={{ margin: '0 0 8px', fontSize: 13, color: 'var(--ps-conf-text-3)', lineHeight: 1.6 }}>
+    <div role="dialog" aria-modal="true" aria-labelledby="confirm-dialog-title" className="ps-demoreset__confirm-box">
+      <h4 id="confirm-dialog-title" className="ps-demoreset__confirm-title">{title}</h4>
+      <p className="ps-demoreset__confirm-desc">
         {description}
       </p>
-      <p style={{ margin: '0 0 16px', fontSize: 12, color: '#f87171', lineHeight: 1.6 }}>
+      <p className="ps-demoreset__confirm-warning">
         ⚠ {warning}
       </p>
-      <div style={{ display: 'flex', gap: 10 }}>
-        <button className="ps-conf-btn-secondary" onClick={onCancel}>Cancel</button>
+      <div className="ps-sub-footer-actions">
+        <button className="ps-conf-btn-secondary" onClick={onCancel}>{t('common.cancel')}</button>
         <button
           onClick={onConfirm}
           className={confirmColor === '#dc2626' ? 'ps-btn-danger-solid' : 'ps-btn-primary'}
@@ -277,18 +104,38 @@ const DemoResetTab: React.FC = () => {
   );
 
   // ── Done state ────────────────────────────────────────────────────────────
+  // ── Real, critical safety gate — per direct follow-up: "The system
+  //    cannot ever delete/reset a customer's actual database
+  //    entries." Takes precedence over every other UI state in this
+  //    component, including an in-progress confirmation dialog — if
+  //    this app is ever connected to a real, non-mock backend, no
+  //    path through this component should ever reach a destructive
+  //    action. See services/index.ts's own IS_MOCK_BACKEND doc
+  //    comment for the full reasoning. ──
+  if (!IS_MOCK_BACKEND) {
+    return (
+      <div className="ps-demoreset__page">
+        <div className="ps-reset-disabled">
+          <div className="ps-reset-disabled__title">⛔ {t('demoResetTab.disabled.title')}</div>
+          <p className="ps-demoreset__subtitle">
+            {t('demoResetTab.disabled.description')}
+          </p>
+        </div>
+      </div>
+    );
+  }
+
   if (uiState === 'done' && result) {
     return (
-      <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 0' }}>
+      <div className="ps-demoreset__page">
         <div className="ps-reset-success">
           <div className="ps-reset-success__title">
-            ✓ {result.mode === 'full' ? 'Full reset complete' : 'Your data has been reset'}
+            ✓ {result.mode === 'full' ? t('demoResetTab.done.fullResetComplete') : t('demoResetTab.done.userResetComplete')}
           </div>
-          <p style={{ margin: '0 0 12px', fontSize: 13, color: 'var(--ps-conf-text-3)' }}>
-            {result.cleared.length} item{result.cleared.length !== 1 ? 's' : ''} cleared.
-            Redirecting to Worklist in {countdown}s…
+          <p className="ps-demoreset__result-desc">
+            {t('demoResetTab.done.summary', { count: result.cleared.length, countdown })}
           </p>
-          <div style={{ fontSize: 11, color: 'var(--ps-conf-text-3)', fontFamily: 'monospace', lineHeight: 1.8 }}>
+          <div className="ps-demoreset__cleared-list">
             {result.cleared.map(k => <div key={k}>✓ {k}</div>)}
           </div>
         </div>
@@ -298,48 +145,46 @@ const DemoResetTab: React.FC = () => {
 
   // ── Main UI ───────────────────────────────────────────────────────────────
   return (
-    <div style={{ maxWidth: 640, margin: '0 auto', padding: '32px 0' }}>
+    <div className="ps-demoreset__page">
 
-      <div style={{ marginBottom: 28 }}>
-        <h2 style={{ margin: '0 0 6px', fontSize: 20, fontWeight: 700 }}>Demo Data Reset</h2>
-        <p style={{ margin: 0, fontSize: 13, color: 'var(--ps-conf-text-3)', lineHeight: 1.6 }}>
-          Restore mock data to a clean baseline without requiring developer access.
-          Choose between resetting only your data or performing a full system reset.
+      <div className="ps-demoreset__section-header">
+        <h2 className="ps-demoreset__title">{t('demoResetTab.title')}</h2>
+        <p className="ps-demoreset__subtitle">
+          {t('demoResetTab.subtitle')}
         </p>
       </div>
 
       {/* ── Option 1: My data only ── */}
       <div className="comp-reset-card comp-reset-card--user">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+        <div className="ps-demoreset__card-row">
           <div>
             <div className="comp-reset-card-title">
-              Reset my data only
+              {t('demoResetTab.userCard.title')}
             </div>
             <div className="comp-reset-card-desc">
-              Removes your cases and restores your seed data. Other testers' work is preserved.
+              {t('demoResetTab.userCard.description')}
             </div>
             {hospitalId && (
               <div className="comp-reset-hospital-label">
-                Your hospital: {hospitalLabel[hospitalId] ?? hospitalId}
+                {t('demoResetTab.userCard.hospitalLabel', { hospital: hospitalLabel[hospitalId] ?? hospitalId })}
               </div>
             )}
           </div>
           <button
-            className="ps-conf-btn-secondary"
+            className="ps-conf-btn-secondary ps-demoreset__btn--nowrap"
             disabled={!userId || uiState === 'confirm-full'}
             onClick={() => { setUiState('confirm-user'); setCountdown(3); }}
-            style={{ flexShrink: 0, whiteSpace: 'nowrap' }}
           >
-            Reset my data…
+            {t('demoResetTab.userCard.resetBtn')}
           </button>
         </div>
 
         {uiState === 'confirm-user' && (
           <ConfirmDialog
-            title="Reset your data?"
-            description={`This will remove all cases for ${hospitalLabel[hospitalId ?? ''] ?? 'your hospital'} and restore them to the demo seed. Your flag configurations are not affected.`}
-            warning="This cannot be undone. The page will reload automatically."
-            confirmLabel="Yes, reset my data"
+            title={t('demoResetTab.userCard.confirmTitle')}
+            description={t('demoResetTab.userCard.confirmDescription', { hospital: hospitalLabel[hospitalId ?? ''] ?? t('demoResetTab.userCard.yourHospitalFallback') })}
+            warning={t('demoResetTab.userCard.confirmWarning')}
+            confirmLabel={t('demoResetTab.userCard.confirmBtn')}
             confirmColor="#0891B2"
             onConfirm={handleUserReset}
             onCancel={() => setUiState('idle')}
@@ -349,46 +194,73 @@ const DemoResetTab: React.FC = () => {
 
       {/* ── Option 2: Full reset ── */}
       <div className="comp-reset-card comp-reset-card--full">
-        <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 16 }}>
+        <div className="ps-demoreset__card-row">
           <div>
             <div className="comp-reset-card-title">
-              Full reset
+              {t('demoResetTab.fullCard.title')}
             </div>
             <div className="comp-reset-card-desc">
-              Clears all mock data for all users — cases, flags, messages, session, and UI state.
-              Use this to restore a completely clean baseline before a new testing session.
+              {t('demoResetTab.fullCard.description')}
             </div>
             <div className="comp-reset-card-warning">
-              Affects all testers. Use sparingly.
+              {t('demoResetTab.fullCard.warning')}
             </div>
           </div>
-          <button
+          <CapabilityButton
+            capability="config:demo-data:reset"
             disabled={uiState === 'confirm-user'}
             onClick={() => setUiState('confirm-full')}
-            style={{
-              flexShrink: 0, whiteSpace: 'nowrap',
-              padding: '8px 18px', fontSize: 13, fontWeight: 600,
-              background: 'transparent',
-              border: '1px solid rgba(239,68,68,0.5)',
-              borderRadius: 6, color: '#f87171', cursor: 'pointer',
-              opacity: uiState === 'confirm-user' ? 0.4 : 1,
-            }}
+            className={`ps-demoreset__btn-danger-outline${uiState === 'confirm-user' ? ' ps-demoreset__btn-danger-outline--disabled' : ''}`}
           >
-            Full reset…
-          </button>
+            {t('demoResetTab.fullCard.resetBtn')}
+          </CapabilityButton>
         </div>
 
         {uiState === 'confirm-full' && (
           <ConfirmDialog
-            title="Full reset — are you sure?"
-            description="This will clear all mock data for every user including cases, flag configurations, messages, and sessions. All testers will lose their current state."
-            warning="This affects Paul, Amber, and Sarah. All work in progress will be lost."
-            confirmLabel="Yes, reset everything"
+            title={t('demoResetTab.fullCard.confirmTitle')}
+            description={t('demoResetTab.fullCard.confirmDescription')}
+            warning={t('demoResetTab.fullCard.confirmWarning')}
+            confirmLabel={t('demoResetTab.fullCard.confirmBtn')}
             confirmColor="#dc2626"
-            onConfirm={handleFullReset}
+            onConfirm={() => { void handleFullReset(); }}
             onCancel={() => setUiState('idle')}
           />
         )}
+      </div>
+
+      {/* ── Testing & Demo Tools — real, direct follow-up (Sep 2026):
+          "Molecular Order Queue" used to be a flat top-level Home tile;
+          per direct guidance ("seems like a Testing tool"), it's a
+          real demo/simulation surface (see its own page header —
+          simulates ordering and inbound HPV results against a fixed
+          seed case, never a production ordering workflow with a real
+          staff operator), so it moved here — same roof as this tab's
+          own reset tools, rather than a Home tile aimed at every
+          user. Same real /molecular-order-queue route underneath. ── */}
+      <div className="ps-demoreset__extra-section">
+        <div className="ps-demoreset__extra-section-heading">
+          <h2 className="ps-demoreset__title">{t('demoResetTab.testingTools.title')}</h2>
+          <p className="ps-demoreset__subtitle">
+            {t('demoResetTab.testingTools.subtitle')}
+          </p>
+        </div>
+        <div className="comp-reset-card">
+          <div className="ps-demoreset__card-row">
+            <div>
+              <div className="comp-reset-card-title">{t('demoResetTab.testingTools.molecularOrderQueueTitle')}</div>
+              <div className="comp-reset-card-desc">
+                {t('demoResetTab.testingTools.molecularOrderQueueDescription')}
+              </div>
+            </div>
+            <button
+              className="ps-conf-btn-secondary ps-demoreset__btn--nowrap"
+              onClick={() => navigate('/molecular-order-queue')}
+            >
+              🧬 {t('demoResetTab.testingTools.openBtn')}
+            </button>
+          </div>
+        </div>
       </div>
 
     </div>

@@ -1,7 +1,9 @@
 // src/components/ValidationStudies/ModelStoreModal.tsx
 // ─────────────────────────────────────────────────────────────
 // The customer-facing half of the store workflow: browse what
-// ForMedrixAI has published, download one into the local catalog.
+// ForMedrixAI has published that this organisation hasn't adopted yet,
+// and adopt one (PS-58: an adoption record under the organisation in
+// session, never a copy of the model).
 // Opened from StudyFormModal's "AI Model Being Validated" field —
 // per the direct workflow description, this is the point where an
 // admin who got the "new model available" email actually goes to get
@@ -9,13 +11,13 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { mockModelStoreService, type StoreListing } from '../../services/models/mockModelStoreService';
-import type { AIModel, ModelVendor } from '../../services/models/IModelService';
-
-const VENDOR_LABEL: Record<ModelVendor, string> = {
-  anthropic: 'Anthropic', openai: 'OpenAI', google: 'Google', other: 'Other',
-};
+import type { AIModel } from '../../services/models/IModelService';
+import { MODEL_VENDOR_LABEL_KEY, modelStoreErrorLabelKey } from '../../services/models/modelLabels';
+import { isServiceOk } from '../../services/types';
+import { formatDate } from '../../utils/formatDate';
 
 interface ModelStoreModalProps {
   /** Fired once a download genuinely succeeds, with the new local
@@ -27,6 +29,7 @@ interface ModelStoreModalProps {
 }
 
 export const ModelStoreModal: React.FC<ModelStoreModalProps> = ({ onDownloaded, onClose }) => {
+  const { t, i18n } = useTranslation();
   const [listings, setListings] = useState<StoreListing[]>([]);
   const [loading,  setLoading]  = useState(true);
   const [downloadingId, setDownloadingId] = useState<string | null>(null);
@@ -40,84 +43,98 @@ export const ModelStoreModal: React.FC<ModelStoreModalProps> = ({ onDownloaded, 
 
   useEffect(() => {
     mockModelStoreService.getAvailable().then(res => {
-      if (res.ok) { setListings(res.data); }
-      else { setAuthError((res as { ok: false; error: string }).error); }
+      // Real, direct follow-up (PS-69): this is the exact recurrence site
+      // the ticket named ("the UI's own handling of both") — the prior pass
+      // fixed ServiceResult's own type (literal `ok: true`/`ok: false`
+      // discriminants + an isServiceOk() guard) but never actually applied
+      // either here, leaving this `if (res.ok) {} else {}` truthy-check
+      // pattern still needing the old `as { ok: false; error: string }`
+      // cast. Root cause, confirmed by isolated repro: this project's
+      // tsconfig has strictNullChecks: false, and under that setting
+      // TypeScript's control-flow narrowing genuinely does not narrow the
+      // `else` branch of a plain truthy `if (x.ok)` check on this union —
+      // only an explicit `=== true`/`=== false` comparison (or a type
+      // predicate like isServiceOk) narrows correctly. isServiceOk() used
+      // here for exactly that reason.
+      if (isServiceOk(res)) { setListings(res.data); }
+      else { setAuthError(res.error); }
       setLoading(false);
     });
   }, []);
 
   const handleDownload = async (listing: StoreListing) => {
-    setDownloadingId(listing.storeId);
+    setDownloadingId(listing.id);
     setError(null);
-    const res = await mockModelStoreService.download(listing.storeId);
+    const res = await mockModelStoreService.download(listing.id);
     setDownloadingId(null);
-    if (res.ok === false) { setError((res as { ok: false; error: string }).error); return; }
-    onDownloaded((res as { ok: true; data: AIModel }).data);
+    // `res.ok === false` (strict equality) already narrows correctly even
+    // under strictNullChecks: false — kept as isServiceOk()'s negation for
+    // consistency with the useEffect block above and so both call sites in
+    // this file read the same way.
+    if (!isServiceOk(res)) { setError(res.error); return; }
+    onDownloaded(res.data);
   };
 
   return (
-    <div className="ps-overlay" onClick={onClose} style={{ zIndex: 9600 }}>
-      <div className="ps-modal-dark" style={{ width: 620, maxHeight: '80vh', overflow: 'auto' }} onClick={e => e.stopPropagation()}>
+    <div className="ps-overlay ps-overlay--model-store" onClick={onClose}>
+      <div className="ps-modal-dark msm-modal" onClick={e => e.stopPropagation()}>
         <div className="ps-modal-dark-header">
-          <span className="ps-modal-dark-title">ForMedrixAI Store</span>
+          <span className="ps-modal-dark-title">{t('modelStoreModal.title')}</span>
           <button className="ps-research-close" onClick={onClose}>✕</button>
         </div>
-        <div style={{ padding: '16px 24px 24px' }}>
+        <div className="msm-body">
           {authError ? (
-            <div style={{ padding: '40px 20px', textAlign: 'center' }}>
-              <div style={{ fontSize: 32, marginBottom: 10 }}>🔒</div>
-              <div style={{ fontSize: 14, fontWeight: 700, color: '#e2e8f0', marginBottom: 6 }}>Store access unavailable</div>
-              <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, maxWidth: 420, margin: '0 auto' }}>{authError}</div>
+            <div className="msm-auth-error">
+              <div className="msm-auth-error-icon">🔒</div>
+              <div className="msm-auth-error-title">{t('modelStoreModal.accessUnavailable')}</div>
+              <div className="msm-auth-error-text">{t(modelStoreErrorLabelKey(authError))}</div>
             </div>
           ) : (
             <>
-              <p style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.6, marginBottom: 16 }}>
-                Models ForMedrixAI has published following their own internal
-                regression testing, not yet downloaded into your system. Downloading
-                adds it here as <strong style={{ color: '#fbbf24' }}>Beta</strong> — advisory,
-                never the default, zero cases processed — until your own Validation
-                Study confirms it for your data.
+              <p className="msm-intro">
+                {t('modelStoreModal.introPrefix')}{' '}
+                <strong className="msm-beta-highlight">{t('modelStoreModal.betaLabel')}</strong>
+                {' '}{t('modelStoreModal.introSuffix')}
               </p>
 
               {loading && (
-                <div style={{ padding: '40px 0', textAlign: 'center', color: '#6b7280', fontSize: 13 }}>Loading store catalog…</div>
+                <div className="msm-loading">{t('modelStoreModal.loadingCatalog')}</div>
               )}
 
               {!loading && listings.length === 0 && (
-                <div style={{ padding: '40px 0', textAlign: 'center', color: '#6b7280', fontSize: 13 }}>
-                  Nothing new right now — every published model is already in your system.
+                <div className="msm-empty">
+                  {t('modelStoreModal.nothingNew')}
                 </div>
               )}
 
               {error && (
-                <div style={{ padding: '8px 12px', marginBottom: 12, borderRadius: 6, background: 'rgba(239,68,68,0.1)', border: '1px solid rgba(239,68,68,0.3)', color: '#f87171', fontSize: 12 }}>
-                  {error}
+                <div className="msm-error-banner">
+                  {t(modelStoreErrorLabelKey(error))}
                 </div>
               )}
 
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 10 }}>
+              <div className="msm-listings">
             {listings.map(listing => (
-              <div key={listing.storeId} style={{ border: '1px solid rgba(255,255,255,0.1)', borderRadius: 10, padding: '14px 16px' }}>
-                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 12 }}>
-                  <div style={{ minWidth: 0 }}>
-                    <div style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 3 }}>
-                      <span style={{ fontSize: 14, fontWeight: 700, color: '#f1f5f9' }}>{listing.name} {listing.version}</span>
-                      <span style={{ fontSize: 10, fontWeight: 600, padding: '1px 7px', borderRadius: 8, background: 'rgba(148,163,184,0.15)', color: '#cbd5e1' }}>
-                        {VENDOR_LABEL[listing.vendor]}
+              <div key={listing.id} className="msm-listing-card">
+                <div className="msm-listing-row">
+                  <div className="msm-listing-info">
+                    <div className="msm-listing-name-row">
+                      <span className="msm-listing-name">{listing.name} {listing.version}</span>
+                      <span className="msm-listing-vendor">
+                        {t(MODEL_VENDOR_LABEL_KEY[listing.vendor])}
                       </span>
                     </div>
-                    <div style={{ fontSize: 11, color: '#64748b', marginBottom: 6 }}>
-                      Published {listing.releaseDate} · ForMedrixAI benchmark {listing.benchmarkAccuracy}%
+                    <div className="msm-listing-meta">
+                      {t('modelStoreModal.published', { date: formatDate(listing.releaseDate, i18n.language), accuracy: listing.benchmarkAccuracy })}
                     </div>
-                    <div style={{ fontSize: 12, color: '#94a3b8', lineHeight: 1.5 }}>{listing.releaseNotes}</div>
+                    <div className="msm-listing-notes">{listing.releaseNotes}</div>
                   </div>
                   <button
-                    className="ps-conf-btn-primary"
-                    style={{ flexShrink: 0, fontSize: 12, padding: '6px 14px' }}
-                    disabled={downloadingId === listing.storeId}
+                    className="ps-conf-btn-primary msm-download-btn"
+                    disabled={downloadingId === listing.id}
                     onClick={() => handleDownload(listing)}
                   >
-                    {downloadingId === listing.storeId ? 'Downloading…' : '⬇ Download'}
+                    {downloadingId === listing.id ? t('modelStoreModal.downloading') : t('modelStoreModal.download')}
                   </button>
                 </div>
               </div>

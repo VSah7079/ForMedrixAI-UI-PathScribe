@@ -11,13 +11,7 @@ interface Props {
 }
 
 const SynopticSidebar: React.FC<Props> = ({ children }) => (
-  <div style={{
-    height:        '100%',
-    display:       'flex',
-    flexDirection: 'column',
-    borderRight:   '1px solid rgba(255,255,255,0.08)',
-    overflowY:     'auto',
-  }}>
+  <div className="synoptic-sidebar">
     {children}
   </div>
 );

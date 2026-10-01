@@ -13,7 +13,7 @@
 // so it applies uniformly regardless of which page was requested.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { Navigate, Outlet, useLocation } from 'react-router-dom';
+import { Navigate, Outlet, useLocation } from 'react-router';
 import { shouldRestrictToMobileWorkflow } from '@/utils/deviceDetection';
 
 const INTRAOP_QUEUE_PATH = '/intraop-queue';

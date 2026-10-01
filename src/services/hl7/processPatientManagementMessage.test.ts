@@ -106,7 +106,7 @@ describe('processPatientManagementMessage — real fix, the actual point of Phas
     );
     expect(result.eventType).toBe('A24');
 
-    const linked = await mockPatientIndexService.getLinkedPatientIds(result.patientId!);
+    const linked = await mockPatientIndexService.getLinkedPatientIds(result.patientId!, 'same_person');
     expect(linked.length).toBe(2); // target + source, genuinely linked, not merged into one
 
     for (const id of linked) {

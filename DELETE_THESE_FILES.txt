@@ -1,15 +1,10 @@
-Two files are now genuinely orphaned and should be deleted from your machine
-after applying this patch - Apply-Patch only copies/overwrites, it never
-deletes:
+Batch 188 — dead-code removal. These files should be DELETED from the
+project (zip archives cannot express deletions):
 
-  src/components/Contribution/aiContributionCalculations.ts
-  src/components/Contribution/aiContributionCalculations.test.ts
+src/pages/SynopticReportPage/modals/CreateMegablockModal.tsx
+src/pages/SynopticReportPage/components/MegablockDiagram.tsx
 
-These were built to compute real, aggregate narrative-AI stats for the
-Contribution Dashboard. Once Narrative AI was removed from that page (it
-belongs in Validation Studies instead - see AIContributionTab.tsx's own
-header comment), nothing calls these functions anymore.
-
-PowerShell:
-  Remove-Item "C:\Users\nimmo\Documents\pathscribe-ai\src\components\Contribution\aiContributionCalculations.ts"
-  Remove-Item "C:\Users\nimmo\Documents\pathscribe-ai\src\components\Contribution\aiContributionCalculations.test.ts"
+Both were confirmed orphaned (zero importers anywhere in the codebase)
+and fully superseded by CreateBiopsyArrayModal.tsx / BiopsyArrayDiagram.tsx,
+which are what SynopticReportPage.tsx actually wires up. Full suite
+(499/499 files, 4329/4329 tests) still passes after deletion.

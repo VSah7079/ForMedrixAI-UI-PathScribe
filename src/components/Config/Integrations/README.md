@@ -1,21 +1,49 @@
 # components/Config/Integrations/
 
-**New folder**, per direct request: consolidates the real interoperability-related config that was scattered in `Config/System/`'s flat "Independent" sidebar group into its own major configuration tab (`ConfigurationPage.tsx`'s `TAB_LABELS`), alongside `Config/System`, `Config/AI`, `Config/Staff`, etc.
+**Real, current status: fully retired, per direct confirmation.** This
+folder held its own `index.tsx` orchestrator (tab shell + section
+router) from a real, confirmed PS-85 reorg that moved 11 sections
+here as their own major tab. Per direct follow-up, reversed: all of
+those sections now live exclusively under `Config/System/index.tsx`,
+as a real, named sixth group ("Integrations") in that file's own
+existing group-tag pattern — not restored to the old, ungrouped flat
+list they lived in pre-PS-85.
 
-**Pattern:** Same sidebar + section-router structure as `Config/System/index.tsx` — deliberately not reinvented, just scoped smaller (no group headers needed yet at only four sections).
+**Real, honest history.** This file previously (twice) claimed the
+reversal above was complete when it wasn't — `index.tsx` was still
+genuinely live, still importing/routing to `LISSection.tsx`/
+`IdentifierFormatsSection.tsx`/`FacilitySetupSection.tsx`/
+`CrosswalkSection.tsx`, meaning this folder functioned as a real,
+duplicate top-level Configuration tab for far longer than any prior
+account here admitted. Found and corrected in two passes: first, the
+three genuinely dead files (already-migrated-elsewhere data, confirmed
+via a whole-app consumer search — `Config/System/README.md`'s own
+correction has the full account) were deleted and `index.tsx` updated
+to stop importing them. Second, per direct confirmation, the reversal
+was finished properly — `CrosswalkSection.tsx` (a real, live, still-
+needed screen, never dead) moved back to `Config/System/` alongside
+the seven sections that were already there, `Config/System/index.tsx`'s
+own import updated to the local path, and `index.tsx` itself finally,
+genuinely deleted.
 
-## Files
-
-- **`index.tsx`** — Tab shell + section registry (`lis`, `crosswalk`, `identifiers`, `terminology`).
-- **`LISSection.tsx`** — Relocated from `Config/System/`, unchanged. LIS integration config (enabled, endpoint, whether LIS owns case statuses, whether pathologists can initiate Addendum/Amendment directly).
-- **`IdentifierFormatsSection.tsx`** — Relocated from `Config/System/`, unchanged. Read-only system-defined identifier formats per jurisdiction; admin can enable/disable + test against a real value.
-- **`TerminologyServicesSection.tsx`** — Not relocated; still physically lives in `Config/Terminology/` (its own established folder) and is imported cross-folder here, same as it previously was into `Config/System/index.tsx`.
-- **`CrosswalkSection.tsx`** — **New.** Real admin UI for `services/orderIntake/`'s Specimen Code Crosswalk — closes a real gap flagged directly: `listCrosswalkEntries`/`addCrosswalkEntry` were real, already-implemented service methods with zero UI anywhere. Shows both admin-entered mappings and the real, system-learned "pending" entries `resolveOrder()` already creates on an unrecognized inbound order code (distinguished by `createdBy`), and lets an admin add a known mapping ahead of time so a client's code never has to self-learn at all.
+This folder now holds nothing but its own README — kept as the
+historical record of this reorg-and-reversal, not deleted itself,
+since a future reader hitting a broken import to this path deserves
+the full account of where things went and why, not just a 404.
 
 ## Notes
 
-- `RvuCodeMapSection.tsx` deliberately stayed in `Config/System/` — it's billing/coding rules, not external-system connectivity, a real, different concern from everything else in this folder.
-- This tab is the intended home for future Patient/Encounter subsystem admin surfaces (merge/link review, identifier crosswalk management) as that work (Phase 0 onward) lands — see the phased plan doc from that scoping conversation.
+- `RvuCodeMapSection.tsx` and `BillingDictionarySection.tsx` were never here — always stayed in `Config/System/` directly, billing/coding rules rather than external-system connectivity.
+- **HL7/FHIR Segment Mapping deliberately has no nav entry anywhere** — confirmed directly: PS-81 built the real provider-resolution engine, never an admin UI for it. Not an oversight if it's missing when this file is next read.
+
+---
+*See [components/Config/README.md](../README.md) if one exists for how this folder fits the whole Config/ layer.*
+*When this folder's contents change meaningfully, update THIS file.*
+
+## Notes
+
+- `RvuCodeMapSection.tsx` and `BillingDictionarySection.tsx` were never here — always stayed in `Config/System/` directly, billing/coding rules rather than external-system connectivity.
+- **HL7/FHIR Segment Mapping deliberately has no nav entry anywhere** — confirmed directly: PS-81 built the real provider-resolution engine, never an admin UI for it. Not an oversight if it's missing when this file is next read.
 
 ---
 *See [components/Config/README.md](../README.md) if one exists for how this folder fits the whole Config/ layer.*

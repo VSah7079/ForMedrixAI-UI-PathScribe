@@ -21,6 +21,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { BrowserMultiFormatReader } from '@zxing/browser';
 import NotFoundException from '@zxing/library/esm/core/NotFoundException';
 import type { IScannerControls } from '@zxing/browser';
@@ -38,6 +39,7 @@ export interface BarcodeScannerProps {
 type CameraState = 'requesting' | 'scanning' | 'error';
 
 const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDecode, onError, onCancel }) => {
+  const { t } = useTranslation();
   const videoRef = useRef<HTMLVideoElement>(null);
   const controlsRef = useRef<IScannerControls | null>(null);
   const [state, setState] = useState<CameraState>('requesting');
@@ -96,7 +98,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDecode, onError, onCa
               error instanceof NotFoundException ||
               (error && (error as any).name === 'IndexSizeError');
             if (error && !isTransientFrameError) {
-              onError?.(error.message ?? 'Unexpected barcode scan error');
+              onError?.(error.message ?? t('barcodeScanner.unexpectedError'));
             }
           }
         );
@@ -117,10 +119,10 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDecode, onError, onCa
         // "something went wrong."
         const message =
           name === 'NotAllowedError'
-            ? 'Camera access was denied. Check your browser settings and allow camera access to scan a barcode.'
+            ? t('barcodeScanner.permissionDenied')
             : name === 'NotFoundError'
-              ? 'No camera was found on this device.'
-              : `Could not start the camera: ${(err as Error)?.message ?? 'unknown error'}`;
+              ? t('barcodeScanner.noCameraFound')
+              : t('barcodeScanner.startError', { reason: (err as Error)?.message ?? t('barcodeScanner.unknownError') });
         setErrorMessage(message);
         setState('error');
         onError?.(message);
@@ -161,7 +163,7 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDecode, onError, onCa
           <p>{errorMessage}</p>
           {onCancel && (
             <button type="button" className="ps-conf-btn-row" onClick={onCancel}>
-              Cancel
+              {t('barcodeScanner.cancel')}
             </button>
           )}
         </div>
@@ -175,14 +177,14 @@ const BarcodeScanner: React.FC<BarcodeScannerProps> = ({ onDecode, onError, onCa
             autoPlay
           />
           {state === 'requesting' && (
-            <p className="ps-barcode-scanner-hint">Requesting camera access…</p>
+            <p className="ps-barcode-scanner-hint">{t('barcodeScanner.requestingAccess')}</p>
           )}
           {state === 'scanning' && (
-            <p className="ps-barcode-scanner-hint">Point the camera at the patient barcode.</p>
+            <p className="ps-barcode-scanner-hint">{t('barcodeScanner.pointCamera')}</p>
           )}
           {onCancel && (
             <button type="button" className="ps-conf-btn-row" onClick={onCancel}>
-              Cancel
+              {t('barcodeScanner.cancel')}
             </button>
           )}
         </>

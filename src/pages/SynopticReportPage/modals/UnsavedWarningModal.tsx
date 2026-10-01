@@ -10,7 +10,19 @@
  *   Stay           — cancels navigation, returns to case
  * ─────────────────────────────────────────────────────────────────────────────
  */
+
+// i18n note: `dirtySections` entries are section names passed in by the
+// caller (already-resolved display text from the synoptic form's own
+// section list), not literal UI chrome authored in this file, so they
+// are rendered as-is here. Title reuses
+// `synopticEditor.discardConfirm.title` and the Save & Leave button
+// reuses `synopticEditor.discardConfirm.saveDraftAndLeaveButton`
+// (exact-text matches from that dialog's own equivalent copy, the
+// latter already carrying its own 💾 prefix) — body text and the other
+// two buttons differ in wording from that dialog, so they got new keys.
+
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 
 interface UnsavedWarningModalProps {
@@ -24,6 +36,7 @@ interface UnsavedWarningModalProps {
 const UnsavedWarningModal: React.FC<UnsavedWarningModalProps> = ({
   show, dirtySections = [], onSaveAndLeave, onConfirm, onCancel,
 }) => {
+  const { t } = useTranslation();
   if (!show) return null;
 
   const hasSections = dirtySections.length > 0;
@@ -31,8 +44,7 @@ const UnsavedWarningModal: React.FC<UnsavedWarningModalProps> = ({
   return (
     <div
       data-capture-hide="true"
-      className="ps-overlay"
-      style={{ zIndex: 9500 }}
+      className="ps-overlay ps-overlay--unsaved-warning"
       onClick={onCancel}
     >
       <div
@@ -42,11 +54,11 @@ const UnsavedWarningModal: React.FC<UnsavedWarningModalProps> = ({
         <div className="ps-modal-dark-emoji">⚠️</div>
 
         <div className="ps-modal-dark-header ps-modal-dark-header--center">
-          <span className="ps-modal-dark-title">Unsaved Changes</span>
+          <span className="ps-modal-dark-title">{t('synopticEditor.discardConfirm.title')}</span>
         </div>
 
         <p className="ps-modal-dark-body ps-modal-dark-body--center">
-          You have unsaved changes that will be lost if you leave now.
+          {t('unsavedWarningModal.body')}
         </p>
 
         {/* Dirty section list */}
@@ -68,7 +80,7 @@ const UnsavedWarningModal: React.FC<UnsavedWarningModalProps> = ({
               className="ps-btn-primary ps-modal-dark-footer__flex-btn"
               onClick={onSaveAndLeave}
             >
-              💾 Save Draft & Leave
+              {t('synopticEditor.discardConfirm.saveDraftAndLeaveButton')}
             </button>
           )}
 
@@ -77,7 +89,7 @@ const UnsavedWarningModal: React.FC<UnsavedWarningModalProps> = ({
             className="ps-btn-ghost-dark ps-modal-dark-footer__flex-btn ps-unsaved-discard-btn"
             onClick={onConfirm}
           >
-            Discard & Leave
+            {t('unsavedWarningModal.discardAndLeaveButton')}
           </button>
 
           {/* Stay */}
@@ -85,7 +97,7 @@ const UnsavedWarningModal: React.FC<UnsavedWarningModalProps> = ({
             className="ps-btn-secondary ps-modal-dark-footer__flex-btn"
             onClick={onCancel}
           >
-            Stay on Page
+            {t('unsavedWarningModal.stayOnPageButton')}
           </button>
         </div>
       </div>

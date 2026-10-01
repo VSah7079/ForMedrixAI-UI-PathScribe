@@ -1,7 +1,15 @@
-import React, { useState } from 'react';
+// Batch 381 (PS-359): posting needs text (Field Requirements, locked;
+// services/fieldRequirements/reportPageChecks.commentMissing), and can also be
+// said ("post comment", COMMENT_POST).
+import React, { useEffect, useRef, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
+import { actionRegistryService, commentMissing } from '../../../services';
+import { useFieldRequirements } from '../../../hooks/useFieldRequirements';
+import { formatDateTime } from '../../../utils/formatDate';
 import PathScribeEditor from '../../../components/Editor/PathScribeEditor';
 import { CommentModalShell } from './CommentModalShell';
+import { OriginBadge } from './OriginBadge';
 import type { CaseComment } from '../../../types/case/CaseComment';
 
 interface CaseCommentModalProps {
@@ -13,32 +21,6 @@ interface CaseCommentModalProps {
   onClose: () => void;
 }
 
-const formatTimestamp = (iso: string) => {
-  try {
-    return new Date(iso).toLocaleString(undefined, {
-      dateStyle: 'medium', timeStyle: 'short',
-    });
-  } catch { return iso; }
-};
-
-const SYNC_LABELS: Record<NonNullable<CaseComment['syncStatus']>, string> = {
-  pending: '⏳ Pending sync to LIS',
-  sent: '↗ Sent to LIS',
-  acknowledged: '✓ Acknowledged by LIS',
-  failed: '⚠ Sync failed',
-};
-
-const OriginBadge: React.FC<{ comment: CaseComment }> = ({ comment }) => {
-  if (comment.origin === 'lis') {
-    return <span className="ps-cmnt-origin-badge ps-cmnt-origin-badge--lis">From LIS</span>;
-  }
-  return (
-    <span className={`ps-cmnt-origin-badge ps-cmnt-origin-badge--pathscribe ps-cmnt-origin-badge--${comment.syncStatus ?? 'pending'}`}>
-      {SYNC_LABELS[comment.syncStatus ?? 'pending']}
-    </span>
-  );
-};
-
 const CaseCommentModal: React.FC<CaseCommentModalProps> = ({
   accession, comments, currentUserId: _currentUserId, currentUserName, onAddComment, onClose,
   // _currentUserId: genuine prop, no consumer yet — no delete/edit-own-
@@ -46,14 +28,24 @@ const CaseCommentModal: React.FC<CaseCommentModalProps> = ({
   // intended for a future authorship permission check ("can this user
   // edit/delete their own comment"), not dead code to remove.
 }) => {
+  const { t, i18n } = useTranslation();
+  const requirements = useFieldRequirements('report');
+  const formatTimestamp = (iso: string) => formatDateTime(iso, i18n.language);
   const [draft, setDraft] = useState('');
-  const isDraftEmpty = !draft.trim() || draft === '<p></p>';
+  const isDraftEmpty = commentMissing(draft, requirements).length > 0;
 
   const handlePost = () => {
     if (isDraftEmpty) return;
     onAddComment(draft);
     setDraft('');
   };
+
+  // Voice/keyboard "post comment": the same Post, with the same check.
+  const postRef = useRef(handlePost);
+  postRef.current = handlePost;
+  useEffect(() => actionRegistryService.onAction((actionId: string) => {
+    if (actionId === 'COMMENT_POST') postRef.current();
+  }), []);
 
   // Newest first — the most relevant thing when opening a case is the
   // latest update, not the oldest. Each entry still shows its own
@@ -62,21 +54,21 @@ const CaseCommentModal: React.FC<CaseCommentModalProps> = ({
 
   return (
     <CommentModalShell
-      title="📋 Case Comment"
-      subtitle={<>Case {accession} — applies to the entire case, not tied to any specimen</>}
+      title={`📋 ${t('caseCommentModal.title')}`}
+      subtitle={<>{t('caseCommentModal.subtitlePrefix')} <span data-phi="accession">{accession}</span> {t('caseCommentModal.subtitleSuffix')}</>}
       onClose={onClose}
-      footerLeft={`${comments.length} comment${comments.length === 1 ? '' : 's'} on this case`}
+      footerLeft={t('caseCommentModal.commentsOnCase', { count: comments.length })}
     >
       {/* ── New comment composer ── */}
       <div className="ps-cmnt-thread-composer">
         <div className="ps-cmnt-role-header">
           <span className="ps-cmnt-thread-author">{currentUserName}</span>
-          <span className="ps-cmnt-role-note">— new comment</span>
+          <span className="ps-cmnt-role-note">{t('synopticComments.newCommentNote')}</span>
         </div>
         <PathScribeEditor
           key="modal-case-comment-composer"
           content={draft}
-          placeholder="Add a comment — visible to everyone who opens this case…"
+          placeholder={t('caseCommentModal.composerPlaceholder')}
           onChange={setDraft}
           minHeight="220px"
           theme="dark"
@@ -86,7 +78,7 @@ const CaseCommentModal: React.FC<CaseCommentModalProps> = ({
           approvedFonts={['Arial', 'Times New Roman', 'Calibri', 'Courier New']}
         />
         <button className="ps-cmnt-post-btn" onClick={handlePost} disabled={isDraftEmpty}>
-          Post Comment
+          {t('synopticComments.postComment')}
         </button>
       </div>
 
@@ -95,7 +87,7 @@ const CaseCommentModal: React.FC<CaseCommentModalProps> = ({
           real timestamp, never silently overwritten by a later save. ── */}
       <div className="ps-cmnt-thread-list">
         {sorted.length === 0 && (
-          <div className="ps-cmnt-thread-empty">No comments yet on this case.</div>
+          <div className="ps-cmnt-thread-empty">{t('caseCommentModal.emptyThread')}</div>
         )}
         {sorted.map(c => (
           <div key={c.id} className="ps-cmnt-thread-item">

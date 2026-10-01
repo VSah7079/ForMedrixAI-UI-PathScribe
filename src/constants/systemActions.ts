@@ -63,6 +63,7 @@ export type ActionId =
   | 'diagnosis.enterDiagnosis' | 'diagnosis.enterAddendum'
   | 'diagnosis.signOut' | 'diagnosis.coSign'
   | 'diagnosis.amend' | 'diagnosis.revokeSignOut'
+  | 'diagnosis.saveRevision' | 'diagnosis.recordCriticalNotification' | 'diagnosis.recordDiscordance'
   // ── Messages ──────────────────────────────────────────────────────────────
   | 'messages.next' | 'messages.previous'
   | 'messages.reply' | 'messages.delete'
@@ -76,16 +77,19 @@ export type ActionId =
   // ── Case management ───────────────────────────────────────────────────────
   | 'case.viewWorklist' | 'case.open' | 'case.create' | 'case.editDemographics'
   | 'case.assign' | 'case.reassign' | 'case.prioritize' | 'case.hold'
-  | 'case.releaseHold' | 'case.archive' | 'case.delete' | 'case.viewPediatric'
+  | 'case.releaseHold' | 'case.archive' | 'case.delete' | 'case.viewPediatric' | 'case.postComment'
   // ── Accession (only when the Accession page is active) ─────────────────────
   | 'accession.importOrder' | 'accession.caseComment'
+  | 'accession.clinicalHistoryCategory1' | 'accession.clinicalHistoryCategory2' | 'accession.clinicalHistoryCategory3'
+  | 'accession.clinicalHistoryCategory4' | 'accession.clinicalHistoryCategory5' | 'accession.clinicalHistoryCategory6'
   // ── Grossing (reachable from the same Synoptic Report page/context as
   // regular reporting work — grossing isn't a separate page, so these
   // share the SYNOPTIC category rather than needing their own
   // context-switch) ───────────────────────────────────────────────────────
-  | 'grossing.nextBlock' | 'grossing.previousBlock' | 'grossing.markGrossed' | 'grossing.confirmTriage'
+  | 'grossing.nextBlock' | 'grossing.previousBlock' | 'grossing.markGrossed' | 'grossing.confirmTriage' | 'grossing.complete'
+  | 'grossing.completeConfirm' | 'grossing.completeCancel'
   // ── Specimen ──────────────────────────────────────────────────────────────
-  | 'specimen.add' | 'specimen.edit' | 'specimen.remove'
+  | 'specimen.add' | 'specimen.edit' | 'specimen.remove' | 'specimen.saveEdit' | 'specimen.saveBiopsyArray'
   | 'specimen.applyFlag' | 'specimen.removeFlag' | 'specimen.assignSubspecialty'
   // ── Reports ───────────────────────────────────────────────────────────────
   | 'report.preview' | 'report.generate' | 'report.deliver'
@@ -105,8 +109,8 @@ export type ActionId =
   // ── Synoptic ──────────────────────────────────────────────────────────────
   | 'synoptic.jumpNextUnanswered' | 'synoptic.jumpNextRequired'
   | 'synoptic.markDeferred' | 'synoptic.confirmField' | 'synoptic.overrideField'
-  // ── Client & Physician ────────────────────────────────────────────────────
-  | 'client.view' | 'client.edit'
+  // ── Facility & Physician ────────────────────────────────────────────────────
+  | 'facility.view' | 'facility.edit'
   | 'physician.view' | 'physician.edit' | 'physician.verify'
   // ── Configuration ─────────────────────────────────────────────────────────
   | 'config.access' | 'config.staff' | 'config.roles' | 'config.subspecialties'
@@ -119,6 +123,7 @@ export type ActionId =
   // ── Billing (prebuilt) ────────────────────────────────────────────────────
   | 'billing.viewCodes' | 'billing.editCodes' | 'billing.submitClaim'
   | 'billing.viewHistory' | 'billing.exportBatch'
+  | 'billing.confirmPostSignoutChange' | 'billing.correctAppliedCode'
   // ── Admin ─────────────────────────────────────────────────────────────────
   | 'admin.dashboard' | 'admin.reports' | 'admin.export'
   | 'admin.backups' | 'admin.eventLog' | 'admin.impersonate'
@@ -240,6 +245,12 @@ export const ACTION_GROUPS: ActionGroup[] = [
   {
     id: 'diagnosis',
     title: 'Diagnosis & Sign-Out',
+    // Real fix (PS-66, Sep 2026): this group's own F17+PS001-PS008 keys are
+    // the ones kept as canonical below — the ai_assist group further down
+    // had silently reused this exact range for 5 of its own, unrelated
+    // actions (renumbered there instead), and enterAddendum specifically is
+    // now the shared, aliased key for mockActionRegistryService.ts's
+    // ENTER_ADDENDUM (previously an independent, colliding literal there).
     actions: [
       { id: 'diagnosis.grossDescription',       label: 'Enter Gross Description',       internalKey: 'F17+PS001', shortcutable: true },
       { id: 'diagnosis.microscopicDescription', label: 'Enter Microscopic Description', internalKey: 'F17+PS002', shortcutable: true },
@@ -249,6 +260,11 @@ export const ACTION_GROUPS: ActionGroup[] = [
       { id: 'diagnosis.coSign',                 label: 'Co-Sign Case',                  internalKey: 'F17+PS006', description: 'Resident / Fellow' },
       { id: 'diagnosis.amend',                  label: 'Amend Signed-Out Case',         internalKey: 'F17+PS007' },
       { id: 'diagnosis.revokeSignOut',          label: 'Revoke Sign-Out',               internalKey: 'F17+PS008' },
+      // Batch 380: the report page's save buttons (amendment/correction/addendum; critical-result notification).
+      { id: 'diagnosis.saveRevision',           label: 'Save Amendment or Addendum',    internalKey: 'F17+PS057' },
+      { id: 'diagnosis.recordCriticalNotification', label: 'Record Critical Notification', internalKey: 'F17+PS058' },
+      // Batch 382: the frozen-versus-final reconciliation modal's Record.
+      { id: 'diagnosis.recordDiscordance',      label: 'Record Frozen-Final Reconciliation', internalKey: 'F17+PS059' },
     ],
   },
 
@@ -305,6 +321,8 @@ export const ACTION_GROUPS: ActionGroup[] = [
       { id: 'case.archive',          label: 'Archive Case',               internalKey: 'F19+PS010' },
       { id: 'case.delete',           label: 'Delete Case',                internalKey: 'F19+PS011', description: 'Admin only' },
       { id: 'case.viewPediatric',    label: 'View Pediatric Cases',       internalKey: 'F19+PS012', description: 'Requires client authorization' },
+      // Batch 381: the case and report comment modals' Post.
+      { id: 'case.postComment',      label: 'Post Comment',               internalKey: 'F19+PS013' },
     ],
   },
 
@@ -320,6 +338,18 @@ export const ACTION_GROUPS: ActionGroup[] = [
     actions: [
       { id: 'accession.importOrder',  label: 'Import From Order',     internalKey: 'F24+PS034' },
       { id: 'accession.caseComment',  label: 'Add Case Comment',      internalKey: 'F24+PS035' },
+      // Real, per the uploaded "Structured Clinical History Dictionary
+      // & Accessioning Integration" spec's own User Story 4,
+      // Acceptance Criteria 1 ("Alt+1 through Alt+6 jump directly to
+      // categories 1-6 in the history panel") — six new, genuinely new
+      // keys, continuing the same F24 block this file's own comment
+      // above already establishes.
+      { id: 'accession.clinicalHistoryCategory1', label: 'Clinical History — Jump to Category 1 (SCR)',       internalKey: 'F24+PS044' },
+      { id: 'accession.clinicalHistoryCategory2', label: 'Clinical History — Jump to Category 2 (SYM)',       internalKey: 'F24+PS045' },
+      { id: 'accession.clinicalHistoryCategory3', label: 'Clinical History — Jump to Category 3 (RAD_LAB)',   internalKey: 'F24+PS046' },
+      { id: 'accession.clinicalHistoryCategory4', label: 'Clinical History — Jump to Category 4 (PRIOR_PATH)', internalKey: 'F24+PS047' },
+      { id: 'accession.clinicalHistoryCategory5', label: 'Clinical History — Jump to Category 5 (MAL_STAGE)', internalKey: 'F24+PS048' },
+      { id: 'accession.clinicalHistoryCategory6', label: 'Clinical History — Jump to Category 6 (HIGH_RISK)', internalKey: 'F24+PS049' },
     ],
   },
 
@@ -337,6 +367,11 @@ export const ACTION_GROUPS: ActionGroup[] = [
       { id: 'grossing.previousBlock',  label: 'Previous Block',        internalKey: 'F24+PS037' },
       { id: 'grossing.markGrossed',    label: 'Mark Block Grossed',    internalKey: 'F24+PS038' },
       { id: 'grossing.confirmTriage',  label: 'Confirm Triage',        internalKey: 'F24+PS039' },
+      // Batch 378: the Grossing screen's Complete grossing (checks the required fields first).
+      { id: 'grossing.complete',       label: 'Complete Grossing',     internalKey: 'F24+PS050' },
+      // Batch 379: answer the "complete without a protocol?" confirmation.
+      { id: 'grossing.completeConfirm', label: 'Confirm Complete Grossing', internalKey: 'F24+PS051' },
+      { id: 'grossing.completeCancel',  label: 'Cancel Complete Grossing',  internalKey: 'F24+PS052' },
     ],
   },
 
@@ -353,6 +388,10 @@ export const ACTION_GROUPS: ActionGroup[] = [
       { id: 'specimen.assignSubspecialty', label: 'Assign to Subspecialty',    internalKey: 'F20+PS006' },
       { id: 'specimen.syncLIS',           label: 'Sync Specimen to LIS',       internalKey: 'F20+PS007', description: 'Request LIS sync for a locally-created specimen' },
       { id: 'specimen.editLISStatus',     label: 'Edit LIS Sync Status',       internalKey: 'F20+PS008', description: 'View and update the LIS synchronisation status of a specimen' },
+      // Batch 380: the Add/Edit specimen modal's Save.
+      { id: 'specimen.saveEdit',          label: 'Save Specimen',              internalKey: 'F20+PS009' },
+      // Batch 381: the biopsy array modal's Save.
+      { id: 'specimen.saveBiopsyArray',   label: 'Save Biopsy Array',          internalKey: 'F20+PS010' },
     ],
   },
 
@@ -388,13 +427,13 @@ export const ACTION_GROUPS: ActionGroup[] = [
     ],
   },
 
-  // ── F23: Client & Physician ───────────────────────────────────────────────
+  // ── F23: Facility & Physician ───────────────────────────────────────────────
   {
-    id: 'clientPhysician',
-    title: 'Client & Physician',
+    id: 'facilityPhysician',
+    title: 'Facility & Physician',
     actions: [
-      { id: 'client.view',      label: 'View Client List',         internalKey: 'F23+PS001' },
-      { id: 'client.edit',      label: 'Add / Edit Client',        internalKey: 'F23+PS002' },
+      { id: 'facility.view',    label: 'View Facility List',       internalKey: 'F23+PS001' },
+      { id: 'facility.edit',    label: 'Add / Edit Facility',      internalKey: 'F23+PS002' },
       { id: 'physician.view',   label: 'View Physician Directory', internalKey: 'F23+PS003' },
       { id: 'physician.edit',   label: 'Add / Edit Physician',     internalKey: 'F23+PS004' },
       { id: 'physician.verify', label: 'Verify Physician Record',  internalKey: 'F23+PS005' },
@@ -418,7 +457,7 @@ export const ACTION_GROUPS: ActionGroup[] = [
       { id: 'config.lis',            label: 'Manage LIS Integration Settings', internalKey: 'F24+PS010' },
       { id: 'config.auditLog',          label: 'View Audit Log',                  internalKey: 'F24+PS011' },
       { id: 'config.reportTemplates',   label: 'Manage Report Templates',         internalKey: 'F24+PS030' },
-      { id: 'config.routingRules',      label: 'Manage Template Routing Rules',   internalKey: 'F24+PS031', description: 'Client and physician overrides for report template resolution' },
+      { id: 'config.routingRules',      label: 'Manage Template Routing Rules',   internalKey: 'F24+PS031', description: 'Facility and physician overrides for report template resolution' },
       { id: 'config.validationStudies', label: 'Manage Validation Studies',       internalKey: 'F24+PS032', description: 'Admin and superadmin only' },
     ],
   },
@@ -446,6 +485,10 @@ export const ACTION_GROUPS: ActionGroup[] = [
       { id: 'billing.submitClaim', label: 'Submit Claim',               internalKey: 'F24+PS021', prebuilt: true },
       { id: 'billing.viewHistory', label: 'View Billing History',       internalKey: 'F24+PS022', prebuilt: true },
       { id: 'billing.exportBatch', label: 'Export Billing Batch',       internalKey: 'F24+PS023', prebuilt: true },
+      // Batch 382: the post-sign-out billing reason modal's Confirm and the
+      // applied-code correction modal's Correct.
+      { id: 'billing.confirmPostSignoutChange', label: 'Confirm Post-Sign-Out Billing Change', internalKey: 'F24+PS053' },
+      { id: 'billing.correctAppliedCode',       label: 'Correct Applied Billing Code',         internalKey: 'F24+PS054' },
     ],
   },
   {
@@ -471,11 +514,26 @@ export const ACTION_GROUPS: ActionGroup[] = [
       { id: 'ai.diagnosisSuggest',   label: 'AI Diagnosis Suggestions',      description: 'View and interact with AI-suggested synoptic field values', internalKey: 'F17+PS001', shortcutable: true },
       { id: 'ai.grossAssist',        label: 'AI Gross Description Assist',   description: 'AI assistance when entering gross description', internalKey: 'F17+PS002' },
       { id: 'ai.macroSuggest',       label: 'AI Macro Suggestions',          description: 'AI suggests relevant macros based on diagnosis context', internalKey: 'F17+PS003' },
-      { id: 'ai.viewConfidence',     label: 'View AI Confidence Scores',     description: 'See confidence percentages on AI field suggestions', internalKey: 'F17+PS004' },
-      { id: 'ai.override',           label: 'Override AI Suggestion',        description: 'Mark an AI suggestion as disputed and enter own value', internalKey: 'F17+PS005', shortcutable: true },
-      { id: 'ai.reviewTriage',       label: 'AI Review Triage Modal',        description: 'Step through uncertain AI findings before finalization using keyboard/voice', internalKey: 'F17+PS006', shortcutable: true },
-      { id: 'ai.codeSuggest',        label: 'AI Code Suggestions',           description: 'AI suggests ICD-10, SNOMED, ICD-O, and CPT codes from case text', internalKey: 'F17+PS007' },
-      { id: 'ai.narrativeGenerate',  label: 'AI Narrative Generation',       description: 'Orchestrator mode — AI drafts the narrative report from synoptic answers', internalKey: 'F17+PS008' },
+      // Real fix (PS-66, Sep 2026): this whole ai_assist group was seeded
+      // with F17+PS001-PS008, silently reusing the diagnosis group's own
+      // F17+PS001-PS008 range instead of continuing from this file's
+      // combined real high-water mark. viewConfidence/override/reviewTriage/
+      // codeSuggest/narrativeGenerate renumbered below to fresh, never-used
+      // F17+PS047-PS051 — diagnosisSuggest/grossAssist/macroSuggest (PS001-
+      // PS003 above) are a SEPARATE, larger, still-open finding from the
+      // same investigation (they collide with diagnosis.grossDescription/
+      // microscopicDescription/enterDiagnosis) — deliberately left
+      // unrenumbered here since nothing in mockActionRegistryService.ts
+      // collides with them, so fixing them wasn't required to close this
+      // ticket's own actual scope (real collisions involving
+      // mockActionRegistryService.ts) — see PS-66's Jira comment for the
+      // full, disclosed account of this separate F17/F18 internal-only
+      // duplication and why it wasn't fixed in the same pass.
+      { id: 'ai.viewConfidence',     label: 'View AI Confidence Scores',     description: 'See confidence percentages on AI field suggestions', internalKey: 'F17+PS047' },
+      { id: 'ai.override',           label: 'Override AI Suggestion',        description: 'Mark an AI suggestion as disputed and enter own value', internalKey: 'F17+PS048', shortcutable: true },
+      { id: 'ai.reviewTriage',       label: 'AI Review Triage Modal',        description: 'Step through uncertain AI findings before finalization using keyboard/voice', internalKey: 'F17+PS049', shortcutable: true },
+      { id: 'ai.codeSuggest',        label: 'AI Code Suggestions',           description: 'AI suggests ICD-10, SNOMED, ICD-O, and CPT codes from case text', internalKey: 'F17+PS050' },
+      { id: 'ai.narrativeGenerate',  label: 'AI Narrative Generation',       description: 'Orchestrator mode — AI drafts the narrative report from synoptic answers', internalKey: 'F17+PS051' },
     ],
   },
   // ── Delegation ────────────────────────────────────────────────────────────
@@ -510,11 +568,32 @@ export const ACTION_GROUPS: ActionGroup[] = [
     id: 'synoptic_nav',
     title: 'Synoptic Navigation',
     actions: [
+      // Real fix (PS-66, Sep 2026): jumpNextUnanswered/jumpNextRequired keep
+      // their existing F17+PS009/PS010 — confirmed via matching voice
+      // trigger ("next unanswered"/"next required") and shortcut that
+      // mockActionRegistryService.ts's NEXT_UNANSWERED/NEXT_REQUIRED are
+      // real, independent registrations of these exact same two actions,
+      // previously colliding with the WRONG keys (F17+PS005/PS006) purely
+      // by accident. Those two mock entries now alias this key via
+      // ACTION_MAP[...]?.internalKey instead. markDeferred keeps F17+PS011 —
+      // mockActionRegistryService.ts's TABBED_VIEW, which used to collide
+      // with it, is a genuinely different, unrelated action and was
+      // renumbered away instead (see that file's own comment).
       { id: 'synoptic.jumpNextUnanswered', label: 'Jump to Next Unanswered Field', description: 'Scroll to, highlight, and focus the next blank field (Alt+U, voice: "next unanswered")', internalKey: 'F17+PS009', shortcutable: true },
       { id: 'synoptic.jumpNextRequired',   label: 'Jump to Next Required Field',   description: 'Scroll to, highlight, and focus the next required blank field (Alt+R, voice: "next required")', internalKey: 'F17+PS010', shortcutable: true },
       { id: 'synoptic.markDeferred',       label: 'Mark Synoptic as Deferred',     description: 'Mark synoptic as pending ancillary results — bypasses required field check at sign-out', internalKey: 'F17+PS011' },
-      { id: 'synoptic.confirmField',       label: 'Confirm Field',                 description: 'Explicitly confirm an AI suggestion (Alt+C, voice: "confirm field")', internalKey: 'F17+PS007', shortcutable: true },
-      { id: 'synoptic.overrideField',      label: 'Override Field',                description: 'Mark AI suggestion as disputed and enter own value (Alt+E, voice: "override field")', internalKey: 'F17+PS008', shortcutable: true },
+      // Real fix (PS-66, Sep 2026): confirmField/overrideField each carried
+      // an internalKey that collided both with a diagnosis.* entry above
+      // AND with mockActionRegistryService.ts's own separately-defined
+      // CONFIRM_FIELD/EDIT_FIELD (same real action, independently
+      // registered on both sides — confirmed via matching label/shortcut/
+      // voice trigger, not guessed). Given fresh, dedicated keys here;
+      // mockActionRegistryService.ts's CONFIRM_FIELD/EDIT_FIELD now alias
+      // these via ACTION_MAP[...]?.internalKey, the same established
+      // pattern already used for ENTER_GROSS/ENTER_MICRO/ENTER_DIAGNOSIS —
+      // so the two files can never silently drift apart on this key again.
+      { id: 'synoptic.confirmField',       label: 'Confirm Field',                 description: 'Explicitly confirm an AI suggestion (Alt+C, voice: "confirm field")', internalKey: 'F17+PS052', shortcutable: true },
+      { id: 'synoptic.overrideField',      label: 'Override Field',                description: 'Mark AI suggestion as disputed and enter own value (Alt+E, voice: "override field")', internalKey: 'F17+PS053', shortcutable: true },
     ],
   },
 ];
@@ -539,10 +618,20 @@ export const SHORTCUT_GROUPS = ACTION_GROUPS
   .filter(g => g.actions.length > 0);
 
 // ─── Voice context names — use these constants when calling setCurrentContext ─
+// Real, per direct follow-up ("the actions list is out of sync...
+// voice control... has to be flawless"): REPORTING removed here —
+// confirmed genuinely dead after this pass's fix (every action that
+// used it recategorized to SYNOPTIC, which is the real context
+// SynopticReportPage.tsx actually sets; zero pages ever set
+// REPORTING). Left in place, it would have been a real, standing
+// invitation to reintroduce the exact orphaned-category bug this
+// whole pass exists to fix. AUDIT added — a new, genuinely needed
+// context, since AuditLogPage.tsx never had one of its own before
+// (confirmed directly), leaving its own real actions with no way to
+// ever become eligible.
 export const VOICE_CONTEXT = {
   WORKLIST:      'WORKLIST',
   CASE_VIEW:     'CASE_VIEW',
-  REPORTING:     'REPORTING',
   SYNOPTIC:      'SYNOPTIC',
   MESSAGES:      'MESSAGES',
   SEARCH:        'SEARCH',
@@ -550,6 +639,18 @@ export const VOICE_CONTEXT = {
   ACCESSION:     'ACCESSION',
   CONTRIBUTION:  'CONTRIBUTION',
   INTRAOP:       'INTRAOP',
+  AUDIT:         'AUDIT',
+  /** Real, per direct guidance's own confirmed voice-wiring request
+   *  for the Cytology Material/Synoptic drawers — a genuinely
+   *  separate context from Surgical's own SYNOPTIC above. Eligibility
+   *  is scoped by exact category match (mockActionRegistryService.ts's
+   *  own getEligibleActions/findActionByTrigger), so a shared context
+   *  would make Surgical's own "open synoptic"-style triggers and
+   *  Cytology's own simultaneously eligible on the wrong page — a
+   *  genuine collision risk, not just a naming preference. */
+  CYTOLOGY:      'CYTOLOGY',
+  /** Batch 378: the Grossing screen (/case/:id/grossing), a page of its own. */
+  GROSSING:      'GROSSING',
 } as const;
 
 export type VoiceContextName = typeof VOICE_CONTEXT[keyof typeof VOICE_CONTEXT];
@@ -597,7 +698,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'messages.gotoSubject': true, 'messages.gotoBody': true,
     'messages.clearSubject': true, 'messages.clearBody': true,
     'messages.markUrgent': true,
-    'physician.view': true, 'client.view': true,
+    'physician.view': true, 'facility.view': true,
     'qc.viewQueue': true, 'qc.claimReview': true, 'qc.submitReview': true,
     'qc.escalateDiscordance': true, 'qc.viewDashboard': true,
     // AI Assist
@@ -652,7 +753,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'messages.gotoSubject': true, 'messages.gotoBody': true,
     'messages.clearSubject': true, 'messages.clearBody': true,
     'messages.markUrgent': true,
-    'physician.view': true, 'client.view': true,
+    'physician.view': true, 'facility.view': true,
     'qc.viewQueue': true, 'qc.viewDashboard': true,
     // AI Assist — residents can use AI but not narrative generation
     'ai.reviewTriage': true, 'ai.codeSuggest': true,
@@ -674,7 +775,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'table.select': true, 'table.selectAll': true, 'table.refresh': true, 'table.search': true,
     'case.viewWorklist': true, 'case.assign': true, 'case.reassign': true,
     'case.archive': true, 'case.delete': true,
-    'client.view': true, 'client.edit': true,
+    'facility.view': true, 'facility.edit': true,
     'physician.view': true, 'physician.edit': true, 'physician.verify': true,
     'config.access': true, 'config.staff': true, 'config.roles': true,
     'config.subspecialties': true, 'config.specimens': true, 'config.flags': true,
@@ -762,7 +863,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'messages.gotoSubject': true, 'messages.gotoBody': true,
     'messages.clearSubject': true, 'messages.clearBody': true,
     'messages.markUrgent': true,
-    'physician.view': true, 'client.view': true,
+    'physician.view': true, 'facility.view': true,
     'qc.viewQueue': true, 'qc.claimReview': true, 'qc.submitReview': true,
     'qc.escalateDiscordance': true, 'qc.viewDashboard': true,
     // Teaching/leadership — the real differentiator from Resident.
@@ -825,7 +926,7 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'messages.gotoSubject': true, 'messages.gotoBody': true,
     'messages.clearSubject': true, 'messages.clearBody': true,
     'messages.markUrgent': true,
-    'physician.view': true, 'client.view': true,
+    'physician.view': true, 'facility.view': true,
     // Synoptic Navigation — same as Resident/Pathologist; this is how a PA
     // navigates the Grossing checklist itself, same schema-driven panel
     // diagnostic synoptics use.
@@ -836,4 +937,48 @@ export const DEFAULT_ROLE_PERMISSIONS: Record<string, PermissionSet> = {
     'case.viewPediatric': false,
   },
   Physician: {},
+  // Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL
+  // Intraoperative/Frozen Section Dashboard — same real, empty
+  // permission set as Physician above: OR staff are directory-only,
+  // real people this app needs to be able to look up and attribute a
+  // quick action to (badge tap/PIN), never a real, general-app login.
+  'Or Staff': {},
+  // Built-in template governance roles (Batch 329, PS-63). What they may do
+  // with templates is decided by role id in
+  // services/templates/templatePublishingRules.ts; these sets give them the
+  // Configuration access they need to reach the Synoptic Library.
+  'Template Author': {
+    'system.openMessages': true, 'system.goBack': true, 'system.goForward': true,
+    'system.openConfiguration': true, 'config.access': true, 'config.reportTemplates': true,
+  },
+  'Template Approver': {
+    'system.openMessages': true, 'system.goBack': true, 'system.goForward': true,
+    'system.openConfiguration': true, 'config.access': true, 'config.reportTemplates': true,
+  },
+  'Lab Director': {
+    'system.openMessages': true, 'system.goBack': true, 'system.goForward': true,
+    'system.openConfiguration': true, 'config.access': true, 'config.reportTemplates': true,
+    'config.auditLog': true,
+  },
+  // Built-in PS-355 roles (Batch 369). What they may export is decided by
+  // their capabilities (services/authorization/), not by these commands.
+  'QA Reviewer': {
+    'system.openMessages': true, 'system.goBack': true, 'system.goForward': true,
+  },
+  // Batch 374: bench roles. Which screens they reach is decided by their
+  // capabilities (services/authorization/capabilitySeeds.ts); these are
+  // only the basic navigation commands.
+  Accessioner: {
+    'system.openMessages': true, 'system.openWorklist': true, 'system.goBack': true, 'system.goForward': true,
+  },
+  Histotechnologist: {
+    'system.openMessages': true, 'system.goBack': true, 'system.goForward': true,
+  },
+  Cytotechnologist: {
+    'system.openMessages': true, 'system.goBack': true, 'system.goForward': true,
+  },
+  'Molecular Technologist': {
+    'system.openMessages': true, 'system.goBack': true, 'system.goForward': true,
+  },
+  Superadmin: Object.fromEntries(ACTION_GROUPS.flatMap(g => g.actions.map(a => [a.id, true]))) as PermissionSet,
 };

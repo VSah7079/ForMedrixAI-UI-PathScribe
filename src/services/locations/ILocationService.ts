@@ -13,7 +13,7 @@
 // This is that dictionary — scoped to facilityId, matching the confirmed
 // design ("naturally associated to the Facility"). Same
 // findOrCreateByAssigningAuthority-style resolution pattern already
-// established for Facility/Physician/SpecimenCategory: a real match
+// established for Facility/Physician/Department: a real match
 // resolves cleanly, no match auto-creates an Unverified record for admin
 // review rather than silently accepting unvalidated data or dropping it.
 //

@@ -6,6 +6,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import React, { useEffect, useMemo, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { labelStyleVars } from '@/utils/labelStyleVars';
 import type { OrchestratorSection } from '@/pages/SynopticReportPage/components/OrchestratorSectionEditor';
 import type { Case } from '@/types/case/Case';
 import type { BodyPartAssembly, StructuredContext } from '@/orchestrator/contextBuilder';
@@ -74,7 +76,16 @@ function renderTextLine(node: TemplateNode, scope: Record<string, any>): string 
   return null;
 }
 
-function evalClause(clause: ExpressionClause, scope: any): boolean {
+/** Exported per real fix, found by this app's own inline-CSS/business-logic
+ *  sweep: TemplateBuilder/TemplatePreviewPanel.tsx kept its own local
+ *  copy of this condition evaluator for its `showWhen` preview, and
+ *  that copy was missing the '>=' and '<=' operators (silently falling
+ *  through to "always true" for them) — so a template author testing a
+ *  >=/<= showWhen rule in the builder's preview would see different
+ *  visibility than the real, signed-out report actually produces.
+ *  Exported so that preview can call the one real implementation
+ *  instead of drifting again. */
+export function evalClause(clause: ExpressionClause, scope: any): boolean {
   const actual = getPath(scope, clause.field);
   switch (clause.operator) {
     case '==':       return String(actual ?? '') === String(clause.value ?? '');
@@ -92,28 +103,10 @@ function evalClause(clause: ExpressionClause, scope: any): boolean {
   }
 }
 
-function evalCondition(cond: ConditionalExpression | undefined, scope: any): boolean {
+export function evalCondition(cond: ConditionalExpression | undefined, scope: any): boolean {
   if (!cond || !cond.clauses?.length) return true;
   const results = cond.clauses.map(c => evalClause(c, scope));
   return cond.logic === 'OR' ? results.some(Boolean) : results.every(Boolean);
-}
-
-// Exported: also reused by OrchestratorSectionEditor.tsx to style the
-// per-specimen Gross Description section headers in the editing view —
-// same resolved style this file already applies to the read-only
-// report, not a second, independently-derived one.
-export function labelStyle(cfg?: LabelConfig): React.CSSProperties {
-  // labelConfig is per-instance admin-configured data, not static design —
-  // inline style here follows this codebase's existing convention for
-  // genuinely dynamic values (mirrors mm-to-px / colSpan / fontSize
-  // precedent already established elsewhere in the project).
-  const style: React.CSSProperties = {};
-  if (cfg?.transform && cfg.transform !== 'none') style.textTransform = cfg.transform;
-  if (cfg?.weight) style.fontWeight = cfg.weight === 'bold' ? 700 : 400;
-  if (cfg?.decoration && cfg.decoration !== 'none') style.textDecoration = cfg.decoration;
-  if (cfg?.fontSize) style.fontSize = `${cfg.fontSize}px`;
-  if (cfg?.fontFamily) style.fontFamily = cfg.fontFamily;
-  return style;
 }
 
 const FieldRow: React.FC<{
@@ -127,10 +120,9 @@ const FieldRow: React.FC<{
   if (position === 'none') {
     return <div key={nodeKey} className="rp-node-value-only">{value}</div>;
   }
-  const lblStyle = labelStyle(labelConfig);
   return (
     <div key={nodeKey} className={`rp-node-field rp-node-field--${position}`}>
-      <span className="rp-node-label" style={lblStyle}>{label}</span>
+      <span className="rp-node-label" style={labelStyleVars(labelConfig, 'rp-label')}>{label}</span>
       <span className="rp-node-value">{value}</span>
     </div>
   );
@@ -178,7 +170,7 @@ export function buildRenderScope(caseData: Case | null): Record<string, any> {
     order: {
       fullAccession:      accession?.fullAccession ?? accession?.accessionNumber,
       requestingProvider: order?.requestingProvider,
-      clientName:         order?.clientName,
+      facilityName:       order?.facilityName,
       receivedDate:       order?.receivedDate
         ? new Date(order.receivedDate).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
         : undefined,
@@ -266,6 +258,7 @@ export function getInstitution(originHospitalId?: string) {
 const ReportPreviewRenderer: React.FC<Props> = ({
   sections, bodyAssembly = [], headerAssembly = [], footerAssembly = [], structuredContext = null, caseData, templateName, resolvedBy, activeSectionId, onSectionClick, documentStyle,
 }) => {
+  const { t } = useTranslation();
   const sectionRefs = useRef<Record<string, HTMLDivElement | null>>({});
   const sectionsById = useMemo(() => new Map(sections.map(s => [s.id, s] as const)), [sections]);
   const baseScope = useMemo(() => buildRenderScope(caseData), [caseData]);
@@ -288,7 +281,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
     ? new Date(caseData.patient.dateOfBirth).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' }) : '';
   const sex        = caseData?.patient?.sex ?? '';
   const priority   = (caseData?.order as any)?.priority ?? '';
-  const referring  = caseData?.order?.clientName ?? '';
+  const referring  = caseData?.order?.facilityName ?? '';
   const clinician  = caseData?.order?.requestingProvider ?? '';
   const inst       = getInstitution(caseData?.originHospitalId);
 
@@ -323,7 +316,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
       return (
         <div key={node.id} id={`rp-section-${node.id}`} className="rp-section">
           <div className="rp-section-heading">{label}</div>
-          <div className="rp-section-empty">Not yet generated</div>
+          <div className="rp-section-empty">{t('reportPreviewRenderer.notYetGenerated')}</div>
         </div>
       );
     }
@@ -337,15 +330,15 @@ const ReportPreviewRenderer: React.FC<Props> = ({
       >
         <div className={`rp-section-heading${s.committed ? ' rp-section-heading--accepted' : s.userEdited ? ' rp-section-heading--edited' : ''}`}>
           {s.label}
-          {s.committed && <span className="rp-section-badge rp-section-badge--accepted">✓ Accepted</span>}
-          {!s.committed && s.userEdited && <span className="rp-section-badge rp-section-badge--edited">Edited</span>}
-          {!s.committed && !s.userEdited && s.aiGenerated && <span className="rp-section-badge rp-section-badge--ai">AI Draft</span>}
+          {s.committed && <span className="rp-section-badge rp-section-badge--accepted">{t('reportPreviewRenderer.badgeAccepted')}</span>}
+          {!s.committed && s.userEdited && <span className="rp-section-badge rp-section-badge--edited">{t('reportPreviewRenderer.badgeEdited')}</span>}
+          {!s.committed && !s.userEdited && s.aiGenerated && <span className="rp-section-badge rp-section-badge--ai">{t('reportPreviewRenderer.badgeAiDraft')}</span>}
         </div>
         {s.text ? (
           <div className="rp-section-body" dangerouslySetInnerHTML={{ __html: s.text }} />
         ) : (
           <div className="rp-section-empty">
-            {s.required ? '⚠ Required — not yet completed' : 'No content'}
+            {s.required ? t('reportPreviewRenderer.requiredNotCompleted') : t('reportPreviewRenderer.noContent')}
           </div>
         )}
       </div>
@@ -362,7 +355,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
     if ((node as any).type === 'synoptic-block') {
       const answers = structuredContext?.synoptics?.flatMap(s => s.answers) ?? [];
       if (answers.length === 0) {
-        return <div key={key} className="rp-node-empty">No synoptic data recorded.</div>;
+        return <div key={key} className="rp-node-empty">{t('reportPreviewRenderer.noSynopticData')}</div>;
       }
       return (
         <table key={key} className="rp-synoptic-table">
@@ -388,12 +381,8 @@ const ReportPreviewRenderer: React.FC<Props> = ({
 
       case 'static-label': {
         const Tag: any = node.variant === 'h1' || node.variant === 'h2' || node.variant === 'h3' ? node.variant : 'div';
-        const style: React.CSSProperties = {
-          fontWeight: node.bold ? 700 : undefined,
-          fontStyle:  node.italic ? 'italic' : undefined,
-        };
         return (
-          <Tag key={key} className={`rp-static-label rp-static-label--${node.variant ?? 'body'}`} style={style}>
+          <Tag key={key} className={`rp-static-label rp-static-label--${node.variant ?? 'body'}${node.bold ? ' rp-static-label--bold' : ''}${node.italic ? ' rp-static-label--italic' : ''}`}>
             {node.text}
           </Tag>
         );
@@ -451,7 +440,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
 
       case 'column-layout':
         return (
-          <div key={key} className="rp-cols" style={{ display: 'grid', gridTemplateColumns: `repeat(${node.numColumns}, 1fr)`, gap: node.columnGap ?? 16 }}>
+          <div key={key} className="rp-cols" style={{ '--rp-cols': node.numColumns, '--rp-gap': `${node.columnGap ?? 16}px` } as React.CSSProperties}>
             {node.children.map((c, i) => renderNode(c, scope, `${key}-${i}`))}
           </div>
         );
@@ -465,13 +454,13 @@ const ReportPreviewRenderer: React.FC<Props> = ({
               // alone, with node.labelConfig never read at all — even
               // though the admin editor now lets a template author
               // configure it (TemplateInspector.tsx) and BaseNode has
-              // always carried the field. Same labelStyle() helper
-              // FieldRow already uses for field labels below, applied
-              // here as an inline override on top of the base CSS class
+              // always carried the field. Same labelStyleVars() helper
+              // FieldRow uses for field labels (Batch 367: custom properties
+              // that the .rp-node-section-heading rule reads), on top of the base CSS class
               // (not a replacement for it — the class still supplies
               // layout/spacing, labelConfig only overrides the
               // typographic properties an admin explicitly set).
-              <div className="rp-node-section-heading" style={labelStyle(node.labelConfig)}>{node.printHeading}</div>
+              <div className="rp-node-section-heading" style={labelStyleVars(node.labelConfig, 'rp-heading')}>{node.printHeading}</div>
             )}
             {node.children.map((c, i) => renderNode(c, scope, `${key}-${i}`))}
           </div>
@@ -528,7 +517,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
             {(node.showLogo ?? true) && (
               <div className="rp-inst-right">
                 <div className="rp-logo-text">PathScribe</div>
-                <div className="rp-logo-sub">Pathology Reporting</div>
+                <div className="rp-logo-sub">{t('reportPreviewRenderer.pathologyReportingTagline')}</div>
               </div>
             )}
           </div>
@@ -566,10 +555,10 @@ const ReportPreviewRenderer: React.FC<Props> = ({
   };
 
   return (
-    <div className="rp-page" style={labelStyle(documentStyle?.body)}>
+    <div className="rp-page" style={labelStyleVars(documentStyle?.body, 'rp-body')}>
 
       {/* ── Institution header ────────────────────────────────────────── */}
-      <div style={labelStyle(documentStyle?.header)}>
+      <div className="rp-doc-header" style={labelStyleVars(documentStyle?.header, 'rp-header')}>
         {headerAssembly.length > 0 ? (
           headerAssembly.map(part => (
             <React.Fragment key={part.slotId}>
@@ -586,7 +575,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
             </div>
             <div className="rp-inst-right">
               <div className="rp-logo-text">PathScribe</div>
-              <div className="rp-logo-sub">Pathology Reporting</div>
+              <div className="rp-logo-sub">{t('reportPreviewRenderer.pathologyReportingTagline')}</div>
             </div>
           </div>
         )}
@@ -595,7 +584,7 @@ const ReportPreviewRenderer: React.FC<Props> = ({
       {/* ── Patient / case header ─────────────────────────────────────── */}
       <div className="rp-case-header">
         <div className="rp-case-header-top">
-          <div className="rp-accession">{accession}</div>
+          <div className="rp-accession" data-phi="accession">{accession}</div>
           {priority && (
             <span className={`rp-priority${priority === 'STAT' ? ' rp-priority--stat' : ''}`}>
               {priority}
@@ -603,20 +592,20 @@ const ReportPreviewRenderer: React.FC<Props> = ({
           )}
         </div>
         <div className="rp-patient-grid">
-          {patient   && <><span className="rp-field-key">Patient</span>    <span className="rp-field-val">{patient}</span></>}
-          {mrn       && <><span className="rp-field-key">MRN</span>        <span className="rp-field-val">{mrn}</span></>}
-          {dob       && <><span className="rp-field-key">Date of Birth</span><span className="rp-field-val">{dob}{sex ? ` · ${sex}` : ''}</span></>}
-          {referring && <><span className="rp-field-key">Referring</span>  <span className="rp-field-val">{referring}</span></>}
-          {clinician && <><span className="rp-field-key">Clinician</span>  <span className="rp-field-val">{clinician}</span></>}
+          {patient   && <><span className="rp-field-key">{t('reportPreviewRenderer.fieldPatient')}</span>    <span className="rp-field-val" data-phi="name">{patient}</span></>}
+          {mrn       && <><span className="rp-field-key">{t('reportPreviewRenderer.fieldMrn')}</span>        <span className="rp-field-val" data-phi="mrn">{mrn}</span></>}
+          {dob       && <><span className="rp-field-key">{t('reportPreviewRenderer.fieldDob')}</span><span className="rp-field-val" data-phi="dob">{dob}{sex ? ` · ${sex}` : ''}</span></>}
+          {referring && <><span className="rp-field-key">{t('reportPreviewRenderer.fieldReferring')}</span>  <span className="rp-field-val">{referring}</span></>}
+          {clinician && <><span className="rp-field-key">{t('reportPreviewRenderer.fieldClinician')}</span>  <span className="rp-field-val">{clinician}</span></>}
         </div>
 
         {/* Template indicator */}
         {templateName && (
           <div className="rp-template-bar">
-            <span className="rp-template-label">Report Template:</span>
+            <span className="rp-template-label">{t('reportPreviewRenderer.reportTemplateLabel')}</span>
             <span className="rp-template-name">{templateName}</span>
             {resolvedBy && (
-              <span className="rp-template-by">resolved by {resolvedBy.replace(/-/g, ' ')}</span>
+              <span className="rp-template-by">{t('reportPreviewRenderer.resolvedBy', { resolvedBy: resolvedBy.replace(/-/g, ' ') })}</span>
             )}
           </div>
         )}
@@ -629,8 +618,8 @@ const ReportPreviewRenderer: React.FC<Props> = ({
         {bodyAssembly.length === 0 && sections.length === 0 ? (
           <div className="rp-empty">
             <div className="rp-empty-icon">✍️</div>
-            <div className="rp-empty-text">No report sections yet</div>
-            <div className="rp-empty-hint">Generate the report in the draft editor to see content here.</div>
+            <div className="rp-empty-text">{t('reportPreviewRenderer.noSectionsYet')}</div>
+            <div className="rp-empty-hint">{t('reportPreviewRenderer.noSectionsHint')}</div>
           </div>
         ) : bodyAssembly.length > 0 ? (
           bodyAssembly.map(part => (
@@ -646,14 +635,14 @@ const ReportPreviewRenderer: React.FC<Props> = ({
           sections.map(s => (
             <div key={s.id} id={`rp-section-${s.id}`} className="rp-section">
               <div className="rp-section-heading">{s.label}</div>
-              {s.text ? <div className="rp-section-body" dangerouslySetInnerHTML={{ __html: s.text }} /> : <div className="rp-section-empty">No content</div>}
+              {s.text ? <div className="rp-section-body" dangerouslySetInnerHTML={{ __html: s.text }} /> : <div className="rp-section-empty">{t('reportPreviewRenderer.noContent')}</div>}
             </div>
           ))
         )}
       </div>
 
       {/* ── Report footer ─────────────────────────────────────────────── */}
-      <div style={labelStyle(documentStyle?.footer)}>
+      <div className="rp-doc-footer" style={labelStyleVars(documentStyle?.footer, 'rp-footer')}>
         {footerAssembly.length > 0 ? (
           footerAssembly.map(part => (
             <React.Fragment key={part.slotId}>
@@ -662,10 +651,10 @@ const ReportPreviewRenderer: React.FC<Props> = ({
           ))
         ) : (
           <div className="rp-footer">
-            <div className="rp-footer-patient">
-              {patient}{mrn ? ` · MRN ${mrn}` : ''}{accession ? ` · ${accession}` : ''}
+            <div className="rp-footer-patient" data-phi="name">
+              {patient}{mrn ? t('reportPreviewRenderer.footerMrn', { mrn }) : ''}{accession ? ` · ${accession}` : ''}
             </div>
-            <div className="rp-footer-conf">CONFIDENTIAL — PATHOLOGY REPORT</div>
+            <div className="rp-footer-conf">{t('reportPreviewRenderer.confidentialFooter')}</div>
             <div className="rp-footer-right">{inst.name}</div>
           </div>
         )}

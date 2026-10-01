@@ -7,7 +7,7 @@ import type { SpecimenDeficiency, ISpecimenDeficiencyService } from './IDeficien
 // Deficiencies are events, not configuration — this service itself
 // still writes nothing ahead of time. The four below are seeded
 // directly into storage's fallback default purely so the Deficiencies
-// page (src/pages/DeficienciesPage.tsx) has real, representative
+// page (src/pages/QualityAssurancePage.tsx) has real, representative
 // examples across all three lifecycle stages to show immediately,
 // rather than looking like an empty, unproven shell. All four
 // reference real existing seed cases.
@@ -92,10 +92,33 @@ export const mockSpecimenDeficiencyService: ISpecimenDeficiencyService = {
       status: 'pending-verification',
       resolutionTypeId: resolution.resolutionTypeId,
       correctiveAction: resolution.correctiveAction,
+      rootCause: resolution.rootCause,
       preventiveAction: resolution.preventiveAction,
       resolvedBy: resolution.resolvedBy,
       resolvedAt: new Date().toISOString(),
       verificationDueDate: resolution.verificationDueDate,
+    };
+    DEFICIENCIES = DEFICIENCIES.map(d => d.id === id ? updated : d);
+    persist(DEFICIENCIES);
+    return ok({ ...updated });
+  },
+
+  async containImmediately(id, resolution) {
+    await delay();
+    const idx = DEFICIENCIES.findIndex(d => d.id === id);
+    if (idx === -1) return err(`Deficiency ${id} not found`);
+    // Straight to 'closed' — same real posture as raiseAndResolve()
+    // below, just for an existing open record instead of a brand-new
+    // one. No rootCause, no preventiveAction, no verificationDueDate -
+    // this is deliberately the quick, contained-on-the-spot path, not
+    // a lightweight version of escalation.
+    const updated: SpecimenDeficiency = {
+      ...DEFICIENCIES[idx],
+      status: 'closed',
+      resolutionTypeId: resolution.resolutionTypeId,
+      resolutionComment: resolution.resolutionComment,
+      resolvedBy: resolution.resolvedBy,
+      resolvedAt: new Date().toISOString(),
     };
     DEFICIENCIES = DEFICIENCIES.map(d => d.id === id ? updated : d);
     persist(DEFICIENCIES);

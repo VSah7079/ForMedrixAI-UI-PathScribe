@@ -211,7 +211,21 @@ export async function callAi(opts: AiCallOptions): Promise<AiCallResult> {
       parseResponse = parseCustomResponse;
       break;
     default:
-      throw new Error(`[PathScribe AI] Unknown provider: ${(cfg as any).providerId}`);
+      // Real, deliberate defense-in-depth alongside resolveAiConfig()'s
+      // own validation (aiProviderConfig.ts) — that fix catches an
+      // invalid providerId from the two localStorage config layers,
+      // but a configOverride (e.g. resolveAiConfigOverrideForClient,
+      // built from a saved AI model record's own requestFormat) is
+      // merged in AFTER that validation runs, so an invalid value from
+      // THAT source would still reach here untouched. This is the one
+      // place every possible source funnels through before a request
+      // actually gets built, so it's the right final backstop: warn
+      // and fail safe to a known-good default, rather than a hard
+      // throw that breaks the entire feature the moment any layer,
+      // present or future, holds a bad value.
+      console.warn(`[PathScribe AI] Unknown provider '${(cfg as any).providerId}' — falling back to structured_messages.`);
+      request       = buildStructuredMessagesRequest({ ...cfg, providerId: 'structured_messages' }, opts);
+      parseResponse = parseStructuredMessagesResponse;
   }
 
   const response = await fetch(request.url, {

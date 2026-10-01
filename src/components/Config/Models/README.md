@@ -6,32 +6,16 @@ AI model performance/version comparison tab.
 
 ## Files
 
-- **`index.tsx`** — `ModelsTab`. Correctly wired to `modelService`
-  (`services/models/IModelService`). Status styling for
-  Active/Retired/Beta. Setting a `Voice Dictation` model as default is
-  hard-blocked without a PASS-graded, reported Validation Study behind
-  it (`hasPassingValidationForVoiceModel`, from
-  `Config/AI/resolveVoiceAiModel.ts`) — the only point a voice model
-  actually goes live, since voice has no per-client override layer to
-  gate instead. Same "absolute block, no soft path" posture as the
-  report-model equivalent (`Facility.internalAiModelId`).
-- **Real bug found and fixed here too:** this screen's own local state
-  update after calling `setDefault()` still un-defaulted every model
-  regardless of type — the exact same bug just fixed in
-  `mockModelService.ts`, caught a second time because the UI had its
-  own separate copy of the same (now-wrong) logic. Fixed to match.
+- **`index.tsx`** — `ModelsTab`: the current organisation's adopted models (PS-58, Batch 320).
+  - Name, vendor and type come from the global ForMedrixAI catalog. Status, default, accuracy and cases processed are this organisation's adoption record, so another organisation's view is unaffected by anything done here.
+  - The subtitle now says so.
+  - **Set Default:** asks `canBecomeDefault` (`Config/AI/resolveVoiceAiModel.ts`) before calling the service, then re-reads the list rather than working out itself which other defaults cleared. That decision is in `services/models/modelAdoption.ts → applyDefault`. A Voice Dictation model still needs a PASS-graded, reported Validation Study before it can become the default, because becoming the default is the moment it goes live.
+  - **Facilities Approved:** uses `facilitiesPinnedToModel` (`services/models/modelAdoption.ts`).
+  - **Labels and formatting:** vendor labels come from the shared `services/models/modelLabels.ts`. Accuracy and case counts are formatted in the user's locale (`modelsTab.accuracyValue`).
 
 ## Notes
 
-- No issues.
-- Models can now arrive here two ways: pre-seeded (as before) or
-  downloaded via the ForMedrixAI store (see
-  `ValidationStudies/ModelStoreModal.tsx` and
-  `services/models/mockModelStoreService.ts`) — a store-downloaded
-  model always lands as `Beta` status with `casesProcessed: 0`,
-  displaying here identically to any other Beta model since this
-  screen reads from the same `modelService.getAll()` regardless of
-  how a record was created. This now includes Voice Dictation models.
+- Models arrive here two ways: the organisation's starter adoptions, or adoption from the ForMedrixAI store (`ValidationStudies/ModelStoreModal.tsx`). A newly adopted model is always Beta, not the default, with zero cases.
 
 ---
 *See [components/Config/README.md](../README.md) for how this folder fits Config/.*

@@ -6,8 +6,8 @@
 //
 // Added June 2026 to close a real architectural gap: this dictionary was
 // the one domain in the app NOT following the IXxxService/mockXxxService/
-// firestoreXxxService pattern used everywhere else (Client, Physician,
-// SpecimenCategory, Deficiencies, Order Intake) — instead, useSpecimen
+// firestoreXxxService pattern used everywhere else (Facility, Physician,
+// Department, Deficiencies, Order Intake) — instead, useSpecimen
 // Dictionary.tsx called localStorage.getItem/setItem directly inline
 // inside a React Context Provider. No interface, no Firestore path, not
 // even an empty stub. Meanwhile a properly-shaped but completely dead
@@ -39,8 +39,8 @@ export interface ISpecimenDictionaryService {
   replaceDictionary(entries: SpecimenEntry[]): Promise<ServiceResult<SpecimenEntry[]>>;
 
   /** Same "unblock now, admin reviews after" pattern as
-   *  Client.findOrCreateByAssigningAuthority / Physician.findOrCreateByName /
-   *  SpecimenCategory.findOrCreateByName. Case-insensitive exact match on
+   *  Facility.findOrCreateByAssigningAuthority / Physician.findOrCreateByName /
+   *  Department.findOrCreateByName. Case-insensitive exact match on
    *  name; no fuzzy matching, on purpose — a near-miss creates a new
    *  pending entry for a human to reconcile, not a silent guess. Added
    *  for order-intake specimen crosswalk resolution — see

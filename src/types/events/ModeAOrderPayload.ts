@@ -12,7 +12,7 @@
 // Field values use real id shapes from this codebase, not placeholders:
 //   - organisationId: 'ORG-MFT' (Organisation.id), not 'HOSP-MFT'
 //   - siteId: 'SITE-MRI' (Site.id, from Organisation.sites[]), not 'MRI'
-//   - specimenCategoryId: 'cat-surgical-tissue' (SpecimenCategory.id), not
+//   - departmentId: 'cat-surgical-tissue' (Department.id), not
 //     an invented uppercase constant like 'SURGICAL'
 // ─────────────────────────────────────────────────────────────────────────────
 
@@ -40,9 +40,9 @@ export interface ModeAOrderPayload {
   blockNumber?: string;                // HistologyBlock.label — required for BLOCK_ORDER/SLIDE_ORDER
   slideNumber?: string;                // required for SLIDE_ORDER
 
-  // 4. Clinical context — references the real SpecimenCategory record,
-  // not an invented constant. See ISpecimenCategoryService.ts.
-  specimenCategoryId: string;          // e.g. 'cat-surgical-tissue' — SpecimenCategory.id
+  // 4. Clinical context — references the real Department record,
+  // not an invented constant. See IDepartmentService.ts.
+  departmentId: string;          // e.g. 'cat-surgical-tissue' — Department.id
   stainCode?: string;                  // e.g. 'HE', 'PAP' — required for BLOCK_ORDER/SLIDE_ORDER, not SPECIMEN_LABEL
   urgency: 'ROUTINE' | 'RUSH' | 'FROZEN_SECTION';
 }

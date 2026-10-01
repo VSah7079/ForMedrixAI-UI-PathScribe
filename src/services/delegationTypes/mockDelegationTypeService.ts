@@ -92,9 +92,14 @@ export const mockDelegationTypeService: IDelegationTypeService = {
   async add(dt) {
     await delay();
     const maxOrder = _cache.reduce((m, d) => Math.max(m, d.sortOrder), 0);
+    // Real fix: use the caller's real, validated id when given —
+    // it's what the admin actually saw and could edit on screen — not
+    // a random timestamp that silently discarded it. Falls back to a
+    // timestamp only for a caller that genuinely doesn't provide one.
+    const { id: providedId, ...rest } = dt;
     const created: DelegationType = {
-      ...dt,
-      id:       'CUSTOM_' + Date.now(),
+      ...rest,
+      id:       providedId || 'CUSTOM_' + Date.now(),
       isSystem: false,
       sortOrder: maxOrder + 1,
     };

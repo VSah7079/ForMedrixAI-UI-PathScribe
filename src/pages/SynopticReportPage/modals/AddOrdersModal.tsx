@@ -24,9 +24,18 @@
  * genuinely new, purpose-built form, because nothing else in the app
  * currently handles "additional cassette on an existing specimen" as its
  * own action.
+ *
+ * i18n note: `generatedSentence` is appended verbatim to the case's
+ * persisted gross description (`onAddBlock`'s `note` argument) — real,
+ * persisted diagnostic/narrative text — so it stays in English, same as
+ * MicroscopicEntryPanel.tsx's (batch 154) standard-attestation text. The
+ * "Will append:" preview's own chrome word is translated; the quoted
+ * sentence it previews is not, since it is exactly what gets persisted.
+ * `sp.label`/`sp.description` (specimen picker options) are real case data.
  * ─────────────────────────────────────────────────────────────────────────────
  */
 import React, { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import '@/pathscribe.css';
 import type { Case } from '@/types/case/Case';
 
@@ -62,15 +71,18 @@ interface AddOrdersModalProps {
   onAddBlock: (specimenId: string, cassetteLabel: string, note: string) => void;
 }
 
-const TAB_LABEL: Record<OrderTab, string> = {
-  blocks:    '🧱 Blocks / Recut',
-  specimens: '🧫 Specimens',
-  stains:    '🎨 Stains / Sectioning',
+// Real, closed set of tab ids — only the displayed label is translated.
+const TAB_LABEL_KEY: Record<OrderTab, string> = {
+  blocks:    'addOrdersModal.tab.blocks',
+  specimens: 'addOrdersModal.tab.specimens',
+  stains:    'addOrdersModal.tab.stains',
 };
 
 const AddOrdersModal: React.FC<AddOrdersModalProps> = ({
   show, caseData, activeSpecimenId, initialTab, onClose, onGoToAddSpecimen, onGoToAddStain, onAddBlock,
 }) => {
+  const { t } = useTranslation();
+
   // Pre-gross-complete = PA actively at the bench, hasn't finalized
   // Grossing yet. Everything from 'gross-complete' onward is
   // pathologist/microscopic territory — deliberately a simple allowlist
@@ -116,8 +128,8 @@ const AddOrdersModal: React.FC<AddOrdersModalProps> = ({
   }, [selectedSpecimen, cassetteLabel]);
 
   const handleSubmitBlock = () => {
-    if (!blockSpecimenId) { setBlockError('Select which specimen this block/recut is from.'); return; }
-    if (!cassetteLabel.trim()) { setBlockError('Enter a cassette/block label.'); return; }
+    if (!blockSpecimenId) { setBlockError(t('addOrdersModal.blocksTab.errorSelectSpecimen')); return; }
+    if (!cassetteLabel.trim()) { setBlockError(t('addOrdersModal.blocksTab.errorEnterLabel')); return; }
     setBlockError('');
     onAddBlock(blockSpecimenId, cassetteLabel.trim(), generatedSentence);
     setCassetteLabel('');
@@ -128,36 +140,29 @@ const AddOrdersModal: React.FC<AddOrdersModalProps> = ({
   return (
     <div className="ps-conf-backdrop" onClick={onClose}>
       <div
-        className="fm-modal fm-modal--config"
-        style={{ width: 'min(640px, 96vw)' }}
+        className="fm-modal fm-modal--config ps-addorders-modal"
         onClick={e => e.stopPropagation()}
         role="dialog" aria-modal="true" aria-labelledby="add-orders-title"
       >
         <div className="fm-modal-header">
           <div>
             <div className="fm-eyebrow">
-              {isPreGrossComplete ? 'Grossing in progress' : 'Microscopic review'}
+              {isPreGrossComplete ? t('addOrdersModal.eyebrow.grossingInProgress') : t('addOrdersModal.eyebrow.microscopicReview')}
             </div>
-            <h2 id="add-orders-title" className="fm-title" style={{ fontSize: 16 }}>Add Orders</h2>
+            <h2 id="add-orders-title" className="fm-title fm-title--sm">{t('addOrdersModal.title')}</h2>
           </div>
         </div>
 
         {/* Tabs — order itself is the signal; no separate label needed
             explaining why they're arranged this way. */}
-        <div style={{ display: 'flex', gap: 4, padding: '0 20px', borderBottom: '1px solid rgba(148,163,184,0.15)' }}>
+        <div className="ps-addorders-tabs">
           {tabOrder.map(tab => (
             <button
               key={tab}
               onClick={() => setActiveTab(tab)}
-              style={{
-                padding: '10px 14px', fontSize: 13, fontWeight: resolvedActiveTab === tab ? 600 : 400,
-                color: resolvedActiveTab === tab ? '#38bdf8' : 'rgba(148,163,184,0.7)',
-                background: 'none', border: 'none',
-                borderBottom: resolvedActiveTab === tab ? '2px solid #38bdf8' : '2px solid transparent',
-                cursor: 'pointer',
-              }}
+              className={`ps-addorders-tab${resolvedActiveTab === tab ? ' ps-addorders-tab--active' : ''}`}
             >
-              {TAB_LABEL[tab]}
+              {t(TAB_LABEL_KEY[tab])}
             </button>
           ))}
         </div>
@@ -166,58 +171,58 @@ const AddOrdersModal: React.FC<AddOrdersModalProps> = ({
 
           {resolvedActiveTab === 'blocks' && (
             <div>
-              <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 0 }}>
-                Additional cassette or recut from tissue already grossed and described — not a new specimen. Appends a real sentence to the case's gross description automatically; no new physical description needed since nothing new was received.
+              <p className="ps-addorders-tab-desc">
+                {t('addOrdersModal.blocksTab.description')}
               </p>
 
-              <label className="ps-conf-label">Specimen</label>
+              <label className="ps-conf-label">{t('qualityAssurance.common.specimen')}</label>
               <select
-                className="ps-conf-input" style={{ marginBottom: 16 }}
+                className="ps-conf-input ps-addorders-field-spacing"
                 value={blockSpecimenId}
                 onChange={e => setBlockSpecimenId(e.target.value)}
               >
-                <option value="">Select the specimen this is from…</option>
+                <option value="">{t('addOrdersModal.blocksTab.specimenPlaceholder')}</option>
                 {specimens.map(sp => (
                   <option key={sp.id} value={sp.id}>{sp.label}: {sp.description}</option>
                 ))}
               </select>
 
-              <label className="ps-conf-label">Cassette / block label</label>
+              <label className="ps-conf-label">{t('addOrdersModal.blocksTab.cassetteLabel')}</label>
               <input
-                className="ps-conf-input" style={{ marginBottom: 16 }}
-                placeholder="e.g. A2, A3"
+                className="ps-conf-input ps-addorders-field-spacing"
+                placeholder={t('addOrdersModal.blocksTab.cassettePlaceholder')}
                 value={cassetteLabel}
                 onChange={e => setCassetteLabel(e.target.value)}
               />
 
               {selectedSpecimen && (
-                <div style={{ fontSize: 12, color: '#64748b', fontStyle: 'italic', marginBottom: 16, padding: '10px 12px', background: 'rgba(56,189,248,0.06)', borderRadius: 8 }}>
-                  Will append: "{generatedSentence}"
+                <div className="ps-addorders-preview">
+                  {t('addOrdersModal.blocksTab.willAppendPrefix')} "{generatedSentence}"
                 </div>
               )}
 
-              {blockError && <div style={{ fontSize: 12, color: '#ef4444', marginBottom: 12 }}>{blockError}</div>}
+              {blockError && <div className="ps-addorders-error">{blockError}</div>}
             </div>
           )}
 
           {resolvedActiveTab === 'specimens' && (
             <div>
-              <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 0 }}>
-                A genuinely new OR container of tissue that wasn't accounted for during the original accession — not a recut or a stain order. Uncommon; opens the full specimen intake form, including a mandatory physical description and real Grossing template assignment.
+              <p className="ps-addorders-tab-desc">
+                {t('addOrdersModal.specimensTab.description')}
               </p>
-              <button className="fm-btn-apply" onClick={onGoToAddSpecimen} style={{ marginTop: 8 }}>
-                Continue to new specimen intake →
+              <button className="fm-btn-apply ps-addorders-continue-btn" onClick={onGoToAddSpecimen}>
+                {t('addOrdersModal.specimensTab.continueButton')}
               </button>
             </div>
           )}
 
           {resolvedActiveTab === 'stains' && (
             <div>
-              <p style={{ fontSize: 13, color: '#94a3b8', marginTop: 0 }}>
-                Ordering an additional level, IHC panel, or special stain on tissue that's already been grossed. This is exactly what applying a flag to a specimen already means — opens the real Flag Manager rather than a second, separate ordering mechanism.
+              <p className="ps-addorders-tab-desc">
+                {t('addOrdersModal.stainsTab.description')}
               </p>
-              <button className="fm-btn-apply" onClick={() => onGoToAddStain(activeSpecimenId ?? undefined)} style={{ marginTop: 8 }}>
-                Continue to Flag Manager →
+              <button className="fm-btn-apply ps-addorders-continue-btn" onClick={() => onGoToAddStain(activeSpecimenId ?? undefined)}>
+                {t('addOrdersModal.stainsTab.continueButton')}
               </button>
             </div>
           )}
@@ -226,10 +231,10 @@ const AddOrdersModal: React.FC<AddOrdersModalProps> = ({
 
         <div className="fm-footer">
           <span className="fm-footer-status" />
-          <div style={{ display: 'flex', gap: 10 }}>
-            <button onClick={onClose} className="fm-btn-cancel">Close</button>
+          <div className="ps-addorders-footer-actions">
+            <button onClick={onClose} className="fm-btn-cancel">{t('common.close')}</button>
             {resolvedActiveTab === 'blocks' && (
-              <button onClick={handleSubmitBlock} className="fm-btn-apply">Add block / recut</button>
+              <button onClick={handleSubmitBlock} className="fm-btn-apply">{t('addOrdersModal.addBlockButton')}</button>
             )}
           </div>
         </div>

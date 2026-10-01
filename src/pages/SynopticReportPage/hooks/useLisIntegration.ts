@@ -26,10 +26,18 @@
 // did before this extraction.
 // ─────────────────────────────────────────────────────────────────────────────
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, type Dispatch, type SetStateAction } from 'react';
+import { useTranslation } from 'react-i18next';
 import type { CopilotReportInstance } from '../modals/CopilotReportViewModal';
 import { amendmentService, reportVersionService } from '@/services';
 import { lisAmendmentNoticeService, messageService } from '@/services';
+import { mockOutboundLisSyncQueueService } from '@/services/reports/mockOutboundLisSyncQueueService';
+import { mockPatientIndexService } from '@/services/patients/mockPatientIndexService';
+import { dispatchInterfaceMessage } from '@/services/interfaceDispatch/dispatchInterfaceMessage';
+import { caseRouter } from '@/services/cases/CaseRouter';
+import { processBlockExceptionEvent } from '@/services/hl7/processBlockExceptionEvent';
+import { processMaterialLocationEvent } from '@/services/hl7/processMaterialLocationEvent';
+import { processCassetteDispatchOutcomeEvent } from '@/services/hl7/processCassetteDispatchOutcomeEvent';
 import type { Case, SynopticReportInstance } from '@/types/case/Case';
 import type { Specimen } from '@/types/case/Specimen';
 import { getFieldLabel } from '@/utils/synopticFieldLabels';
@@ -38,11 +46,14 @@ import type { SigningUser } from './sharedHookTypes';
 
 interface UseLisIntegrationParams {
   caseData:   Case | null;
+  setCaseData: Dispatch<SetStateAction<Case | null>>;
   signingUser: SigningUser;
-  showToast:  (message: string) => void;
+  showToast:  (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
 }
 
-export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIntegrationParams) {
+export function useLisIntegration({ caseData, setCaseData, signingUser, showToast }: UseLisIntegrationParams) {
+  const { t } = useTranslation();
+
   // ── LIS order requests — Blocks/Recuts and Stains ───────────────────────
   // Real, well-defined HL7 entities (ORM^O01-style order messages) — this
   // is the one seam both should go through, so the real formatter/receiver
@@ -69,6 +80,8 @@ export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIn
     kind: 'block_recut' | 'stain' | 'cancel' | 'restain';
     specimenId: string;
     label: string;
+    matrixBlockId?: string;
+    targetSpecimenIds?: string[];
   }): Promise<{ ok: boolean }> => {
     await new Promise(resolve => setTimeout(resolve, 400)); // simulated round-trip
     return { ok: true };
@@ -129,6 +142,54 @@ export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIn
     const fullPayloadText = `${embeddedHeader}\n\n${payload.payloadBody}`;
 
     await new Promise(resolve => setTimeout(resolve, 400)); // simulated round-trip
+
+    // Real, per direct guidance (gap #7 — "never brought up to the
+    // same honest 'real queue' standard as A08/A40/A47/ORU"): the
+    // payload-building logic above was always real and correct; only
+    // what happened next was fake — a setTimeout with no trace,
+    // returning {ok: true} unconditionally with nothing persisted
+    // anywhere. Now enqueues a real, queryable record of this real
+    // attempt (services/reports/mockOutboundLisSyncQueueService.ts),
+    // visible via the same real DLQ dashboard as every other outbound
+    // queue in this app (pages/OutboundInterfaceDlqSection.tsx).
+    // organisationId resolved from the real, already-known patient —
+    // same pattern already established for every other real
+    // outbound-queue enqueue in this app.
+    //
+    // Real, per direct follow-up ("do we implement... actual outbound
+    // HTTP dispatch transport"): real, immediate dispatch right here,
+    // not deferred to the DLQ's own Retry Dispatch/Dispatch Now — this
+    // is the one real moment fullPayloadText/embeddedHeader actually
+    // exist. payloadBody is a real, ephemeral parameter, never
+    // persisted anywhere; once this function returns, the real,
+    // complete payload is genuinely gone, and the DLQ's own
+    // buildPayload is deliberately null for this queue type precisely
+    // because of that (see OutboundInterfaceDlqSection.tsx's own
+    // header comment). Real, deliberate fire-and-forget — same real
+    // reasoning as the enqueue immediately below: a real, external
+    // network call must never gate or block a real, time-sensitive
+    // clinical action (sign-out/amendment release).
+    const patientRecord = caseData?.patient?.id ? await mockPatientIndexService.getById(caseData.patient.id) : null;
+    if (patientRecord) {
+      mockOutboundLisSyncQueueService.enqueue({
+        caseId: payload.caseId,
+        instanceId: payload.instanceId,
+        kind: payload.kind,
+        organisationId: patientRecord.organisationId,
+      }).then(async enqueueResult => {
+        if (!enqueueResult.ok) return;
+        const entry = enqueueResult.data;
+        const result = await dispatchInterfaceMessage(entry.id, 'LIS_SYNC', {
+          ...payload, transactionStatusFlag, embeddedHeader, fullPayloadText, timestamp,
+        });
+        if (result.ok) {
+          await mockOutboundLisSyncQueueService.markSent(entry.id);
+        } else {
+          await mockOutboundLisSyncQueueService.markFailed(entry.id, { errorCode: result.errorCode ?? 'DISPATCH_REJECTED', errorMessage: result.error ?? 'Unknown dispatch failure.', maxRetriesExceeded: false });
+        }
+      }).catch(e => console.error('[useLisIntegration] Real, non-blocking failure enqueueing/dispatching LIS sync record:', e));
+    }
+
     if (payload.kind === 'corrected' || payload.kind === 'corrected_with_addition') {
       window.dispatchEvent(new CustomEvent('PATHSCRIBE_LIS_SYNC_REQUIRED', { detail: { ...payload, transactionStatusFlag, embeddedHeader, fullPayloadText, timestamp } }));
     }
@@ -154,8 +215,8 @@ export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIn
     if (!pendingLisNotice) return;
     await lisAmendmentNoticeService.updateStatus(pendingLisNotice.id, 'acknowledged');
     setPendingLisNotice(null);
-    showToast('Marked reviewed — confirmed no PathScribe synoptic changes necessary.');
-  }, [pendingLisNotice, showToast]);
+    showToast(t('useLisIntegration.toast.markedReviewedNoChanges'));
+  }, [pendingLisNotice, showToast, t]);
 
   const [copilotReportInstances, setCopilotReportInstances] = useState<CopilotReportInstance[]>([]);
 
@@ -196,8 +257,320 @@ export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIn
       isUrgent: true,
     });
 
-    showToast('Simulated LIS amendment notice sent — check Messages for the urgent notification.');
-  }, [caseData, signingUser, showToast]);
+    showToast(t('useLisIntegration.toast.simulatedAmendmentNoticeSent'));
+  }, [caseData, signingUser, showToast, t]);
+
+  // Real feature, per direct follow-up: "can we just ingest our own
+  // specification (best practice) then let the engine handle the
+  // translation?" Simulates a real inbound BlockExceptionEventPayload
+  // (types/events/) — exactly what a real LIS/middleware integration
+  // engine would eventually send once a field-verified integration
+  // guide exists — and runs it through the real, working
+  // processBlockExceptionEvent ingestion service, not a fake/shortcut
+  // path. Picks the first real block on this case (any specimen) so
+  // this stays usable regardless of which demo case it's run against,
+  // same "use real, existing case data" posture as
+  // simulateLisAmendmentReceived above. Re-fetches the case afterward
+  // so the UI reflects the real write immediately — processXEvent
+  // itself only ever writes through caseRouter, same as a genuine
+  // external event would, so this refresh is the same thing any real
+  // caller (a webhook handler, a polling loop) would also need to do.
+  // Real fix, per direct follow-up: "lets be agnostic... I really
+  // would prefer to NOT call things Cerebro or Vantage, but stay
+  // generic" — deliberately named/labelled as "LIS Middleware"
+  // throughout, not a specific vendor, matching sourceSystem's own
+  // free-text (not closed-enum) shape.
+  const simulateBlockExceptionReceived = useCallback(async () => {
+    if (!caseData?.id) return;
+    const targetSpecimen = (caseData.specimens ?? []).find(sp => (sp.blocks ?? []).length > 0);
+    const targetBlock = targetSpecimen?.blocks?.[0];
+    if (!targetSpecimen || !targetBlock) {
+      showToast(t('useLisIntegration.toast.noBlockForExceptionSim'));
+      return;
+    }
+
+    const result = await processBlockExceptionEvent({
+      messageId: `sim-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      organisationId: 'ORG-MFT',
+      accessionNumber: caseData.accession?.fullAccession ?? caseData.id,
+      specimenLetter: targetSpecimen.label,
+      blockNumber: targetBlock.label,
+      status: 'Damaged',
+      note: 'Paraffin cracked · Requires re-embedding',
+      reportedAt: new Date().toISOString(),
+      reportedBy: 'LIS-MIDDLEWARE-SIM',
+      sourceSystem: 'OTHER',
+    });
+
+    if (result.outcome === 'applied') {
+      const refreshed = await caseRouter.getCase(caseData.id);
+      if (refreshed) setCaseData(refreshed);
+      showToast(t('useLisIntegration.toast.middlewareEventApplied', { label: `${targetSpecimen.label}${targetBlock.label}` }));
+    } else {
+      showToast(t('useLisIntegration.toast.middlewareEventNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }), 'warning');
+    }
+  }, [caseData, setCaseData, showToast, t]);
+
+  // Real feature, per direct follow-up: "Is there any reason to block
+  // Material location and tracking on PS-49? I thought we would just
+  // let the engine handle the particular translation." Confirmed
+  // there wasn't — same real pattern as simulateBlockExceptionReceived
+  // above, applied to the second, real event type
+  // (MaterialLocationEventPayload). Targets the first real block on
+  // this case, same "use real, existing case data" posture as every
+  // other Sim trigger in this file.
+  const simulateMaterialLocationReceived = useCallback(async () => {
+    if (!caseData?.id) return;
+    const targetSpecimen = (caseData.specimens ?? []).find(sp => (sp.blocks ?? []).length > 0);
+    const targetBlock = targetSpecimen?.blocks?.[0];
+    if (!targetSpecimen || !targetBlock) {
+      showToast(t('useLisIntegration.toast.noBlockForLocationSim'));
+      return;
+    }
+
+    const result = await processMaterialLocationEvent({
+      messageId: `sim-loc-${Date.now()}`,
+      timestamp: new Date().toISOString(),
+      organisationId: 'ORG-MFT',
+      accessionNumber: caseData.accession?.fullAccession ?? caseData.id,
+      specimenLetter: targetSpecimen.label,
+      target: { level: 'block', blockNumber: targetBlock.label },
+      location: 'Histology — Embedding Station 3',
+      workflowStage: 'Embedding',
+      observedAt: new Date().toISOString(),
+      reportedBy: 'LIS-MIDDLEWARE-SIM',
+      sourceSystem: 'LIS Middleware (simulated)',
+    });
+
+    if (result.outcome === 'applied') {
+      const refreshed = await caseRouter.getCase(caseData.id);
+      if (refreshed) setCaseData(refreshed);
+      showToast(t('useLisIntegration.toast.middlewareLocationApplied', { targetDescription: result.targetDescription, location: 'Histology — Embedding Station 3' }));
+    } else {
+      showToast(t('useLisIntegration.toast.middlewareLocationNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }), 'warning');
+    }
+  }, [caseData, setCaseData, showToast, t]);
+
+  // Real feature, per direct follow-up: "Dev Tools → 'Sim Cassette
+  // Dispatch Outcome' isn't wired... this was flagged as a gap a
+  // while back and never got picked up." Same real "construct a
+  // realistic inbound payload, run it through the real, working
+  // ingestion service" pattern as every other Sim trigger in this
+  // file — CassetteDispatchOutcomeEventPayload.ts's own real, inbound
+  // half of "User Notifications: UI alerts and banners informing
+  // technicians when a fallback occurs or a hopper is empty." Real,
+  // deliberate difference from every sim above: this event never
+  // mutates the case at all (see processCassetteDispatchOutcomeEvent.ts's
+  // own body — no caseRouter.updateCase call anywhere in it), so
+  // there's no caseData refresh here; and that real ingestion
+  // function already shows its own, real toast.warn/toast.error
+  // directly (react-toastify, not this hook's own showToast prop) —
+  // adding a second, redundant showToast call here would just double
+  // the notification, not add real information.
+  //
+  // Simulates the real, illustrative 'fallback_used' case — the
+  // Engine's own hopper for the requested color (Green/Mesh, a real,
+  // seeded, less-commonly-stocked color — mockCassetteColorService.ts)
+  // was empty, so it substituted White instead. The one real outcome
+  // that both fires a visible notification AND leaves the tech with
+  // something they need to act on, unlike a routine 'dispatched'
+  // outcome (no notification at all — see that function's own header)
+  // or the rarer 'prompted'/'error' cases.
+  const simulateCassetteDispatchOutcomeReceived = useCallback(async () => {
+    if (!caseData?.id) return;
+    const targetSpecimen = (caseData.specimens ?? []).find(sp => (sp.blocks ?? []).length > 0);
+    const targetBlock = targetSpecimen?.blocks?.[0];
+    if (!targetSpecimen || !targetBlock) {
+      showToast(t('useLisIntegration.toast.noBlockForDispatchSim'));
+      return;
+    }
+
+    const result = await processCassetteDispatchOutcomeEvent({
+      messageId: `sim-dispatch-${Date.now()}`,
+      caseId: caseData.id,
+      specimenLabel: targetSpecimen.label,
+      requestedColorKey: 'COLOR_CELLBLOCK',
+      actualColorKey: 'COLOR_WHITE',
+      outcome: 'fallback_used',
+      message: 'Hopper 3 (Green/Mesh) empty — substituted White stock.',
+      reportedAt: new Date().toISOString(),
+      sourceSystem: 'Cassette Engine (simulated)',
+    });
+
+    if (result.outcome !== 'notified') {
+      showToast(t('useLisIntegration.toast.dispatchOutcomeNotApplied', { outcome: result.outcome, reason: result.reason ?? '' }), 'warning');
+    }
+  }, [caseData, showToast, t]);
+
+  // Real feature, per direct follow-up: "is there a case where all the
+  // assets will have a tracking event so I can test?" Confirmed
+  // directly: no seeded case has this, and the existing single-target
+  // sim above only ever touches one fixed block — repeating it can't
+  // produce full coverage. Walks every real material item on the
+  // CURRENT case and fires real, individually-idempotent
+  // processMaterialLocationEvent calls — same real ingestion path as
+  // the single-target sim above, not a shortcut that writes history
+  // directly.
+  //
+  // Real rebuild, per direct follow-up with a concrete, detailed
+  // scan-log mockup in hand: now fires a real, multi-step SEQUENCE per
+  // item (not one event each), using that mockup's own real
+  // location/action/person vocabulary, and includes a real Aliquot
+  // event on the first block's first slide — the genuinely new
+  // material type that mockup introduced. Every event still goes
+  // through the same real ingestion path, so this also proves out
+  // locationHistory[] append-don't-overwrite and the new aliquot
+  // target level end to end, not just the type layer.
+  const simulateFullMaterialTreeLocationUpdate = useCallback(async () => {
+    if (!caseData?.id) return;
+    const specimens = caseData.specimens ?? [];
+    if (specimens.length === 0) {
+      showToast(t('useLisIntegration.toast.noSpecimensForLocationSim'));
+      return;
+    }
+
+    const accessionNumber = caseData.accession?.fullAccession ?? caseData.id;
+    let hoursOffset = 0;
+    const nextTimestamp = () => {
+      hoursOffset += 1;
+      return new Date(Date.now() - (24 - hoursOffset) * 3600_000).toISOString();
+    };
+
+    type Step = { location: string; workflowStage?: string; action: string; performedByName: string; sourceSystem: string };
+    const SPECIMEN_STEPS: Step[] = [
+      { location: 'Accessioning Bench', workflowStage: 'Accessioning', action: 'Logged In', performedByName: 'Tech: M. Davis', sourceSystem: 'LIS Middleware (simulated)' },
+      { location: 'Grossing Station 3', workflowStage: 'Grossing', action: 'Grossed & Cut', performedByName: 'Pathologist: Dr. E. Reed', sourceSystem: 'LIS Middleware (simulated)' },
+    ];
+    const BLOCK_STEPS: Step[] = [
+      { location: 'Embedding Station 2', workflowStage: 'Embedding', action: 'Embedded', performedByName: 'Tech: J. Smith', sourceSystem: 'LIS Middleware (simulated)' },
+      { location: 'Microtomy Bench 1', workflowStage: 'Microtomy/Sectioning', action: 'Sectioned', performedByName: 'Tech: J. Smith', sourceSystem: 'LIS Middleware (simulated)' },
+    ];
+    const SLIDE_STEPS: Step[] = [
+      { location: 'Auto-Stainer 1', workflowStage: 'Staining', action: 'Stained & Coverslipped', performedByName: 'Tech: R. Patel', sourceSystem: 'LIS Middleware (simulated)' },
+      { location: 'Pathologist Desk (Dr. Vance)', action: 'Out for Review', performedByName: 'Tech: R. Patel', sourceSystem: 'LIS Middleware (simulated)' },
+      { location: 'Digital Scanner 02', action: 'Digitized WSI', performedByName: 'System: AutoScan', sourceSystem: 'Digital Scanner (simulated)' },
+    ];
+    const SLIDE_STEPS_SHORT: Step[] = [
+      { location: 'Staging Cabinet B', action: 'Tray Staged', performedByName: 'Tech: R. Patel', sourceSystem: 'LIS Middleware (simulated)' },
+    ];
+    const ALIQUOT_STEPS_STORE: Step[] = [
+      { location: 'Molecular Freezer -80°C (Rack 3)', action: 'Stored', performedByName: 'Tech: A. Lee', sourceSystem: 'LIS Middleware (simulated)' },
+    ];
+    const ALIQUOT_STEPS_SENDOUT: Step[] = [
+      { location: 'Molecular Prep Lab', action: 'Extracted', performedByName: 'Tech: C. Vance', sourceSystem: 'LIS Middleware (simulated)' },
+      { location: 'Sendout Outbox (Courier #402)', action: 'In Transit', performedByName: 'Tech: A. Lee', sourceSystem: 'LIS Middleware (simulated)' },
+    ];
+    const GENERIC_STEP: Step[] = [
+      { location: 'Archive Shelf 12B', workflowStage: 'Slide Archival', action: 'Archived', performedByName: 'Tech: LIS Middleware', sourceSystem: 'LIS Middleware (simulated)' },
+    ];
+
+    let applied = 0;
+    let failed = 0;
+
+    const fireSteps = async (target: any, specimenLetter: string, steps: Step[]) => {
+      for (const step of steps) {
+        const result = await processMaterialLocationEvent({
+          messageId: `sim-loc-full-${caseData.id}-${JSON.stringify(target)}-${step.action}-${Date.now()}-${Math.random()}`,
+          timestamp: new Date().toISOString(),
+          organisationId: 'ORG-MFT',
+          accessionNumber,
+          specimenLetter,
+          target,
+          location: step.location,
+          workflowStage: step.workflowStage,
+          action: step.action,
+          observedAt: nextTimestamp(),
+          performedByName: step.performedByName,
+          sourceSystem: step.sourceSystem,
+        });
+        if (result.outcome === 'applied') applied++; else failed++;
+      }
+    };
+
+    for (let si = 0; si < specimens.length; si++) {
+      const specimen = specimens[si];
+      const isFirstSpecimen = si === 0;
+      await fireSteps({ level: 'specimen' as const }, specimen.label, isFirstSpecimen ? SPECIMEN_STEPS : GENERIC_STEP);
+
+      const blocks = specimen.blocks ?? [];
+      for (let bi = 0; bi < blocks.length; bi++) {
+        const block = blocks[bi];
+        const isFirstBlock = isFirstSpecimen && bi === 0;
+        await fireSteps({ level: 'block' as const, blockNumber: block.label }, specimen.label, isFirstBlock ? BLOCK_STEPS : GENERIC_STEP);
+
+        const stains = block.stains ?? [];
+        for (let sti = 0; sti < stains.length; sti++) {
+          const level = `L${sti + 1}`;
+          const isFirstSlide = isFirstBlock && sti === 0;
+          const isSecondSlide = isFirstBlock && sti === 1;
+          await fireSteps(
+            { level: 'slide' as const, blockNumber: block.label, slideLevel: level },
+            specimen.label,
+            isFirstSlide ? SLIDE_STEPS : isSecondSlide ? SLIDE_STEPS_SHORT : GENERIC_STEP,
+          );
+          // Real Aliquot events, per direct follow-up's own mockup —
+          // one on the first slide (Tissue Scraping -> Molecular
+          // Freezer), one on the second (RNA Lysate -> Extracted ->
+          // In Transit), matching that mockup's own two real examples.
+          if (isFirstSlide) {
+            await fireSteps(
+              { level: 'aliquot' as const, blockNumber: block.label, slideLevel: level, aliquotLabel: 'A' },
+              specimen.label, ALIQUOT_STEPS_STORE,
+            );
+          } else if (isSecondSlide) {
+            await fireSteps(
+              { level: 'aliquot' as const, blockNumber: block.label, slideLevel: level, aliquotLabel: 'A' },
+              specimen.label, ALIQUOT_STEPS_SENDOUT,
+            );
+          }
+        }
+      }
+
+      for (const decant of specimen.decants ?? []) {
+        await fireSteps({ level: 'decant' as const, decantLabel: decant.label }, specimen.label, GENERIC_STEP);
+        (decant.stains ?? []).forEach((_stain, i) => {
+          fireSteps({ level: 'decant_slide' as const, decantLabel: decant.label, slideLevel: `L${i + 1}` }, specimen.label, GENERIC_STEP);
+        });
+      }
+    }
+
+    // Real, deliberate fix-up — the first aliquot's own aliquotType
+    // defaults to 'Unspecified' (processMaterialLocationEvent.ts's own
+    // honest placeholder for a real system that hasn't told us yet).
+    // A real creation event would supply this; the sim fills it in
+    // directly here afterward, matching the mockup's own real labels.
+    const afterEvents = await caseRouter.getCase(caseData.id);
+    if (afterEvents) {
+      const firstSpecimen = (afterEvents.specimens ?? [])[0];
+      const firstBlock = firstSpecimen?.blocks?.[0];
+      if (firstBlock) {
+        const patchedStains = (firstBlock.stains ?? []).map((s, i) => {
+          if (i === 0) return { ...s, aliquots: (s.aliquots ?? []).map(a => ({ ...a, aliquotType: 'Tissue Scraping' })) };
+          if (i === 1) return { ...s, aliquots: (s.aliquots ?? []).map(a => ({ ...a, aliquotType: 'RNA Lysate' })) };
+          return s;
+        });
+        const patchedBlocks = (firstSpecimen.blocks ?? []).map(b => b.id === firstBlock.id ? { ...firstBlock, stains: patchedStains } : b);
+        const patchedSpecimens = (afterEvents.specimens ?? []).map(sp => sp.id === firstSpecimen.id ? { ...firstSpecimen, blocks: patchedBlocks } : sp);
+        // Real, direct follow-up (PS-71): reviewed against this ticket's
+        // own "context-dependent, validate purpose" question — this is a
+        // dev-only material-tree scan simulation, not a real clinical write
+        // competing with a user's own edits, so force-writing regardless of
+        // version would be a legitimate, documented choice. Passing it
+        // anyway costs nothing here specifically: afterEvents was fetched
+        // fresh 12 lines above, so its own version is as current as this
+        // write can possibly know, closing the gap for free rather than
+        // leaving it undocumented.
+        await caseRouter.updateCase(afterEvents.id, { specimens: patchedSpecimens }, (afterEvents as any).version);
+      }
+    }
+
+    const refreshed = await caseRouter.getCase(caseData.id);
+    if (refreshed) setCaseData(refreshed);
+    showToast(failed > 0
+      ? t('useLisIntegration.toast.materialTreeScanAppliedWithFailures', { count: applied, failed })
+      : t('useLisIntegration.toast.materialTreeScanApplied', { count: applied }), failed > 0 ? 'warning' : 'success');
+  }, [caseData, setCaseData, showToast, t]);
 
   const openCopilotReportView = useCallback(async () => {
     if (!caseData) return;
@@ -238,9 +611,23 @@ export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIn
           : undefined;
         return {
           versionNumber: v.versionNumber,
-          label: i === 0 ? 'Original' : i === total - 1 ? `${i === 1 ? '1st' : `${i}th`} Amended (Most Recent)` : `${i === 1 ? '1st' : `${i}th`} Amended`,
+          // i18n note: rewritten from an English-only ordinal-suffix
+          // scheme ("1st Amended", "2th Amended" — only 1st was ever
+          // actually special-cased, so 2/3/4... always read as a plain
+          // literal "th" regardless of real English ordinal rules) to
+          // a plain numbered label, matching this app's own established
+          // precedent for numbering a version list elsewhere
+          // (versionHistoryModal.versionLabel: "Version {{number}}") —
+          // avoids reproducing per-language ordinal-suffix rules
+          // (1st/2nd/3rd in English, 1er/2e in French, 1./2. in German,
+          // ...) for a label that doesn't need them.
+          label: i === 0
+            ? t('useLisIntegration.copilotVersion.original')
+            : i === total - 1
+              ? t('useLisIntegration.copilotVersion.amendmentMostRecent', { number: i })
+              : t('useLisIntegration.copilotVersion.amendment', { number: i }),
           releasedAt: v.createdAt,
-          createdByName: v.createdBy?.userName ?? 'Unknown',
+          createdByName: v.createdBy?.userName ?? t('useLisIntegration.copilotVersion.unknownCreator'),
           answers: detail ? resolveAnswers((v.synopticAnswersSnapshot ?? {}) as Record<string, string | string[]>, detail.template) : [],
           explanationOfChange: record?.explanationOfChange,
           notification: record?.notification,
@@ -263,7 +650,7 @@ export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIn
     }));
     setCopilotReportInstances(resolved);
     setShowCopilotReportView(true);
-  }, [caseData]);
+  }, [caseData, t]);
 
   // StainMultiSelect (inside BlockStainEditorModal) was committing new
   // stain orders straight to local state, bypassing this seam entirely —
@@ -279,10 +666,10 @@ export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIn
     // stops being simulated.
     const result = await sendMaterialOrderToLis({ kind: 'stain', specimenId, label: stainName });
     if (!result.ok) {
-      showToast(`LIS did not acknowledge the ${stainName} order — nothing was recorded. Try again.`);
+      showToast(t('useSpecimenBlockManagement.toast.lisNoAckStainOrder', { stainName }), 'warning');
     }
     return result;
-  }, [sendMaterialOrderToLis, showToast]);
+  }, [sendMaterialOrderToLis, showToast, t]);
 
   return {
     sendMaterialOrderToLis,
@@ -292,6 +679,10 @@ export function useLisIntegration({ caseData, signingUser, showToast }: UseLisIn
     pendingLisNotice, setPendingLisNotice,
     handleMarkReviewedNoChanges,
     simulateLisAmendmentReceived,
+    simulateBlockExceptionReceived,
+    simulateMaterialLocationReceived,
+    simulateCassetteDispatchOutcomeReceived,
+    simulateFullMaterialTreeLocationUpdate,
     copilotReportInstances,
     openCopilotReportView,
   };

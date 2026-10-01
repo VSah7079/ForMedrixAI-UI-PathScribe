@@ -104,6 +104,11 @@ backend-dependent follow-on work, tracked in
   the instant `logout()` runs — a modal there would never actually be
   seen).
 
+## Batch 343 (PS-60)
+
+- **`flagSupersededNotice()` / `consumeSupersededNotice()`** (in `sessionSupersedeService.ts`): the "signed out because you signed in elsewhere" marker. It moved here from `ProtectedRoute.tsx` and `LoginPage.tsx`, which used sessionStorage directly.
+- **The markers are now driven by `services/auth/authSession.ts`** (start, end and restore of a session) instead of `AuthContext`. Restoring a session after a reload now takes the active-session marker back if no other tab holds it. Before, one reload released it for good, and a second tab's sign-in was no longer reported as a conflict.
+
 ## Notes
 
 - **Idle-timeout deliberately resolves per single currently-open case**,

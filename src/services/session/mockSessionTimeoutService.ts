@@ -4,8 +4,7 @@
 // matching every other mock service in this codebase's ok/err/delay
 // convention.
 //
-// Phase 1 of the Inactivity Timeout & Draft Recovery spec (see
-// PRIORITY_FIXES.md #13).
+// Phase 1 of the Inactivity Timeout & Draft Recovery spec, complete.
 // ─────────────────────────────────────────────────────────────────────────────
 
 import type { ISessionTimeoutService } from './ISessionTimeoutService';

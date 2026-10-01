@@ -45,6 +45,18 @@ export interface BaseNode {
   required?: boolean;
   hideIfEmpty?: boolean;
   fhirExport?: boolean;
+  /** Real, per direct correction ("a text field on the report should
+   *  be declared as the final diagnosis... we need to audit those
+   *  changes") — marks this specific field as the one, real Final
+   *  Diagnosis for this template. Never inferred at runtime from a
+   *  field's name/label/position; a template author declares it
+   *  explicitly, same real posture as fhirExport above. Real,
+   *  deliberate: at most one field per Final-category template may
+   *  set this (enforced at template save/publish time, per direct
+   *  guidance — see validateFinalDiagnosisDesignation.ts); Preliminary
+   *  templates are exempt, since "previously reported as" is only
+   *  ever a Final-report concept. */
+  isFinalDiagnosisField?: boolean;
   showWhen?: ConditionalExpression;
   pageBreakBefore?: boolean;
   /**

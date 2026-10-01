@@ -1,6 +1,16 @@
 // src/components/QualityAssurance/QaScopeSwitcher.tsx
+//
+// i18n note: `o.name` (organisation name), `c.name` (facility name) and
+// `c.assigningAuthority` are real, persisted data values, not UI chrome,
+// so they stay untranslated. "Scope" reuses
+// caseMaskConfigSection.modal.scopeLabel (same generic field-label
+// wording); "Enterprise-wide" reuses
+// externalResourcesSection.scopeEnterpriseWide (exact-text match). The
+// two optgroup labels ("By Organisation"/"By Referring Facility") had no
+// existing exact-text match, so they got new keys.
 import React, { useEffect, useState } from 'react';
-import { mockFacilityService, type Facility as Client } from '@/services/facilities/mockFacilityService';
+import { useTranslation } from 'react-i18next';
+import { mockFacilityService, type Facility } from '@/services/facilities/mockFacilityService';
 import { listOrganisations } from '@/services/organisation/organisationService';
 import type { Organisation } from '@/services/organisation/organisationService';
 import { getSessionUser, canViewCrossTenantQaData } from '@/services/auth/caseAccessControl';
@@ -41,10 +51,11 @@ const ORG_PREFIX = 'org:';
 const CLIENT_PREFIX = 'client:';
 
 export const QaScopeSwitcher: React.FC<Props> = ({ scope, onChange, visibleClientIds }) => {
-  const [clients, setClients] = useState<Client[]>([]);
+  const { t } = useTranslation();
+  const [facilities, setFacilities] = useState<Facility[]>([]);
   const [organisations, setOrganisations] = useState<Organisation[]>([]);
   useEffect(() => {
-    mockFacilityService.getAll().then(res => { if (res.ok) setClients(res.data.filter(c => c.status === 'Active')); });
+    mockFacilityService.getAll().then(res => { if (res.ok) setFacilities(res.data.filter(c => c.status === 'Active')); });
     listOrganisations().then(orgs => setOrganisations(orgs.filter(o => o.active)));
   }, []);
 
@@ -55,9 +66,9 @@ export const QaScopeSwitcher: React.FC<Props> = ({ scope, onChange, visibleClien
     ? organisations
     : organisations.filter(o => o.id === session?.organisationId);
 
-  const visibleClients = crossTenant || !visibleClientIds
-    ? clients
-    : clients.filter(c => visibleClientIds.includes(c.id));
+  const visibleFacilities = crossTenant || !visibleClientIds
+    ? facilities
+    : facilities.filter(c => visibleClientIds.includes(c.id));
 
   const currentValue =
     scope.level === 'enterprise' ? 'enterprise' :
@@ -66,7 +77,7 @@ export const QaScopeSwitcher: React.FC<Props> = ({ scope, onChange, visibleClien
 
   return (
     <div className="ps-qa-scope-switcher">
-      <label className="ps-conf-label" htmlFor="qa-scope">Scope</label>
+      <label className="ps-conf-label" htmlFor="qa-scope">{t('caseMaskConfigSection.modal.scopeLabel')}</label>
       <select
         id="qa-scope"
         className="ps-conf-select"
@@ -78,17 +89,17 @@ export const QaScopeSwitcher: React.FC<Props> = ({ scope, onChange, visibleClien
           onChange({ level: 'client', clientId: v.slice(CLIENT_PREFIX.length) });
         }}
       >
-        <option value="enterprise">Enterprise-wide</option>
+        <option value="enterprise">{t('externalResourcesSection.scopeEnterpriseWide')}</option>
         {visibleOrganisations.length > 0 && (
-          <optgroup label="By Organisation">
+          <optgroup label={t('qaScopeSwitcher.byOrganisationGroup')}>
             {visibleOrganisations.map(o => (
               <option key={o.id} value={`${ORG_PREFIX}${o.id}`}>{o.name}</option>
             ))}
           </optgroup>
         )}
-        {visibleClients.length > 0 && (
-          <optgroup label="By Referring Client">
-            {visibleClients.map(c => (
+        {visibleFacilities.length > 0 && (
+          <optgroup label={t('qaScopeSwitcher.byReferringFacilityGroup')}>
+            {visibleFacilities.map(c => (
               <option key={c.id} value={`${CLIENT_PREFIX}${c.id}`}>{c.name} ({c.assigningAuthority})</option>
             ))}
           </optgroup>

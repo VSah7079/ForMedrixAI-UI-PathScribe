@@ -2,16 +2,47 @@
  * LoginPage.tsx — src/pages/LoginPage.tsx
  * Public route — shown when the user is not authenticated.
  *
+ * File-by-file cleanup sweep: this page already had a handful of strings
+ * on t() from an earlier pass (email/password labels, sign-in button);
+ * this pass closed the gap on everything that was still hardcoded
+ * (descriptor, environment badge labels, forgot-password, SSO row,
+ * PHI notice, error strings, and the session-conflict modal's text) —
+ * see src/i18n/README.md. No inline CSS or extractable business logic
+ * found; the login/autofill handling below is UI-bound by nature.
+ *
+ * PS-60 (Batch 343): single sign-on. Each provider configured for this
+ * build (services/auth/authConfig.ts) gets a working button; with none
+ * configured, the disabled "Soon" row stays as before. The password form
+ * shows only when this build allows password sign-in (demo accounts).
+ * After signing in, the user goes to the page they were trying to open
+ * (ProtectedRoute passes it as `from`), checked by resolvePostSignInPath.
+ * A refused SSO sign-in comes back from /auth/callback with its reason.
+ *
  * Copyright (c) 2026 ForMedrixAI LLC. All rights reserved.
  */
-import React, { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import React, { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
+import { useLocation, useNavigate } from 'react-router';
 import '../pathscribe.css';
 import { useAuth } from '../contexts/AuthContext';
 import SessionSupersededNotice from '../components/Common/SessionSupersededNotice';
 import ConfirmModal from '../components/Common/ConfirmModal';
+import { consumeSupersededNotice } from '@/services/session/sessionSupersedeService';
+import { resolvePostSignInPath } from '@/services/auth/sessionRole';
+import { isSsoDenialReason } from '@/services/auth/externalIdentity';
+import type { SsoProviderId } from '@/services/auth/authConfig';
 
-const SUPERSEDED_NOTICE_KEY = 'pathscribe_show_superseded_notice';
+/** Route state LoginPage reads: where the user was going, and why an SSO sign-in was refused. */
+export interface LoginRouteState {
+  from?: string;
+  ssoError?: string;
+}
+
+const SSO_LABEL_KEYS: Record<SsoProviderId, string> = {
+  microsoft: 'login.ssoMicrosoft',
+  google: 'login.ssoGoogle',
+  oidc: 'login.ssoOrganisation',
+};
 
 /**
  * Version is injected at build time from package.json (see vite.config.ts),
@@ -32,11 +63,11 @@ const APP_VERSION: string | null =
  * if it is unset or unrecognised no badge renders, so the page never makes
  * a claim about the environment it cannot substantiate.
  */
-const ENVIRONMENTS: Record<string, { label: string; tone: string }> = {
-  production:  { label: 'Production',  tone: 'prod' },
-  validation:  { label: 'Validation',  tone: 'validation' },
-  training:    { label: 'Training',    tone: 'training' },
-  development: { label: 'Development', tone: 'dev' },
+const ENVIRONMENTS: Record<string, { labelKey: string; tone: string }> = {
+  production:  { labelKey: 'login.environment.production',  tone: 'prod' },
+  validation:  { labelKey: 'login.environment.validation',  tone: 'validation' },
+  training:    { labelKey: 'login.environment.training',    tone: 'training' },
+  development: { labelKey: 'login.environment.development', tone: 'dev' },
 };
 
 const resolveEnvironment = () => {
@@ -76,8 +107,11 @@ const MicrosoftIcon = () => (
 );
 
 const LoginPage: React.FC = () => {
-  const { login } = useAuth();
+  const { t } = useTranslation();
+  const { login, passwordSignInEnabled, ssoProviders, beginSsoSignIn } = useAuth();
   const navigate  = useNavigate();
+  const location  = useLocation();
+  const routeState = (location.state ?? {}) as LoginRouteState;
 
   const [email,    setEmail]    = useState('');
   const [password, setPassword] = useState('');
@@ -87,35 +121,87 @@ const LoginPage: React.FC = () => {
   const [showSessionConflict, setShowSessionConflict] = useState(false);
   const [showSupersededNotice, setShowSupersededNotice] = useState(false);
 
+  // Real fix, per direct bug report: "Sometimes when I log in it fails
+  // to copy the user name and password into the login form... after I
+  // select [Windows Hello face/PIN], it loads the user name and
+  // password... Sometimes it doesn't actually move the data into the
+  // fields." Confirmed directly: this is a real, well-documented class
+  // of bug, not something specific to this form's own logic — a
+  // password manager (especially one gated behind Windows Hello/PIN,
+  // which introduces a real delay between the form mounting and the
+  // credential actually being filled) writes the value straight into
+  // the DOM input, which does NOT fire the real 'input'/'change' event
+  // React's controlled value={} + onChange listens for — so React's
+  // own state can stay empty even though the field visually looks
+  // filled, and clicking Sign In submits the stale, empty state.
+  //
+  // Two-part fix: (1) a CSS animation on the real, standard
+  // :-webkit-autofill pseudo-class (see login-brand.css) fires a real,
+  // detectable animationstart DOM event the instant autofill happens
+  // — far faster than any polling interval — and syncs React state
+  // from the real DOM value immediately. (2) A ref-based fallback:
+  // handleSubmit reads the real, current DOM value directly at the
+  // moment of submission, never relying solely on React state that
+  // may not have caught up — so even a genuinely missed detection
+  // (a different browser, a timing edge case) still submits correctly
+  // rather than repeating the same "starts blank" failure.
+  const emailRef    = useRef<HTMLInputElement>(null);
+  const passwordRef = useRef<HTMLInputElement>(null);
+
+  const handleAutofillDetected = (field: 'email' | 'password') => (e: React.AnimationEvent<HTMLInputElement>) => {
+    if (e.animationName !== 'ps-login-autofill-detect') return;
+    const value = e.currentTarget.value;
+    if (field === 'email') setEmail(value); else setPassword(value);
+  };
+
   const environment = resolveEnvironment();
 
   useEffect(() => {
-    try {
-      if (sessionStorage.getItem(SUPERSEDED_NOTICE_KEY) === '1') {
-        setShowSupersededNotice(true);
-        sessionStorage.removeItem(SUPERSEDED_NOTICE_KEY);
-      }
-    } catch {}
+    if (consumeSupersededNotice()) setShowSupersededNotice(true);
   }, []);
 
-  const attemptLogin = async (forceSupersede: boolean) => {
+  // A refused SSO sign-in, sent back here by the callback page.
+  useEffect(() => {
+    if (isSsoDenialReason(routeState.ssoError)) setError(t(`login.ssoError.${routeState.ssoError}`));
+  }, [routeState.ssoError, t]);
+
+  const startSso = async (providerId: string) => {
+    setError('');
     setLoading(true);
-    const result = await login(email, password, forceSupersede);
+    const reason = await beginSsoSignIn(providerId, routeState.from ?? '/');
+    // Still here only if the redirect didn't start.
+    if (reason) { setLoading(false); setError(t(`login.ssoError.${reason}`)); }
+  };
+
+  const attemptLogin = async (forceSupersede: boolean, overrideEmail?: string, overridePassword?: string) => {
+    setLoading(true);
+    const result = await login(overrideEmail ?? email, overridePassword ?? password, forceSupersede);
     setLoading(false);
     if (result === 'success') {
-      navigate('/', { replace: true });
+      navigate(resolvePostSignInPath(routeState.from), { replace: true });
     } else if (result === 'session_conflict') {
       setShowSessionConflict(true);
     } else {
-      setError('Incorrect email or password. Please try again.');
+      setError(t('login.invalidCredentials'));
     }
   };
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    if (!email || !password) { setError('Please enter your email and password.'); return; }
+    // Real fix: reads the actual, current DOM value directly rather
+    // than trusting React state alone — the one place in this flow
+    // that must never be wrong, since it's the literal moment of
+    // submission. If the autofill-detection animation above already
+    // caught it, these agree and nothing changes; if it didn't, this
+    // still submits the real, current fields instead of silently
+    // repeating the same "starts blank" failure.
+    const realEmail    = emailRef.current?.value ?? email;
+    const realPassword = passwordRef.current?.value ?? password;
+    if (realEmail !== email) setEmail(realEmail);
+    if (realPassword !== password) setPassword(realPassword);
+    if (!realEmail || !realPassword) { setError(t('login.missingFields')); return; }
     setError('');
-    await attemptLogin(false);
+    await attemptLogin(false, realEmail, realPassword);
   };
 
   return (
@@ -129,28 +215,31 @@ const LoginPage: React.FC = () => {
               ForMedrixAI sits in the colophon at the foot of the card. */}
           <div className="ps-login-brand">
             <img
-              src="/pathscribe-logo-clean.svg"
+              src="/pathscribe-logo-clean.png"
               alt="PathScribe"
               className="ps-login-hero"
             />
-            <div className="ps-login-descriptor">Clinical Pathology Reporting</div>
+            <div className="ps-login-descriptor">{t('login.descriptor')}</div>
 
             {environment && (
               <div className={`ps-login-env ps-login-env--${environment.tone}`}>
-                {environment.label}
+                {t(environment.labelKey)}
               </div>
             )}
           </div>
 
-          {/* Form */}
+          {/* Email + password: demo builds only (VITE_AUTH_MODE unset or "demo"). */}
+          {passwordSignInEnabled && (
           <form onSubmit={handleSubmit}>
             <div className="ps-login-field">
-              <label className="ps-login-field-label" htmlFor="login-email">Email</label>
+              <label className="ps-login-field-label" htmlFor="login-email">{t('login.email')}</label>
               <input
                 id="login-email"
+                ref={emailRef}
                 type="email"
                 value={email}
                 onChange={e => setEmail(e.target.value)}
+                onAnimationStart={handleAutofillDetected('email')}
                 autoComplete="email"
                 autoFocus
                 className="ps-login-input"
@@ -162,17 +251,19 @@ const LoginPage: React.FC = () => {
                   keeps the form on a single left axis and stops the link
                   competing with the primary action below. */}
               <div className="ps-login-label-row">
-                <label className="ps-login-field-label" htmlFor="login-password">Password</label>
-                <a href="#" className="ps-login-forgot" onClick={e => { e.preventDefault(); setError('Password reset isn\u2019t available in this demo \u2014 contact your administrator.'); }}>
-                  Forgot password?
+                <label className="ps-login-field-label" htmlFor="login-password">{t('login.password')}</label>
+                <a href="#" className="ps-login-forgot" onClick={e => { e.preventDefault(); setError(t('login.passwordResetUnavailable')); }}>
+                  {t('login.forgotPassword')}
                 </a>
               </div>
               <div className="ps-login-pw-wrap">
                 <input
                   id="login-password"
+                  ref={passwordRef}
                   type={showPw ? 'text' : 'password'}
                   value={password}
                   onChange={e => setPassword(e.target.value)}
+                  onAnimationStart={handleAutofillDetected('password')}
                   autoComplete="current-password"
                   className="ps-login-input"
                 />
@@ -180,7 +271,7 @@ const LoginPage: React.FC = () => {
                   type="button"
                   className="ps-login-pw-toggle"
                   onClick={() => setShowPw(v => !v)}
-                  aria-label={showPw ? 'Hide password' : 'Show password'}
+                  aria-label={showPw ? t('login.hidePassword') : t('login.showPassword')}
                 >
                   <EyeIcon open={showPw} />
                 </button>
@@ -194,62 +285,88 @@ const LoginPage: React.FC = () => {
             )}
 
             <button type="submit" disabled={loading} className="ps-login-submit">
-              {loading ? 'Signing in…' : 'Sign In'}
+              {loading ? t('login.signingIn') : t('login.signIn')}
             </button>
           </form>
+          )}
 
-          {/* Single sign-on — announced, not yet live. Rendered as disabled
-              controls so they stay out of the tab order, with aria-disabled
-              so assistive tech reports the state rather than the buttons
-              simply being unreachable and unexplained. */}
-          <div className="ps-login-divider">
-            <div className="ps-login-divider-line" />
-            <span className="ps-login-divider-text">or continue with</span>
-            <div className="ps-login-divider-line" />
-          </div>
+          {!passwordSignInEnabled && error && (
+            <div className="ps-login-error" role="alert">
+              {error}
+            </div>
+          )}
 
-          <div className="ps-login-social-row">
-            <button
-              type="button"
-              className="ps-login-social"
-              disabled
-              aria-disabled="true"
-              title="Single sign-on is not yet available"
-            >
-              <GoogleIcon /> Google
-              <span className="ps-login-social-badge">Soon</span>
-            </button>
-            <button
-              type="button"
-              className="ps-login-social"
-              disabled
-              aria-disabled="true"
-              title="Single sign-on is not yet available"
-            >
-              <MicrosoftIcon /> Microsoft
-              <span className="ps-login-social-badge">Soon</span>
-            </button>
-          </div>
+          {!passwordSignInEnabled && ssoProviders.length === 0 && (
+            <div className="ps-login-error" role="alert">
+              {t('login.signInNotConfigured')}
+            </div>
+          )}
+
+          {passwordSignInEnabled && (
+            <div className="ps-login-divider">
+              <div className="ps-login-divider-line" />
+              <span className="ps-login-divider-text">{t('login.continueWith')}</span>
+              <div className="ps-login-divider-line" />
+            </div>
+          )}
+
+          {ssoProviders.length > 0 ? (
+            /* Single sign-on with the organisation's identity provider (PS-60). */
+            <div className="ps-login-social-row">
+              {ssoProviders.map(p => (
+                <button
+                  key={p.id}
+                  type="button"
+                  className="ps-login-social ps-login-social--live"
+                  disabled={loading}
+                  onClick={() => { void startSso(p.id); }}
+                >
+                  {p.id === 'microsoft' ? <MicrosoftIcon /> : p.id === 'google' ? <GoogleIcon /> : null} {t(SSO_LABEL_KEYS[p.id])}
+                </button>
+              ))}
+            </div>
+          ) : passwordSignInEnabled && (
+            /* No provider configured in this build: announced, not live.
+               Disabled controls stay out of the tab order; aria-disabled
+               lets assistive tech report the state. */
+            <div className="ps-login-social-row">
+              <button
+                type="button"
+                className="ps-login-social"
+                disabled
+                aria-disabled="true"
+                title={t('login.ssoUnavailable')}
+              >
+                <GoogleIcon /> {t('login.ssoGoogle')}
+                <span className="ps-login-social-badge">{t('login.ssoSoon')}</span>
+              </button>
+              <button
+                type="button"
+                className="ps-login-social"
+                disabled
+                aria-disabled="true"
+                title={t('login.ssoUnavailable')}
+              >
+                <MicrosoftIcon /> {t('login.ssoMicrosoft')}
+                <span className="ps-login-social-badge">{t('login.ssoSoon')}</span>
+              </button>
+            </div>
+          )}
 
           {/* Authorised-use notice. This describes how the system behaves; it
               makes no certification claim. */}
           <p className="ps-login-notice">
-            This system contains protected health information. Access is
-            restricted to authorized users and activity is recorded.
+            {t('login.phiNotice')}
           </p>
 
           <div className="ps-login-colophon">
             <img
               src="/formedrix-logo-capM-dark.png"
-              alt="ForMedrixAI"
+              alt="ForMedrixAI — Precision, Care, Innovation"
               width={175}
-              height={41}
+              height={44}
               className="ps-login-colophon-logo"
             />
-            <div className="ps-login-colophon-tagline">
-              Precision <span className="ps-login-tagline-sep">&bull;</span> Care{' '}
-              <span className="ps-login-tagline-sep">&bull;</span> Innovation
-            </div>
             {APP_VERSION && (
               <span className="ps-login-colophon-meta">v{APP_VERSION}</span>
             )}
@@ -263,10 +380,10 @@ const LoginPage: React.FC = () => {
 
       <ConfirmModal
         show={showSessionConflict}
-        title="Already signed in elsewhere"
-        message="This account is already signed in on another tab or window on this browser. Continuing here will sign that session out — any unsaved work there will be preserved and offered for review the next time it's opened. Continue?"
-        confirmLabel="Sign In Here"
-        cancelLabel="Cancel"
+        title={t('login.sessionConflictTitle')}
+        message={t('login.sessionConflictMessage')}
+        confirmLabel={t('login.signInHere')}
+        cancelLabel={t('common.cancel')}
         onConfirm={async () => {
           setShowSessionConflict(false);
           await attemptLogin(true);

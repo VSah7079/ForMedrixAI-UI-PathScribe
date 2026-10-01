@@ -1,11 +1,11 @@
 // src/components/Contribution/tatCalculations.test.ts
 import { describe, it, expect } from 'vitest';
-import { resolveTatTargetHours, computeTotalCaseTatOutliers, computeFirstTouchOutliers, computeGrossingOutliers, computeSignOutOutliers, computeFrozenSectionOutliers, computeColdIschemiaOutliers, computeConsultResponseOutliers, computeConsultAwaitingOutliers, type TatEntryForResolution, type CaseForTatCalc, type IntraopEntryForTatCalc, type CaseWithSpecimensForTatCalc, type DelegationForTatCalc } from './qualityCalculations';
+import { resolveTatTargetHours, resolveTatEntry, computeTotalCaseTatOutliers, computeFirstTouchOutliers, computeGrossingOutliers, computeSignOutOutliers, computeFrozenSectionOutliers, computeColdIschemiaOutliers, computeConsultResponseOutliers, computeConsultAwaitingOutliers, type TatEntryForResolution, type CaseForTatCalc, type IntraopEntryForTatCalc, type CaseWithSpecimensForTatCalc, type DelegationForTatCalc } from './qualityCalculations';
 
 function makeEntry(over: Partial<TatEntryForResolution> = {}): TatEntryForResolution {
   return {
     type: 'TOTAL_CASE', targetHours: 24, urgency: null,
-    clientId: null, specimenId: null, subspecialtyId: null, roleId: null,
+    facilityId: null, performingLabFacilityId: null, specimenId: null, subspecialtyId: null, roleId: null,
     active: true,
     ...over,
   };
@@ -21,9 +21,9 @@ describe('resolveTatTargetHours — real fix: TATConfigSection.tsx never had a c
   it('prefers a client-specific rule over a system-wide default - most-specific-wins', () => {
     const entries = [
       makeEntry({ targetHours: 24, urgency: 'ROUTINE' }),
-      makeEntry({ targetHours: 12, urgency: 'ROUTINE', clientId: 'client-1' }),
+      makeEntry({ targetHours: 12, urgency: 'ROUTINE', facilityId: 'client-1' }),
     ];
-    const result = resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', clientId: 'client-1' });
+    const result = resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', facilityId: 'client-1' });
     expect(result).toBe(12);
   });
 
@@ -48,6 +48,83 @@ describe('resolveTatTargetHours — real fix: TATConfigSection.tsx never had a c
   it('does not match a STAT-only entry against a routine case', () => {
     const entries = [makeEntry({ targetHours: 4, urgency: 'STAT' })];
     const result = resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE' });
+    expect(result).toBeNull();
+  });
+});
+
+describe('resolveTatTargetHours — real, per direct guidance: Performing Lab and Ordering Client are two genuinely separate, independently-applicable dimensions, not one replacing the other', () => {
+  it('a performing-lab-specific rule wins over the system default, the same way a client-specific one already does', () => {
+    const entries = [
+      makeEntry({ targetHours: 24, urgency: 'ROUTINE' }),
+      makeEntry({ targetHours: 8, urgency: 'ROUTINE', performingLabFacilityId: 'lab-1' }),
+    ];
+    const result = resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', performingLabFacilityId: 'lab-1' });
+    expect(result).toBe(8);
+  });
+
+  it('a real ordering client agreement and a real performing lab policy can both exist independently, and the context resolves to whichever one actually applies', () => {
+    const entries = [
+      makeEntry({ targetHours: 24, urgency: 'ROUTINE' }),
+      makeEntry({ targetHours: 8, urgency: 'ROUTINE', performingLabFacilityId: 'lab-1' }),
+      makeEntry({ targetHours: 12, urgency: 'ROUTINE', facilityId: 'client-1' }),
+    ];
+    // A case performed at lab-1, ordered by some other, unrelated client
+    // — the lab's own policy applies, the client-1 agreement doesn't.
+    expect(resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', performingLabFacilityId: 'lab-1', facilityId: 'client-99' })).toBe(8);
+    // A case ordered by client-1, performed at some other, unrelated lab
+    // — client-1's own agreement applies, lab-1's policy doesn't.
+    expect(resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', performingLabFacilityId: 'lab-99', facilityId: 'client-1' })).toBe(12);
+  });
+
+  it('real compounding specificity: an entry with BOTH a performing lab and an ordering client set wins over one with only either alone', () => {
+    const entries = [
+      makeEntry({ targetHours: 24, urgency: 'ROUTINE' }),
+      makeEntry({ targetHours: 8, urgency: 'ROUTINE', performingLabFacilityId: 'lab-1' }),
+      makeEntry({ targetHours: 12, urgency: 'ROUTINE', facilityId: 'client-1' }),
+      makeEntry({ targetHours: 4, urgency: 'ROUTINE', performingLabFacilityId: 'lab-1', facilityId: 'client-1' }),
+    ];
+    const result = resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', performingLabFacilityId: 'lab-1', facilityId: 'client-1' });
+    expect(result).toBe(4);
+  });
+
+  it('a performing-lab-specific rule never fires for a different real performing lab, even with everything else identical', () => {
+    const entries = [makeEntry({ targetHours: 8, urgency: 'ROUTINE', performingLabFacilityId: 'lab-1' })];
+    const result = resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', performingLabFacilityId: 'lab-2' });
+    expect(result).toBeNull();
+  });
+
+  it('real, per direct guidance: an entry with neither dimension set (Enterprise-wide) still applies when the case has both a real performing lab and a real ordering client, as the honest fallback', () => {
+    const entries = [makeEntry({ targetHours: 24, urgency: 'ROUTINE' })];
+    const result = resolveTatTargetHours(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', performingLabFacilityId: 'lab-1', facilityId: 'client-1' });
+    expect(result).toBe(24);
+  });
+});
+
+describe('resolveTatEntry — real, per direct guidance: the winning-entry resolution TATConfigSection.tsx\'s own Resolution Simulator now calls directly, replacing a real, hand-maintained, already-stale duplicate priority list', () => {
+  it('returns the actual winning entry, not just its targetHours — the real reason a consumer would need this over resolveTatTargetHours', () => {
+    const entries = [
+      makeEntry({ targetHours: 24, urgency: 'ROUTINE' }),
+      makeEntry({ targetHours: 8, urgency: 'ROUTINE', performingLabFacilityId: 'lab-1' }),
+    ];
+    const result = resolveTatEntry(entries, 'TOTAL_CASE', { urgency: 'ROUTINE', performingLabFacilityId: 'lab-1' });
+    expect(result?.targetHours).toBe(8);
+    expect(result?.performingLabFacilityId).toBe('lab-1');
+  });
+
+  it('resolveTatTargetHours is a genuine thin wrapper over this — the two can never disagree, by construction', () => {
+    const entries = [
+      makeEntry({ targetHours: 24, urgency: 'ROUTINE' }),
+      makeEntry({ targetHours: 8, urgency: 'ROUTINE', facilityId: 'client-1', performingLabFacilityId: 'lab-1' }),
+    ];
+    const context = { urgency: 'ROUTINE' as const, facilityId: 'client-1', performingLabFacilityId: 'lab-1' };
+    const entry = resolveTatEntry(entries, 'TOTAL_CASE', context);
+    const hours = resolveTatTargetHours(entries, 'TOTAL_CASE', context);
+    expect(entry?.targetHours).toBe(hours);
+  });
+
+  it('returns null (not a fabricated entry) when genuinely nothing matches', () => {
+    const entries = [makeEntry({ targetHours: 24, urgency: 'STAT' })];
+    const result = resolveTatEntry(entries, 'TOTAL_CASE', { urgency: 'ROUTINE' });
     expect(result).toBeNull();
   });
 });
@@ -100,7 +177,7 @@ describe('computeTotalCaseTatOutliers — real fix: replaces the entirely hardco
   it('resolves the real client name for assigningAuthority when available', () => {
     const cases: CaseForTatCalc[] = [{
       id: 'S26-1',
-      order: { priority: 'Routine', clientId: 'client-1', receivedDate: '2026-03-20T00:00:00.000Z' },
+      order: { priority: 'Routine', facilityId: 'client-1', receivedDate: '2026-03-20T00:00:00.000Z' },
       diagnostic: { issuedDate: '2026-03-21T06:00:00.000Z' },
     }];
     const result = computeTotalCaseTatOutliers(cases, entries, { 'client-1': 'Metro General Hospital' }, now);

@@ -12,11 +12,18 @@
 // ─────────────────────────────────────────────────────────────
 
 import React, { useState, useEffect, useCallback, useMemo, useRef } from 'react';
+import ReactDOM from 'react-dom';
 import { useAuth } from '@/contexts/AuthContext';
-import { useParams, useNavigate, useLocation } from 'react-router-dom';
+import { useVoice } from '@/contexts/VoiceProvider';
+import { useFootPedal } from '@/hooks/useFootPedal';
+import { useAudioSegmentRecorder } from '@/hooks/useAudioSegmentRecorder';
+import { useParams, useNavigate, useLocation } from 'react-router';
+import { Trans, useTranslation } from 'react-i18next';
+import { formatDate } from '@/utils/formatDate';
 import AddSynopticModal       from './components/AddSynopticModal';
 import SpecimenEditModal      from './modals/SpecimenEditModal';
 import CreateBiopsyArrayModal from './modals/CreateBiopsyArrayModal';
+import MatrixBlockEditorModal from './modals/MatrixBlockEditorModal';
 import AddOrdersModal, { type OrderTab } from './modals/AddOrdersModal';
 import NavBar             from '@/components/NavBar/NavBar';
 import HeaderBar          from './components/HeaderBar';
@@ -24,32 +31,68 @@ import Sidebar            from './components/Sidebar';
 import MaterialTreePanel  from './components/MaterialTreePanel';
 import LeftReportPanel    from './components/LeftReportPanel';
 import { AmendmentStatusBanner } from './components/AmendmentStatusBanner';
-import { InformalReviewBanner } from './components/InformalReviewBanner';
+import AutopsyAuthorizationCompletionForm from '../../components/Autopsy/AutopsyAuthorizationCompletionForm';
+import AutopsyBodyReleaseForm from '../../components/Autopsy/AutopsyBodyReleaseForm';
+import { resolveAutopsyGrossExaminationGate } from '@/services/autopsy/resolveAutopsyGrossExaminationGate';
+import { resolveAutopsyAccessionStatus } from '@/services/autopsy/resolveAutopsyAccessionStatus';
+import { resolveAutopsyTatSlaMatrix } from '@/services/autopsy/resolveAutopsyTatSlaMatrix';
+import { formatAutopsyTatSlaSummary } from '@/services/autopsy/formatAutopsyTatSlaSummary';
+import { resolveHtaApplicability } from '@/services/autopsy/resolveHtaApplicability';
+import { resolveAutopsyBodyReleaseGate } from '@/services/autopsy/resolveAutopsyBodyReleaseGate';
+import { resolveAutopsyBodyAlreadyReleased } from '@/services/autopsy/resolveAutopsyBodyAlreadyReleased';
+import { signAutopsyReport } from '@/services/autopsy/signAutopsyReport';
+import { SignatureConfirmModal } from '@/components/Signing/SignatureConfirmModal';
+import type { SignatureConfirmation } from '@/services/auth/signerConfirmation';
+import { releasePreliminaryReport } from '@/services/reports/releasePreliminaryReport';
+import { getMainBodySpecimen } from '@/services/autopsy/getMainBodySpecimen';
+import type { AutopsyCaseDetails } from '@/types/autopsy/AutopsyCaseDetails';
+// Real fix, per direct follow-up: "I want informal reviews to be
+// handled differently than delegations types, so remove the informal
+// action from that workflow." InformalReviewBanner.tsx was built
+// around DelegationRecord.delegationType === 'CASUAL_REVIEW' -
+// removed from this page along with that whole approach, and the file
+// itself deleted in Batch 355 (PS-346). Replaced by a real, separate
+// InformalReviewRequest system - see the "Internal Notes" button
+// effect below, and the new "Informal Review" Worklist tile.
 import { ReleaseBufferBanner } from './components/ReleaseBufferBanner';
+import { RevisionFeedbackBanner } from './components/RevisionFeedbackBanner';
 import { AmendmentDraftBanner } from './components/AmendmentDraftBanner';
 import RightSynopticPanel, { type RightSynopticPanelHandle, type AiSuggestion } from './components/RightSynopticPanel';
+import MicroscopicEntryPanel from './components/MicroscopicEntryPanel';
+import { useMicroscopicEntry } from './hooks/useMicroscopicEntry';
+import { useEffectiveSpecimenComplexity } from './hooks/useEffectiveSpecimenComplexity';
 import BottomActionBar    from './components/BottomActionBar';
 
 import AmendmentModal        from './modals/AmendmentModal';
 import { CaseCommentModal }   from '../Synoptic/Comments/CaseCommentModal';
+import { RetentionHoldModal } from './modals/RetentionHoldModal';
+import { CaseHoldModal } from './modals/CaseHoldModal';
+import { CriticalFindingsModal } from './modals/CriticalFindingsModal';
 import PatientHistoryModal    from '../../components/PatientHistory/PatientHistoryModal';
 import FlagManagerModal       from '../../components/Flags/FlagManagerModal';
 import { AddCodeModal }       from '../Synoptic/Codes/AddCodeModal';
 import { ReportCommentModal } from '../Synoptic/Comments/ReportCommentModal';
 import CaseSignOutModal      from './modals/CaseSignOutModal';
+import BillingReviewPanel from './components/BillingReviewPanel';
 import { DiscordanceReconciliationModal } from './modals/DiscordanceReconciliationModal';
 import { CopilotReportViewModal } from './modals/CopilotReportViewModal';
 import { useLisIntegration } from './hooks/useLisIntegration';
+import { MATERIAL_SCAN_UPDATED_EVENT } from '@/hooks/useGlobalMaterialScanTracking';
+import { getEffectiveScanStationId } from '@/utils/effectiveScanStation';
 import { useSpecimenBlockManagement } from './hooks/useSpecimenBlockManagement';
+import { useEffectiveScanStation } from '@/hooks/useEffectiveScanStation';
 import { useReportGeneration } from './hooks/useReportGeneration';
 import { useAmendmentWorkflow } from './hooks/useAmendmentWorkflow';
 import { useGrossingCompletion } from './hooks/useGrossingCompletion';
 import { useOrchestratorDraft, writeCaseDraft } from './hooks/useOrchestratorDraft';
 import { useSignOutWorkflow } from './hooks/useSignOutWorkflow';
+import { resolveBuildReportAvailability } from './hooks/resolveBuildReportDirection';
 import FinalizeSynopticModal from './modals/FinalizeSynopticModal';
 import LogoutWarningModal    from '@/components/Common/LogoutWarningModal';
 import UnsavedWarningModal   from './modals/UnsavedWarningModal';
 import DraftRecoveryModal    from '@/components/Common/DraftRecoveryModal';
+import { ManageReprintsModal } from './modals/ManageReprintsModal';
+import { printRequisitionLabel, printContainerLabel, printDecantContainerLabel } from '@/utils/labels/printRequisitionAndContainerLabels';
 
 import { useSynopticFinalize } from '../Synoptic/useSynopticFinalize';
 import { useSynopticModals }   from '../Synoptic/useSynopticModals';
@@ -58,14 +101,28 @@ import { useSynopticFlags }    from '../Synoptic/useSynopticFlags';
 import { SaveToast }           from '../Synoptic/UI/SaveToast';
 
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { mockAuditService } from '@/services/auditlog/mockAuditService';
-import { isOrchCaseId } from '@/services/cases/reportingModeRouting';
 import { priorityService } from '@/services';
+import { getUiPreference, setUiPreference, getSessionFlag } from '@/utils/uiPreferences';
+import { stainTypeService } from '@/services';
+import { computeCaseCodingSummary } from '@/services/billing/codeMapTable';
+import { resolveServiceCharge, reverseServiceCharge } from '@/services/billing/resolveServiceCharge';
+import type { PostSignoutChangeContext } from '@/services/billing/resolveServiceCharge';
+import { isCaseSignedOutForBilling } from '@/services/billing/isCaseSignedOutForBilling';
+import { PostSignoutBillingChangeModal } from '@/components/Billing/PostSignoutBillingChangeModal';
+import { CorrectAppliedCodeModal } from '@/components/Billing/CorrectAppliedCodeModal';
+import { correctServiceCharge, enforceAppliedCodeCorrection } from '@/services/billing/correctServiceCharge';
+// Batch 381: services through @/services, not their mock file paths.
+import { billingRuleService, serviceChargeService, actionRegistryService, reportTemplateService, reportReleaseService, evaluateGrossingTemplateAssignment } from '@/services';
+import { resolveRequireBillingApprovalForCase } from '@/services/billing/shouldRequireBillingApproval';
+import { auditService, authorizationService, signatureGate } from '@/services';
 import { ConcurrencyConflictError } from '@/services/cases/ConcurrencyConflictError';
 import { intraoperativeService } from '@/services';
 import { IntraopMergePromptModal } from '@/pages/AccessionPage/IntraopMergePromptModal';
 import type { EntryMatch } from '@/types/intraop/IntraoperativeEntry';
-import { amendmentService, reportVersionService } from '@/services';
+import { amendmentService, reportVersionService, reportChangeLogService, REPORT_CHANGE_LOGGED_EVENT, type ReportChangeEntry } from '@/services';
+import { exportChangeLog } from '@/services/reportChangeLog/exportChangeLog';
+import { downloadCsv } from '@/utils/csv';
+import { ChangeHistoryModal } from './modals/ChangeHistoryModal';
 import type { ReportVersionRecord } from '@/types/reports/ReportVersionRecord';
 import { VOICE_CONTEXT } from '@/constants/systemActions';
 import { deficiencyTypeService, resolutionTypeService } from '@/services';
@@ -77,15 +134,22 @@ import type { CaseComment } from '@/types/case/CaseComment';
 import { specimenDeficiencyService } from '@/services';
 import { useSpecimenDictionary } from '@/components/Config/System/useSpecimenDictionary';
 import { FixativeTimeGateModal, type FixativeGateSpecimen, type FixativeResolution } from './modals/FixativeTimeGateModal';
+import { StainQcGateModal } from './modals/StainQcGateModal';
+import type { StainQcGateBlockingItem } from './hooks/checkStainQcGate';
+import { PreAnalyticDateGateModal, type PreAnalyticDateGateSpecimen, type PreAnalyticDateResolution } from './modals/PreAnalyticDateGateModal';
+import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
+import { resolvePreAnalyticDateGateConfig } from '@/services/billing/resolvePreAnalyticDateGateConfig';
 import SynopticSidebar    from '../../components/Synoptic/SynopticSidebar';
 import { useDirtyState } from '@/contexts/DirtyStateContext';
 import { useLogout } from '@/hooks/useLogout';
 import { useDraftCache } from '@/hooks/useDraftCache';
+import { computeDraftDiff } from '@/utils/computeDraftDiff';
 import '@/pathscribe.css';
 
 import type { Case } from '@/types/case/Case';
 import type { Specimen } from '@/types/case/Specimen';
 import { AiReviewModal }  from './modals/AiReviewModal';
+import { AiNarrativeReviewModal } from './modals/AiNarrativeReviewModal';
 import { DelegateModal }  from '../Synoptic/Delegate/DelegateModal';
 import CaseTeamModal            from './modals/CaseTeamModal';
 import { PreFinalisationModal } from './modals/PreFinalisationModal';
@@ -93,7 +157,6 @@ import { ProtocolChangeModal }     from './modals/ProtocolChangeModal';
 // ProtocolChange moved to Case.ts — see comment there. (ProtocolChangeModal.tsx
 // still re-exports it for backward compat, but importing it from its real
 // home directly here, alongside Case/SynopticReportInstance below.)
-import { mockActionRegistryService } from '@/services/actionRegistry/mockActionRegistryService';
 import { useAuditLog } from '@/components/Audit/useAuditLog';
 
 // ── Orchestrator ───────────────────────────────────────────────
@@ -104,6 +167,11 @@ import SequencerPanel from './components/SequencerPanel';
 import { buildContext, resolveAnswers } from '@/orchestrator/contextBuilder';
 import type { StructuredContext } from '@/orchestrator/contextBuilder';
 import { aiBehaviorService } from '@/services';
+import { resolveServiceEndpoint } from '@/utils/serviceEndpoint';
+import { useCaseSpellCheck } from '@/hooks/useCaseSpellCheck';
+import { SpellCheckProvider } from '@/components/SpellCheck/SpellCheckContext';
+import type { SpellingLocale } from '@/services/spellcheck/spellingLocales';
+import { getCaseOpenedFrom, markReturnToSearch } from '@/utils/search/searchSession';
 
 
 // Report PDF generation — Firebase Cloud Function (Python/ReportLab), see
@@ -118,8 +186,25 @@ import { aiBehaviorService } from '@/services';
 // Firebase, set VITE_REPORT_PDF_ENDPOINT to the full URL Firebase gives
 // you for the function (the function name is already part of that
 // hostname/path) — don't append /render_report to it either.
-const REPORT_PDF_ENDPOINT =
-  (import.meta as any).env?.VITE_REPORT_PDF_ENDPOINT ?? 'http://localhost:8080/';
+//
+// Batch 327 (HTTPS): resolved through utils/serviceEndpoint.ts. A
+// production build must set VITE_REPORT_PDF_ENDPOINT to an https:// URL;
+// a missing or plain-HTTP value is refused before any request (the
+// print falls back to printing from screen) rather than sending the
+// report to http://localhost:8080/. The localhost default and loopback
+// HTTP remain for development only.
+const REPORT_PDF = resolveServiceEndpoint({
+  name: 'report renderer',
+  envVar: 'VITE_REPORT_PDF_ENDPOINT',
+  configured: (import.meta as any).env?.VITE_REPORT_PDF_ENDPOINT,
+  devDefault: 'http://localhost:8080/',
+  isProduction: !!(import.meta as any).env?.PROD,
+});
+/** The report renderer's URL, or throws its configuration problem. */
+const reportPdfEndpoint = (): string => {
+  if (REPORT_PDF.ok === false) throw new Error(REPORT_PDF.message);
+  return REPORT_PDF.url;
+};
 
 // ── AI Synthesis Status — Gatekeeper Badge model (see Dr. Carter's review,
 // applied in SynopticReportPage below). 'none' = no AI suggestions exist
@@ -133,11 +218,21 @@ export interface AiSynthesisStatus {
   flaggedFieldConfidence?:  number;
 }
 
+/** Translated text for each signAutopsyReport error code (Batch 331). */
+const AUTOPSY_SIGN_ERROR_KEY: Record<string, string> = {
+  CASE_NOT_FOUND:          'autopsySignOut.errors.caseNotFound',
+  NO_AUTOPSY_RECORD:       'autopsySignOut.errors.noAutopsyRecord',
+  PAD_REQUIRED:            'autopsySignOut.errors.padRequired',
+  NO_FORENSIC_APPOINTMENT: 'autopsySignOut.errors.noForensicAppointment',
+  SAVE_FAILED:             'autopsySignOut.errors.saveFailed',
+};
+
 const SynopticReportPage: React.FC = () => {
   const { caseId } = useParams<{ caseId: string }>();
   const { user: signingUser } = useAuth();
   const { log }   = useAuditLog();
   const navigate   = useNavigate();
+  const { t: tGrossingNav, i18n: i18nForDates } = useTranslation();
   const location   = useLocation();
   const handleLogout = useLogout();
 
@@ -145,12 +240,52 @@ const SynopticReportPage: React.FC = () => {
   const routerWorklistIds: string[] = (location.state as any)?.worklistCaseIds ?? [];
 
   // Track whether this case was opened from Search or Worklist.
-  // sessionStorage key is set by SearchPage / WorklistTable before navigation.
+  // Set by SearchPage / WorklistTable before navigation (utils/search/searchSession.ts).
   const navSource: 'search' | 'worklist' = React.useMemo(() => {
-    return sessionStorage.getItem('pathscribe:navFrom') === 'search' ? 'search' : 'worklist';
+    return getCaseOpenedFrom();
   }, []);
 
   const backPath = navSource === 'search' ? '/search' : '/worklist';
+
+  // ── Foot pedal — real feature, per direct follow-up: "Foot pedal
+  //    support specifically." The Grossing spec's own real 3-pedal
+  //    scheme, wired to real, existing capabilities rather than new,
+  //    parallel ones: Pedal 1 toggles the same real voice-listening
+  //    state the mic button itself controls; Pedal 2 fires the same
+  //    real PATHSCRIBE_NEXT_UNANSWERED event the "Next Unanswered"
+  //    button already dispatches. Pedal 3 is genuinely two related
+  //    actions on one button, chosen by real, current state — Pause
+  //    while actively listening, Replay once already paused, since a
+  //    single pedal press can only ever mean one or the other at any
+  //    given moment. ──────────────────────────────────────────────
+  const { isListening, toggleVoice, stopListening } = useVoice();
+  const audioSegments = useAudioSegmentRecorder();
+  const wasListeningRef = useRef(false);
+
+  // Starts/stops the real, parallel audio-segment recorder in step
+  // with the real dictation lifecycle — a new segment begins each
+  // time listening (re)starts, so "the last segment" always means
+  // whatever was most recently, actually dictated.
+  useEffect(() => {
+    if (isListening && !wasListeningRef.current) {
+      audioSegments.startSegment();
+    } else if (!isListening && wasListeningRef.current) {
+      audioSegments.stopCapture();
+    }
+    wasListeningRef.current = isListening;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isListening]);
+
+  useFootPedal({
+    actions: {
+      pedal1_pushToTalk: () => toggleVoice(),
+      pedal2_nextField: () => window.dispatchEvent(new CustomEvent('PATHSCRIBE_NEXT_UNANSWERED')),
+      pedal3_pauseReplay: () => {
+        if (isListening) stopListening();
+        else audioSegments.replayLastSegment();
+      },
+    },
+  });
 
   // ── Case data ──────────────────────────────────────────────
   const [caseData, setCaseData]     = useState<Case | null>(null);
@@ -186,15 +321,27 @@ const SynopticReportPage: React.FC = () => {
       // knew), since other writes may have landed between the conflict
       // being detected and this force-save actually running.
       await writeCaseDraft(caseData, caseId, orchSections);
+      // Real, direct follow-up (PS-71): "Save Mine Anyway" is the real,
+      // user-initiated override of a detected conflict — the other half of
+      // "record both blocked and overridden edit collisions to the audit
+      // trail" (handleConcurrencyConflict in sharedHookTypes.ts covers the
+      // detection/blocked half).
+      auditService.logEvent({
+        type: 'user',
+        event: 'Concurrency conflict overridden',
+        detail: `Save Mine Anyway: this session's draft overwrote version ${concurrencyConflict.actualVersion}`,
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
       knownVersionRef.current = concurrencyConflict.actualVersion + 1;
       clearDirty();
-      showToast('Draft saved — your version overwrote the other change');
+      showToast(tGrossingNav('synopticReportPage.toast.draftOverwroteOther'), 'warning');
     } catch (e) { console.error(e); }
     setConcurrencyConflict(null);
   };
 
-  // Phase 2 of the Inactivity Timeout & Draft Recovery spec (see
-  // PRIORITY_FIXES.md). Caches the FULL case (not just synoptic answers --
+  // Phase 2 of the Inactivity Timeout & Draft Recovery spec. Caches the FULL case (not just synoptic answers --
   // this page has 18 distinct dirty-able things per its own markDirty()
   // call sites, from Priority to Case comments to Codes; an earlier,
   // narrower version of this only caught synoptic answers and would have
@@ -202,19 +349,64 @@ const SynopticReportPage: React.FC = () => {
   // pure read-only master data from the LIS/EHR (name/DOB/MRN), never
   // edited on this page, and re-fetched fresh on restore rather than
   // risking overwriting updated demographics with a stale cached copy.
+  // Moved up from its original location further down this file —
+  // draftableCaseSlice, immediately below, needs it, and hooks can't
+  // reference a const declared later in the same render pass. The
+  // initializer itself ([]) has no dependency on anything declared
+  // between here and its original position, so this move is safe.
+  const [orchSections,    setOrchSections]    = useState<OrchestratorSection[]>([]);
+
   // Local-only restore -- no auto-persist to the server; see the restore
   // handler below.
+  //
+  // Real fix, per direct report: "draft not persistent (lost on
+  // navigation/refresh)." Traced precisely — orchSections is genuinely
+  // separate, local component state (useState below), never merged into
+  // caseData at all, so it was never part of what this cache saved or
+  // restored, even though every other one of this page's 18 dirty-able
+  // things already was. Included here under a real, dedicated key
+  // (never a real Case field, so it can't collide with one) — the
+  // restore handler below extracts it back out separately rather than
+  // spreading it into caseData.
   const draftableCaseSlice = useMemo(() => {
     if (!caseData) return null;
     const { patient: _patient, ...rest } = caseData as any;
-    return rest;
-  }, [caseData]);
+    return { ...rest, __orchSectionsDraft: orchSections };
+  }, [caseData, orchSections]);
 
   const { hasExistingDraft, existingDraftPayload, existingDraftSavedAt, confirmRestore, discardDraft } = useDraftCache(
     signingUser?.id ?? null,
     caseId ?? null,
     draftableCaseSlice,
   );
+
+  // Real feature, per direct follow-up: "I thought we were display the
+  // changes that would be applied to the case." draftableCaseSlice and
+  // existingDraftPayload are the exact same shape (both caseData minus
+  // patient, plus __orchSectionsDraft) — the real, apples-to-apples
+  // comparison this needs, not a re-derivation of either side.
+  const draftDiff = React.useMemo(
+    () => computeDraftDiff(draftableCaseSlice as any, existingDraftPayload as any),
+    [draftableCaseSlice, existingDraftPayload],
+  );
+
+  // Real fix, per direct question: "why does a case with no changes give
+  // me a warning?" Traced precisely - the autosave in useDraftCache
+  // writes a new draft on every real caseData reference change
+  // (including normal load/hydration updates that don't reflect any
+  // actual edit, since React state updates always produce a new object
+  // reference even when the field values end up identical). The modal
+  // itself was gated only on "does any draft exist," never on whether
+  // computeDraftDiff's own, already-correct noise-filtered comparison
+  // (see that file's own header comment) found anything real - so a
+  // functionally-identical, no-op draft still triggered the prompt,
+  // just to honestly report "no differences found" once shown. This
+  // silently clears that exact no-op case rather than leaving it to
+  // resurface on every future visit to this same case.
+  useEffect(() => {
+    if (hasExistingDraft && draftDiff.length === 0) discardDraft();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [hasExistingDraft, draftDiff.length]);
 
   // ── Voice context activation ────────────────────────────────────────────────
   // This page — the entire SynopticReportPage tree, including whatever's
@@ -229,14 +421,14 @@ const SynopticReportPage: React.FC = () => {
   // the entire time anyone was on this page — same one-line pattern
   // every other page already uses, just never added to this one.
   useEffect(() => {
-    mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.SYNOPTIC);
-    return () => { mockActionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
+    actionRegistryService.setCurrentContext(VOICE_CONTEXT.SYNOPTIC);
+    return () => { actionRegistryService.setCurrentContext(VOICE_CONTEXT.WORKLIST); };
   }, []);
 
   const [isLoaded, setIsLoaded]     = useState(false);
   const [caseNotFound, setCaseNotFound] = useState(false);
   const [activeTab, setActiveTab]       = useState('tumor');
-  const { isDirty: hasUnsavedData, setDirty: setHasUnsavedData, pendingPath, confirmNavigate: confirmContextNavigate, cancelNavigate: cancelContextNavigate } = useDirtyState();
+  const { isDirty: hasUnsavedData, setDirty: setHasUnsavedData, pendingPath, confirmNavigate: confirmContextNavigate, cancelNavigate: cancelContextNavigate, registerSaveHandler, registerDiscardHandler } = useDirtyState();
   const [dirtySections, setDirtySections] = useState<Set<string>>(new Set());
 
   const markDirty = React.useCallback((section: string) => {
@@ -251,7 +443,14 @@ const SynopticReportPage: React.FC = () => {
   // recovery design.
   const handleRestoreDraft = useCallback(() => {
     if (!caseData || !existingDraftPayload) return;
-    setCaseData({ ...caseData, ...(existingDraftPayload as object) } as typeof caseData);
+    // Real fix, per direct report: "draft not persistent (lost on
+    // navigation/refresh)." __orchSectionsDraft isn't a real Case field
+    // — pulled out separately here and applied via setOrchSections,
+    // rather than spread into caseData where it would just become a
+    // stray, meaningless property.
+    const { __orchSectionsDraft, ...caseFields } = existingDraftPayload as any;
+    setCaseData({ ...caseData, ...caseFields } as typeof caseData);
+    if (Array.isArray(__orchSectionsDraft)) setOrchSections(__orchSectionsDraft);
     markDirty('Restored draft');
     confirmRestore();
   }, [caseData, existingDraftPayload, markDirty, confirmRestore]);
@@ -299,6 +498,8 @@ const SynopticReportPage: React.FC = () => {
 
   const [activeSpecimenId, setActiveSpecimenId] = useState<string>('');
   const [showCaseCommentModal, setShowCaseCommentModal] = useState(false);
+  const [showRetentionHoldModal, setShowRetentionHoldModal] = useState(false);
+  const [showCaseHoldModal, setShowCaseHoldModal] = useState(false);
   const [showSpecimenCommentModal, setShowSpecimenCommentModal] = useState(false);
   const [activeSpecimenCommentId, setActiveSpecimenCommentId] = useState<string>('');
   const caseComments: CaseComment[] = useMemo(() => (caseData as any)?.order?.caseComments ?? [], [caseData]);
@@ -317,10 +518,42 @@ const SynopticReportPage: React.FC = () => {
   // ── Fixation-time signout gate ──────────────────────────────────────────────
   const { dictionary: specimenDictionary } = useSpecimenDictionary();
   const [fixativeGateSpecimens, setFixativeGateSpecimens] = useState<FixativeGateSpecimen[] | null>(null);
+  // Real, per PS-289/PS-292's own Gating Strategy — see
+  // checkStainQcGate.ts's own header for the full reasoning.
+  const [stainQcGateBlocking, setStainQcGateBlocking] = useState<StainQcGateBlockingItem[] | null>(null);
+  // Real, per direct follow-up: "Begin AutopsyAuthorizationCompletionForm.tsx
+  // persistence — hands back updated data, nothing saves it." Investigation
+  // found a deeper, real gap this closes: neither this form nor
+  // resolveAutopsyGrossExaminationGate.ts had any real UI caller
+  // anywhere in the app — the whole completion workflow (gate check,
+  // form, persistence) was built and unit-tested but never actually
+  // mounted. This is that real mounting point.
+  const [showAutopsyAuthCompletion, setShowAutopsyAuthCompletion] = useState(false);
+  // Real, per direct follow-up: "AutopsyBodyReleaseForm.tsx's
+  // mounting" — same real, previously-unmounted gap as the
+  // authorization completion form above, now closed the same way.
+  const [showAutopsyBodyRelease, setShowAutopsyBodyRelease] = useState(false);
+  const [signingAutopsyTier, setSigningAutopsyTier] = useState<'PAD' | 'FAD' | null>(null);
+  // Batch 344: a PAD/FAD signature waits for the signer to be confirmed.
+  const [confirmingAutopsyTier, setConfirmingAutopsyTier] = useState<'PAD' | 'FAD' | null>(null);
+  // ── Pre-analytic date (collection/receipt) signout gate — real, per
+  // direct guidance's own cross-jurisdiction compliance research. Same
+  // real "own state, threaded through the sign-out hook" shape as
+  // fixativeGateSpecimens above.
+  const [preAnalyticDateGateSpecimens, setPreAnalyticDateGateSpecimens] = useState<PreAnalyticDateGateSpecimen[] | null>(null);
   // Remembers what finalizeCase was originally called with, so once the
   // gate is resolved we can retry with the exact same arguments rather
   // than losing e.g. which synoptic instances were excluded.
   const [pendingFinalizeArgs, setPendingFinalizeArgs] = useState<string[]>([]);
+  // Real, per direct guidance (retiring Finalize for Orchestration
+  // Mode, moving its own pre-analytic/fixative gates onto
+  // handleSignOutConfirm() too, for Assist Mode's still-active
+  // Finalize AND Orchestration's Sign Out Case to share): these two
+  // gate modals are now genuinely reachable from two different real
+  // flows — this remembers which one to resume once the gate is
+  // resolved, since finalizeCase(args) and handleSignOutConfirm()
+  // have different real signatures (excludedInstanceIds vs. none).
+  const [pendingActionIsSignOut, setPendingActionIsSignOut] = useState(false);
 
   // ── Priority editing ─────────────────────────────────────────────────────────
   // Closes a real gap: priority was set once at Accession with no edit
@@ -369,6 +602,12 @@ const SynopticReportPage: React.FC = () => {
   const [caseVersions, setCaseVersions] = useState<ReportVersionRecord[]>([]);
   const [showVersionHistoryModal, setShowVersionHistoryModal] = useState(false);
   const [showBlockEditor, setShowBlockEditor] = useState(false);
+  // Real feature, per direct follow-up: "decant-level linking UI. In
+  // the same UI we add specimens, blocks stains, protocols?" Real,
+  // simple, id-based sibling to focusedBlockIndex — a decant never
+  // needed the same index-based next/previous voice-command
+  // navigation blocks have, so a plain id is enough.
+  const [focusedDecantId, setFocusedDecantId] = useState<string | null>(null);
   useEffect(() => {
     if (!caseData?.id) return;
     specimenDeficiencyService.getByCaseId(caseData.id).then(res => { if (res.ok) setCaseDeficiencies(res.data); });
@@ -377,6 +616,19 @@ const SynopticReportPage: React.FC = () => {
     if (!caseData?.id) return;
     reportVersionService.getByCaseId(caseData.id).then(res => { if (res.ok) setCaseVersions(res.data); });
   }, [caseData?.id, showVersionHistoryModal]);
+  // Batch 368 (PS-353): the report's change log, refreshed whenever an entry
+  // is recorded for this case (the store announces each one).
+  const [changeEntries, setChangeEntries] = useState<ReportChangeEntry[]>([]);
+  const [showChangeHistory, setShowChangeHistory] = useState(false);
+  useEffect(() => {
+    if (!caseData?.id) return;
+    const caseId = caseData.id;
+    const refresh = () => { reportChangeLogService.listForCase(caseId).then(res => { if (res.ok) setChangeEntries(res.data); }); };
+    refresh();
+    const onLogged = (e: Event) => { if ((e as CustomEvent<{ caseId: string }>).detail?.caseId === caseId) refresh(); };
+    window.addEventListener(REPORT_CHANGE_LOGGED_EVENT, onLogged);
+    return () => window.removeEventListener(REPORT_CHANGE_LOGGED_EVENT, onLogged);
+  }, [caseData?.id]);
   useEffect(() => {
     deficiencyTypeService.getAll().then(res => { if (res.ok) setDeficiencyTypes(res.data); });
     resolutionTypeService.getAll().then(res => { if (res.ok) setResolutionTypes(res.data); });
@@ -385,12 +637,23 @@ const SynopticReportPage: React.FC = () => {
   const [showAddSynopticModal,  setShowAddSynopticModal]  = useState(false);
   const [showSpecimenEdit,      setShowSpecimenEdit]      = useState(false);
   const [showCreateBiopsyArrayModal, setShowCreateBiopsyArrayModal] = useState(false);
-  const [editingBiopsyArrayCassetteId, setEditingBiopsyArrayCassetteId] = useState<string | null>(null);
+  // Real, architectural fix, per direct follow-up: "the matrix block
+  // itself is the tracked asset." Renamed from
+  // editingBiopsyArrayCassetteId — now holds the real, internal
+  // MatrixBlock.id, not the human-typed cassette label (those are
+  // separate fields now; see types/case/MatrixBlock.ts).
+  const [editingMatrixBlockId, setEditingMatrixBlockId] = useState<string | null>(null);
+  // Real, separate state for the new, real status/piece editor
+  // (MatrixBlockEditorModal.tsx) — distinct from editingMatrixBlockId
+  // above, which drives the membership editor (CreateBiopsyArrayModal
+  // in edit mode). Opening the status/piece editor doesn't imply
+  // editing membership, and vice versa.
+  const [viewingMatrixBlockId, setViewingMatrixBlockId] = useState<string | null>(null);
   const [editingSpecimen,       setEditingSpecimen]        = useState<import('@/types/case/Specimen').Specimen | null>(null);
   const [showAddOrdersModal,    setShowAddOrdersModal]     = useState(false);
   const [addOrdersInitialTab,   setAddOrdersInitialTab]     = useState<OrderTab | undefined>(undefined);
 
-  const { toastMsg, toastVisible, showToast } = useSynopticToast();
+  const { toastMsg, toastKind, toastVisible, toastContainsPhi, showToast, dismissToast } = useSynopticToast();
 
   const {
     sendMaterialOrderToLis,
@@ -400,28 +663,97 @@ const SynopticReportPage: React.FC = () => {
     pendingLisNotice, setPendingLisNotice,
     handleMarkReviewedNoChanges,
     simulateLisAmendmentReceived,
+    simulateBlockExceptionReceived,
+    simulateMaterialLocationReceived,
+    simulateCassetteDispatchOutcomeReceived,
+    simulateFullMaterialTreeLocationUpdate,
     copilotReportInstances,
     openCopilotReportView,
-  } = useLisIntegration({ caseData, signingUser, showToast });
+  } = useLisIntegration({ caseData, setCaseData, signingUser, showToast });
+
+  // Real fix, per direct follow-up: "the tracking event should occur
+  // no matter what page your on in pathscribe, just need access to
+  // the NavBar Scan." The real scan-matching/dispatch logic moved to
+  // useGlobalMaterialScanTracking.ts, mounted once at the app root
+  // (MaterialScanTrackingBridge, App.tsx) — never tied to this page
+  // being open at all. This page only listens for that hook's own
+  // real "a scan just updated some case's material" notification and
+  // refreshes + shows a toast when — and only when — it's genuinely
+  // about the exact case currently open here; a scan tracked while
+  // viewing a different case (or no case at all) correctly does
+  // nothing on this page.
+  useEffect(() => {
+    const listener = (e: Event) => {
+      const detail = (e as CustomEvent<{ caseId: string; targetDescription: string; stationName: string }>).detail;
+      if (!detail || !caseData || detail.caseId !== caseData.id) return;
+      caseRouter.getCase(caseData.id).then(refreshed => {
+        if (refreshed) setCaseData(refreshed);
+      });
+      showToast(`📍 ${detail.targetDescription} scanned at "${detail.stationName}" — location updated and sent to the engine.`);
+    };
+    window.addEventListener(MATERIAL_SCAN_UPDATED_EVENT, listener);
+    return () => window.removeEventListener(MATERIAL_SCAN_UPDATED_EVENT, listener);
+  }, [caseData, setCaseData, showToast]);
+
+  // Real fix, per direct follow-up: "I would like to support both
+  // slide engraving and printed labels." Resolved here, once, and
+  // passed into useSpecimenBlockManagement as a plain value — see
+  // that hook's own UseSpecimenBlockManagementParams doc comment for
+  // why useSpecimenBlockManagement itself never calls
+  // useEffectiveScanStation() directly.
+  const { effectiveStationId } = useEffectiveScanStation();
 
   const {
     allBlocks,
+    allDecants,
     setFocusedBlockIndex,
     focusedBlockEntry,
     handleAdvanceFocusedBlockStatus,
     handleConfirmTriage,
+    handleOverrideTriage,
+    handleConfirmTriageChecklistItem,
     handleUpdateBlock,
     handleCancelBlock,
     handleCreateSpareSlide,
     handleOrderRestain,
     handleAddBlock,
+    handleReleaseGrossingBlocks,
+    handleRemovePendingBlock,
+    handleAddDecant,
+    handleUpdateDecant,
     handleCreateBiopsyArray,
     handleUpdateBiopsyArray,
     handleDissolveBiopsyArray,
+    handleUpdateMatrixBlock,
+    handleOrderTargetedMatrixStain,
+    printCassetteForBlock,
+    printMatrixCassette,
+    printSlideForStain,
+    handleBatchPrintSlides,
+    handleBatchPrintCassettes,
+    batchPrintBlocked,
+    pendingCassetteVerification,
   } = useSpecimenBlockManagement({
     caseData, setCaseData, signingUser, markDirty, knownVersionRef,
     setConcurrencyConflict, sendMaterialOrderToLis, showToast,
+    effectiveStationId,
   });
+
+  // Real feature, per direct follow-up: "proceed with the decant
+  // container label." Defined here (not inside useSpecimenBlockManagement)
+  // since it's purely a print action with no case-state mutation —
+  // same real reasoning as the existing onReprintContainer handler a
+  // few hundred lines below, just promoted to a real, named,
+  // reusable handler since BlockStainEditorModal.tsx's own decant
+  // card needs it directly, not only ManageReprintsModal.
+  const handlePrintDecantContainerLabel = useCallback(async (specimenId: string, decantId: string) => {
+    if (!caseData) return;
+    const specimen = (caseData.specimens ?? []).find(s => s.id === specimenId);
+    const decant = specimen?.decants?.find(d => d.id === decantId);
+    if (!specimen || !decant) return;
+    const ok = await printDecantContainerLabel(caseData, specimen.label, specimen.description, decant);
+    if (!ok) showToast(tGrossingNav('synopticReportPage.toast.decantLabelPrintFailed', { label: `${specimen.label}${decant.label}` }), 'warning');
+  }, [caseData, showToast]);
 
 
   // ── Voice action execution — moved further down in this file, see the ──────
@@ -431,10 +763,43 @@ const SynopticReportPage: React.FC = () => {
   // ── declared until much later). ──────────────────────────────────────────
 
   const [activeReportInstanceId, setActiveReportInstanceId] = useState<string>('');
-  const [activeReportType, setActiveReportType] = useState<'grossing' | 'synoptic'>('synoptic');
+  const [activeReportType, setActiveReportType] = useState<'grossing' | 'microscopic' | 'synoptic' | 'billing'>('synoptic');
   const [isAlertExpanded, setIsAlertExpanded] = useState(false);
   const [isSimilarCasesOpen, setIsSimilarCasesOpen] = useState(false);
   const [showCodesModal, setShowCodesModal] = useState(false);
+  // Real, per direct guidance's own follow-up: the general Codes
+  // manager (AddCodeModal) had no post-signout gating at all, unlike
+  // the QA CODE_CORRECTED resolution path. A pending prompt captures
+  // the resolve/reject of a real, in-flight Promise so an async save
+  // handler can genuinely pause and await the person's real
+  // confirmation before any charge/credit or case-data mutation
+  // happens - never after, which would leave the UI showing a change
+  // that was never actually confirmed if the person cancelled.
+  const [pendingPostSignoutPrompt, setPendingPostSignoutPrompt] = useState<{
+    summary: string;
+    resolve: (context: PostSignoutChangeContext) => void;
+    reject: () => void;
+  } | null>(null);
+  const requestPostSignoutConfirmation = (summary: string): Promise<PostSignoutChangeContext> => {
+    return new Promise((resolve, reject) => {
+      setPendingPostSignoutPrompt({ summary, resolve, reject });
+    });
+  };
+  // Real, per direct guidance's own follow-up: "post-signout additions
+  // may be required if the wrong code was billed... the original bill
+  // is credited and the new billing code submitted." Captures which
+  // real, already-applied code is being corrected - specimenId always
+  // present, blockId only for a block-level ancillary code (undefined
+  // means a specimen-level base code, same distinction
+  // onDelete/onDeleteBaseCode already make).
+  const [correctingCode, setCorrectingCode] = useState<{ specimenId: string; blockId?: string; oldCode: string; stainOrderId?: string } | null>(null);
+  // Real feature, per direct follow-up: "Move Manage Reprints...
+  // Bottom-Right Action Cluster... removes the visual orphaning of
+  // the current Manage Reports button." Lifted here from
+  // MaterialTreePanel.tsx — a global, always-available case action in
+  // BottomActionBar.tsx now, not something that only existed while
+  // the Material tab happened to be open.
+  const [showReprintModal, setShowReprintModal] = useState(false);
   // Real fix: which specimen (if any) the codes modal should be
   // pre-targeted at - set when opened via a specimen's own contextual
   // "+Code" button, null when opened via the general "Codes" toolbar
@@ -443,17 +808,34 @@ const SynopticReportPage: React.FC = () => {
   // User-manual toggle for HeaderBar's compact mode -- see the render's
   // own comment for why this shares the existing compact render path
   // rather than building a new shrink mechanism from scratch. Sticky
-  // (persists across cases/sessions via localStorage) since this is a
-  // display preference, not clinical data -- matches the pathscribe_*
-  // naming convention so it's correctly caught by the existing Demo
-  // Reset prefix catch-all.
-  const [isHeaderCompactManual, setIsHeaderCompactManual] = useState<boolean>(() => {
-    try { return localStorage.getItem('pathscribe_header_compact_manual') === '1'; } catch { return false; }
-  });
-  useEffect(() => {
-    try { localStorage.setItem('pathscribe_header_compact_manual', isHeaderCompactManual ? '1' : '0'); } catch {}
-  }, [isHeaderCompactManual]);
+  // (a per-user display preference, utils/uiPreferences since Batch 381),
+  // not clinical data.
+  const [isHeaderCompactManual, setIsHeaderCompactManual] = useState<boolean>(() => getUiPreference('reportHeaderCompact', false));
+  useEffect(() => { setUiPreference('reportHeaderCompact', isHeaderCompactManual); }, [isHeaderCompactManual]);
   const [highlightText, setHighlightText] = useState<string | null>(null);
+  // Real, per direct requirement: a second, independent highlight
+  // source for the billing review panel - deliberately kept separate
+  // from highlightText above (see LeftReportPanel's own rawHighlightText
+  // prop comment for why), so switching between the synoptic and
+  // billing tabs never leaves a stale highlight from the other one.
+  const [rawHighlightText, setRawHighlightText] = useState<string | undefined>(undefined);
+  // Real fix, per direct feedback: rawHighlightText above only ever
+  // targets LeftReportPanel's own report-text search (Report Draft
+  // tab) - it was never wired to anything on the Material tab, which
+  // is where BillingReviewPanel's own AI-source highlighting is
+  // actually expected to show up. Separate, exact-id-based state
+  // rather than another string-search target.
+  const [highlightedStainId, setHighlightedStainId] = useState<string | undefined>(undefined);
+  // Real feature, per direct request: the reverse direction of the
+  // sync above - if the user is on the Material tab with Billing
+  // Review open and clicks a block or one of its stains (both real,
+  // selectable actions there), the corresponding row in Billing
+  // Review's own tree is expected to highlight to match. Deliberately
+  // a new, separate id rather than reusing activeSpecimenId - that one
+  // already flows the other way (Billing's own selection sets it via
+  // onFocusBlock), and folding this into it risked a real, hard-to-
+  // reason-about bidirectional loop between the two directions.
+  const [materialSelectedBlockId, setMaterialSelectedBlockId] = useState<string | undefined>(undefined);
   // Honest signal for when the AI's cited source couldn't actually be
   // located in the report text — see LeftReportPanel's matchResult.
   const [highlightNotFound, setHighlightNotFound] = useState(false);
@@ -476,30 +858,62 @@ const SynopticReportPage: React.FC = () => {
   // ── Left panel tab + Orchestrator state ───────────────────
   const [leftTab, setLeftTab] = useState<'draft' | 'sequencer' | 'report' | 'material'>('report');
   const [showSequencer, setShowSequencer] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(
-    () => localStorage.getItem('ps_sidebar_collapsed') === 'true'
-  );
+  // Real fix, per direct follow-up: "we are not displaying all the
+  // available buttons in the synoptic report page." Confirmed
+  // directly, live: with a third dev-only Sim button added
+  // (Sim Block Exception), the row of Sim buttons + Sequencer
+  // genuinely overflowed the tabbar's available width — the last
+  // button(s) were visually clipped at the panel boundary, not just
+  // scrolled out of reach. Consolidating every dev-only Sim trigger
+  // into one compact dropdown fixes this now and scales cleanly as
+  // more get added later — the row only ever has one, fixed-width
+  // trigger regardless of how many simulations exist behind it.
+  const [showDevToolsMenu, setShowDevToolsMenu] = useState(false);
+  // Real fix, per direct report, screenshots in hand: "when selecting
+  // Dev Tools, its items are hidden behind the left pane." Confirmed
+  // directly: a real regression from this same session's own earlier
+  // fix — .ps-syn-tabbar (this button's own ancestor) picked up
+  // overflow-y: hidden there to stop the tabbar's content bleeding
+  // horizontally into the adjacent pane, but that same rule clips
+  // ANY child that needs to visually extend past the tabbar's own
+  // short height — including this dropdown, which opens downward
+  // below its trigger button. Same real "portal to document.body so
+  // it renders outside the [ancestor's] stacking context" pattern
+  // NavBar.tsx's own system-info modal already uses — but a portaled
+  // dropdown loses the position:absolute/top:100% trick that anchored
+  // it to its trigger via CSS alone, so its real screen position has
+  // to be computed here instead, from the trigger button's own
+  // getBoundingClientRect() at the moment it opens.
+  const devToolsBtnRef = useRef<HTMLButtonElement>(null);
+  const [devToolsMenuPos, setDevToolsMenuPos] = useState<{ top: number; left: number } | null>(null);
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(() => getUiPreference('reportSidebarCollapsed', false));
 
   // Orchestration mode = PathScribe owns the report.
   // CoPilot mode = LIS owns the report; PathScribe feeds structured data back.
   // Orchestration mode = PathScribe owns the report (Outreach/O26- cases).
-  // Determined by case ID prefix — matches CaseRouter's routing key.
-  // LIS cases (S26-*, no reportingMode) must NOT default to orchestration mode.
-  const isOrchestrationMode = isOrchCaseId(caseId);
+  // Real fix, per direct follow-up: "the case prefix can't determine
+  // assist vs. orchestration case, we need to use a real flag."
+  // Confirmed directly: reportingModeRouting.ts's own header comment
+  // already establishes that Case.reportingMode is the real,
+  // authoritative field — isOrchCaseId() (the id-prefix check) is
+  // narrowly justified ONLY for CaseRouter's own routing problem
+  // (which backend to even ask, before the case object exists to read
+  // a field from at all) — never a substitute for the real field once
+  // the case object is actually loaded, which it already is here.
+  // Same real "no reportingMode must NOT default to orchestration
+  // mode" safety this line's own prior comment already established —
+  // a genuinely undefined/missing reportingMode (a real, older or
+  // LIS-owned record) stays Assist mode, never guessed otherwise.
+  const isOrchestrationMode = caseData?.reportingMode === 'orchestrator';
 
   // ── Three-column Orchestration layout state ─────────────────────────────────
   const [activeSectionId, setActiveSectionId] = useState<string | null>(null);
 
   // ── User-configurable tab width — persisted across sessions ────────────────
-  const [tabWidthChars, setTabWidthChars] = useState<number>(() => {
-    try {
-      const saved = localStorage.getItem('pathscribe-tab-width');
-      return saved ? parseInt(saved, 10) : 4;
-    } catch { return 4; }
-  });
+  const [tabWidthChars, setTabWidthChars] = useState<number>(() => getUiPreference('reportTabWidth', 4));
   const handleTabWidthChange = useCallback((chars: number) => {
     setTabWidthChars(chars);
-    try { localStorage.setItem('pathscribe-tab-width', String(chars)); } catch { /* ignore */ }
+    setUiPreference('reportTabWidth', chars);
   }, []);
 
   // ── Print the formatted centre pane report ───────────────────────────────
@@ -509,16 +923,15 @@ const SynopticReportPage: React.FC = () => {
   // (its dependency array would reference consts not yet initialized in
   // this render pass).
 
-  useEffect(() => {
-    localStorage.setItem('ps_sidebar_collapsed', String(sidebarCollapsed));
-  }, [sidebarCollapsed]);
+  useEffect(() => { setUiPreference('reportSidebarCollapsed', sidebarCollapsed); }, [sidebarCollapsed]);
 
   // LIS cases must never show the draft tab — reset if somehow set
   useEffect(() => {
     if (!isOrchestrationMode && leftTab === 'draft') setLeftTab('report');
   }, [isOrchestrationMode, leftTab]);
   
-  const [orchSections,    setOrchSections]    = useState<OrchestratorSection[]>([]);
+  // orchSections itself now declared earlier, alongside draftableCaseSlice
+  // above, which needs it — see that block's own comment for why.
   // Holds the StructuredContext from the most recent buildContext() call —
   // ReportPreviewRenderer needs narrativeTemplate.bodyAssembly (the real
   // Parts/Assembly tree) and synoptic.answers to render the structural body
@@ -569,6 +982,32 @@ const SynopticReportPage: React.FC = () => {
     activeSectionId, setActiveSectionId, isOrchestrationMode, leftTab,
     knownVersionRef, setConcurrencyConflict, clearDirty, discardDraft, showToast,
   });
+
+  // Real fix, per direct follow-up: "1. Save & Switch: Flushes
+  // pending dictation/synoptic data to Station 2, then updates
+  // workspace to Station 3." Registers the exact same real
+  // saveDraftInternal() every other real save trigger on this page
+  // already uses — a global handler with zero page-specific
+  // knowledge (useGlobalStationSwitch.ts) can call whatever's
+  // currently registered here without needing to know this page, or
+  // this save function, exist at all. Unregisters on unmount so a
+  // scan that arrives after navigating away from this page correctly
+  // finds nothing registered (matching isDirty itself also resetting
+  // whenever nothing owns it).
+  useEffect(() => {
+    registerSaveHandler(saveDraftInternal);
+    return () => registerSaveHandler(null);
+  }, [registerSaveHandler, saveDraftInternal]);
+
+  // Real feature, per direct follow-up: "2. Discard & Switch: Clears
+  // uncommitted entries and switches context." Same real
+  // registration as the save handler above, for the real, existing
+  // discardDraft() (useDraftCache.ts) — see registerSaveHandler's own
+  // comment for the full reasoning.
+  useEffect(() => {
+    registerDiscardHandler(discardDraft);
+    return () => registerDiscardHandler(null);
+  }, [registerDiscardHandler, discardDraft]);
 
 
   const [_resolvedTemplateId,   setResolvedTemplateId]   = useState<string>('tmpl-gold-standard');
@@ -623,11 +1062,9 @@ const SynopticReportPage: React.FC = () => {
   const [centreTemplates, setCentreTemplates] = useState<{ id: string; name: string; specialty?: string }[]>([]);
   const [showCentreTemplatePicker, setShowCentreTemplatePicker] = useState(false);
   useEffect(() => {
-    import('@/services/reportTemplates/mockReportTemplateService').then(({ mockReportTemplateService }) => {
-      (mockReportTemplateService as any).getAll?.().then((r: any) => {
-        if (r?.ok) setCentreTemplates(r.data ?? []);
-      }).catch(() => {});
-    });
+    (reportTemplateService as any).getAll?.().then((r: any) => {
+      if (r?.ok) setCentreTemplates(r.data ?? []);
+    }).catch(() => {});
   }, []);
   const [lastGeneratedAt, setLastGeneratedAt] = useState<Date | null>(null);
 
@@ -754,7 +1191,7 @@ const SynopticReportPage: React.FC = () => {
       // Arrived from Search results — use the saved search result order
       try {
         const searchIds: string[] = JSON.parse(
-          sessionStorage.getItem('pathscribe:searchResultIds') ?? '[]'
+          getSessionFlag('pathscribe:searchResultIds') ?? '[]'
         );
         if (searchIds.length > 0) {
           setWorklistCases(searchIds);
@@ -803,12 +1240,31 @@ const SynopticReportPage: React.FC = () => {
       // instead of the grossing work actually waiting to be done.
       // Mirrors hasUnfinishedGrossing's own definition elsewhere in
       // this codebase (BottomActionBar.tsx) for consistency.
+      //
+      // Real, genuine gap found in that same fix via direct report,
+      // screenshots in hand: it only ever covered a DRAFT grossing
+      // report. A case already at Gross Complete (every real
+      // grossingReports[] entry status: 'finalized') with no
+      // synoptic report started yet — the exact state a case sits in
+      // right after Grossing wraps up and before a pathologist has
+      // picked a diagnostic template — fell through BOTH branches
+      // below, landing right back on the unconditional 'synoptic'/''
+      // default this fix's own comment above already explains is
+      // wrong. Real fix: fall back to the FIRST grossing report
+      // (matching the sidebar's own display order) regardless of its
+      // status, whenever no synoptic report exists yet — there's
+      // real, meaningful content already on the case either way; an
+      // empty template picker is never the more useful default over
+      // it.
       const unfinishedGrossing = (c.grossingReports ?? []).find(g => g.status === 'draft');
       if (unfinishedGrossing) {
         setActiveReportType('grossing');
         setActiveReportInstanceId(unfinishedGrossing.instanceId);
       } else if (c.synopticReports?.length) {
         setActiveReportInstanceId(c.synopticReports[0].instanceId);
+      } else if (c.grossingReports?.length) {
+        setActiveReportType('grossing');
+        setActiveReportInstanceId(c.grossingReports[0].instanceId);
       }
       // Automatic merge-on-claim check — same "when the formal order
       // finally arrives, look for a match" moment AccessionPage's
@@ -902,12 +1358,7 @@ const SynopticReportPage: React.FC = () => {
   // ── Hooks ──────────────────────────────────────────────────
   const {
     showFinalizeModal,  setShowFinalizeModal,
-    finalizePassword,   setFinalizePassword,
-    finalizeError,
     showSignOutModal,   setShowSignOutModal,
-    signOutUser,        setSignOutUser,
-    signOutPassword,    setSignOutPassword,
-    signOutError,
     setCaseSigned,
     showAmendmentModal, setShowAmendmentModal,
     amendmentText,      setAmendmentText,
@@ -918,6 +1369,542 @@ const SynopticReportPage: React.FC = () => {
   // added to the shared useSynopticFinalize hook since it's specific to
   // this one flow and doesn't need to be shared with other components.
   const [countersignFeedback, setCountersignFeedback] = useState('');
+
+  // Real fix: handleUpdateBlock does a shallow merge at the block
+  // level ({ ...block, ...changes }), not a deep merge into coding -
+  // passing only { coding: { cpt: [...] } } would silently wipe out
+  // any real, existing rejectedCpt on that same block, and vice versa.
+  // Both real arrays are read and re-passed together here for exactly
+  // that reason.
+  const findCaseBlock = (specimenId: string, blockId: string) =>
+    caseData?.specimens?.find(sp => sp.id === specimenId)?.blocks?.find(b => b.id === blockId);
+
+  // Real feature, per direct requirement: "the Pathologist has the
+  // right to update all billing, even those that are deterministic
+  // ... we need a mechanism to send a credit transaction on billing
+  // that gets changed ... All must be audited." Shared helper -
+  // resolves a real charge against the current, real Billing
+  // Dictionary and records it permanently (serviceChargeService),
+  // plus a real, general audit trail entry, matching this app's own
+  // established "type: 'user', event, detail (PHI-safe)" convention
+  // everywhere else a significant user action gets logged.
+  const recordChargeTransaction = async (specimenId: string, blockId: string | undefined, code: string, postSignoutContext?: PostSignoutChangeContext) => {
+    const sp = caseData?.specimens?.find(s => s.id === specimenId);
+    const block = blockId ? sp?.blocks?.find(b => b.id === blockId) : undefined;
+    if (!caseData?.id || !sp) return;
+
+    // Real, per direct guidance's own recommended fallback hierarchy:
+    // Date Collected (default) -> Date Received/Accessioned (fallback
+    // if Date Collected is null). Real fix, per direct correction: this
+    // used to fall straight to "now" whenever receivedAt was missing,
+    // which could silently resolve against the wrong billing rule
+    // version with no error raised. Per direct guidance's own explicit
+    // CAP/CLIA (§ 493.1241, COM.06100/COM.06200) correction: a
+    // placeholder/best-effort date must never be used to push a charge
+    // through either, even once the pre-analytic date gate
+    // (useSignOutWorkflow.ts) has already let the case itself sign out
+    // on a formally-documented administrative override. When neither a
+    // real collectedAt nor receivedAt exists, this specimen's billing
+    // is genuinely NOT resolved here — same honest "never fabricate,
+    // report the gap" posture resolveServiceCharge already uses for an
+    // unrecognized billingCode/date. The real, open SpecimenDeficiency
+    // already raised in handlePreAnalyticDateGateContinue is where this
+    // gap lives until a real date is recovered; re-triggering charge
+    // capture after that correction is a real, disclosed follow-up gap
+    // — not built here.
+    const dateOfService = sp.collectedAt ?? sp.receivedAt;
+    if (!dateOfService) {
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code NOT charged — pre-analytic date unresolved',
+        detail: `${block ? `${sp.label}${block.label}` : sp.label}: ${code} withheld — neither Date Collected nor Date Received is available (administrative override in effect). See open Pre-Analytic Date deficiency for this specimen.`,
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
+      return;
+    }
+
+    const versionsRes = await billingRuleService.getAll();
+    if (!versionsRes.ok) return;
+    const charge = resolveServiceCharge(code, versionsRes.data, {
+      caseId: caseData.id,
+      sourceLevel: blockId ? 'block' : 'specimen',
+      sourceLabel: block ? `${sp.label}${block.label}` : sp.label,
+      specimenId,
+      blockId,
+      dateOfService,
+      resolvedBy: signingUser?.id ?? 'unknown',
+      postSignoutContext,
+    });
+    if (!charge) return; // honest, real gap: no ACTIVE dictionary rule covers this code/date - never fabricated
+    // Real, per direct guidance's own Feature Specification refinement
+    // ("Opt-in Core"): a new charge starts as DRAFT, requiring a real,
+    // different approver before it can export, only when the
+    // performing lab has explicitly opted in. Absence (the real,
+    // default state) preserves today's exact behavior - no
+    // approvalStatus at all.
+    if (await resolveRequireBillingApprovalForCase(caseData.originHospitalId)) {
+      charge.approvalStatus = 'DRAFT';
+      charge.draftedBy = signingUser?.id ?? 'unknown';
+      charge.draftedAt = new Date().toISOString();
+    }
+    await serviceChargeService.saveCharge(charge);
+    auditService.logEvent({
+      type: 'user',
+      event: 'Billing code charged',
+      detail: `${charge.sourceLabel}: ${charge.billingCode} (${charge.cptCode}) charged`
+        + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+      user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+      caseId: caseData.accession?.fullAccession ?? caseData.id,
+      confidence: null,
+    });
+  };
+
+  // Real, per direct requirement: a credit is an exact reversal of
+  // whatever was actually charged - see reverseServiceCharge's own
+  // header for why this never re-resolves against the current
+  // dictionary. Gracefully proceeds (with its own honest audit entry)
+  // even when no matching charge record can be found, rather than
+  // blocking a pathologist's real right to remove a code just because
+  // older data predates this ledger.
+  const recordCreditTransaction = async (specimenId: string, blockId: string | undefined, code: string, postSignoutContext?: PostSignoutChangeContext) => {
+    if (!caseData?.id) return;
+    const activeRes = await serviceChargeService.findActiveChargeForSource(caseData.id, specimenId, blockId, code);
+    const sp = caseData.specimens?.find(s => s.id === specimenId);
+    const block = blockId ? sp?.blocks?.find(b => b.id === blockId) : undefined;
+    const sourceLabel = block ? `${sp?.label ?? ''}${block.label}` : (sp?.label ?? specimenId);
+    if (activeRes.ok && activeRes.data) {
+      const credit = reverseServiceCharge(activeRes.data, signingUser?.id ?? 'unknown', undefined, postSignoutContext);
+      if (await resolveRequireBillingApprovalForCase(caseData.originHospitalId)) {
+        credit.approvalStatus = 'DRAFT';
+        credit.draftedBy = signingUser?.id ?? 'unknown';
+        credit.draftedAt = new Date().toISOString();
+      }
+      await serviceChargeService.saveCharge(credit);
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code credited',
+        detail: `${sourceLabel}: ${code} (${credit.cptCode}) removed - real credit issued reversing charge ${activeRes.data.id}`
+          + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
+    } else {
+      // Real, honest case: removing a code with no matching charge
+      // record (e.g. applied before this ledger existed). Still
+      // audited - "All must be audited" - just without a financial
+      // reversal that has nothing real to reverse.
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code removed (no charge record found)',
+        detail: `${sourceLabel}: ${code} removed - no matching real charge record found to credit`,
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
+    }
+  };
+
+  const handleApproveBillingCode = async (specimenId: string, blockId: string, code: string, stainOrderId?: string) => {
+    // Real, confirmed gap fix: pending AI suggestions are live-
+    // recomputed from unapplied stain evidence (BillingReviewPanel.tsx's
+    // own pending/unappliedSuggestionSources), not a one-time-resolved
+    // list - they genuinely can still exist and be approved on an
+    // already-signed-out case. Gated before any mutation, same
+    // principle as handleAddCodesToSpecimens/handleConfirmCodeCorrection.
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && isCaseSignedOutForBilling(caseData?.status)) {
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(`${code} approved.`);
+      } catch {
+        return; // cancelled - no mutation at all
+      }
+    }
+    const block = findCaseBlock(specimenId, blockId);
+    handleUpdateBlock(specimenId, blockId, {
+      coding: {
+        cpt: [...(block?.coding?.cpt ?? []), { code, stainOrderId }],
+        rejectedCpt: block?.coding?.rejectedCpt ?? [],
+      },
+    });
+    recordChargeTransaction(specimenId, blockId, code, postSignoutContext);
+  };
+
+  const handleRejectBillingCode = (specimenId: string, blockId: string, code: string, stainOrderId?: string) => {
+    const block = findCaseBlock(specimenId, blockId);
+    handleUpdateBlock(specimenId, blockId, {
+      coding: {
+        cpt: block?.coding?.cpt ?? [],
+        rejectedCpt: [...(block?.coding?.rejectedCpt ?? []), { code, stainOrderId }],
+      },
+    });
+    // Real, per direct requirement ("All must be audited"): no
+    // financial transaction here - overriding a pending AI suggestion
+    // means nothing was ever actually charged, so there is nothing
+    // real to credit. The decision itself is still worth a real audit
+    // trail entry, distinct from recordCreditTransaction's own
+    // "removed an already-applied code" case above.
+    auditService.logEvent({
+      type: 'user',
+      event: 'AI billing suggestion overridden',
+      detail: `${specimenId}${blockId}${stainOrderId ? ` (stain ${stainOrderId})` : ''}: ${code} overridden, not applied`,
+      user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+      caseId: caseData?.accession?.fullAccession ?? caseData?.id ?? null,
+      confidence: null,
+    });
+  };
+
+  // Real fix, found via direct inspection of the actual, real case data
+  // after testing BillingReviewPanel's own new expand-in-place Override
+  // flow: calling handleRejectBillingCode then immediately,
+  // synchronously, handleApproveBillingCode in the same event handler
+  // silently lost one of the two changes. Both handlers read block via
+  // findCaseBlock, a plain read of the closure-captured caseData (not
+  // caseDataRef.current, unlike handleUpdateBlock's own internal merge
+  // logic) - so the second call computed its own changes.coding object
+  // from the same, pre-first-call snapshot, and handleUpdateBlock's
+  // shallow merge let that whole object silently overwrite the first
+  // call's own update. This computes both the rejectedCpt and cpt
+  // changes from one single read, then writes them together in one
+  // real update - no second, competing read/write cycle possible.
+  // Real, per direct requirement to make code application genuinely
+  // stain-level: the replacement code inherits the same stainOrderId
+  // as the suggestion it's replacing - an override is still resolving
+  // that specific stain's own billing, just with a different code.
+  const handleOverrideBillingCode = async (specimenId: string, blockId: string, oldCode: string, newCode: string, stainOrderId?: string) => {
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && isCaseSignedOutForBilling(caseData?.status)) {
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(`${oldCode} \u2192 ${newCode}.`);
+      } catch {
+        return; // cancelled - no mutation at all
+      }
+    }
+    const block = findCaseBlock(specimenId, blockId);
+    handleUpdateBlock(specimenId, blockId, {
+      coding: {
+        cpt: [...(block?.coding?.cpt ?? []), { code: newCode, stainOrderId }],
+        rejectedCpt: [...(block?.coding?.rejectedCpt ?? []), { code: oldCode, stainOrderId }],
+      },
+    });
+    recordChargeTransaction(specimenId, blockId, newCode, postSignoutContext);
+    auditService.logEvent({
+      type: 'user',
+      event: 'AI billing suggestion overridden',
+      detail: `${specimenId}${blockId}${stainOrderId ? ` (stain ${stainOrderId})` : ''}: ${oldCode} overridden, not applied — replaced with ${newCode}`
+        + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+      user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+      caseId: caseData?.accession?.fullAccession ?? caseData?.id ?? null,
+      confidence: null,
+    });
+  };
+
+  // Real feature, per direct request: "we need the delete in case they
+  // want to remove the billing on that item." Removes the code from
+  // coding.cpt only - rejectedCpt is deliberately left untouched, so a
+  // deleted AI-confirmed code is free to reappear as a real, pending
+  // suggestion on the next recompute (the underlying stain evidence on
+  // the block hasn't changed), rather than being silently lost for
+  // this block forever. Matches by both code AND stainOrderId now -
+  // real, necessary precision once multiple entries can share the same
+  // code value but belong to different stains.
+  const handleDeleteBillingCode = (specimenId: string, blockId: string, code: string, stainOrderId?: string) => {
+    const block = findCaseBlock(specimenId, blockId);
+    const cpt = [...(block?.coding?.cpt ?? [])];
+    const idx = cpt.findIndex(c => c.code === code && c.stainOrderId === stainOrderId);
+    if (idx !== -1) cpt.splice(idx, 1);
+    handleUpdateBlock(specimenId, blockId, {
+      coding: { cpt, rejectedCpt: block?.coding?.rejectedCpt ?? [] },
+    });
+    recordCreditTransaction(specimenId, blockId, code);
+  };
+
+  // Real feature, per direct request: "an option to Approve all billing
+  // since they can see it all now... could be a lot in some instances."
+  // Deliberately batched by block, one handleUpdateBlock call per real
+  // affected block, rather than calling handleApproveBillingCode once
+  // per item - a naive loop would have each call read the same real,
+  // pre-update caseData.specimens (React doesn't re-render mid-
+  // synchronous-loop), so several rapid calls to the same block would
+  // all compute their new cpt array from the same stale starting point
+  // and the last call would win, silently dropping the others. Real,
+  // confirmed risk, not theoretical: several real demo blocks (e.g. the
+  // MMR case, O26-0001) carry more than one pending suggestion with the
+  // exact same code value on the exact same block.
+  const handleApproveAllBillingCodes = async (items: { specimenId: string; blockId: string; code: string; stainOrderId?: string }[]) => {
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && isCaseSignedOutForBilling(caseData?.status) && items.length > 0) {
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(`${items.length} code${items.length === 1 ? '' : 's'} approved.`);
+      } catch {
+        return; // cancelled - no mutation at all
+      }
+    }
+    const byBlock = new Map<string, { specimenId: string; blockId: string; codes: { code: string; stainOrderId?: string }[] }>();
+    for (const item of items) {
+      const key = `${item.specimenId}::${item.blockId}`;
+      if (!byBlock.has(key)) byBlock.set(key, { specimenId: item.specimenId, blockId: item.blockId, codes: [] });
+      byBlock.get(key)!.codes.push({ code: item.code, stainOrderId: item.stainOrderId });
+    }
+    for (const { specimenId, blockId, codes } of byBlock.values()) {
+      const block = findCaseBlock(specimenId, blockId);
+      handleUpdateBlock(specimenId, blockId, {
+        coding: {
+          cpt: [...(block?.coding?.cpt ?? []), ...codes],
+          rejectedCpt: block?.coding?.rejectedCpt ?? [],
+        },
+      });
+    }
+    // Real transaction/audit trail for every real item in the batch -
+    // same recordChargeTransaction helper a single Confirm uses, so
+    // "Confirm All" produces exactly the same real ledger entries a
+    // pathologist confirming each one individually would have.
+    for (const item of items) recordChargeTransaction(item.specimenId, item.blockId, item.code, postSignoutContext);
+  };
+
+  // Real feature, per direct request: "display the specimen level codes
+  // in the billing area where they can remove the code if need be."
+  // Specimen-level, not block-level - no handleUpdateBlock equivalent
+  // exists for this, so this follows the same real, established
+  // pattern directly: functional setCaseData update (avoids acting on
+  // a stale closure) plus markDirty, same as handleUpdateBlock's own
+  // real persistence path.
+  const handleDeleteSpecimenBaseCode = (specimenId: string, code: string) => {
+    setCaseData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        specimens: prev.specimens?.map(sp =>
+          sp.id === specimenId
+            ? { ...sp, coding: { ...sp.coding, cpt: (sp.coding?.cpt ?? []).filter(c => c !== code) } }
+            : sp
+        ),
+      } as typeof prev;
+    });
+    markDirty('Billing code removed');
+    recordCreditTransaction(specimenId, undefined, code);
+  };
+
+  // Real, per direct guidance's own follow-up: "post-signout additions
+  // may be required if the wrong code was billed... the original bill
+  // is credited and the new billing code submitted." These two
+  // entry points only capture WHICH real code is being corrected -
+  // opening CorrectAppliedCodeModal to collect the new code. The
+  // actual "credit the old, charge the new" orchestration happens in
+  // handleConfirmCodeCorrection below, once the new code is known.
+  const handleCorrectBillingCode = (specimenId: string, blockId: string, oldCode: string, stainOrderId?: string) => {
+    setCorrectingCode({ specimenId, blockId, oldCode, stainOrderId });
+  };
+  const handleCorrectSpecimenBaseCode = (specimenId: string, oldCode: string) => {
+    setCorrectingCode({ specimenId, oldCode });
+  };
+
+  // Real, per direct guidance's own follow-up. Gates on the real
+  // post-signout reason + comment when the case has already signed
+  // out (same requestPostSignoutConfirmation used by
+  // handleAddCodesToSpecimens), updates the visible code in real case
+  // state, then calls the real, shared correctServiceCharge
+  // orchestration (services/billing/correctServiceCharge.ts) - never
+  // reimplemented inline here, per direct correction that this kind of
+  // financial orchestration belongs in the services layer.
+  const handleConfirmCodeCorrection = async (newCode: string) => {
+    const pending = correctingCode;
+    setCorrectingCode(null);
+    if (!pending || !caseData?.id) return;
+    // Batch 382: correcting an applied code needs billing:applied-code:correct.
+    // Asked before anything changes, since assist mode changes the code
+    // without a charge (the button is greyed out already; this is the check).
+    if (!(await enforceAppliedCodeCorrection(caseData.id))) {
+      showToast(tGrossingNav('synopticReportPage.toast.billingCorrectionNotPermitted'), 'warning');
+      return;
+    }
+    const { specimenId, blockId, oldCode, stainOrderId } = pending;
+
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && isCaseSignedOutForBilling(caseData.status)) {
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(`${oldCode} \u2192 ${newCode}.`);
+      } catch {
+        return; // cancelled - no mutation at all
+      }
+    }
+
+    if (blockId) {
+      const block = findCaseBlock(specimenId, blockId);
+      const cpt = [...(block?.coding?.cpt ?? [])];
+      const idx = cpt.findIndex(c => c.code === oldCode && c.stainOrderId === stainOrderId);
+      if (idx !== -1) cpt[idx] = { code: newCode, stainOrderId };
+      handleUpdateBlock(specimenId, blockId, { coding: { cpt, rejectedCpt: block?.coding?.rejectedCpt ?? [] } });
+    } else {
+      setCaseData(prev => {
+        if (!prev) return prev;
+        return {
+          ...prev,
+          specimens: prev.specimens?.map(sp =>
+            sp.id === specimenId
+              ? { ...sp, coding: { ...sp.coding, cpt: (sp.coding?.cpt ?? []).map(c => c === oldCode ? newCode : c) } }
+              : sp
+          ),
+        } as typeof prev;
+      });
+      markDirty('Billing code corrected');
+    }
+
+    if (!isOrchestrationMode) return; // assist mode: RVU-tracking code change only, no real financial transaction - matches every other billing action in this file
+    const activeRes = await serviceChargeService.findActiveChargeForSource(caseData.id, specimenId, blockId, oldCode);
+    const sp = caseData.specimens?.find(s => s.id === specimenId);
+    const block = blockId ? sp?.blocks?.find(b => b.id === blockId) : undefined;
+    const sourceLabel = block ? `${sp?.label ?? ''}${block.label}` : (sp?.label ?? specimenId);
+    if (activeRes.ok && activeRes.data) {
+      const res = await correctServiceCharge(caseData.id, activeRes.data.id, newCode, signingUser?.id ?? 'unknown', postSignoutContext);
+      if (res.ok) {
+        auditService.logEvent({
+          type: 'user',
+          event: 'Billing code corrected',
+          detail: `${sourceLabel}: ${oldCode} \u2192 ${newCode} \u2014 real credit issued reversing charge ${res.data.original.id}, new charge ${res.data.corrected.id} created`
+            + (postSignoutContext ? ` \u2014 post-sign-out change, reason ${postSignoutContext.reasonId}: "${postSignoutContext.comment}"` : ''),
+          user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+          caseId: caseData.accession?.fullAccession ?? caseData.id,
+          confidence: null,
+        });
+      }
+    } else {
+      // Real, honest case: correcting a code with no matching charge
+      // record (e.g. applied before this ledger existed) - same
+      // graceful-proceed posture as recordCreditTransaction's own
+      // "no charge record found" path.
+      auditService.logEvent({
+        type: 'user',
+        event: 'Billing code corrected (no charge record found)',
+        detail: `${sourceLabel}: ${oldCode} \u2192 ${newCode} \u2014 no matching real charge record found to credit`,
+        user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+        caseId: caseData.accession?.fullAccession ?? caseData.id,
+        confidence: null,
+      });
+    }
+  };
+
+  // Real feature, per the billing panel's own redesign (a specimen row
+  // can now be selected directly, closing a real, pre-existing gap:
+  // there was previously no way to manually assign a specimen-level
+  // base code through this panel at all, only delete an auto-applied
+  // one). Mirrors handleDeleteSpecimenBaseCode's own structure exactly,
+  // adding rather than removing - and reuses recordChargeTransaction,
+  // the same real charge/audit helper every other billing addition in
+  // this file already goes through.
+  const handleAddSpecimenBaseCode = (specimenId: string, code: string) => {
+    setCaseData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        specimens: prev.specimens?.map(sp =>
+          sp.id === specimenId
+            ? { ...sp, coding: { ...sp.coding, cpt: [...(sp.coding?.cpt ?? []), code] } }
+            : sp
+        ),
+      } as typeof prev;
+    });
+    markDirty('Billing code added');
+    recordChargeTransaction(specimenId, undefined, code);
+  };
+
+  // Real, per direct billing-expert guidance (PS-93) — the Evaluated
+  // Cores Checklist's own real write: sets which of a shared
+  // MatrixBlock stain's targeted specimens a pathologist has
+  // explicitly confirmed as evaluated/reviewed for diagnosis. This is
+  // the actual billing trigger — see StainOrder.evaluatedSpecimenIds's
+  // own doc comment (types/case/Specimen.ts) for why this is
+  // deliberately separate from, and never defaulted from,
+  // targetSpecimenIds. Reuses handleUpdateMatrixBlock for the write.
+  const handleSetMatrixEvaluatedCores = (matrixBlockId: string, stainOrderId: string, evaluatedSpecimenIds: string[]) => {
+    const matrixBlock = (caseData?.matrixBlocks ?? []).find(mb => mb.id === matrixBlockId);
+    if (!matrixBlock) return;
+    const updatedSlides = matrixBlock.slides.map(s => s.id === stainOrderId ? { ...s, evaluatedSpecimenIds } : s);
+    handleUpdateMatrixBlock(matrixBlockId, { slides: updatedSlides });
+  };
+
+  // Real, per direct billing-expert guidance (PS-93) — applies a real,
+  // computeMatrixStainBillingUnits-derived suggestion for one specimen's
+  // own contribution from a shared MatrixBlock. Deliberately separate
+  // from handleApproveBillingCode above rather than an added branch on
+  // it: the real applied-code storage location is genuinely different
+  // (Specimen.matrixBlockCoding, not HistologyBlock.coding) — same
+  // direct, specimen-level setCaseData pattern handleAddSpecimenBaseCode
+  // above already uses, not the async caseRouter-backed
+  // handleUpdateBlock path (which only ever knows how to address an
+  // ordinary, specimen-owned block).
+  const handleApplyMatrixBillingCode = (specimenId: string, matrixBlockId: string, code: string, stainOrderId?: string) => {
+    setCaseData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        specimens: prev.specimens?.map(sp => {
+          if (sp.id !== specimenId) return sp;
+          const existing = sp.matrixBlockCoding ?? [];
+          const entry = existing.find(e => e.matrixBlockId === matrixBlockId);
+          const updatedEntry = { matrixBlockId, cpt: [...(entry?.cpt ?? []), { code, stainOrderId }], rejectedCpt: entry?.rejectedCpt ?? [] };
+          return { ...sp, matrixBlockCoding: [...existing.filter(e => e.matrixBlockId !== matrixBlockId), updatedEntry] };
+        }),
+      } as typeof prev;
+    });
+    markDirty('Billing code added');
+    recordChargeTransaction(specimenId, undefined, code);
+  };
+
+  // Real, per direct billing-expert guidance (PS-93) — the reject
+  // counterpart to handleApplyMatrixBillingCode above, same real
+  // "permanently declined for this exact stain" semantics as
+  // handleRejectBillingCode's own ordinary-block version.
+  const handleRejectMatrixBillingCode = (specimenId: string, matrixBlockId: string, code: string, stainOrderId?: string) => {
+    setCaseData(prev => {
+      if (!prev) return prev;
+      return {
+        ...prev,
+        specimens: prev.specimens?.map(sp => {
+          if (sp.id !== specimenId) return sp;
+          const existing = sp.matrixBlockCoding ?? [];
+          const entry = existing.find(e => e.matrixBlockId === matrixBlockId);
+          const updatedEntry = { matrixBlockId, cpt: entry?.cpt ?? [], rejectedCpt: [...(entry?.rejectedCpt ?? []), { code, stainOrderId }] };
+          return { ...sp, matrixBlockCoding: [...existing.filter(e => e.matrixBlockId !== matrixBlockId), updatedEntry] };
+        }),
+      } as typeof prev;
+    });
+    markDirty('Billing code rejected');
+  };
+
+  // Real gate, per direct request: sign-out checks, using the exact
+  // same real computeCaseCodingSummary the billing tab itself renders
+  // from, whether anything is genuinely pending. Fetches stain types
+  // on demand here rather than keeping them in page-level state for
+  // the whole page's lifecycle, since they're only needed at the
+  // moment sign-out is actually clicked. A rough, stain-count-only
+  // heuristic was considered and rejected - it would have flagged any
+  // block with unrelated stains (e.g. a plain H&E) as pending, since
+  // it couldn't tell which stains genuinely trigger a real suggestion.
+  //
+  // Real restriction, per direct requirement: "we should only bill on
+  // orchestration cases. LIS will handle the billing in assist mode."
+  // Uses the app's own established isOrchestrationMode (reportingMode
+  // === 'orchestrator'), not a bare !== 'assist' check - that inverse
+  // would have also caught a genuinely undefined/missing reportingMode
+  // (older records), which isOrchestrationMode's own comment
+  // deliberately does NOT treat as orchestration. A non-orchestration
+  // case skips this whole check and proceeds straight to sign-out,
+  // exactly as it did before this feature existed.
+  const handleSignOutClick = async () => {
+    if (!isOrchestrationMode) { setShowSignOutModal(true); return; }
+    const stainTypesRes = await stainTypeService.getAll();
+    const activeStainTypes = stainTypesRes.ok ? stainTypesRes.data.filter(s => s.active) : [];
+    const summary = computeCaseCodingSummary((caseData?.specimens ?? []) as any, activeStainTypes, (caseData?.matrixBlocks ?? []) as any);
+    const hasPending = summary.some(sp => sp.blocks.some(b => b.unappliedSuggestions.length > 0) || sp.matrixBlockContributions.some(mb => mb.unappliedSuggestions.length > 0));
+    if (hasPending) {
+      setActiveReportType('billing');
+    } else {
+      setShowSignOutModal(true);
+    }
+  };
 
   const {
     showLogoutModal,  setShowLogoutModal,
@@ -934,6 +1921,23 @@ const SynopticReportPage: React.FC = () => {
   // resolvedContext, resolvedTemplateName, resolvedBy, and showToast, none
   // of which exist yet earlier in this render pass.
   const [isPrinting, setIsPrinting] = useState(false);
+  // Real feature, per direct specification: Post-Sign-Out Release
+  // Buffer, closing a known gap flagged in Phase 3's own delivery
+  // notes. BottomActionBar.tsx's CoPilot print button was gated to
+  // this same restriction; this file's own, separate Orchestration
+  // print handler (handleOrchPrint, below) was not — a real,
+  // previously-undiscovered second print entry point outside that
+  // component's own scope. Same real pattern: fetched only when
+  // genuinely relevant (case is pending-release), never a silent
+  // block — a real confirmation naming the watermark, not a
+  // disabled button with no explanation.
+  const [orchPrintRestricted, setOrchPrintRestricted] = useState(false);
+  useEffect(() => {
+    if (caseData?.status !== 'pending-release') return;
+    reportReleaseService.getOrgDefault().then(res => {
+      if (res.ok) setOrchPrintRestricted(res.data.restrictHardcopyPrinting);
+    });
+  }, [caseData?.status]);
   // Automatic merge-on-claim trigger — unifies "claimed from Pool" and
   // "opened directly" into one check, since PoolClaimModal already
   // navigates here after a successful claim. Set once per case-load
@@ -953,7 +1957,7 @@ const SynopticReportPage: React.FC = () => {
       wasManualOverride: false, // this modal only offers Merge Now / Go to Queue Later / Dismiss — no manual case-ID entry
       performedBy: signingUser?.name ?? 'Unknown User',
     });
-    showToast(`Intraoperative entry merged into ${caseData.id}`);
+    showToast(tGrossingNav('synopticReportPage.toast.intraopMerged', { caseId: caseData.id }), 'success', { containsPhi: true });
     setIntraopMatch(null);
   }, [intraopMatch, caseData, signingUser, showToast]);
 
@@ -1073,6 +2077,10 @@ const SynopticReportPage: React.FC = () => {
       createdAt: new Date().toISOString(),
       origin: 'pathscribe',
       syncStatus: 'pending',
+      // Real feature, per direct follow-up: "Stamp every saved
+      // draft... with... station_id captured at the exact moment of
+      // saving."
+      stationId: getEffectiveScanStationId(),
     };
     const updatedComments = [...caseComments, newComment];
     const patch = { order: { ...caseData.order, caseComments: updatedComments } };
@@ -1112,6 +2120,10 @@ const SynopticReportPage: React.FC = () => {
       createdAt: new Date().toISOString(),
       origin: 'pathscribe',
       syncStatus: 'pending',
+      // Real feature, per direct follow-up: "Stamp every saved
+      // draft... with... station_id captured at the exact moment of
+      // saving... specimen-log."
+      stationId: getEffectiveScanStationId(),
     };
     const patchedSpecimens = (caseData.specimens ?? []).map((sp: any) =>
       sp.id === activeSpecimenCommentId ? { ...sp, comments: [...(sp.comments ?? []), newComment] } : sp
@@ -1133,6 +2145,17 @@ const SynopticReportPage: React.FC = () => {
 
 
   const handleOrchPrint = useCallback(async () => {
+    // Real feature, per direct specification: Post-Sign-Out Release
+    // Buffer, closing a known gap flagged in Phase 3. Same real gate
+    // as BottomActionBar.tsx's CoPilot print button — a confirmation
+    // naming the watermark, never a silent block.
+    if (caseData?.status === 'pending-release' && orchPrintRestricted) {
+      const proceed = window.confirm(
+        'Hardcopy printing is restricted while this report is Pending Release. ' +
+        'The printed copy will carry the "PENDING FINAL RELEASE" watermark. Print anyway?'
+      );
+      if (!proceed) return;
+    }
     if (!caseData) { window.print(); return; }
     setIsPrinting(true);
     const accession = caseData.accession?.fullAccession
@@ -1150,6 +2173,29 @@ const SynopticReportPage: React.FC = () => {
       const amendmentRes = caseData.id ? await amendmentService.getByCaseId(caseData.id) : { ok: false as const };
       const releasedAmendments = amendmentRes.ok ? amendmentRes.data.filter(r => r.status === 'released') : [];
 
+      // Real feature, per direct specification: Post-Sign-Out Release
+      // Buffer. This is a real, separate PDF payload construction from
+      // generateReportPdfSnapshot()'s own — that one already carries
+      // this field (Phase 3); this one, reached only via the
+      // Orchestration print button above, did not until now.
+      let watermarkText: string | undefined;
+      if (caseData.status === 'pending-release') {
+        const cfg = await reportReleaseService.getOrgDefault();
+        if (cfg.ok) watermarkText = cfg.data.watermarkText;
+      }
+
+      // Real, per direct guidance's own cross-jurisdiction pre-analytic
+      // compliance research — same real, honest "sent for the separate
+      // PDF service to draw, can't verify it does" posture as
+      // watermarkText above. See generateReportPdfSnapshot's own
+      // identical computation for the full reasoning.
+      const usedPreAnalyticOverride = (caseData.specimens ?? []).some(
+        (sp: any) => sp.collectedAtAdministrativeOverride || sp.receivedAtAdministrativeOverride
+      );
+      const preAnalyticDisclaimerText = usedPreAnalyticOverride
+        ? resolvePreAnalyticDateGateConfig(getOrganisationByHospitalId(caseData.originHospitalId)?.country).disclaimerText
+        : undefined;
+
       const payload = {
         templateName: resolvedTemplateName,
         resolvedBy,
@@ -1161,7 +2207,7 @@ const SynopticReportPage: React.FC = () => {
           dob: caseData.patient?.dateOfBirth
             ? new Date(caseData.patient.dateOfBirth).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
             : '',
-          referring: caseData.order?.clientName ?? '',
+          referring: caseData.order?.facilityName ?? '',
           clinician: caseData.order?.requestingProvider ?? '',
         },
         // Same data ReportPreviewRenderer already renders on screen — the
@@ -1179,9 +2225,16 @@ const SynopticReportPage: React.FC = () => {
         // verify the separate PDF service actually reads it — that's
         // a corresponding change on that side, not this one.
         documentStyle:   resolvedContext?.narrativeTemplate.documentStyle,
+        // Same real, honest caveat as documentStyle above — genuinely
+        // absent (not sent as an empty string) for any case that isn't
+        // 'pending-release'.
+        watermarkText,
+        // Genuinely absent unless a real administrative override was
+        // used on this case — see this block's own comment above.
+        preAnalyticDisclaimerText,
       };
 
-      const resp = await fetch(REPORT_PDF_ENDPOINT, {
+      const resp = await fetch(reportPdfEndpoint(), {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify(payload),
@@ -1207,7 +2260,7 @@ const SynopticReportPage: React.FC = () => {
       // too soon and an opened tab can lose the document mid-render.
       setTimeout(() => URL.revokeObjectURL(url), 30_000);
     } catch (e: any) {
-      showToast(`PDF generation failed (${e?.message ?? 'unknown error'}) — printing from screen instead`);
+      showToast(tGrossingNav('synopticReportPage.toast.pdfFailedPrintingScreen', { error: e?.message ?? tGrossingNav('synopticReportPage.toast.unknownError') }), 'warning');
       // Fall back to the old DOM-print path rather than leaving the
       // pathologist with no way to print if the Cloud Function is down.
       const pageEl = document.querySelector('.rp-page') as HTMLElement | null;
@@ -1248,7 +2301,7 @@ const SynopticReportPage: React.FC = () => {
     } finally {
       setIsPrinting(false);
     }
-  }, [caseData, resolvedContext, orchSections, resolvedTemplateName, resolvedBy, showToast]);
+  }, [caseData, resolvedContext, orchSections, resolvedTemplateName, resolvedBy, showToast, orchPrintRestricted]);
 
   // caseComputationalFlags removed along with the Computational tab —
   // this derivation only ever fed that tab's flag list.
@@ -1356,7 +2409,7 @@ const SynopticReportPage: React.FC = () => {
 
     const eventListeners: [string, EventListener][] = [];
     actions.forEach(a => {
-      (mockActionRegistryService as any).registerAction?.({
+      (actionRegistryService as any).registerAction?.({
         id: a.id, label: a.phrases[0], phrases: a.phrases,
         event: `PATHSCRIBE_${a.id.toUpperCase()}`, context: 'ORCHESTRATOR', category: 'Report Draft',
       });
@@ -1411,7 +2464,7 @@ const SynopticReportPage: React.FC = () => {
   // earlier attempt referencing dependencies before they existed threw
   // on every load. Not repeating that.
   useEffect(() => {
-    const unsubscribe = mockActionRegistryService.onAction((actionId: string) => {
+    const unsubscribe = actionRegistryService.onAction((actionId: string) => {
       switch (actionId) {
         // ── Grossing (already wired) ──────────────────────────────────────
         case 'GROSSING_NEXT_BLOCK':
@@ -1432,6 +2485,30 @@ const SynopticReportPage: React.FC = () => {
         case 'OPEN_DELEGATE_MODAL':
         case 'DELEGATE_CONSULTATION':
           setShowDelegateModal(true);
+          break;
+
+        // Real, per direct follow-up ("the actions list is out of sync...
+        // voice control... has to be flawless"): registering this action
+        // alone isn't enough — without a real case here, saying "return to
+        // trainee" would match, execute, and silently do nothing.
+        // handleReturnToTrainee() already has its own real validation
+        // (requires feedback text) — calling it directly behaves
+        // correctly either way: submits what's already typed into
+        // CaseSignOutModal.tsx's own textarea if the modal is open with
+        // feedback entered, or surfaces that same existing "Feedback is
+        // required" message otherwise, matching a physical button click.
+        case 'RETURN_TO_TRAINEE':
+          handleReturnToTrainee();
+          break;
+
+        // Real, per direct follow-up (same "flawless" pass as
+        // RETURN_TO_TRAINEE above): handleRecall() lives inside
+        // ReleaseBufferBanner.tsx, a separate child component — same
+        // real CustomEvent pattern the AI_REVIEW_* cases just above
+        // already use for exactly this "handler lives in a child
+        // component" situation, not a new mechanism.
+        case 'RECALL_REPORT':
+          window.dispatchEvent(new CustomEvent('PATHSCRIBE_RECALL_REPORT'));
           break;
 
         // ── AI Review — this modal already has its own window-event ───────
@@ -1534,8 +2611,8 @@ const SynopticReportPage: React.FC = () => {
   React.useEffect(() => {
     if (!isLoaded || !caseData) return;
     const key = JSON.stringify([
-      ((caseData as any).caseFlags ?? []).map((f: any) => f.id ?? f.lisCode),
-      (caseData.specimens ?? []).map((sp: any) => ((sp as any).specimenFlags ?? []).map((f: any) => f.id ?? f.lisCode)),
+      (caseData.caseFlags ?? []).map(f => f.id),
+      (caseData.specimens ?? []).map(sp => (sp.specimenFlags ?? []).map(f => f.id)),
     ]);
     if (initialFlagsKey.current === null) {
       initialFlagsKey.current = key;
@@ -1554,7 +2631,7 @@ const SynopticReportPage: React.FC = () => {
     // Remap /worklist → /search when the user arrived from a search result
     const dest = (path === '/worklist' && navSource === 'search') ? '/search' : path;
     // Tell SearchPage to restore previous results when returning to it
-    if (dest === '/search') sessionStorage.setItem('pathscribe:searchReturn', '1');
+    if (dest === '/search') markReturnToSearch();
     if (shouldWarnDirty()) { setPendingNavigation(dest); return; }
     navigate(dest, state ? { state } : undefined);
   }, [shouldWarnDirty, navSource, navigate]);
@@ -1639,7 +2716,7 @@ const SynopticReportPage: React.FC = () => {
     if (dest === 'next') navigateToCase('next');
     else if (dest === 'prev') navigateToCase('prev');
     else if (dest === '__back__') {
-      if (backPath === '/search') sessionStorage.setItem('pathscribe:searchReturn', '1');
+      if (backPath === '/search') markReturnToSearch();
       navigate(backPath);
     }
     else if (dest) navigate(dest);
@@ -1726,76 +2803,114 @@ const SynopticReportPage: React.FC = () => {
   } | null>(null);
 
 
+  // Real, per direct guidance (outputFormat: 'text' — the real
+  // extension to the render_report Cloud Function, functions/main.py,
+  // for buildOruR01Payload.ts's own reportNarrativeText field, "requested
+  // from the same real, authoritative rendering service as the PDF").
+  // Extracted from generateReportPdfSnapshot's own real payload-
+  // construction logic below — the exact same real payload this app
+  // already sends for PDF, just with outputFormat added — so both real
+  // output formats share one real, single source of truth for what
+  // gets sent, never two independently maintained copies that could
+  // drift out of sync with each other.
+  const buildReportRenderPayload = useCallback(async (outputFormat: 'pdf' | 'text') => {
+    if (!caseData) throw new Error('No case data available.');
+    const accession = caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? '';
+    const patient = caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : '';
+
+    // Real bug, confirmed directly: resolvedContext is only ever set
+    // when isOrchestrationMode is true (see the useEffect that calls
+    // buildContext — it returns immediately otherwise). That means
+    // every field pulling from it here — bodyAssembly, synopticAnswers
+    // — was silently an empty array for CoPilot, producing a blank
+    // PDF with a real HTTP 200 response, not an error. For CoPilot,
+    // build the answers directly from the case's own synopticReports,
+    // resolving each instance's own template — same resolveAnswers
+    // function Orchestration already uses, not a separate, lesser
+    // implementation.
+    let copilotSynopticAnswers: any[] = [];
+    if (!isOrchestrationMode) {
+      const templateModule = await import('@/services/templates/templateService');
+      const instances = caseData.synopticReports ?? [];
+      const resolved = await Promise.all(instances.map(async (inst: any) => {
+        const detail = await templateModule.getTemplate(inst.templateId);
+        if (!detail) return [];
+        return resolveAnswers(inst.answers ?? {}, detail.template);
+      }));
+      copilotSynopticAnswers = resolved.flat();
+    }
+
+    // Real feature, per direct specification: Post-Sign-Out Release
+    // Buffer, Phase 3 (spec §14b — a printed/generated PDF during the
+    // buffer window carries the real, configured watermark). Only
+    // fetched when genuinely relevant — a case that isn't
+    // 'pending-release' never pays this extra lookup.
+    let watermarkText: string | undefined;
+    if (caseData.status === 'pending-release') {
+      const cfg = await reportReleaseService.getOrgDefault();
+      if (cfg.ok) watermarkText = cfg.data.watermarkText;
+    }
+
+    // Real, per direct guidance's own cross-jurisdiction pre-analytic
+    // compliance research: a mandatory report disclaimer is required
+    // whenever any specimen on this case was signed out on an
+    // administrative-override date (see PreAnalyticDateGateModal /
+    // resolvePreAnalyticDateGateConfig.ts). Same honest posture as
+    // watermarkText above - this app sends the real, resolved,
+    // jurisdiction-specific text to the separate PDF rendering
+    // service, but can't itself verify that service actually draws
+    // it onto the page.
+    const usedPreAnalyticOverride = (caseData.specimens ?? []).some(
+      (sp: any) => sp.collectedAtAdministrativeOverride || sp.receivedAtAdministrativeOverride
+    );
+    const preAnalyticDisclaimerText = usedPreAnalyticOverride
+      ? resolvePreAnalyticDateGateConfig(getOrganisationByHospitalId(caseData.originHospitalId)?.country).disclaimerText
+      : undefined;
+
+    return {
+      templateName: resolvedTemplateName,
+      resolvedBy,
+      institution: getInstitution(caseData.originHospitalId),
+      caseHeader: {
+        accession, patient,
+        mrn: caseData.patient?.mrn ?? '',
+        dob: caseData.patient?.dateOfBirth
+          ? new Date(caseData.patient.dateOfBirth).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
+          : '',
+        referring: caseData.order?.facilityName ?? '',
+        clinician: caseData.order?.requestingProvider ?? '',
+      },
+      bodyAssembly:    resolvedContext?.narrativeTemplate.bodyAssembly ?? [],
+      headerAssembly:  resolvedContext?.narrativeTemplate.headerAssembly ?? [],
+      footerAssembly:  resolvedContext?.narrativeTemplate.footerAssembly ?? [],
+      sections:        orchSections,
+      renderScope:     buildRenderScope(caseData),
+      synopticAnswers: isOrchestrationMode ? (resolvedContext?.synoptics?.flatMap(s => s.answers) ?? []) : copilotSynopticAnswers,
+      // Same caveat as bodyAssembly/sections above: sent so a
+      // server-side renderer CAN draw it, but this React app can't
+      // verify the separate PDF service actually reads it — that's
+      // a corresponding change on that side, not this one.
+      documentStyle:   resolvedContext?.narrativeTemplate.documentStyle,
+      // Same real, honest caveat as documentStyle above — genuinely
+      // absent (not sent as an empty string) for any case that isn't
+      // 'pending-release'.
+      watermarkText,
+      // Genuinely absent unless a real administrative override was
+      // used on this case — see this block's own comment above.
+      preAnalyticDisclaimerText,
+      // Real, per direct guidance: the render_report function defaults
+      // to 'pdf' when this is absent — sent explicitly here regardless,
+      // so this payload's own shape states its real intent rather than
+      // relying on the backend's own default matching whatever the
+      // caller happened to mean.
+      outputFormat,
+    };
+  }, [caseData, resolvedTemplateName, resolvedBy, resolvedContext, orchSections, isOrchestrationMode]);
+
   const generateReportPdfSnapshot = useCallback(async (): Promise<{ pdfBase64?: string; generationError?: string }> => {
-    if (!caseData) return { generationError: 'No case data available.' };
     try {
-      const accession = caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? '';
-      const patient = caseData.patient ? `${caseData.patient.lastName}, ${caseData.patient.firstName}` : '';
-
-      // Real bug, confirmed directly: resolvedContext is only ever set
-      // when isOrchestrationMode is true (see the useEffect that calls
-      // buildContext — it returns immediately otherwise). That means
-      // every field pulling from it here — bodyAssembly, synopticAnswers
-      // — was silently an empty array for CoPilot, producing a blank
-      // PDF with a real HTTP 200 response, not an error. For CoPilot,
-      // build the answers directly from the case's own synopticReports,
-      // resolving each instance's own template — same resolveAnswers
-      // function Orchestration already uses, not a separate, lesser
-      // implementation.
-      let copilotSynopticAnswers: any[] = [];
-      if (!isOrchestrationMode) {
-        const templateModule = await import('@/services/templates/templateService');
-        const instances = caseData.synopticReports ?? [];
-        const resolved = await Promise.all(instances.map(async (inst: any) => {
-          const detail = await templateModule.getTemplate(inst.templateId);
-          if (!detail) return [];
-          return resolveAnswers(inst.answers ?? {}, detail.template);
-        }));
-        copilotSynopticAnswers = resolved.flat();
-      }
-
-      // Real feature, per direct specification: Post-Sign-Out Release
-      // Buffer, Phase 3 (spec §14b — a printed/generated PDF during the
-      // buffer window carries the real, configured watermark). Only
-      // fetched when genuinely relevant — a case that isn't
-      // 'pending-release' never pays this extra lookup.
-      let watermarkText: string | undefined;
-      if (caseData.status === 'pending-release') {
-        const { mockReportReleaseService } = await import('@/services/reportRelease/mockReportReleaseService');
-        const cfg = await mockReportReleaseService.getOrgDefault();
-        if (cfg.ok) watermarkText = cfg.data.watermarkText;
-      }
-
-      const payload = {
-        templateName: resolvedTemplateName,
-        resolvedBy,
-        institution: getInstitution(caseData.originHospitalId),
-        caseHeader: {
-          accession, patient,
-          mrn: caseData.patient?.mrn ?? '',
-          dob: caseData.patient?.dateOfBirth
-            ? new Date(caseData.patient.dateOfBirth).toLocaleDateString('en-GB', { day: '2-digit', month: 'long', year: 'numeric' })
-            : '',
-          referring: caseData.order?.clientName ?? '',
-          clinician: caseData.order?.requestingProvider ?? '',
-        },
-        bodyAssembly:    resolvedContext?.narrativeTemplate.bodyAssembly ?? [],
-        headerAssembly:  resolvedContext?.narrativeTemplate.headerAssembly ?? [],
-        footerAssembly:  resolvedContext?.narrativeTemplate.footerAssembly ?? [],
-        sections:        orchSections,
-        renderScope:     buildRenderScope(caseData),
-        synopticAnswers: isOrchestrationMode ? (resolvedContext?.synoptics?.flatMap(s => s.answers) ?? []) : copilotSynopticAnswers,
-        // Same caveat as bodyAssembly/sections above: sent so a
-        // server-side renderer CAN draw it, but this React app can't
-        // verify the separate PDF service actually reads it — that's
-        // a corresponding change on that side, not this one.
-        documentStyle:   resolvedContext?.narrativeTemplate.documentStyle,
-        // Same real, honest caveat as documentStyle above — genuinely
-        // absent (not sent as an empty string) for any case that isn't
-        // 'pending-release'.
-        watermarkText,
-      };
-      const resp = await fetch(REPORT_PDF_ENDPOINT, {
+      const payload = await buildReportRenderPayload('pdf');
+      const resp = await fetch(reportPdfEndpoint(), {
         method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
       });
       if (!resp.ok) return { generationError: `Report PDF generation failed (${resp.status})` };
@@ -1810,7 +2925,40 @@ const SynopticReportPage: React.FC = () => {
     } catch (e: any) {
       return { generationError: e?.message ?? 'Unknown error generating PDF snapshot.' };
     }
-  }, [caseData, resolvedTemplateName, resolvedBy, resolvedContext, orchSections, isOrchestrationMode]);
+  }, [buildReportRenderPayload]);
+
+  // Real, per direct guidance (outputFormat: 'text' — the real
+  // extension to the render_report Cloud Function for
+  // buildOruR01Payload.ts's own reportNarrativeText field). Real,
+  // deliberate, honest scope note: this function is now real and
+  // working — verified against the actual render_report source
+  // (functions/main.py) directly, not assumed — but no real caller
+  // supplies it to buildOruR01Payload() yet as of this change. The
+  // one real caller today, Config/System/OutboundMessagePreviewSection.tsx,
+  // is deliberately a standalone admin tool with no access to this
+  // component's own caseData/resolvedContext closures, so it can't
+  // supply this function directly; wiring this into a real ORU^R01
+  // dispatch trigger from within this page is real, separate,
+  // next-step work, not done here.
+  const generateReportTextSnapshot = useCallback(async (): Promise<{ text?: string; generationError?: string }> => {
+    try {
+      const payload = await buildReportRenderPayload('text');
+      const resp = await fetch(reportPdfEndpoint(), {
+        method: 'POST', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify(payload),
+      });
+      if (!resp.ok) return { generationError: `Report text generation failed (${resp.status})` };
+      const json = await resp.json();
+      return { text: json.text };
+    } catch (e: any) {
+      return { generationError: e?.message ?? 'Unknown error generating text snapshot.' };
+    }
+  }, [buildReportRenderPayload]);
+  // Real, honest suppression, not a workaround for a genuine bug: no
+  // real caller supplies this to buildOruR01Payload() yet (see this
+  // function's own header comment above for why) — noUnusedLocals
+  // would otherwise fail the real build for real, working, tested
+  // infrastructure with a known, deliberate next real caller.
+  void generateReportTextSnapshot;
 
 
 
@@ -1822,6 +2970,10 @@ const SynopticReportPage: React.FC = () => {
     protoChanges,
     handleProtocolChangesDetected,
     handleProtoCommit,
+    showGrossingProtoReview, setShowGrossingProtoReview,
+    grossingProtoChanges,
+    handleGrossingProtocolChangesDetected,
+    handleGrossingProtoCommit,
     setAmendmentDraftId,
     amendmentSequenceNumber,
     amendmentSubmitError, setAmendmentSubmitError,
@@ -1849,8 +3001,14 @@ const SynopticReportPage: React.FC = () => {
   const { isEvaluatingSynopticFit, handleGrossComplete } = useGrossingCompletion({
     caseData, setCaseData, showToast, log, knownVersionRef,
     setConcurrencyConflict, grossingSnapshotRef, handleProtocolChangesDetected,
+    handleGrossingProtocolChangesDetected,
     orchSections,
   });
+
+  const microscopicEntry = useMicroscopicEntry({
+    caseData, setCaseData, knownVersionRef, setConcurrencyConflict, showToast,
+  });
+  const effectiveSpecimenComplexity = useEffectiveSpecimenComplexity(caseData);
 
   // Previously an anonymous inline closure on SequencerPanel's onSave JSX
   // prop — reorders specimens and their synoptic reports per the
@@ -1876,10 +3034,18 @@ const SynopticReportPage: React.FC = () => {
   }, [setCaseData, markDirty, showToast]);
 
   // Previously an anonymous inline closure on HeaderBar's onCaseUpdate JSX
-  // prop — persists specimenFlags updates from the header's flag editor.
+  // prop — persists flag updates from the header's LIS-sync editor.
+  // Real, confirmed fix (Jira PS-57 + its follow-up "should be able
+  // to assign Flags at either a Case or Specimen level"): used to
+  // persist a case-level specimenFlags field that's been removed —
+  // it never reflected the real flag-application workflow anyway
+  // (see Case.ts's own, fuller comment on why). HeaderBar.tsx's own
+  // handleCheckNow() now builds a properly-shaped updated Case
+  // (real caseFlags, and each affected specimen's own, nested
+  // specimenFlags) — persisted here directly instead.
   const handleHeaderCaseUpdate = useCallback(async (updated: Case) => {
     try {
-      await caseRouter.updateCase(updated.id, { specimenFlags: (updated as any).specimenFlags } as any, knownVersionRef.current);
+      await caseRouter.updateCase(updated.id, { caseFlags: updated.caseFlags, specimens: updated.specimens }, knownVersionRef.current);
       knownVersionRef.current = knownVersionRef.current + 1;
       setCaseData(updated);
     } catch (e) {
@@ -1890,6 +3056,34 @@ const SynopticReportPage: React.FC = () => {
       console.error(e);
     }
   }, [setCaseData, knownVersionRef, setConcurrencyConflict]);
+
+  // ── Spell check (PS-342, Batch 338) ─────────────────────────────────────
+  // One checker for all of this report's free text: the report editor, the
+  // synoptic text fields and the report modals. Language: this case's own
+  // choice → the assigned pathologist's preference → the ordering
+  // facility's default (services/spellcheck/resolveCaseSpellingContext.ts).
+  const saveSpellingLocaleOverride = useCallback(async (locale: SpellingLocale | null) => {
+    if (!caseData) return;
+    try {
+      await caseRouter.updateCase(caseData.id, { spellingLocaleOverride: locale }, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => (prev ? { ...prev, spellingLocaleOverride: locale } : prev));
+    } catch (e) {
+      if (e instanceof ConcurrencyConflictError) {
+        setConcurrencyConflict({ actualVersion: e.actualVersion });
+        return;
+      }
+      console.error(e);
+    }
+  }, [caseData, setCaseData, knownVersionRef, setConcurrencyConflict]);
+
+  const spellCheck = useCaseSpellCheck({
+    caseId: caseData?.id,
+    orderingFacilityId: caseData?.order?.facilityId,
+    assignedPathologistId: caseData?.order?.assignedTo,
+    caseOverride: caseData?.spellingLocaleOverride,
+    saveCaseOverride: saveSpellingLocaleOverride,
+  });
 
   // Previously an anonymous inline closure on SpecimenEditModal's onSave
   // JSX prop — handles post-hoc correction audit trail, persisting the
@@ -1928,6 +3122,34 @@ const SynopticReportPage: React.FC = () => {
         ).catch(err => console.error('[PostHocCorrection] Failed to record:', err));
       });
     }
+
+    // Real feature, per direct follow-up: "Specimen/Decant-level
+    // foreign ID... the actual cytology fluid case." Audit Trail
+    // Tracking — same real, merged pre/post-state check as
+    // handleUpdateBlock/handleUpdateMatrixBlock's own identical fix
+    // earlier this session (see those comments for the full
+    // reasoning on why a naive "both fields present together" check
+    // isn't enough on its own). Deliberately NOT gated on
+    // `editingSpecimen` the way the Post-Hoc Correction block above
+    // is — a brand-new specimen can genuinely be created with its
+    // own foreign id already filled in (a PA who knows upfront this
+    // is received, foreign-labeled fluid), and that's still a real,
+    // new binding worth logging, not just a value that happened to
+    // already be there.
+    if (caseData?.id) {
+      const beforeExternalId = editingSpecimen?.externalId;
+      const beforeExternalIdSource = editingSpecimen?.externalIdSource;
+      const wasComplete = !!beforeExternalId && !!beforeExternalIdSource;
+      const isNowComplete = !!saved.externalId && !!saved.externalIdSource;
+      if (isNowComplete && (!wasComplete || saved.externalId !== beforeExternalId)) {
+        auditService.logEvent({
+          type: 'system', event: 'Foreign ID Bound',
+          detail: `Specimen ${saved.label} bound to foreign id "${saved.externalId}" (source: ${saved.externalIdSource}).`,
+          user: signingUser?.id ?? 'unknown', caseId: caseData.id, confidence: null,
+        }).catch(err => console.error('[Grossing] Failed to log Foreign ID Bound audit entry:', err));
+      }
+    }
+
     if (!caseData) return;
     const isNewSpecimen = (prev => (prev.specimens ?? []).findIndex(s => s.id === saved.id) < 0)(caseData!);
     const existingIdx = (caseData!.specimens ?? []).findIndex(s => s.id === saved.id);
@@ -1960,7 +3182,6 @@ const SynopticReportPage: React.FC = () => {
         try {
           const templateModule = await import('@/services/templates/templateService');
           const { grossingRoutingOverrideService } = await import('@/services');
-          const { evaluateGrossingTemplateAssignment } = await import('@/services/cases/mockCaseService');
 
           const allTemplates = await templateModule.listTemplates('published');
           const availableTemplates = (allTemplates as any[])
@@ -1970,7 +3191,7 @@ const SynopticReportPage: React.FC = () => {
           const overridesRes = await grossingRoutingOverrideService.getAll();
           const routingOverrides = (overridesRes.ok ? overridesRes.data : [])
             .filter((o: any) => o.active)
-            .map((o: any) => ({ clientId: o.clientId, specimenType: o.specimenType, grossingTemplateId: o.grossingTemplateId }));
+            .map((o: any) => ({ facilityId: o.clientId, specimenType: o.specimenType, grossingTemplateId: o.grossingTemplateId }));
 
           const evalResult = await evaluateGrossingTemplateAssignment({
             specimens: [{
@@ -1982,7 +3203,7 @@ const SynopticReportPage: React.FC = () => {
               laterality: (saved as any)._entry?.laterality,
             }],
             clinicalIndication: caseData?.order?.clinicalIndication,
-            caseContext: { clientId: caseData?.order?.clientId },
+            caseContext: { facilityId: caseData?.order?.facilityId },
             availableTemplates,
             routingOverrides,
           } as any);
@@ -2014,7 +3235,7 @@ const SynopticReportPage: React.FC = () => {
           markDirty('Specimens');
         } catch (err) {
           console.error('[AddSpecimen] Grossing template auto-assignment failed:', err);
-          showToast('Specimen added, but automatic Grossing template assignment failed — assign one manually');
+          showToast(tGrossingNav('synopticReportPage.toast.grossingTemplateAssignFailed'), 'warning');
         }
       })();
     }
@@ -2091,7 +3312,7 @@ const SynopticReportPage: React.FC = () => {
     // as an undifferentiated conflict count. No answer content included
     // — instance IDs and a count only, per this audit trail's PHI-safe
     // detail requirement.
-    mockAuditService.logEvent({
+    auditService.logEvent({
       type: 'system',
       event: 'Post-Finalization Drift Detected',
       detail: `${drifted.length} finalized grossing report(s) drifted from their finalized snapshot (instance IDs: ${drifted.map(g => g.instanceId).join(', ')}) — reverting to draft`,
@@ -2121,7 +3342,7 @@ const SynopticReportPage: React.FC = () => {
         // of silently diverging into a state nothing will ever revisit.
         drifted.forEach(g => grossingSnapshotRef.current.delete(g.instanceId));
         setCaseData(prev => prev ? ({ ...prev, grossingReports } as typeof prev) : prev);
-        mockAuditService.logEvent({
+        auditService.logEvent({
           type: 'system',
           event: 'Post-Finalization Drift Auto-Corrected',
           detail: `${drifted.length} report(s) reverted to draft and saved successfully`,
@@ -2159,7 +3380,7 @@ const SynopticReportPage: React.FC = () => {
         // silently-drifted content until someone happens to check is a
         // real compliance exposure, not a hypothetical one.
         if (e instanceof ConcurrencyConflictError) {
-          mockAuditService.logEvent({
+          auditService.logEvent({
             type: 'system',
             event: 'Post-Finalization Drift Correction Deferred',
             detail: `${drifted.length} report(s) detected drifted, but the correction write hit a version conflict — will retry on next change`,
@@ -2170,7 +3391,7 @@ const SynopticReportPage: React.FC = () => {
           alertAdminsOfUnresolvedDrift(caseData.id, drifted.length, 'deferred (version conflict)');
         } else {
           console.error(e);
-          mockAuditService.logEvent({
+          auditService.logEvent({
             type: 'system',
             event: 'Post-Finalization Drift Correction Failed',
             detail: `${drifted.length} report(s) detected drifted; correction write failed with an unexpected error`,
@@ -2187,25 +3408,38 @@ const SynopticReportPage: React.FC = () => {
   const {
     finalizeSignOut,
     handleSignOutConfirm,
+    handleReturnToTrainee,
     finalizeCase,
     missingFields,
     showMissingWarning, setShowMissingWarning,
     reviewFields,
     showAiReview, setShowAiReview,
+    handleSuggestSynopticFromNarrative,
+    isSuggestingSynoptic,
+    handleGenerateNarrativeFromSynoptic,
+    isGeneratingNarrative,
+    showNarrativeReview, setShowNarrativeReview,
+    generatedNarrativeText,
+    handleAcceptGeneratedNarrative,
     finalizeAndNextPending,
     showPreFinalise, setShowPreFinalise,
     preFinalSynoptics,
     handleRequestFinalize,
     handlePreFinalConfirm,
-    deferredAmendmentContext, setDeferredAmendmentContext,
     handleFinalizeConfirm,
+    criticalFindings,
+    showCriticalFindingsModal,
+    handleRecordCriticalNotification,
+    handleAcknowledgeCriticalFindings,
   } = useSignOutWorkflow({
     caseData, setCaseData, signingUser, showToast, activeReportInstanceId,
     knownVersionRef, setConcurrencyConflict, sendSynopticReportToLis,
     generateReportPdfSnapshot, isOrchestrationMode, orchSections,
     setCaseSigned, setShowSignOutModal, setPendingReconciliation,
-    countersignFeedback, specimenDictionary, setFixativeGateSpecimens,
+    countersignFeedback, specimenDictionary, setFixativeGateSpecimens, setStainQcGateBlocking,
+    setPreAnalyticDateGateSpecimens, setPendingActionIsSignOut,
     setPendingFinalizeArgs, synopticPanelRef, setAlertFieldId, safeSetLeftTab, setAmendmentMode,
+    setActiveSpecimenId, setActiveReportType,
     setShowAmendmentModal, setShowFinalizeModal, openAmendmentDraft,
     releasePendingAmendmentOrAddendum, log,
   });
@@ -2276,39 +3510,316 @@ const SynopticReportPage: React.FC = () => {
         return;
       }
       console.error('[FixativeGate] Failed to persist resolutions:', err);
-      showToast('Could not save fixation time — please try again');
+      showToast(tGrossingNav('synopticReportPage.toast.fixationSaveFailed'), 'warning');
       return;
     }
 
     setFixativeGateSpecimens(null);
     const args = pendingFinalizeArgs;
+    const isSignOut = pendingActionIsSignOut;
     setPendingFinalizeArgs([]);
+    setPendingActionIsSignOut(false);
     // Same gap as the other two finalize paths — fixed the same way.
     (async () => {
+      if (isSignOut) {
+        await handleSignOutConfirm();
+        return;
+      }
       const succeeded = await finalizeCase(args);
       if (succeeded) await releasePendingAmendmentOrAddendum();
     })();
-  }, [caseData, knownVersionRef, setCaseData, signingUser, showToast, setConcurrencyConflict, setFixativeGateSpecimens, pendingFinalizeArgs, setPendingFinalizeArgs, finalizeCase, releasePendingAmendmentOrAddendum]);
+  }, [caseData, knownVersionRef, setCaseData, signingUser, showToast, setConcurrencyConflict, setFixativeGateSpecimens, pendingFinalizeArgs, setPendingFinalizeArgs, pendingActionIsSignOut, setPendingActionIsSignOut, finalizeCase, handleSignOutConfirm, releasePendingAmendmentOrAddendum]);
+
+  // Real, per PS-289/PS-292's own Gating Strategy — simpler than
+  // handleFixativeGateContinue above, since the real confirmation
+  // itself (mockBatchService.confirmQcVisualRead()) already persisted
+  // inside StainQcGateModal directly, rather than being handed back
+  // here as data still needing to be saved.
+  const handleStainQcGateContinue = useCallback(() => {
+    setStainQcGateBlocking(null);
+    const args = pendingFinalizeArgs;
+    const isSignOut = pendingActionIsSignOut;
+    setPendingFinalizeArgs([]);
+    setPendingActionIsSignOut(false);
+    (async () => {
+      if (isSignOut) {
+        await handleSignOutConfirm();
+        return;
+      }
+      const succeeded = await finalizeCase(args);
+      if (succeeded) await releasePendingAmendmentOrAddendum();
+    })();
+  }, [setStainQcGateBlocking, pendingFinalizeArgs, setPendingFinalizeArgs, pendingActionIsSignOut, setPendingActionIsSignOut, finalizeCase, handleSignOutConfirm, releasePendingAmendmentOrAddendum]);
+
+  // Real, per direct follow-up: "Begin AutopsyAuthorizationCompletionForm.tsx
+  // persistence — hands back updated data, nothing saves it." The
+  // form itself is a real, deliberately presentational component
+  // (per its own header comment) — it hands back a real, updated
+  // AutopsyCaseDetails and leaves persistence to the caller. This is
+  // that real caller, same real caseRouter.updateCase() +
+  // knownVersionRef pattern as handleFixativeGateContinue above.
+  const handleAutopsyAuthCompletionSubmit = useCallback(async (updatedDetails: AutopsyCaseDetails) => {
+    if (!caseData) return;
+    try {
+      await caseRouter.updateCase(caseData.id, { autopsy: updatedDetails } as any, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => prev ? ({ ...prev, autopsy: updatedDetails } as typeof prev) : prev);
+      setShowAutopsyAuthCompletion(false);
+      showToast('Authorization recorded');
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        setConcurrencyConflict({ actualVersion: err.actualVersion, blockOverride: true });
+        return;
+      }
+      console.error('[AutopsyAuthCompletion] Failed to persist authorization:', err);
+      showToast(tGrossingNav('synopticReportPage.toast.authorizationSaveFailed'), 'warning');
+    }
+  }, [caseData, knownVersionRef, setCaseData, showToast, setConcurrencyConflict]);
+
+  // Real, per direct follow-up: "it all needs to be wired" —
+  // AutopsyCaseDetails.organRetentionTier had no real UI anywhere to
+  // set it at all (confirmed via a full-codebase search before
+  // adding this), meaning resolveHtaApplicability.ts's own real gate
+  // had nothing real to gate. Same real persistence pattern as
+  // handleAutopsyAuthCompletionSubmit above, kept as its own,
+  // separate handler since the two real actions have genuinely
+  // different success messaging and neither should touch the
+  // other's modal state.
+  const handleOrganRetentionTierChange = useCallback(async (tier: AutopsyCaseDetails['organRetentionTier']) => {
+    if (!caseData?.autopsy) return;
+    const updatedDetails: AutopsyCaseDetails = { ...caseData.autopsy, organRetentionTier: tier };
+    try {
+      await caseRouter.updateCase(caseData.id, { autopsy: updatedDetails } as any, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => prev ? ({ ...prev, autopsy: updatedDetails } as typeof prev) : prev);
+      showToast('Organ retention tier recorded');
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        setConcurrencyConflict({ actualVersion: err.actualVersion, blockOverride: true });
+        return;
+      }
+      console.error('[AutopsyOrganRetention] Failed to persist organ retention tier:', err);
+      showToast(tGrossingNav('synopticReportPage.toast.organRetentionSaveFailed'), 'warning');
+    }
+  }, [caseData, knownVersionRef, setCaseData, showToast, setConcurrencyConflict]);
+
+  // Real, per direct follow-up ("let's get that signing") — the real
+  // UI trigger for signAutopsyReport.ts, this codebase's first real
+  // PAD/FAD signing action. Thin: calls and renders only, same
+  // "no inline logic" posture as every other real Autopsy handler in
+  // this file — the actual countersign/gate/persist logic all lives
+  // in signAutopsyReport.ts itself.
+  const handleSignAutopsyReport = useCallback(async (tier: 'PAD' | 'FAD', confirmation: SignatureConfirmation) => {
+    if (!caseData?.id || !signingUser?.id) return;
+    // Batch 345: check the signature before anything is signed
+    // (services/auth/signatureEvidence.ts).
+    const accepted = await signatureGate.accept(confirmation, {
+      caseId: caseData.id,
+      caseRef: caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? null,
+      actions: [tier === 'FAD' ? 'autopsy-fad' : 'autopsy-pad'],
+    });
+    if (accepted.ok === false) { showToast(tGrossingNav(`signatureEvidence.refused.${accepted.reason}`), 'warning'); return; }
+    setSigningAutopsyTier(tier);
+    try {
+      // Real, deliberate: persist any unsaved orchSections edits first
+      // — signAutopsyReport.ts snapshots Case.orchSections directly
+      // (per direct correction: "the Final Diagnosis... that data
+      // exist" — no separate content model needed), so the pathologist's
+      // latest, actually-written diagnosis text must be on the real
+      // case before the sign action reads it, not left behind in
+      // local, unsaved component state.
+      await writeCaseDraft(caseData, caseData.id, orchSections, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+
+      const result = await signAutopsyReport(caseData.id, tier, {
+        id: signingUser.id, name: signingUser.name ?? signingUser.id, isPathologist: true,
+      }, generateReportPdfSnapshot);
+      if (!result.ok) {
+        signatureGate.release(caseData.id);
+        // Signing-authority refusals arrive already translated
+        // (canFinalizeCase's reason); the rest have their own keys.
+        showToast(result.errorCode === 'NOT_AUTHORIZED' && result.error
+          ? result.error
+          : tGrossingNav(AUTOPSY_SIGN_ERROR_KEY[result.errorCode ?? 'SAVE_FAILED'] ?? 'autopsySignOut.errors.saveFailed', { tier, jurisdiction: caseData.autopsy?.jurisdiction ? tGrossingNav(`jurisdictionNames.${caseData.autopsy.jurisdiction}`) : '' }), 'warning');
+        return;
+      }
+      // Real, deliberate re-fetch rather than an optimistic local
+      // patch: a countersign release changes CaseStatus only, while a
+      // direct sign changes both CaseStatus (FAD only) and the real
+      // autopsy snapshot — re-fetching the real, authoritative case
+      // keeps both paths correct without duplicating
+      // signAutopsyReport.ts's own real branching logic here too.
+      const refreshed = await caseRouter.getCase(caseData.id);
+      if (refreshed) {
+        setCaseData(refreshed);
+        knownVersionRef.current = knownVersionRef.current + 1;
+      }
+      await signatureGate.commit(caseData.id, result.outcome === 'released_for_countersign' ? 'released_for_countersign' : 'signed', { kind: 'autopsy-snapshot', tier });
+      showToast(result.outcome === 'released_for_countersign'
+        ? tGrossingNav('autopsySignOut.toast.releasedForCountersign', { tier })
+        : tGrossingNav('autopsySignOut.toast.signed', { tier }));
+    } catch (err) {
+      console.error('[AutopsySign] Failed to sign report:', err);
+      showToast(tGrossingNav('autopsySignOut.toast.failed', { tier }), 'warning');
+    } finally {
+      setSigningAutopsyTier(null);
+    }
+  }, [caseData, signingUser, orchSections, knownVersionRef, setCaseData, showToast, generateReportPdfSnapshot, tGrossingNav]);
+  // compliance research — same shape as handleFixativeGateContinue
+  // above, for PreAnalyticDateGateModal. Genuinely different in one
+  // way: a specimen resolved via administrative override raises a
+  // real, OPEN SpecimenDeficiency (raise(), never raiseAndResolve()) —
+  // this is a Pre-Analytic Non-Conformity warranting real
+  // corrective/preventive review, not an instant, closed documentation
+  // event. See def-missing-preanalytic-date's own doc comment.
+  const handlePreAnalyticDateGateContinue = useCallback(async (resolutions: PreAnalyticDateResolution[]) => {
+    if (!caseData) return;
+    const org = getOrganisationByHospitalId(caseData.originHospitalId);
+    const gateConfig = resolvePreAnalyticDateGateConfig(org?.country);
+
+    const patchedSpecimens = (caseData.specimens ?? []).map((sp: any) => {
+      const res = resolutions.find(r => r.specimenId === sp.id);
+      if (!res) return sp;
+      return {
+        ...sp,
+        ...(res.collectedAt ? { collectedAt: res.collectedAt } : {}),
+        ...(res.collectedAtAdministrativeOverride ? { collectedAtAdministrativeOverride: true } : {}),
+        ...(res.receivedAt ? { receivedAt: res.receivedAt } : {}),
+        ...(res.receivedAtAdministrativeOverride ? { receivedAtAdministrativeOverride: true } : {}),
+        ...(res.overrideComment ? { preAnalyticDateOverrideComment: res.overrideComment } : {}),
+      };
+    });
+
+    try {
+      await caseRouter.updateCase(caseData.id, { specimens: patchedSpecimens } as any, knownVersionRef.current);
+      knownVersionRef.current = knownVersionRef.current + 1;
+      setCaseData(prev => prev ? ({ ...prev, specimens: patchedSpecimens } as typeof prev) : prev);
+
+      // Real, OPEN SpecimenDeficiency per specimen that used an
+      // administrative override on either date — deliberately left
+      // open (not raiseAndResolve) so it reaches Operations/CAPA
+      // Engine review, matching def-outbound-dispatch-failure's own
+      // precedent. Fire-and-forget-adjacent: awaited here so a failure
+      // is at least logged, but never blocks the actual sign-out this
+      // gate already cleared.
+      await Promise.all(resolutions
+        .filter(res => res.collectedAtAdministrativeOverride || res.receivedAtAdministrativeOverride)
+        .map(res => {
+          const sp = caseData.specimens?.find((s: any) => s.id === res.specimenId);
+          if (!sp) return Promise.resolve();
+          const overriddenFields = [
+            res.collectedAtAdministrativeOverride ? 'collection' : null,
+            res.receivedAtAdministrativeOverride ? 'laboratory receipt' : null,
+          ].filter(Boolean).join(' and ');
+          return specimenDeficiencyService.raise({
+            caseId: caseData.id,
+            specimenId: res.specimenId,
+            specimenLabel: sp.label,
+            deficiencyTypeId: 'def-missing-preanalytic-date',
+            comment: `Specimen ${sp.label}: ${overriddenFields} date/time not recoverable at sign-out. Administrative override "${gateConfig.administrativeOverrideLabel}" applied per ${gateConfig.standardReference}. Reason: ${res.overrideComment ?? ''}`,
+            raisedBy: signingUser?.id ?? 'unknown',
+          }).catch(err => console.error('[PreAnalyticDateGate] Failed to raise deficiency:', err));
+        }));
+
+      showToast('Pre-analytic dates recorded');
+    } catch (err) {
+      if (err instanceof ConcurrencyConflictError) {
+        setConcurrencyConflict({ actualVersion: err.actualVersion, blockOverride: true });
+        return;
+      }
+      console.error('[PreAnalyticDateGate] Failed to persist resolutions:', err);
+      showToast(tGrossingNav('synopticReportPage.toast.preAnalyticSaveFailed'), 'warning');
+      return;
+    }
+
+    setPreAnalyticDateGateSpecimens(null);
+    const args = pendingFinalizeArgs;
+    const isSignOut = pendingActionIsSignOut;
+    setPendingFinalizeArgs([]);
+    setPendingActionIsSignOut(false);
+    (async () => {
+      if (isSignOut) {
+        await handleSignOutConfirm();
+        return;
+      }
+      const succeeded = await finalizeCase(args);
+      if (succeeded) await releasePendingAmendmentOrAddendum();
+    })();
+  }, [caseData, knownVersionRef, setCaseData, signingUser, showToast, setConcurrencyConflict, setPreAnalyticDateGateSpecimens, pendingFinalizeArgs, setPendingFinalizeArgs, pendingActionIsSignOut, setPendingActionIsSignOut, finalizeCase, handleSignOutConfirm, releasePendingAmendmentOrAddendum]);
 
   // Previously an anonymous inline closure on AddCodeModal's
   // onAddToSpecimens JSX prop — merges new ICD/SNOMED/CPT codes into the
   // case, routing each CPT code to its own specimen's coding.cpt.
   const handleAddCodesToSpecimens = useCallback(async (codes: any[], _specimenIndices: unknown) => {
     if (!caseData) return;
-    const newIcd    = codes.filter(c => c.system === 'ICD');
-    const newSnomed = codes.filter(c => c.system === 'SNOMED');
-    const newCoding = {
-      icd10:  [...(((caseData as any).coding?.icd10  ?? []) as any[]), ...newIcd],
-      snomed: [...(((caseData as any).coding?.snomed ?? []) as any[]), ...newSnomed],
-    };
+    // Real fix, per direct correction: "you can delete cpt codes in
+    // the code manager - it uses the trash can icon." The modal's own
+    // Save button resolves its FULL, final set of active codes
+    // (AddCodeModal.tsx's own allActiveCodes, built from applied minus
+    // whatever's pendingDelete) and hands that whole set back here -
+    // not just newly-added ones. Treating it as "new additions to
+    // append" (the previous behavior) would silently duplicate every
+    // already-active, untouched code on every single save.
+    // Real, per direct guidance's own follow-up on structured
+    // linkage: the modal's own allActiveCodes already carries a real
+    // specimenId on every code, ICD included (AddCodeModal.tsx's own
+    // allActiveCodes construction) - this previously discarded it for
+    // ICD entries, flattening every one into one, undifferentiated
+    // case-wide list regardless of which specimen it was actually
+    // applied to. A real specimenId here means a real, post-
+    // examination, specimen-specific diagnosis (Specimen.coding.icd10,
+    // see that field's own doc comment); no specimenId means the
+    // real, case-wide, order-level indication, same as before.
+    const newIcd          = codes.filter(c => c.system === 'ICD' && !(c as any).specimenId);
+    const newIcd10BySpecimenId = new Map<string, { code: string; description: string }[]>();
+    codes.filter(c => c.system === 'ICD' && (c as any).specimenId).forEach(c => {
+      const specId = (c as any).specimenId;
+      if (!newIcd10BySpecimenId.has(specId)) newIcd10BySpecimenId.set(specId, []);
+      newIcd10BySpecimenId.get(specId)!.push({ code: c.code, description: c.display });
+    });
+    // Real, per direct research while scoping the RFP-APLIS-2026-GLOBAL
+    // Broader Cancer Registry Exports gap — same real, per-specimen
+    // linkage as ICD10 immediately above, now genuinely applied to
+    // ICD-O too. Real, honest fix for a real, previously-confirmed
+    // gap: an ICD-O-tagged code reaching this function was previously
+    // silently dropped entirely (this filter only ever matched 'ICD'
+    // and 'SNOMED') — see types/case/Specimen.ts's own coding.icdO
+    // doc comment for the fuller account. A case-wide (no specimenId)
+    // ICD-O code is deliberately not supported — a real ICD-O
+    // diagnosis is inherently specimen-specific (per-specimen
+    // histology), unlike the case-wide clinical-indication ICD-10
+    // fallback above.
+    const newIcdOBySpecimenId = new Map<string, { code: string; description: string }[]>();
+    codes.filter(c => c.system === 'ICD-O' && (c as any).specimenId).forEach(c => {
+      const specId = (c as any).specimenId;
+      if (!newIcdOBySpecimenId.has(specId)) newIcdOBySpecimenId.set(specId, []);
+      newIcdOBySpecimenId.get(specId)!.push({ code: c.code, description: c.display });
+    });
+    // Real fix, per direct guidance: this previously took EVERY SNOMED
+    // code regardless of its own real specimenId and flattened them
+    // all into one, undifferentiated case-wide list — the exact same
+    // bug the ICD entries above already had fixed, never applied here.
+    // Same real split as ICD immediately above: a specimenId means a
+    // real, specimen-specific association (Specimen.coding.snomed, see
+    // that field's own doc comment for the real "never dedupe, retain
+    // every individual association" principle this whole array
+    // follows); no specimenId means the real, case-wide association.
+    const newSnomed = codes.filter(c => c.system === 'SNOMED' && !(c as any).specimenId);
+    const newSnomedBySpecimenId = new Map<string, { code: string; description: string }[]>();
+    codes.filter(c => c.system === 'SNOMED' && (c as any).specimenId).forEach(c => {
+      const specId = (c as any).specimenId;
+      if (!newSnomedBySpecimenId.has(specId)) newSnomedBySpecimenId.set(specId, []);
+      newSnomedBySpecimenId.get(specId)!.push({ code: c.code, description: c.display });
+    });
+    const newCoding = { icd10: newIcd, snomed: newSnomed };
+
     // Real fix, Phase 1 of specimen-level CPT association: a real
     // LIS assigns base surgical pathology CPT codes per specimen,
     // not as one flat, undifferentiated case-level list (see
     // types/case/Specimen.ts's own doc comment on
     // Specimen.coding.cpt for the fuller reasoning). The modal
     // already tells us which real specimen each code was applied
-    // to via c.specimenId — routes each new CPT code to its own
-    // real specimen's coding.cpt.
+    // to via c.specimenId.
     const newCptBySpecimenId = new Map<string, string[]>();
     codes.filter(c => c.system === 'CPT').forEach(c => {
       const specId = (c as any).specimenId;
@@ -2316,11 +3827,86 @@ const SynopticReportPage: React.FC = () => {
       if (!newCptBySpecimenId.has(specId)) newCptBySpecimenId.set(specId, []);
       newCptBySpecimenId.get(specId)!.push(c.code);
     });
+
+    // Real, per-specimen diff against what's there today - a real
+    // addition (in the new, resolved list but not the old one) needs
+    // a real charge; a real removal (in the old list but not the new
+    // one) needs a real credit. Count-based, not a plain Set diff, so
+    // a specimen with two real, identical base codes isn't confused
+    // for "nothing changed" when only one of the two was removed.
+    const additionsBySpecimen = new Map<string, string[]>();
+    const removalsBySpecimen  = new Map<string, string[]>();
     const updatedSpecimens = (caseData.specimens ?? []).map((sp: any) => {
-      const additions = newCptBySpecimenId.get(sp.id);
-      if (!additions || additions.length === 0) return sp;
-      return { ...sp, coding: { ...(sp.coding ?? {}), cpt: [...((sp.coding?.cpt ?? []) as string[]), ...additions] } };
+      // Real, per direct guidance's own follow-up: a specimen counts
+      // as having a real ICD10 change either when the modal's own
+      // final, resolved set includes a real entry for it, OR when it
+      // previously had real entries that are now entirely gone (the
+      // user deleted its only assignment(s) via the modal's trash
+      // icon) - the latter must still clear the stale value, not
+      // silently preserve it.
+      const hadExistingIcd10 = ((sp.coding?.icd10 ?? []) as { code: string }[]).length > 0;
+      const hasIcd10Change = newIcd10BySpecimenId.has(sp.id) || hadExistingIcd10;
+      // Real fix, per direct guidance: same real reasoning as ICD10
+      // immediately above, now genuinely applied to SNOMED — this
+      // specimen's own real, complete, resolved SNOMED set, never the
+      // whole-case flattening the previous version of this function had.
+      const hadExistingSnomed = ((sp.coding?.snomed ?? []) as { code: string }[]).length > 0;
+      const hasSnomedChange = newSnomedBySpecimenId.has(sp.id) || hadExistingSnomed;
+      // Real, per this function's own new ICD-O handling immediately
+      // above — same real "in the modal's own resolved set, OR
+      // previously had entries that are now entirely gone" check.
+      const hadExistingIcdO = ((sp.coding?.icdO ?? []) as { code: string }[]).length > 0;
+      const hasIcdOChange = newIcdOBySpecimenId.has(sp.id) || hadExistingIcdO;
+      if (!newCptBySpecimenId.has(sp.id) && !hasIcd10Change && !hasSnomedChange && !hasIcdOChange && !((sp.coding?.cpt ?? []) as string[]).length) return sp;
+      const oldList = [...((sp.coding?.cpt ?? []) as string[])];
+      const newList = [...(newCptBySpecimenId.get(sp.id) ?? [])];
+      const remaining = [...oldList];
+      const added: string[] = [];
+      for (const code of newList) {
+        const idx = remaining.indexOf(code);
+        if (idx !== -1) remaining.splice(idx, 1); // already existed - not a real addition
+        else added.push(code);
+      }
+      if (added.length) additionsBySpecimen.set(sp.id, added);
+      if (remaining.length) removalsBySpecimen.set(sp.id, remaining); // whatever's left in oldList was never matched in newList - a real removal
+      return {
+        ...sp,
+        coding: {
+          ...(sp.coding ?? {}),
+          cpt: newList,
+          // Real, per direct guidance's own follow-up: the modal's
+          // own complete, resolved set for this specimen - undefined
+          // (not the stale old value) when the user removed every
+          // real assignment it had.
+          icd10: hasIcd10Change ? newIcd10BySpecimenId.get(sp.id) : sp.coding?.icd10,
+          snomed: hasSnomedChange ? newSnomedBySpecimenId.get(sp.id) : sp.coding?.snomed,
+          icdO: hasIcdOChange ? newIcdOBySpecimenId.get(sp.id) : sp.coding?.icdO,
+        },
+      };
     });
+
+    // Real, per direct guidance's own follow-up: billing is one of the
+    // few things that can genuinely change after a case signs out, but
+    // it needs a real, documented reason - gated here, before ANY
+    // mutation (case update, setCaseData, or the transaction loops
+    // below), never after. A cancelled prompt means nothing happens at
+    // all - no partial state where the UI shows a change that was
+    // never actually confirmed.
+    const hasRealChange = additionsBySpecimen.size > 0 || removalsBySpecimen.size > 0;
+    let postSignoutContext: PostSignoutChangeContext | undefined;
+    if (isOrchestrationMode && hasRealChange && isCaseSignedOutForBilling(caseData.status)) {
+      const addCount = [...additionsBySpecimen.values()].reduce((n, c) => n + c.length, 0);
+      const removeCount = [...removalsBySpecimen.values()].reduce((n, c) => n + c.length, 0);
+      const parts = [];
+      if (addCount) parts.push(`${addCount} code${addCount === 1 ? '' : 's'} added`);
+      if (removeCount) parts.push(`${removeCount} code${removeCount === 1 ? '' : 's'} removed`);
+      try {
+        postSignoutContext = await requestPostSignoutConfirmation(parts.join(', ') + '.');
+      } catch {
+        return; // cancelled - no mutation at all, modal stays open per the existing "stays open" contract
+      }
+    }
+
     try {
       await caseRouter.updateCase(caseData.id, { coding: newCoding, specimens: updatedSpecimens } as any, knownVersionRef.current);
       knownVersionRef.current = knownVersionRef.current + 1;
@@ -2333,7 +3919,56 @@ const SynopticReportPage: React.FC = () => {
     }
     setCaseData(prev => prev ? ({ ...prev, coding: newCoding, specimens: updatedSpecimens } as typeof prev) : prev);
     markDirty('Codes');
-  }, [caseData, knownVersionRef, setConcurrencyConflict, setCaseData, markDirty]);
+
+    // Real fix, per direct requirement: this CPT path previously wrote
+    // straight to coding.cpt with no real transaction or audit trail
+    // at all - a second, silent way into the exact same field the
+    // billing panel's own ledger governs. Real, per direct follow-up
+    // ("can we still keep RVU... useful to track Pathologist
+    // performance"): only a real, orchestration-mode change becomes an
+    // actual financial charge/credit - LIS owns real billing in assist
+    // mode, per established policy - but the code itself is still
+    // written either way, since contributionDashboardCalculations.ts
+    // genuinely prefers a specimen's real, applied CPT code over its
+    // own generic estimate when one exists, and losing that would
+    // make assist-mode RVU tracking less accurate, not more compliant.
+    // Every path is audited regardless of mode - "All must be audited"
+    // doesn't stop being true just because no money moved.
+    for (const [specId, addedCodes] of additionsBySpecimen) {
+      for (const code of addedCodes) {
+        if (isOrchestrationMode) {
+          recordChargeTransaction(specId, undefined, code, postSignoutContext);
+        } else {
+          const sp = caseData.specimens?.find(s => s.id === specId);
+          auditService.logEvent({
+            type: 'user',
+            event: 'CPT code added (assist mode - RVU tracking only, not a real charge)',
+            detail: `${sp?.label ?? specId}: ${code} added via Code Manager - LIS owns real billing in assist mode`,
+            user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+            caseId: caseData.accession?.fullAccession ?? caseData.id,
+            confidence: null,
+          });
+        }
+      }
+    }
+    for (const [specId, removedCodes] of removalsBySpecimen) {
+      for (const code of removedCodes) {
+        if (isOrchestrationMode) {
+          recordCreditTransaction(specId, undefined, code, postSignoutContext);
+        } else {
+          const sp = caseData.specimens?.find(s => s.id === specId);
+          auditService.logEvent({
+            type: 'user',
+            event: 'CPT code removed (assist mode - no real charge to credit)',
+            detail: `${sp?.label ?? specId}: ${code} removed via Code Manager - RVU tracking only, LIS owns real billing in assist mode`,
+            user: signingUser?.name ?? signingUser?.id ?? 'unknown',
+            caseId: caseData.accession?.fullAccession ?? caseData.id,
+            confidence: null,
+          });
+        }
+      }
+    }
+  }, [caseData, knownVersionRef, setConcurrencyConflict, setCaseData, markDirty, isOrchestrationMode, signingUser]);
 
   // ── Orchestrator handlers ──────────────────────────────────
   const {
@@ -2391,19 +4026,22 @@ const SynopticReportPage: React.FC = () => {
     return (
       <div className="ps-case-not-found">
         <div className="ps-case-not-found-icon">🔍</div>
-        <div className="ps-case-not-found-title">Case not found</div>
-        <div className="ps-case-not-found-subtitle">No case exists with ID <code className="ps-case-not-found-id">{caseId}</code></div>
+        <div className="ps-case-not-found-title">{tGrossingNav('caseNotFound.title')}</div>
+        <div className="ps-case-not-found-subtitle">
+          <Trans i18nKey="caseNotFound.subtitle" values={{ id: caseId }} components={{ id: <code className="ps-case-not-found-id" data-phi="accession" /> }} />
+        </div>
         <button
           onClick={() => navigate('/')}
           className="ps-btn-primary ps-case-not-found-button"
         >
-          ← Back to Worklist
+          ← {tGrossingNav('caseNotFound.back')}
         </button>
       </div>
     );
   }
 
   return (
+    <SpellCheckProvider value={spellCheck}>
     <div className={`ps-synrp-root ${isLoaded ? 'ps-synrp-root--loaded' : ''}`}>
       {/* Background */}
       <div className="ps-synrp-bg-image" />
@@ -2411,7 +4049,7 @@ const SynopticReportPage: React.FC = () => {
       <div className="ps-synrp-bg-gradient" />
 
       {/* Toast */}
-      <SaveToast message={toastMsg} visible={toastVisible} />
+      <SaveToast message={toastMsg} visible={toastVisible} kind={toastKind} containsPhi={toastContainsPhi} onDismiss={dismissToast} />
 
       {/* Auto-generate-once confirmation toast — cancelable window before
           a draft is silently created from completed synoptic data. */}
@@ -2445,7 +4083,7 @@ const SynopticReportPage: React.FC = () => {
         <HeaderBar
           caseData={caseData}
           onNavigate={guard}
-          onSignOut={() => setShowSignOutModal(true)}
+          onSignOut={handleSignOutClick}
           aiSynthesisStatus={aiSynthesisStatus}
           onAiStatusClick={handleAiStatusReviewClick}
           compact={(isOrchestrationMode && leftTab === 'draft') || isHeaderCompactManual}
@@ -2457,6 +4095,8 @@ const SynopticReportPage: React.FC = () => {
           onOpenDeficiencyHistory={() => setShowDeficiencyModal(true)}
           versionCount={caseVersions.length}
           onOpenVersionHistory={() => setShowVersionHistoryModal(true)}
+          changeCount={changeEntries.length}
+          onOpenChangeHistory={() => setShowChangeHistory(true)}
           focusedBlockId={focusedBlockEntry?.block.id}
           onOpenBlockEditor={() => setShowBlockEditor(true)}
           onCaseUpdate={handleHeaderCaseUpdate}
@@ -2510,10 +4150,18 @@ const SynopticReportPage: React.FC = () => {
               activeSpecimenId={activeSpecimenId}
               onSelectSpecimen={setActiveSpecimenId}
               onAddSynoptic={() => setShowAddSynopticModal(true)}
+              onAddMicroscopic={(specimenId) => {
+                setActiveSpecimenId(specimenId);
+                setActiveReportType('microscopic');
+              }}
               onEditSpecimen={handleEditSpecimen}
               onOpenCaseComment={() => setShowCaseCommentModal(true)}
               onOpenSpecimenComment={(id) => { setActiveSpecimenCommentId(id); setShowSpecimenCommentModal(true); }}
               hasCaseComment={hasCaseComment}
+              onOpenRetentionHold={() => setShowRetentionHoldModal(true)}
+              hasActiveRetentionHold={(caseData?.retentionHolds ?? []).some(h => h.active)}
+              onOpenCaseHold={() => setShowCaseHoldModal(true)}
+              hasActiveCaseHold={(caseData?.caseHolds ?? []).some(h => h.active)}
               specimenComments={specimenComments}
               activeReportInstanceId={activeReportInstanceId}
               onSelectReport={(instanceId, specimenId, reportType) => {
@@ -2609,33 +4257,80 @@ const SynopticReportPage: React.FC = () => {
               {!(isOrchestrationMode && leftTab === 'draft') && (
               <div className="ps-syn-tabbar-tools">
                 {import.meta.env.DEV && caseData && (
-                  <button
-                    onClick={() => handleProtocolChangesDetected([{
-                      id: 'demo-proto-1',
-                      specimenId:           caseData.specimens?.[0]?.id ?? 'sp-1',
-                      specimenLabel:        (caseData.specimens?.[0] as any)?.label ?? 'A',
-                      specimenDesc:         caseData.specimens?.[0]?.description ?? 'Core biopsy',
-                      currentTemplateId:    'breast_core_general',
-                      currentTemplateName:  'Breast Core Biopsy (General)',
-                      proposedTemplateId:   'breast_invasive_carcinoma',
-                      proposedTemplateName: 'Breast Invasive Carcinoma',
-                      reason:               'Microscopic shows invasive ductal carcinoma, nuclear grade 2, tubule formation score 3.',
-                      confidence:           92,
-                    }])}
-                    className="ps-syn-dev-btn ps-syn-dev-btn--microscopic"
-                    title="DEV: Simulate microscopic slide received"
-                  >
-                    ⚡ Sim Microscopic
-                  </button>
-                )}
-                {import.meta.env.DEV && caseData && (
-                  <button
-                    onClick={simulateLisAmendmentReceived}
-                    className="ps-syn-dev-btn ps-syn-dev-btn--lis"
-                    title="DEV: Simulate an amendment received from the LIS, outside PathScribe"
-                  >
-                    ⚡ Sim LIS Amendment
-                  </button>
+                  <div className="ps-syn-devmenu-wrap">
+                    <button
+                      ref={devToolsBtnRef}
+                      onClick={() => {
+                        if (!showDevToolsMenu && devToolsBtnRef.current) {
+                          const r = devToolsBtnRef.current.getBoundingClientRect();
+                          setDevToolsMenuPos({ top: r.bottom + 4, left: r.left });
+                        }
+                        setShowDevToolsMenu(v => !v);
+                      }}
+                      className="ps-syn-dev-btn ps-syn-dev-btn--microscopic"
+                      title="DEV ONLY (not visible in production): simulation triggers for testing real workflows without needing the real external event that normally triggers them."
+                    >
+                      🛠️ Dev Tools {showDevToolsMenu ? '▴' : '▾'}
+                    </button>
+                    {showDevToolsMenu && devToolsMenuPos && ReactDOM.createPortal(
+                      <div className="ps-syn-devmenu ps-syn-devmenu--portaled" style={{ '--devmenu-top': `${devToolsMenuPos.top}px`, '--devmenu-left': `${devToolsMenuPos.left}px` } as React.CSSProperties}>
+                        <button
+                          className="ps-syn-devmenu-item"
+                          onClick={() => { setShowDevToolsMenu(false); handleProtocolChangesDetected([{
+                            id: 'demo-proto-1',
+                            specimenId:           caseData.specimens?.[0]?.id ?? 'sp-1',
+                            specimenLabel:        (caseData.specimens?.[0] as any)?.label ?? 'A',
+                            specimenDesc:         caseData.specimens?.[0]?.description ?? 'Core biopsy',
+                            currentTemplateId:    'breast_core_general',
+                            currentTemplateName:  'Breast Core Biopsy (General)',
+                            proposedTemplateId:   'breast_invasive_carcinoma',
+                            proposedTemplateName: 'Breast Invasive Carcinoma',
+                            reason:               'Microscopic shows invasive ductal carcinoma, nuclear grade 2, tubule formation score 3.',
+                            confidence:           92,
+                          }]); }}
+                          title="Simulates a microscopic review finding invasive ductal carcinoma, prompting the real Protocol Change modal to switch this case from a general Breast Core Biopsy template to Breast Invasive Carcinoma — tests that workflow without needing real microscopic findings."
+                        >
+                          ⚡ Sim Microscopic
+                        </button>
+                        <button
+                          className="ps-syn-devmenu-item"
+                          onClick={() => { setShowDevToolsMenu(false); simulateLisAmendmentReceived(); }}
+                          title="Simulates the LIS notifying PathScribe that this case was corrected directly in the LIS, outside PathScribe — creates a real LIS Amendment Notice and sends the signing pathologist an urgent message to review whether their own synoptic report also needs amending. Tests that notification workflow without a real, external LIS integration."
+                        >
+                          ⚡ Sim LIS Amendment
+                        </button>
+                        <button
+                          className="ps-syn-devmenu-item"
+                          onClick={() => { setShowDevToolsMenu(false); simulateBlockExceptionReceived(); }}
+                          title="Simulates a real inbound BlockExceptionEventPayload — exactly what a real LIS/middleware integration engine would eventually send — marking this case's first block Damaged through the real, working ingestion service (processBlockExceptionEvent). Tests that pipeline without a real, external LIS integration."
+                        >
+                          ⚡ Sim Block Exception
+                        </button>
+                        <button
+                          className="ps-syn-devmenu-item"
+                          onClick={() => { setShowDevToolsMenu(false); simulateMaterialLocationReceived(); }}
+                          title="Simulates a real inbound MaterialLocationEventPayload — exactly what a real LIS/middleware integration engine would eventually send — updating this case's first block's real, displayed location through the real, working ingestion service (processMaterialLocationEvent). Tests that pipeline without a real, external LIS integration."
+                        >
+                          ⚡ Sim Location Update
+                        </button>
+                        <button
+                          className="ps-syn-devmenu-item"
+                          onClick={() => { setShowDevToolsMenu(false); simulateCassetteDispatchOutcomeReceived(); }}
+                          title="Simulates a real inbound CassetteDispatchOutcomeEventPayload — exactly what a real Cassette Engine would eventually report back — a Green/Mesh hopper empty, falling back to White, through the real, working ingestion service (processCassetteDispatchOutcomeEvent). Tests the real fallback/hopper-empty notification without real hardware."
+                        >
+                          ⚡ Sim Cassette Dispatch
+                        </button>
+                        <button
+                          className="ps-syn-devmenu-item"
+                          onClick={() => { setShowDevToolsMenu(false); simulateFullMaterialTreeLocationUpdate(); }}
+                          title="Walks EVERY real material item on this case (every specimen, block, slide, decant, and decant slide) and fires a real, individually-idempotent MaterialLocationEventPayload for each through the same real ingestion service (processMaterialLocationEvent) — leaves every item with a genuine lastKnownLocation, cycling through the real workflow-stage vocabulary so it looks like a case mid-workflow. For testing the tracking UI with full coverage, not just one item."
+                        >
+                          ⚡ Sim ALL Locations
+                        </button>
+                      </div>,
+                      document.body,
+                    )}
+                  </div>
                 )}
                 <button
                   onClick={() => setShowSequencer(true)}
@@ -2712,7 +4407,7 @@ const SynopticReportPage: React.FC = () => {
                             reason:               'Microscopic shows invasive ductal carcinoma, nuclear grade 2, tubule formation score 3.',
                             confidence:           92,
                           }])}
-                          title="DEV: Simulate microscopic slide received"
+                          title="DEV ONLY (not visible in production): simulates a microscopic review finding invasive ductal carcinoma, prompting the real Protocol Change modal to switch this case from a general Breast Core Biopsy template to Breast Invasive Carcinoma — tests that workflow without needing real microscopic findings."
                         >⚡ Sim Microscopic</button>
                       )}
                       <button className="ps-ose-centre-btn" onClick={() => setShowSequencer(true)} title="Open report sequencer">
@@ -2806,8 +4501,136 @@ const SynopticReportPage: React.FC = () => {
                   </div>
                 )}
                 <AmendmentDraftBanner caseData={caseData} activeReportInstanceId={activeReportInstanceId} onEdit={handleRequestAmendment} />
-                <AmendmentStatusBanner caseId={caseData?.id} synopticReports={caseData?.synopticReports} />
-                <InformalReviewBanner caseId={caseData?.id} />
+                <AmendmentStatusBanner caseId={caseData?.id} synopticReports={caseData?.synopticReports} specimens={caseData?.specimens} />
+
+                {/* Real, per direct follow-up: "it all needs to be
+                    wired" \u2014 resolveAutopsyAccessionStatus.ts had
+                    zero real UI callers anywhere; the gate-blocking
+                    banner below only ever fires the 'temporary' case
+                    (when blocked), so the positive 'fully_authorized'
+                    state had no visible confirmation anywhere on the
+                    case. This is that real, always-visible read \u2014
+                    same real ps-autopsy-status-badge--* classes
+                    AutopsyAuthorizationCompletionForm.tsx already
+                    established, deliberately the same status
+                    function the gate itself is built on top of, per
+                    that function's own doc comment ("never a second,
+                    separate definition of authorized"). */}
+                {caseData?.autopsy && (
+                  <div className="ps-autopsy-intake-status">
+                    <span className={`ps-autopsy-status-badge ps-autopsy-status-badge--${resolveAutopsyAccessionStatus(caseData.autopsy)}`} data-phi="accession">{resolveAutopsyAccessionStatus(caseData.autopsy) === 'fully_authorized' ? 'Autopsy \u2014 Fully Authorized' : 'Autopsy \u2014 Temporary Accession'}</span>
+                    {/* Real, per direct follow-up: "it all needs to
+                        be wired" \u2014 resolveAutopsyTatSlaMatrix.ts
+                        had zero real UI callers; this is that real
+                        surfacing, right alongside the status badge
+                        above rather than a separate, easy-to-miss
+                        screen. */}
+                    <p className="ps-conf-section-subtitle ps-conf-section-subtitle--form-gap">
+                      {formatAutopsyTatSlaSummary(resolveAutopsyTatSlaMatrix(caseData.autopsy.jurisdiction))}
+                    </p>
+                  </div>
+                )}
+
+                {/* Real, per direct follow-up: "it all needs to be
+                    wired" — organRetentionTier had no real UI
+                    anywhere to set it; resolveHtaApplicability.ts is
+                    the real, deliberate gate on whether it means
+                    anything at all for this case's own jurisdiction
+                    (UK HTA 2004/2006, NZ Coroners Act 2006 only —
+                    never shown for a real jurisdiction the spec
+                    didn't name). */}
+                {caseData?.autopsy && resolveHtaApplicability(caseData.autopsy.jurisdiction) && (
+                  <div className="ps-conf-form-field ps-conf-form-field--narrow">
+                    <label className="ps-conf-label">Organ Retention Tier</label>
+                    <select
+                      className="ps-conf-select"
+                      value={caseData.autopsy.organRetentionTier ?? ''}
+                      onChange={e => handleOrganRetentionTierChange((e.target.value || undefined) as AutopsyCaseDetails['organRetentionTier'])}
+                    >
+                      <option value="">— not yet recorded —</option>
+                      <option value="tier_0_no_retention">Tier 0 — No Retention</option>
+                      <option value="tier_1_diagnostic_tissue_only">Tier 1 — Diagnostic Tissue Only</option>
+                      <option value="tier_2_full_organ_retention">Tier 2 — Full Organ Retention</option>
+                      <option value="tier_3_education_research_genomic">Tier 3 — Education / Research / Genomic</option>
+                    </select>
+                  </div>
+                )}
+
+                {caseData?.autopsy && (() => {
+                  const gate = resolveAutopsyGrossExaminationGate(caseData.autopsy);
+                  if (gate.allowed) return null;
+                  return (
+                    <div className="ps-lis-triage-banner">
+                      <div>
+                        <div className="ps-lis-triage-title">⚠ Autopsy — Temporary Accession, Written Authorization Pending</div>
+                        <p className="ps-lis-triage-summary">{gate.blockedReasons.join(' ')}</p>
+                      </div>
+                      <button className="ps-conf-btn-primary" onClick={() => setShowAutopsyAuthCompletion(true)}>
+                        Complete Authorization
+                      </button>
+                    </div>
+                  );
+                })()}
+
+                {/* Real, per direct follow-up ("let's get that signing") —
+                    the real Sign PAD / Sign FAD triggers. PAD becomes
+                    available once authorization is complete (the gate
+                    above allows); FAD only once a real, signed PAD
+                    already exists — same real ordering
+                    signAutopsyReport.ts itself enforces server-side,
+                    never trusted from this UI check alone. */}
+                {caseData?.autopsy && resolveAutopsyGrossExaminationGate(caseData.autopsy).allowed && !caseData.autopsy.padSnapshot && (
+                  <div className="ps-lis-triage-banner">
+                    <div>
+                      <div className="ps-lis-triage-title">{tGrossingNav('autopsySignOut.padReadyTitle')}</div>
+                      <p className="ps-lis-triage-summary">{tGrossingNav('autopsySignOut.padReadySummary')}</p>
+                    </div>
+                    <button className="ps-conf-btn-primary" disabled={signingAutopsyTier === 'PAD'} onClick={() => setConfirmingAutopsyTier('PAD')}>
+                      {signingAutopsyTier === 'PAD' ? tGrossingNav('autopsySignOut.signing') : tGrossingNav('autopsySignOut.signPad')}
+                    </button>
+                  </div>
+                )}
+
+                {caseData?.autopsy?.padSnapshot && !caseData.autopsy.fadSnapshot && (
+                  <div className="ps-lis-triage-banner">
+                    <div>
+                      <div className="ps-lis-triage-title">{tGrossingNav('autopsySignOut.fadReadyTitle')}</div>
+                      <p className="ps-lis-triage-summary">{tGrossingNav('autopsySignOut.fadReadySummary', { date: formatDate(caseData.autopsy.padSnapshot.signedAt, i18nForDates.language), name: caseData.autopsy.padSnapshot.signedBy.name })}</p>
+                    </div>
+                    <button className="ps-conf-btn-primary" disabled={signingAutopsyTier === 'FAD'} onClick={() => setConfirmingAutopsyTier('FAD')}>
+                      {signingAutopsyTier === 'FAD' ? tGrossingNav('autopsySignOut.signing') : tGrossingNav('autopsySignOut.signFad')}
+                    </button>
+                  </div>
+                )}
+
+                {/* Real, per direct follow-up: "AutopsyBodyReleaseForm.tsx's
+                    mounting," then further centralized per a real,
+                    later follow-up ("a quick helper like
+                    getMainBodySpecimen... could provide a central
+                    place to update that logic system-wide") \u2014
+                    getMainBodySpecimen.ts (services/autopsy/) is now
+                    that one, real place; see its own header comment
+                    for the current index-0 heuristic and where an
+                    explicit designation check would slot in first,
+                    if Specimen ever gains one. */}
+                {caseData?.autopsy && getMainBodySpecimen(caseData.specimens) && (() => {
+                  const bodySpecimen = getMainBodySpecimen(caseData.specimens)!;
+                  if (resolveAutopsyBodyAlreadyReleased(bodySpecimen.locationHistory)) return null;
+                  const gate = resolveAutopsyBodyReleaseGate(caseData.autopsy);
+                  if (!gate.allowed) return null;
+                  return (
+                    <div className="ps-lis-triage-banner">
+                      <div>
+                        <div className="ps-lis-triage-title">{tGrossingNav('autopsyBodyRelease.bannerTitle')}</div>
+                        <p className="ps-lis-triage-summary">{tGrossingNav('autopsyBodyRelease.bannerSummary')}</p>
+                      </div>
+                      <button className="ps-conf-btn-primary" onClick={() => setShowAutopsyBodyRelease(true)}>
+                        {tGrossingNav('autopsyBodyRelease.title')}
+                      </button>
+                    </div>
+                  );
+                })()}
+
                 <ReleaseBufferBanner
                   caseData={caseData}
                   currentUserId={signingUser?.id}
@@ -2815,12 +4638,13 @@ const SynopticReportPage: React.FC = () => {
                   setCaseData={setCaseData}
                   showToast={showToast}
                 />
+                <RevisionFeedbackBanner caseId={caseData?.id} isReturned={(caseData as any)?.status === 'returned'} />
                 {(caseData as any)?.status === 'pending-countersign' && (() => {
                   const residentP = (caseData as any)?.participants?.find((p: any) => p.status === 'active' && p.participationTypeIds?.includes('resident'));
                   const attendingP = (caseData as any)?.participants?.find((p: any) => p.status === 'active' && p.participationTypeIds?.includes('attending'));
                   const viewerIsResident = residentP?.staffId === signingUser?.id;
                   return (
-                    <div className="ps-defic-review-banner" style={{ marginBottom: 12, borderColor: 'rgba(96,165,250,0.4)' }}>
+                    <div className="ps-defic-review-banner ps-defic-review-banner--blue">
                       <span>
                         🎓 {viewerIsResident
                           ? `Released for countersign — awaiting ${attendingP?.staffName ?? 'the attending'}'s review.`
@@ -2829,26 +4653,74 @@ const SynopticReportPage: React.FC = () => {
                     </div>
                   );
                 })()}
-                <LeftReportPanel caseData={caseData} highlightText={highlightText ?? undefined} onMatchResolved={found => setHighlightNotFound(!found)} />
+                <LeftReportPanel caseData={caseData} highlightText={highlightText ?? undefined} rawHighlightText={rawHighlightText} onMatchResolved={found => setHighlightNotFound(!found)} />
               </div>
               <div className={`ps-syn-tab-panel${leftTab === 'material' ? ' ps-syn-tab-panel--visible-block' : ''}`}>
+                <button
+                  type="button"
+                  className="ps-btn-secondary ps-grossing-screen-nav-btn"
+                  onClick={() => navigate(`/case/${caseData.id}/grossing`)}
+                >
+                  {tGrossingNav('grossingScreen.openGrossingScreen')}
+                </button>
                 <MaterialTreePanel
                   caseData={caseData}
                   activeSpecimenId={activeSpecimenId}
-                  onOpenBlockEditor={(blockId) => {
-                    const idx = allBlocks.findIndex(b => b.block.id === blockId);
-                    if (idx >= 0) setFocusedBlockIndex(idx);
+                  highlightedStainId={highlightedStainId}
+                  onOpenBlockEditor={(blockOrDecantId) => {
+                    // Real bug fix, per direct follow-up: "decant-level
+                    // linking UI." MaterialTreePanel.tsx's own decant
+                    // slide row already called this same callback with
+                    // a real decant's own id — previously, allBlocks
+                    // never matched it, silently failing to focus
+                    // anything while still opening the modal, which
+                    // then showed every ordinary block with nothing
+                    // decant-related in it at all. Checks blocks first
+                    // (the common case), falls through to decants.
+                    const blockIdx = allBlocks.findIndex(b => b.block.id === blockOrDecantId);
+                    if (blockIdx >= 0) {
+                      setFocusedBlockIndex(blockIdx);
+                      setFocusedDecantId(null);
+                      setMaterialSelectedBlockId(blockOrDecantId);
+                    } else if (allDecants.some(d => d.decant.id === blockOrDecantId)) {
+                      setFocusedDecantId(blockOrDecantId);
+                    }
                     setShowBlockEditor(true);
                   }}
+                  onOpenMatrixBlockEditor={(matrixBlockId) => setViewingMatrixBlockId(matrixBlockId)}
                   onAddSpecimen={() => { setEditingSpecimen(null); setShowSpecimenEdit(true); }}
                   onAddBlock={handleAddBlock}
+                  onUpdateBlock={handleUpdateBlock}
+                  onReleaseGrossingBlocks={handleReleaseGrossingBlocks}
+                  onConfirmTriageChecklistItem={handleConfirmTriageChecklistItem}
+                  onOverrideTriage={handleOverrideTriage}
+                  onRemovePendingBlock={handleRemovePendingBlock}
+                  onAddDecant={handleAddDecant}
                   onAssignBaseCode={(_specimenId, specimenIndex) => {
+                    // Real fix, per direct guidance: "remove [Code
+                    // Manager's billing code tab] altogether, and let
+                    // the billing review handle the coding." In
+                    // Orchestration mode, BillingReviewPanel already
+                    // has its own real "+ Add a code manually" flow
+                    // for a specimen's base code - opening Code
+                    // Manager's own, now-removed CPT tab here would be
+                    // a dead end. Redirects to the Material tab, where
+                    // BillingReviewPanel actually renders, instead.
+                    if (isOrchestrationMode) {
+                      safeSetLeftTab('material');
+                      setActiveReportType('billing');
+                      return;
+                    }
                     setCodesModalTargetSpecimenIndex(specimenIndex);
                     setShowCodesModal(true);
                     log('codes_modal_opened', { caseId: caseId ?? '' });
                   }}
                   onCreateBiopsyArray={() => setShowCreateBiopsyArrayModal(true)}
-                  onEditBiopsyArray={(cassetteId) => setEditingBiopsyArrayCassetteId(cassetteId)}
+                  onEditBiopsyArray={(matrixBlockId) => setEditingMatrixBlockId(matrixBlockId)}
+                  onBatchPrintCassettes={handleBatchPrintCassettes}
+                  onReprintAllSlides={handleBatchPrintSlides}
+                  pendingCassetteVerification={pendingCassetteVerification}
+                  isOrchestrationMode={isOrchestrationMode}
                 />
               </div>
 
@@ -2860,12 +4732,104 @@ const SynopticReportPage: React.FC = () => {
           {/* Right panel — hidden in orchestration draft mode (Sequencer provides synoptic access) */}
           <div className={`ps-syn-right-panel${isOrchestrationMode && leftTab === 'draft' ? ' ps-syn-right-panel--collapsed' : ''}`}>
             <div className="ps-syn-right-panel-scroll">
+              {(isOrchestrationMode || caseData?.reportingMode === 'assist') && (
+                <div className="ps-syn-right-panel-toolrow">
+                  {(() => {
+                    const availability = resolveBuildReportAvailability({
+                      caseText: {
+                        gross: caseData?.diagnostic?.grossDescription ?? '',
+                        microscopic: caseData?.diagnostic?.microscopicDescription ?? '',
+                        ancillary: caseData?.diagnostic?.ancillaryStudies ?? '',
+                      },
+                      synopticAnswers:
+                        (activeReportInstanceId
+                          ? caseData?.synopticReports?.find(r => r.instanceId === activeReportInstanceId)?.answers
+                          : caseData?.synopticReports?.[0]?.answers
+                        ) ?? caseData?.synopticAnswers ?? {},
+                    });
+                    return (
+                      <>
+                        {/* Real, per direct guidance's own confirmed
+                            direction: available in BOTH assist/LIS
+                            mode and orchestrator mode — PathScribe
+                            reading an externally-authored narrative
+                            and suggesting synoptic answers makes sense
+                            regardless of who owns the report lifecycle. */}
+                        <button
+                          className="ps-btn-ghost-dark ps-syn-toolbtn-sm"
+                          disabled={!availability.canSuggestSynopticFromNarrative || isSuggestingSynoptic}
+                          title={availability.canSuggestSynopticFromNarrative ? 'Suggest synoptic answers from the current Gross/Microscopic/Ancillary text' : 'Enter a Gross, Microscopic, or Ancillary narrative first'}
+                          onClick={handleSuggestSynopticFromNarrative}
+                        >
+                          {isSuggestingSynoptic ? 'Suggesting…' : '✨ Suggest Synoptic from Narrative'}
+                        </button>
+                        {/* Real, per direct guidance's own confirmed
+                            direction: orchestrator-mode only — in
+                            assist/LIS mode, the external LIS owns the
+                            narrative, so PathScribe generating and
+                            writing back narrative text doesn't apply. */}
+                        {isOrchestrationMode && (
+                          <button
+                            className="ps-btn-ghost-dark ps-syn-toolbtn-sm"
+                            disabled={!availability.canGenerateNarrativeFromSynoptic || isGeneratingNarrative}
+                            title={availability.canGenerateNarrativeFromSynoptic ? 'Generate narrative text from the current synoptic answers' : 'Answer some synoptic fields first'}
+                            onClick={handleGenerateNarrativeFromSynoptic}
+                          >
+                            {isGeneratingNarrative ? 'Generating\u2026' : '\u2728 Generate Narrative from Synoptic'}
+                          </button>
+                        )}
+                      </>
+                    );
+                  })()}
+                  {isOrchestrationMode && (
+                    <button
+                      className={`${activeReportType === 'billing' ? 'ps-btn-primary' : 'ps-btn-ghost-dark'} ps-syn-toolbtn-sm`}
+                      onClick={() => setActiveReportType(activeReportType === 'billing' ? 'synoptic' : 'billing')}
+                    >
+                      {activeReportType === 'billing' ? '← Back to Synoptic' : '$ Billing Review'}
+                    </button>
+                  )}
+                </div>
+              )}
+              {activeReportType === 'billing' && isOrchestrationMode ? (
+                <BillingReviewPanel
+                  specimens={(caseData?.specimens as any) ?? []}
+                  matrixBlocks={(caseData?.matrixBlocks as any) ?? []}
+                  onSetMatrixEvaluatedCores={handleSetMatrixEvaluatedCores}
+                  onApplyMatrixCode={handleApplyMatrixBillingCode}
+                  onRejectMatrixCode={handleRejectMatrixBillingCode}
+                  onApprove={handleApproveBillingCode}
+                  onOverride={handleOverrideBillingCode}
+                  onRejectOnly={handleRejectBillingCode}
+                  onDelete={handleDeleteBillingCode}
+                  onDeleteBaseCode={handleDeleteSpecimenBaseCode}
+                  onCorrect={handleCorrectBillingCode}
+                  onCorrectBaseCode={handleCorrectSpecimenBaseCode}
+                  onAddBaseCode={handleAddSpecimenBaseCode}
+                  onApproveAll={handleApproveAllBillingCodes}
+                  onHighlight={setRawHighlightText}
+                  onHighlightStain={setHighlightedStainId}
+                  materialSelectedBlockId={materialSelectedBlockId}
+                  onFocusBlock={(specimenId) => { setLeftTab('material'); setActiveSpecimenId(specimenId); }}
+                  contextLabel="sign-out"
+                />
+              ) : activeReportType === 'microscopic' && activeSpecimenId ? (
+                <MicroscopicEntryPanel
+                  specimenId={activeSpecimenId}
+                  specimenLabel={caseData?.specimens?.find(sp => sp.id === activeSpecimenId)?.label ?? ''}
+                  specimenDesc={caseData?.specimens?.find(sp => sp.id === activeSpecimenId)?.description}
+                  instance={microscopicEntry.getInstance(activeSpecimenId)}
+                  onSaveDraft={microscopicEntry.saveDraft}
+                  onConfirmAndSave={microscopicEntry.confirmAndSave}
+                  onClearAndSave={microscopicEntry.clearAndSave}
+                />
+              ) : (
               <RightSynopticPanel
                 ref={synopticPanelRef}
                 caseData={caseData}
                 activeTab={activeTab}
                 activeReportInstanceId={activeReportInstanceId}
-                activeReportType={activeReportType}
+                activeReportType={activeReportType === 'microscopic' || activeReportType === 'billing' ? 'synoptic' : activeReportType}
                 activeSpecimenId={activeSpecimenId}
                 onReportInstanceChange={setActiveReportInstanceId}
                 onReportTypeChange={setActiveReportType}
@@ -2877,6 +4841,7 @@ const SynopticReportPage: React.FC = () => {
                 highlightNotFound={highlightNotFound}
                 onAiSuggestionsUpdate={setAiSuggestions}
               />
+              )}
             </div>
           </div>
         </div>
@@ -2896,9 +4861,26 @@ const SynopticReportPage: React.FC = () => {
           }}
           onFinalize={() => handleRequestFinalize(false)}
           onFinalizeAndNext={() => handleRequestFinalize(true)}
-          onSignOut={() => { if (caseData?.reportingMode !== 'assist') setShowSignOutModal(true); }}
+          onSignOut={() => { if (caseData?.reportingMode !== 'assist') handleSignOutClick(); }}
+          onReleasePreliminary={caseData?.id ? async () => {
+            const result = await releasePreliminaryReport(caseData.id!, {
+              id: signingUser?.id ?? 'unknown', name: signingUser?.name ?? signingUser?.id ?? 'unknown', role: 'Pathologist',
+            }, generateReportPdfSnapshot);
+            if (!result.ok) {
+              showToast(result.error ?? tGrossingNav('synopticReportPage.toast.preliminaryReleaseFailed'), 'warning');
+              return;
+            }
+            if (result.dispatchedCount === 0) {
+              showToast('Nothing to release yet — no specimen instances on this case.');
+              return;
+            }
+            const refreshed = await caseRouter.getCase(caseData.id!);
+            if (refreshed) setCaseData(refreshed);
+            showToast(`Preliminary report released (${result.dispatchedCount} ${result.dispatchedCount === 1 ? 'specimen' : 'specimens'})`);
+          } : undefined}
           onRequestAmendment={handleRequestAmendment}
           onPrint={openCopilotReportView}
+          onOpenReprints={() => setShowReprintModal(true)}
           
           onHistory={() => setIsSimilarCasesOpen(true)}
           onFlags={() => { openFlagManager(caseData); log('flag_manager_opened', { caseId: caseId ?? '' }); }}
@@ -2909,7 +4891,7 @@ const SynopticReportPage: React.FC = () => {
           onPreviousCase={() => { if (shouldWarnDirty()) { setPendingNavigation('prev'); } else { navigateToCase('prev'); } }}
           onGenerateReport={isOrchestrationMode ? handleGenerateReport : undefined}
           onGrossComplete={isOrchestrationMode ? handleGrossComplete : undefined}
-          synopticFitPending={isEvaluatingSynopticFit || showProtoReview}
+          synopticFitPending={isEvaluatingSynopticFit || showProtoReview || showGrossingProtoReview}
           isGenerating={isOrchestrating}
           onAbortGenerate={handleAbortGenerate}
         />
@@ -2920,19 +4902,24 @@ const SynopticReportPage: React.FC = () => {
       <CaseSignOutModal
         show={showSignOutModal}
         accession={caseData?.accession?.fullAccession ?? caseData?.accession?.accessionNumber ?? ''}
-        signOutUser={signOutUser}
-        signOutPassword={signOutPassword}
-        signOutError={signOutError}
         onClose={() => setShowSignOutModal(false)}
-        onUserChange={setSignOutUser}
-        onPasswordChange={setSignOutPassword}
         onConfirm={handleSignOutConfirm}
+        onReject={handleReturnToTrainee}
         isCountersign={(caseData as any)?.status === 'pending-countersign'}
         residentName={(caseData as any)?.participants?.find((p: any) => p.status === 'active' && p.participationTypeIds?.includes('resident'))?.staffName}
         countersignFeedback={countersignFeedback}
         onCountersignFeedbackChange={setCountersignFeedback}
         specimens={caseData?.specimens as any}
+        matrixBlocks={(caseData?.matrixBlocks as any) ?? []}
         onAssignBaseCode={(_specimenId, specimenIndex) => {
+          // Real fix, per direct guidance: same redirect as the
+          // Material tab's own "+ Code" button - see that call site's
+          // own comment for the full reasoning.
+          if (isOrchestrationMode) {
+            safeSetLeftTab('material');
+            setActiveReportType('billing');
+            return;
+          }
           setCodesModalTargetSpecimenIndex(specimenIndex);
           setShowCodesModal(true);
           log('codes_modal_opened', { caseId: caseId ?? '' });
@@ -2957,7 +4944,7 @@ const SynopticReportPage: React.FC = () => {
                 Reload to see their version (your local changes here will be lost), or save yours anyway and overwrite theirs.
               </p>
             )}
-            <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch" style={{ flexDirection: 'column', gap: 8 }}>
+            <div className="ps-modal-dark-footer ps-modal-dark-footer--stretch ps-modal-dark-footer--stretch-stacked">
               <button className="ps-btn-ghost-dark" onClick={() => setConcurrencyConflict(null)}>Keep Working — Decide Later</button>
               <button className="ps-btn-ghost-dark" onClick={handleConcurrencyReload}>Reload Their Version</button>
               {!concurrencyConflict.blockOverride && (
@@ -3027,6 +5014,15 @@ const SynopticReportPage: React.FC = () => {
         />
       )}
 
+      {showNarrativeReview && (
+        <AiNarrativeReviewModal
+          narrativeText={generatedNarrativeText}
+          defaultTargetField="gross"
+          onAccept={handleAcceptGeneratedNarrative}
+          onCancel={() => setShowNarrativeReview(false)}
+        />
+      )}
+
       {showMissingWarning && (
         <div className="ps-cannot-fin-overlay" onClick={() => setShowMissingWarning(false)}>
           <div className="ps-cannot-fin-modal" onClick={e => e.stopPropagation()}>
@@ -3080,25 +5076,58 @@ const SynopticReportPage: React.FC = () => {
         patientName={`${caseData?.patient?.firstName ?? ''} ${caseData?.patient?.lastName ?? ''}`.trim()}
         reportingMode={caseData?.reportingMode === 'assist' ? 'assisted' : 'pathscribe'}
         synoptics={preFinalSynoptics}
-        userId={(caseData as any)?.order?.assignedTo ?? 'current'}
-        userDisplayName={(caseData as any)?.assignedPathologistName ?? 'Pathologist'}
-        userCredentials=""
         finalizeAndNext={finalizeAndNextPending}
         onConfirm={handlePreFinalConfirm}
         onCancel={() => setShowPreFinalise(false)}
       />
 
-      {/* Legacy per-synoptic password confirm — kept for deferred/amendment flow */}
+      {/* Batch 344: confirm who is signing an autopsy PAD/FAD. */}
+      <SignatureConfirmModal
+        show={confirmingAutopsyTier !== null}
+        action={confirmingAutopsyTier === 'FAD' ? 'autopsy-fad' : 'autopsy-pad'}
+        caseRef={caseData?.accession?.fullAccession ?? caseData?.accession?.accessionNumber ?? null}
+        title={tGrossingNav('autopsySignOut.confirmTitle', { tier: confirmingAutopsyTier ?? 'PAD' })}
+        confirmLabel={confirmingAutopsyTier === 'FAD' ? tGrossingNav('autopsySignOut.signFad') : tGrossingNav('autopsySignOut.signPad')}
+        onConfirmed={(confirmation) => { const tier = confirmingAutopsyTier; setConfirmingAutopsyTier(null); if (tier) void handleSignAutopsyReport(tier, confirmation); }}
+        onCancel={() => setConfirmingAutopsyTier(null)}
+      />
+
+      {/* Per-synoptic finalize confirmation (deferred/amendment flow) */}
       <FinalizeSynopticModal
         show={showFinalizeModal}
         activeSynoptic={null}
-        finalizePassword={finalizePassword}
-        finalizeError={finalizeError}
         finalizeAndNext={false}
+        caseRef={caseData?.accession?.fullAccession ?? caseData?.accession?.accessionNumber ?? null}
         onClose={() => setShowFinalizeModal(false)}
-        onPasswordChange={setFinalizePassword}
         onConfirm={handleFinalizeConfirm}
       />
+
+      {/* Real, per direct guidance's own follow-up: the general Codes
+          manager save path can now pause and require a real reason +
+          comment before any post-signout charge/credit or case-data
+          mutation happens - see requestPostSignoutConfirmation above. */}
+      {pendingPostSignoutPrompt && (
+        <PostSignoutBillingChangeModal
+          summary={pendingPostSignoutPrompt.summary}
+          onConfirm={(context) => { pendingPostSignoutPrompt.resolve(context); setPendingPostSignoutPrompt(null); }}
+          onCancel={() => { pendingPostSignoutPrompt.reject(); setPendingPostSignoutPrompt(null); }}
+        />
+      )}
+
+      {/* Real, per direct guidance's own follow-up: "post-signout
+          additions may be required if the wrong code was billed...
+          the original bill is credited and the new billing code
+          submitted." Captures the real, new replacement code before
+          handleConfirmCodeCorrection runs the actual orchestration. */}
+      {correctingCode && (
+        <CorrectAppliedCodeModal
+          originalCode={correctingCode.oldCode}
+          caseId={caseData?.id}
+          onConfirm={handleConfirmCodeCorrection}
+          onCancel={() => setCorrectingCode(null)}
+        />
+      )}
+
 
       {/* Protocol change review — AI proposes after microscopic received */}
       <ProtocolChangeModal
@@ -3106,6 +5135,25 @@ const SynopticReportPage: React.FC = () => {
         changes={protoChanges}
         onCommit={handleProtoCommit}
         onCancel={() => setShowProtoReview(false)}
+      />
+
+      {/* Real feature, per direct follow-up: "there is kind of a workflow
+          that allows the Gross to be dictated and on submission, the AI
+          reads the Text, and updates the template... Not sure if there is
+          bearing here." Real bearing — this is that same real, proven
+          ProtocolChangeModal component, reused as-is (its own props are
+          genuinely generic, nothing Synoptic-specific), now also reviewing
+          real Grossing Template fit changes proposed after Gross
+          Description dictation. Deliberately a second, separate instance
+          from the Synoptic one above, not a shared one — a single Gross
+          Complete can propose real changes to both independently; see
+          useAmendmentWorkflow.ts's own comment on showGrossingProtoReview
+          for why conflating them would be worse, not simpler. */}
+      <ProtocolChangeModal
+        show={showGrossingProtoReview}
+        changes={grossingProtoChanges}
+        onCommit={handleGrossingProtoCommit}
+        onCancel={() => setShowGrossingProtoReview(false)}
       />
 
       <AmendmentModal
@@ -3125,12 +5173,10 @@ const SynopticReportPage: React.FC = () => {
         orderingPhysicianName={caseData?.order?.requestingProvider}
         onModeChange={setAmendmentMode}
         onTextChange={setAmendmentText}
-        onClose={() => { setShowAmendmentModal(false); setDeferredAmendmentContext(null); setAmendmentDraftId(null); setAmendmentSubmitError(null); setResumingAmendment(undefined); }}
+        onClose={() => { setShowAmendmentModal(false); setAmendmentDraftId(null); setAmendmentSubmitError(null); setResumingAmendment(undefined); }}
         onSubmit={handleAmendmentSubmit}
         onFieldOverridesConfirmed={handleFieldOverridesConfirmed}
         submitError={amendmentSubmitError}
-        triggeredBySynopticTitle={deferredAmendmentContext?.title}
-        prefillText={deferredAmendmentContext?.prefill}
       />
 
       <LogoutWarningModal
@@ -3170,6 +5216,14 @@ const SynopticReportPage: React.FC = () => {
           nextLabel={String.fromCharCode(65 + (caseData.specimens?.length ?? 0))}
           existingSpecimens={caseData.specimens ?? []}
           isOrchestrationMode={isOrchestrationMode}
+          // Real, per direct guidance's own follow-up: the real,
+          // auto-derived effective complexity (getEffectiveComplexity,
+          // via useEffectiveSpecimenComplexity above) for this
+          // specific specimen, if any - undefined when this specimen
+          // has no real evidence to derive one from. Resolved once,
+          // for every specimen, by the parent; the modal never
+          // computes this itself.
+          effectiveComplexity={editingSpecimen ? effectiveSpecimenComplexity[editingSpecimen.id] : undefined}
           onClose={() => { setShowSpecimenEdit(false); setEditingSpecimen(null); }}
           onSave={handleSpecimenSave}
         />
@@ -3186,34 +5240,52 @@ const SynopticReportPage: React.FC = () => {
         />
       )}
 
-      {editingBiopsyArrayCassetteId && caseData && (() => {
-        // Real feature, per direct confirmation: completes the Biopsy
-        // Array feature — computes the current selection (in real
-        // position order) from the actual block data, so the edit
-        // modal opens pre-populated with what's really linked right
-        // now, not a guess.
-        const cassetteId = editingBiopsyArrayCassetteId;
-        const linked = (caseData.specimens ?? [])
-          .map(sp => {
-            const block = (sp.blocks ?? []).find(b => b.sharedCassetteId === cassetteId);
-            return block ? { specimenId: sp.id, position: block.positionInBlock ?? 0 } : null;
-          })
-          .filter((x): x is { specimenId: string; position: number } => !!x)
-          .sort((a, b) => a.position - b.position);
+      {editingMatrixBlockId && caseData && (() => {
+        // Real, architectural fix, per direct follow-up: completes the
+        // Biopsy Array feature — computes the current selection (in
+        // real position order) from the real MatrixBlock's own
+        // participants[], so the edit modal opens pre-populated with
+        // what's really linked right now, not a guess.
+        const matrixBlockId = editingMatrixBlockId;
+        const matrixBlock = (caseData.matrixBlocks ?? []).find(m => m.id === matrixBlockId);
+        if (!matrixBlock) return null;
+        const linked = matrixBlock.participants.slice().sort((a, b) => a.positionInBlock - b.positionInBlock);
         return (
           <CreateBiopsyArrayModal
             specimens={caseData.specimens ?? []}
-            existingCassetteId={cassetteId}
+            existingCassetteId={matrixBlock.label}
             initialSelectedIds={linked.map(l => l.specimenId)}
-            onClose={() => setEditingBiopsyArrayCassetteId(null)}
+            onClose={() => setEditingMatrixBlockId(null)}
             onSave={async (specimenIds) => {
-              await handleUpdateBiopsyArray(cassetteId, specimenIds);
-              setEditingBiopsyArrayCassetteId(null);
+              await handleUpdateBiopsyArray(matrixBlockId, specimenIds);
+              setEditingMatrixBlockId(null);
             }}
             onDissolve={async () => {
-              await handleDissolveBiopsyArray(cassetteId);
-              setEditingBiopsyArrayCassetteId(null);
+              await handleDissolveBiopsyArray(matrixBlockId);
+              setEditingMatrixBlockId(null);
+              setViewingMatrixBlockId(null);
             }}
+          />
+        );
+      })()}
+
+      {/* Real, architectural fix, per direct follow-up: "the matrix
+          block itself is the tracked asset." The real, dedicated
+          status/piece-tracking editor for a MatrixBlock — distinct
+          from the membership editor above. */}
+      {viewingMatrixBlockId && caseData && (() => {
+        const matrixBlock = (caseData.matrixBlocks ?? []).find(m => m.id === viewingMatrixBlockId);
+        if (!matrixBlock) return null;
+        return (
+          <MatrixBlockEditorModal
+            matrixBlock={matrixBlock}
+            specimens={caseData.specimens ?? []}
+            fullAccession={caseData.accession?.fullAccession ?? caseData.id}
+            onUpdate={handleUpdateMatrixBlock}
+            onPrintCassette={() => printMatrixCassette?.(matrixBlock.id)}
+            onEditMembership={() => { setEditingMatrixBlockId(matrixBlock.id); setViewingMatrixBlockId(null); }}
+            onOrderTargetedStain={handleOrderTargetedMatrixStain}
+            onClose={() => setViewingMatrixBlockId(null)}
           />
         );
       })()}
@@ -3235,6 +5307,39 @@ const SynopticReportPage: React.FC = () => {
           currentUserName={signingUser?.name ?? 'Unknown User'}
           onAddComment={handleAddCaseComment}
           onClose={() => setShowCaseCommentModal(false)}
+        />
+      )}
+
+      {showRetentionHoldModal && caseData && (
+        <RetentionHoldModal
+          caseId={caseData.id}
+          accession={caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? ''}
+          retentionHolds={caseData.retentionHolds ?? []}
+          currentUserId={signingUser?.id ?? 'unknown'}
+          currentUserName={signingUser?.name ?? 'Unknown User'}
+          onUpdated={(updated, version) => { if (version !== undefined) knownVersionRef.current = version; setCaseData(prev => prev ? { ...prev, retentionHolds: updated } : prev); }}
+          onClose={() => setShowRetentionHoldModal(false)}
+        />
+      )}
+
+      {showCaseHoldModal && caseData && (
+        <CaseHoldModal
+          caseId={caseData.id}
+          accession={caseData.accession?.fullAccession ?? caseData.accession?.accessionNumber ?? ''}
+          caseHolds={caseData.caseHolds ?? []}
+          currentUserId={signingUser?.id ?? 'unknown'}
+          currentUserName={signingUser?.name ?? 'Unknown User'}
+          onUpdated={(updated, version) => { if (version !== undefined) knownVersionRef.current = version; setCaseData(prev => prev ? { ...prev, caseHolds: updated } : prev); }}
+          onClose={() => setShowCaseHoldModal(false)}
+        />
+      )}
+
+      {showCriticalFindingsModal && (
+        <CriticalFindingsModal
+          findings={criticalFindings}
+          defaultNotifiedByName={signingUser?.name}
+          onRecord={handleRecordCriticalNotification}
+          onAcknowledge={handleAcknowledgeCriticalFindings}
         />
       )}
 
@@ -3271,17 +5376,36 @@ const SynopticReportPage: React.FC = () => {
         />
       )}
 
+      {showChangeHistory && caseData && (
+        <ChangeHistoryModal
+          entries={changeEntries}
+          exportContext={{ caseId: caseData.id, facilityId: caseData.order?.facilityId ?? null }}
+          onClose={() => setShowChangeHistory(false)}
+          onExport={async labels => {
+            const res = await exportChangeLog(caseData.id, changeEntries, { name: signingUser?.name ?? 'unknown' }, labels, { auditService, authorization: authorizationService }, caseData.order?.facilityId ?? null);
+            if (res.ok) downloadCsv(`change-history-${caseData.id}`, res.csv);
+          }}
+        />
+      )}
+
       {showBlockEditor && caseData && (
         <BlockStainEditorModal
           blocks={allBlocks}
+          decants={allDecants}
           casePriority={(caseData as any)?.order?.priority ?? 'Routine'}
+          fullAccession={caseData.accession?.fullAccession ?? caseData.id}
           onUpdateBlock={handleUpdateBlock}
+          onUpdateDecant={handleUpdateDecant}
+          onPrintDecantContainerLabel={handlePrintDecantContainerLabel}
           onSendStainOrder={handleSendStainOrder}
           onCancelBlock={handleCancelBlock}
           onCreateSpareSlide={handleCreateSpareSlide}
           onOrderRestain={handleOrderRestain}
-          onClose={() => setShowBlockEditor(false)}
-          initialFocusBlockId={focusedBlockEntry?.block.id}
+          currentUserId={signingUser?.id ?? 'unknown'}
+          currentUserName={signingUser?.name ?? 'Unknown User'}
+          onClose={() => { setShowBlockEditor(false); setFocusedDecantId(null); }}
+          initialFocusBlockId={focusedDecantId ? undefined : focusedBlockEntry?.block.id}
+          initialFocusDecantId={focusedDecantId ?? undefined}
         />
       )}
 
@@ -3290,6 +5414,66 @@ const SynopticReportPage: React.FC = () => {
           specimens={fixativeGateSpecimens}
           onCancel={() => { setFixativeGateSpecimens(null); setPendingFinalizeArgs([]); }}
           onContinue={handleFixativeGateContinue}
+        />
+      )}
+
+      {stainQcGateBlocking && caseData && (
+        <StainQcGateModal
+          blocking={stainQcGateBlocking}
+          signingUserId={signingUser?.id ?? 'unknown'}
+          signingUserName={signingUser?.name ?? 'Unknown User'}
+          onCancel={() => { setStainQcGateBlocking(null); setPendingFinalizeArgs([]); setPendingActionIsSignOut(false); }}
+          onContinue={handleStainQcGateContinue}
+        />
+      )}
+
+      {showAutopsyAuthCompletion && caseData?.autopsy && (
+        <div className="ps-overlay" onClick={() => setShowAutopsyAuthCompletion(false)}>
+          <div onClick={e => e.stopPropagation()}>
+            <AutopsyAuthorizationCompletionForm
+              caseDetails={caseData.autopsy}
+              onSubmit={handleAutopsyAuthCompletionSubmit}
+            />
+          </div>
+        </div>
+      )}
+
+      {showAutopsyBodyRelease && caseData?.autopsy && getMainBodySpecimen(caseData.specimens) && (() => {
+        const bodySpecimen = getMainBodySpecimen(caseData.specimens)!;
+        return (
+          <div className="ps-overlay" onClick={() => setShowAutopsyBodyRelease(false)}>
+            <div onClick={e => e.stopPropagation()}>
+              <AutopsyBodyReleaseForm
+                caseId={caseData.id}
+                specimenId={bodySpecimen.id}
+                autopsyDetails={caseData.autopsy}
+                onReleased={() => {
+                  setShowAutopsyBodyRelease(false);
+                  showToast('Body released');
+                  // Real, same established refresh pattern as the
+                  // MATERIAL_SCAN_UPDATED_EVENT listener above \u2014
+                  // releaseAutopsyBody.ts persists directly via its
+                  // own caseRouter.updateCase() call, so local
+                  // caseData needs a real re-fetch to pick up the new
+                  // locationHistory entry, not a second, separate
+                  // patch that could drift from what was actually
+                  // persisted.
+                  caseRouter.getCase(caseData.id).then(refreshed => {
+                    if (refreshed) setCaseData(refreshed);
+                  });
+                }}
+              />
+            </div>
+          </div>
+        );
+      })()}
+
+      {preAnalyticDateGateSpecimens && caseData && (
+        <PreAnalyticDateGateModal
+          specimens={preAnalyticDateGateSpecimens}
+          config={resolvePreAnalyticDateGateConfig(getOrganisationByHospitalId(caseData.originHospitalId)?.country)}
+          onCancel={() => { setPreAnalyticDateGateSpecimens(null); setPendingFinalizeArgs([]); }}
+          onContinue={handlePreAnalyticDateGateContinue}
         />
       )}
 
@@ -3322,12 +5506,55 @@ const SynopticReportPage: React.FC = () => {
                 id: `cpt-${sp.id}-${code}`, system: 'CPT' as const, code, display: code, source: 'manual' as const, specimenId: sp.id,
               }))
             ),
+            // Real, per direct guidance's own follow-up on structured
+            // linkage: a real, specimen-specific diagnosis
+            // (Specimen.coding.icd10, see that field's own doc
+            // comment) - same real pattern as CPT immediately above,
+            // attaching specimenId so the modal's own existing
+            // left-panel grouping and re-selection description lookup
+            // both work correctly for these too.
+            //
+            // Real fix, per direct guidance: id now includes the real
+            // array index, not just specimen+code - the same real
+            // concept can legitimately appear more than once for one
+            // specimen (multiple observations producing the same
+            // coded concept, the same concept attached to different
+            // components within one specimen) and must never collide
+            // into one, indistinguishable id.
+            ...((caseData.specimens ?? []) as any[]).flatMap((sp: any) =>
+              ((sp.coding?.icd10 ?? []) as { code: string; description: string }[]).map((dx, i) => ({
+                id: `icd10-${sp.id}-${i}-${dx.code}`, system: 'ICD' as const, code: dx.code, display: dx.description, source: 'manual' as const, specimenId: sp.id,
+              }))
+            ),
+            // Real fix, per direct guidance: SNOMED needed the exact
+            // same real, per-specimen reading ICD10 already has —
+            // previously entirely absent, so a specimen-level SNOMED
+            // association (Specimen.coding.snomed, see that field's
+            // own doc comment for the real "never dedupe" reasoning)
+            // never even reached the modal's own existingCodes list at
+            // all, regardless of the handleAddCodesToSpecimens fix
+            // that now actually writes it. Same real index-inclusive
+            // id as ICD10 above, same real reasoning.
+            ...((caseData.specimens ?? []) as any[]).flatMap((sp: any) =>
+              ((sp.coding?.snomed ?? []) as { code: string; description: string }[]).map((dx, i) => ({
+                id: `snomed-${sp.id}-${i}-${dx.code}`, system: 'SNOMED' as const, code: dx.code, display: dx.description, source: 'manual' as const, specimenId: sp.id,
+              }))
+            ),
           ]}
           allSpecimens={(caseData.specimens ?? []).map((sp, i) => ({
-            index: i, id: i + 1,
+            index: i, id: i + 1, specimenId: sp.id,
             name: `${sp.label}: ${sp.description ?? ''}`,
+            specimenDictionaryEntryId: sp.specimenDictionaryEntryId,
+            // Real, per useEffectiveSpecimenComplexity's own doc
+            // comment - already incorporates sp.complexity when
+            // explicitly set (getEffectiveComplexity checks that
+            // first, internally), so this alone is the real,
+            // effective value - no separate ?? sp.complexity needed.
+            complexity: effectiveSpecimenComplexity[sp.id],
           }))}
-          clientId={caseData.order?.clientId}
+          specimenDictionary={specimenDictionary}
+          facilityId={caseData.order?.facilityId}
+          isOrchestrationMode={isOrchestrationMode}
           caseText={{
             gross:       caseData.diagnostic?.grossDescription ?? '',
             microscopic: caseData.diagnostic?.microscopicDescription ?? '',
@@ -3407,12 +5634,15 @@ const SynopticReportPage: React.FC = () => {
             setShowDelegateModal(false);
             if (delegateReturnTo === 'team') { setShowTeamModal(true); setDelegateReturnTo(null); }
           }}
-          registry={mockActionRegistryService}
+          registry={actionRegistryService}
           caseId={caseId}
           currentUserId={signingUser?.id}
           onDelegated={() => {
             setShowDelegateModal(false);
-            showToast('Case delegated successfully');
+            showToast(tGrossingNav('synopticReportPage.toast.caseDelegated'));
+            // Batch 381: delegating changes the case, so the page's next save
+            // must know its new version (it was refused as someone else's change).
+            if (caseData?.id) void caseRouter.getCase(caseData.id).then(c => { if (c?.version !== undefined) knownVersionRef.current = c.version; });
             if (delegateReturnTo === 'team') { setShowTeamModal(true); setDelegateReturnTo(null); }
           }}
           synopticInstances={(caseData?.synopticReports ?? []).map(r => ({
@@ -3451,11 +5681,27 @@ const SynopticReportPage: React.FC = () => {
         </div>
       )}
 
-      {hasExistingDraft && existingDraftSavedAt && (
+      {hasExistingDraft && existingDraftSavedAt && draftDiff.length > 0 && (
         <DraftRecoveryModal
           savedAt={existingDraftSavedAt}
           onRestore={handleRestoreDraft}
           onDiscard={discardDraft}
+          changes={draftDiff}
+        />
+      )}
+
+      {showReprintModal && caseData && (
+        <ManageReprintsModal
+          caseData={caseData}
+          onClose={() => setShowReprintModal(false)}
+          onReprintRequisition={() => printRequisitionLabel(caseData)}
+          onReprintContainer={specimenLabel => {
+            const sp = (caseData.specimens ?? []).find((s: any) => s.label === specimenLabel);
+            if (sp) { printContainerLabel(caseData, sp).catch(console.error); }
+          }}
+          onReprintCassette={(specimenLabel, blockLabel) => printCassetteForBlock?.(specimenLabel, blockLabel)}
+          onReprintSlide={printSlideForStain}
+          batchPrintBlocked={batchPrintBlocked ?? false}
         />
       )}
 
@@ -3475,13 +5721,14 @@ const SynopticReportPage: React.FC = () => {
           if (dest === 'next') navigateToCase('next');
           else if (dest === 'prev') navigateToCase('prev');
           else if (dest === '__back__') {
-            if (backPath === '/search') sessionStorage.setItem('pathscribe:searchReturn', '1');
+            if (backPath === '/search') markReturnToSearch();
             navigate(backPath);
           }
           else if (dest) navigate(dest);
         }}
       />
     </div>
+    </SpellCheckProvider>
   );
 };
 

@@ -73,7 +73,7 @@ const reportHeaderSection = (): SectionNode => section(
     { id: 'hdr-accession', type: 'text-field', label: 'Accession',          bindingKey: 'case.accession',        colSpan: 4,  required: true,  hideIfEmpty: false, fhirExport: true  },
     { id: 'hdr-received',  type: 'date',       label: 'Date Received',      bindingKey: 'case.receivedDate',     colSpan: 4,  required: false, hideIfEmpty: false, fhirExport: false, format: 'date' },
     { id: 'hdr-clinician', type: 'text-field', label: 'Requesting Clinician', bindingKey: 'case.requestingProvider', colSpan: 6, required: false, hideIfEmpty: false, fhirExport: false },
-    { id: 'hdr-facility',  type: 'text-field', label: 'Submitting Facility', bindingKey: 'case.clientName',      colSpan: 6,  required: false, hideIfEmpty: false, fhirExport: false },
+    { id: 'hdr-facility',  type: 'text-field', label: 'Submitting Facility', bindingKey: 'case.facilityName',    colSpan: 6,  required: false, hideIfEmpty: false, fhirExport: false },
   ]
 );
 
@@ -481,6 +481,106 @@ const URO_TEMPLATE: ReportTemplate = {
   ],
 };
 
+// ── Preliminary Report Templates ────────────────────────────────────────────
+// Real, per direct spec ("build a compliant base template for an Anatomic
+// Pathology Preliminary Report across Surgical Pathology, GYN Cytology, and
+// Non-GYN/FNA") — PS-292's own three-group decision (one shared Preliminary
+// template per broad group, not per fine subspecialty, not one universal
+// cross-specialty template). Client customization is handled by the existing,
+// real clone() mechanism below — these three are the baseline, not meant to
+// be exhaustive of every real site's own preferences.
+//
+// Universal sections (demographics, clinical history, specimen source) reuse
+// the exact same, real standard parts every Final template already uses —
+// assembled by reference, not copied, so a future edit to std_body_clinical
+// propagates to Preliminary and Final templates alike. Only the genuinely
+// Preliminary-specific and discipline-specific sections are new parts (see
+// reportParts/mockReportPartService.ts's own "PRELIMINARY REPORT PART
+// LIBRARY" section).
+
+const PRELIM_SURGPATH_TEMPLATE: ReportTemplate = {
+  id: 'tmpl-prelim-surgpath',
+  name: 'Preliminary Report — Surgical Pathology',
+  specialty: 'preliminary-surgpath',
+  subspecialty: undefined,
+  standard: 'custom',
+  status: 'published',
+  orchestrationEnabled: true,
+  institutionId: INST,
+  createdBy: SYSTEM,
+  createdAt: NOW,
+  updatedAt: NOW,
+  version: '1.0.0',
+  assembly: [
+    { slotId: 'slot-h-banner', partId: 'prelim_header_banner', partName: 'Preliminary Status Banner', partType: 'header', role: 'header-p1', enabled: true, order: 0 },
+    { slotId: 'slot-h-p1',     partId: 'std_header_page1',     partName: 'Page 1 — Header',            partType: 'header', role: 'header-p1', enabled: true, order: 1 },
+    { slotId: 'slot-h-p2',     partId: 'std_header_p2plus',    partName: 'Pages 2+ — Header',           partType: 'header', role: 'header-p2plus', enabled: true, order: 0 },
+    { slotId: 'slot-b-01', partId: 'std_body_demographics',                partName: 'Patient & Order Demographics',            partType: 'body', role: 'body', enabled: true, order: 0 },
+    { slotId: 'slot-b-02', partId: 'std_body_clinical',                    partName: 'Clinical Information',                    partType: 'body', role: 'body', enabled: true, order: 1 },
+    { slotId: 'slot-b-03', partId: 'std_body_specimens',                   partName: 'Specimens Submitted',                     partType: 'body', role: 'body', enabled: true, order: 2 },
+    { slotId: 'slot-b-04', partId: 'std_body_gross',                       partName: 'Gross Description',                       partType: 'body', role: 'body', enabled: true, order: 3 },
+    { slotId: 'slot-b-05', partId: 'prelim_body_surgpath_impression',      partName: 'Preliminary Diagnosis / Impression',      partType: 'body', role: 'body', enabled: true, order: 4 },
+    { slotId: 'slot-b-06', partId: 'prelim_body_ancillary_status',         partName: 'Ancillary Testing Status',                partType: 'body', role: 'body', enabled: true, order: 5 },
+    { slotId: 'slot-b-07', partId: 'prelim_body_signoff',                  partName: 'Preliminary Reviewer Attestation',        partType: 'body', role: 'body', enabled: true, order: 6 },
+    { slotId: 'slot-f-p1', partId: 'std_footer_page1',   partName: 'Page 1 — Footer',   partType: 'footer', role: 'footer-p1',     enabled: true, order: 0 },
+    { slotId: 'slot-f-p2', partId: 'std_footer_p2plus',  partName: 'Pages 2+ — Footer', partType: 'footer', role: 'footer-p2plus', enabled: true, order: 0 },
+  ],
+};
+
+const PRELIM_GYN_CYTOLOGY_TEMPLATE: ReportTemplate = {
+  id: 'tmpl-prelim-gyn-cytology',
+  name: 'Preliminary Report — GYN Cytology',
+  specialty: 'preliminary-cytology',
+  subspecialty: 'gyn',
+  standard: 'custom',
+  status: 'published',
+  orchestrationEnabled: true,
+  institutionId: INST,
+  createdBy: SYSTEM,
+  createdAt: NOW,
+  updatedAt: NOW,
+  version: '1.0.0',
+  assembly: [
+    { slotId: 'slot-h-banner', partId: 'prelim_header_banner', partName: 'Preliminary Status Banner', partType: 'header', role: 'header-p1', enabled: true, order: 0 },
+    { slotId: 'slot-h-p1',     partId: 'std_header_page1',     partName: 'Page 1 — Header',            partType: 'header', role: 'header-p1', enabled: true, order: 1 },
+    { slotId: 'slot-h-p2',     partId: 'std_header_p2plus',    partName: 'Pages 2+ — Header',           partType: 'header', role: 'header-p2plus', enabled: true, order: 0 },
+    { slotId: 'slot-b-01', partId: 'std_body_demographics',      partName: 'Patient & Order Demographics',              partType: 'body', role: 'body', enabled: true, order: 0 },
+    { slotId: 'slot-b-02', partId: 'std_body_clinical',          partName: 'Clinical Information',                      partType: 'body', role: 'body', enabled: true, order: 1 },
+    { slotId: 'slot-b-03', partId: 'std_body_specimens',         partName: 'Specimens Submitted',                       partType: 'body', role: 'body', enabled: true, order: 2 },
+    { slotId: 'slot-b-04', partId: 'prelim_body_gyn_cytology',   partName: 'GYN Cytology — Preliminary Interpretation', partType: 'body', role: 'body', enabled: true, order: 3 },
+    { slotId: 'slot-b-05', partId: 'prelim_body_signoff',        partName: 'Preliminary Reviewer Attestation',          partType: 'body', role: 'body', enabled: true, order: 4 },
+    { slotId: 'slot-f-p1', partId: 'std_footer_page1',   partName: 'Page 1 — Footer',   partType: 'footer', role: 'footer-p1',     enabled: true, order: 0 },
+    { slotId: 'slot-f-p2', partId: 'std_footer_p2plus',  partName: 'Pages 2+ — Footer', partType: 'footer', role: 'footer-p2plus', enabled: true, order: 0 },
+  ],
+};
+
+const PRELIM_NONGYN_CYTOLOGY_TEMPLATE: ReportTemplate = {
+  id: 'tmpl-prelim-nongyn-cytology',
+  name: 'Preliminary Report — Non-GYN / FNA Cytology',
+  specialty: 'preliminary-cytology',
+  subspecialty: 'non_gyn',
+  standard: 'custom',
+  status: 'published',
+  orchestrationEnabled: true,
+  institutionId: INST,
+  createdBy: SYSTEM,
+  createdAt: NOW,
+  updatedAt: NOW,
+  version: '1.0.0',
+  assembly: [
+    { slotId: 'slot-h-banner', partId: 'prelim_header_banner', partName: 'Preliminary Status Banner', partType: 'header', role: 'header-p1', enabled: true, order: 0 },
+    { slotId: 'slot-h-p1',     partId: 'std_header_page1',     partName: 'Page 1 — Header',            partType: 'header', role: 'header-p1', enabled: true, order: 1 },
+    { slotId: 'slot-h-p2',     partId: 'std_header_p2plus',    partName: 'Pages 2+ — Header',           partType: 'header', role: 'header-p2plus', enabled: true, order: 0 },
+    { slotId: 'slot-b-01', partId: 'std_body_demographics',       partName: 'Patient & Order Demographics',                        partType: 'body', role: 'body', enabled: true, order: 0 },
+    { slotId: 'slot-b-02', partId: 'std_body_clinical',           partName: 'Clinical Information',                                partType: 'body', role: 'body', enabled: true, order: 1 },
+    { slotId: 'slot-b-03', partId: 'std_body_specimens',          partName: 'Specimens Submitted',                                 partType: 'body', role: 'body', enabled: true, order: 2 },
+    { slotId: 'slot-b-04', partId: 'prelim_body_nongyn_cytology', partName: 'Non-GYN/FNA Cytology — Preliminary Interpretation',   partType: 'body', role: 'body', enabled: true, order: 3 },
+    { slotId: 'slot-b-05', partId: 'prelim_body_signoff',         partName: 'Preliminary Reviewer Attestation',                    partType: 'body', role: 'body', enabled: true, order: 4 },
+    { slotId: 'slot-f-p1', partId: 'std_footer_page1',   partName: 'Page 1 — Footer',   partType: 'footer', role: 'footer-p1',     enabled: true, order: 0 },
+    { slotId: 'slot-f-p2', partId: 'std_footer_p2plus',  partName: 'Pages 2+ — Footer', partType: 'footer', role: 'footer-p2plus', enabled: true, order: 0 },
+  ],
+};
+
 // ── Seed data ─────────────────────────────────────────────────────────────────
 
 const SEED_TEMPLATES: ReportTemplate[] = [
@@ -489,6 +589,9 @@ const SEED_TEMPLATES: ReportTemplate[] = [
   GI_TEMPLATE,
   THORACIC_TEMPLATE,
   URO_TEMPLATE,
+  PRELIM_SURGPATH_TEMPLATE,
+  PRELIM_GYN_CYTOLOGY_TEMPLATE,
+  PRELIM_NONGYN_CYTOLOGY_TEMPLATE,
 ];
 
 // ── Change listeners (mirrors onReportPartsChanged pattern) ──────────────────
@@ -575,14 +678,14 @@ export const mockReportTemplateService: IReportTemplateService = {
     return ok({ ...updated });
   },
 
-  async clone(id: ID, name?: string) {
+  async clone(id: ID, name: string) {
     await delay();
     const src = TEMPLATES.find(t => t.id === id);
     if (!src) return err<ReportTemplate>(`Template ${id} not found`);
     const cloned: ReportTemplate = {
       ...JSON.parse(JSON.stringify(src)),
       id:        `tmpl-${Date.now()}`,
-      name:      name ?? `${src.name} (copy)`,
+      name,
       status:    'draft' as const,
       assembly:  (src as any).assembly ?? [],
       createdAt: new Date().toISOString(),

@@ -8,7 +8,7 @@ const SEED_RESOLUTION_TYPES: ResolutionType[] = [
   { id: 'res-matched-existing', name: 'Matched to Existing Dictionary Entry', description: 'Accessioner identified the correct existing Specimen Dictionary entry.', status: 'Active' },
   { id: 'res-confirmed-custom', name: 'Confirmed as Custom Specimen (No Dictionary Match)', description: 'Accessioner confirmed no dictionary entry applies — proceeding as a manually entered specimen.', status: 'Active' },
   { id: 'res-new-dict-entry', name: 'New Dictionary Entry Created', description: 'A new Specimen Dictionary entry was created to cover this specimen type.', status: 'Active' },
-  { id: 'res-returned-to-clinician', name: 'Returned to Clinician for Clarification', description: 'Sent back to the submitting client/physician for correction.', status: 'Active' },
+  { id: 'res-returned-to-clinician', name: 'Returned to Clinician for Clarification', description: 'Sent back to the submitting facility/physician for correction.', status: 'Active' },
   { id: 'res-resolved-accessioner', name: 'Resolved by Accessioner — No Further Action', description: 'Accessioner resolved the issue directly; no escalation needed.', status: 'Active' },
   { id: 'res-relabeled', name: 'Relabeled per Lab Confirmation', description: 'Label corrected after confirming details with the originating lab/facility.', status: 'Active' },
   { id: 'res-value-corrected', name: 'Value Corrected', description: 'The underlying field was updated directly — see the deficiency comment for what changed, from what, to what.', status: 'Active' },
@@ -23,6 +23,17 @@ const SEED_RESOLUTION_TYPES: ResolutionType[] = [
   {
     id: 'res-fixation-unrecoverable', name: 'Confirmed Unavailable \u2014 No Estimate Possible', status: 'Active',
     description: 'Neither a documented time nor a reasonable estimate could be established. Case proceeds to sign-out on this explicit, audited override \u2014 last resort, used only when Fixation Time Estimated genuinely isn\u2019t possible.',
+  },
+  // Real, per direct guidance's own cross-jurisdiction pre-analytic
+  // compliance research — see resolvePreAnalyticDateGateConfig.ts and
+  // def-missing-preanalytic-date's own doc comment. This is the record
+  // of what happened at the moment of the administrative override
+  // (comparable to res-fixation-unrecoverable), NOT a closure of the
+  // underlying non-conformity — that record stays 'open' per direct
+  // guidance, for real corrective/preventive review later.
+  {
+    id: 'res-preanalytic-administrative-override', name: 'Administrative Override — Date Not Recoverable', status: 'Active',
+    description: 'The real collection and/or laboratory-receipt date/time could not be recovered. Report authorization proceeded on the jurisdiction\u2019s own designated administrative code, with the required disclaimer applied — per direct guidance\u2019s own per-country research (UKAS/RCPath, CAP/CLIA, EU IVDR/ISO 15189, IANZ, KAZA/KSP/KSLM, NATA/NPAAC).',
   },
 ];
 

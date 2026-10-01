@@ -42,6 +42,7 @@ import type { HospitalConfig } from '@app-types/config/HospitalConfig';
 
 const DEFAULT_ENTERPRISE_FEATURES: EnterpriseFeatures = {
   reportingPlusEnabled: false,
+  abnormalDetectionEnabled: true,
 };
 
 const DEFAULT_ENTERPRISE_CONFIG: EnterpriseConfig = {

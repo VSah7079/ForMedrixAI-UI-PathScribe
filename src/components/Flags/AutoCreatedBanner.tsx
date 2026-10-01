@@ -1,4 +1,5 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { Flag } from '../../services/flags/IFlagService';
 
@@ -8,29 +9,28 @@ interface Props {
 }
 
 const AutoCreatedBanner: React.FC<Props> = ({ flags, onReview }) => {
+  const { t } = useTranslation();
   if (!flags.length) return null;
 
   const codes = flags.map(f => f.lisCode).join(', ');
   const count = flags.length;
 
   return (
-    <div className="banner-warning" style={{ display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 16, marginBottom: 16 }}>
+    <div className="banner-warning acb-banner">
       <div>
         <strong>
-          {count} new LIS flag{count !== 1 ? 's' : ''} detected:
+          {t('autoCreatedBanner.newFlagsDetected', { count })}
         </strong>{' '}
         {codes}
-        <div style={{ marginTop: 4, fontSize: 13 }}>
-          These flags were automatically created from unrecognised LIS codes and added as
-          Administrative flags. Review and update them before they appear in case workflows.
+        <div className="acb-detail">
+          {t('autoCreatedBanner.detailText')}
         </div>
       </div>
       <button
-        className="ps-conf-btn-primary"
+        className="ps-conf-btn-primary acb-review-btn"
         onClick={onReview}
-        style={{ flexShrink: 0 }}
       >
-        Review Now
+        {t('autoCreatedBanner.reviewNow')}
       </button>
     </div>
   );

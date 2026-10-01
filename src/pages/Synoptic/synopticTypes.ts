@@ -34,7 +34,22 @@ export interface SynopticField {
 
 export interface MedicalCode {
   id: string;
-  system: 'SNOMED' | 'ICD' | 'CPT';
+  /** Real, per direct research while scoping the RFP-APLIS-2026-GLOBAL
+   *  Broader Cancer Registry Exports gap: 'ICD-O' added as its own,
+   *  distinct real value — confirmed directly (FHIR_DISPATCH_ARCHITECTURE_PLAN.md's
+   *  own flagged, unconfirmed question) that before this fix, an
+   *  ICD-O morphology code selected via this same modal's own 'ICDO'
+   *  filter tab had nowhere honest to land except system: 'ICD',
+   *  indistinguishable from a plain ICD-10 diagnosis code — meaning
+   *  the real behavior-code suffix (the /2 vs /3 distinction a real
+   *  cancer-registry reportability rule depends on) was never
+   *  actually captured anywhere. A real ICD-O-3 code is stored here
+   *  in its own real, standard combined morphology/behavior form
+   *  (e.g. "8500/3") — see resolveIcdOBehaviorCode.ts
+   *  (services/cancerRegistry/) for the real, pure parse of that
+   *  suffix, never a separate, hand-maintained behaviorCode field
+   *  that could drift out of sync with `code` itself. */
+  system: 'SNOMED' | 'ICD' | 'ICD-O' | 'CPT';
   code: string;
   display: string;
   source: CodeSource;

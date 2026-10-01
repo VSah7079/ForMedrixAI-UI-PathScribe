@@ -127,7 +127,7 @@ describe('getFacilityDateParts — real, honest fallback for a genuinely invalid
   });
 });
 
-describe('getTrailingFacilityMonths — real fix: replaces the identical, duplicated d.setMonth(d.getMonth() - i) pattern found in DeficienciesPage.tsx and three QA tabs', () => {
+describe('getTrailingFacilityMonths — real fix: replaces the identical, duplicated d.setMonth(d.getMonth() - i) pattern found in QualityAssurancePage.tsx and three QA tabs', () => {
   it('returns the real, correct trailing months ending on the real, current facility month', () => {
     const months = getTrailingFacilityMonths(3, 'America/Phoenix', new Date('2026-06-15T19:00:00.000Z'));
     expect(months.map(m => ({ year: m.year, month: m.month }))).toEqual([
@@ -170,5 +170,15 @@ describe('isInFacilityMonth — real fix: replaces the identical, duplicated mil
     expect(isInFacilityMonth(undefined, juneRange, 'America/Phoenix')).toBe(false);
     expect(isInFacilityMonth(null, juneRange, 'America/Phoenix')).toBe(false);
     expect(isInFacilityMonth('not-a-real-date', juneRange, 'America/Phoenix')).toBe(false);
+  });
+});
+
+import { getFacilityIsoDate } from './facilityTime';
+
+describe('getFacilityIsoDate (Batch 360)', () => {
+  it("gives the facility's calendar date", () => {
+    // 03:00 UTC on 28 Sep is still 27 Sep in Phoenix (UTC-7).
+    expect(getFacilityIsoDate('2026-09-28T03:00:00Z', 'America/Phoenix')).toBe('2026-09-27');
+    expect(getFacilityIsoDate('2026-09-28T03:00:00Z', 'Europe/London')).toBe('2026-09-28');
   });
 });

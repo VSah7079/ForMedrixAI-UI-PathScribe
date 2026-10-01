@@ -2,24 +2,43 @@
 // Word-style paginated preview. Auto-paginates from content height.
 // Page size is sticky across sessions via localStorage.
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
+import type { TFunction } from 'i18next';
 import type { ReportTemplate as OldTemplate, TemplateNode } from '../../types/template';
 import type { StructuredContext } from '../../orchestrator/contextBuilder';
+import { evalCondition } from '../../pages/ReportPreview/ReportPreviewRenderer';
 
 // ── Page sizes ─────────────────────────────────────────────────
 const MM = 96 / 25.4;
 const mm = (v: number) => Math.round(v * MM);
 
-export interface PageSize { id: string; label: string; widthMm: number; heightMm: number; region: string; }
+// Paper size names (A4, US Letter, ...) are standardised international
+// nomenclature and stay literal in every locale; only the descriptive
+// "where it's used" region text is translated, via this id-keyed map.
+export interface PageSize { id: string; label: string; widthMm: number; heightMm: number; }
 const PAGE_SIZES: PageSize[] = [
-  { id: 'a4',     label: 'A4',        widthMm: 210, heightMm: 297, region: 'UK · EU · International' },
-  { id: 'letter', label: 'US Letter', widthMm: 216, heightMm: 279, region: 'United States · Canada' },
-  { id: 'legal',  label: 'US Legal',  widthMm: 216, heightMm: 356, region: 'United States · Legal' },
-  { id: 'a3',     label: 'A3',        widthMm: 297, heightMm: 420, region: 'Large format' },
-  { id: 'b5',     label: 'B5',        widthMm: 176, heightMm: 250, region: 'Japan · Smaller clinical' },
+  { id: 'a4',     label: 'A4',        widthMm: 210, heightMm: 297 },
+  { id: 'letter', label: 'US Letter', widthMm: 216, heightMm: 279 },
+  { id: 'legal',  label: 'US Legal',  widthMm: 216, heightMm: 356 },
+  { id: 'a3',     label: 'A3',        widthMm: 297, heightMm: 420 },
+  { id: 'b5',     label: 'B5',        widthMm: 176, heightMm: 250 },
 ];
+const PAGE_SIZE_REGION_KEY: Record<string, string> = {
+  a4: 'templatePreviewPanel.pageSize.region.a4',
+  letter: 'templatePreviewPanel.pageSize.region.letter',
+  legal: 'templatePreviewPanel.pageSize.region.legal',
+  a3: 'templatePreviewPanel.pageSize.region.a3',
+  b5: 'templatePreviewPanel.pageSize.region.b5',
+};
 
 export interface Margins { top: number; right: number; bottom: number; left: number; }
 const DEFAULT_MARGINS: Margins = { top: 25, right: 20, bottom: 25, left: 20 };
+const MARGIN_SIDE_LABEL_KEY: Record<keyof Margins, string> = {
+  top: 'templatePreviewPanel.margins.top',
+  right: 'templatePreviewPanel.margins.right',
+  bottom: 'templatePreviewPanel.margins.bottom',
+  left: 'templatePreviewPanel.margins.left',
+};
 
 // ── Mock context ───────────────────────────────────────────────
 // TODO: update field names when StructuredContext type stabilises.
@@ -71,22 +90,16 @@ function resolveExpr(tpl: string, ctx: StructuredContext): string {
     return v == null ? '' : typeof v === 'object' ? JSON.stringify(v) : String(v);
   });
 }
-function evalCond(expr: { logic: 'AND'|'OR'; clauses: { field: string; operator: string; value?: unknown }[] }, ctx: StructuredContext): boolean {
-  if (!expr.clauses.length) return true;
-  const rs = expr.clauses.map(c => {
-    let v: any = ctx; for (const p of c.field.split('.')) v = v?.[p];
-    const sv = v == null ? '' : String(v), cv = String(c.value ?? '');
-    switch (c.operator) {
-      case '==': return sv === cv; case '!=': return sv !== cv;
-      case 'notEmpty': return sv.length > 0; case 'isEmpty': return sv.length === 0;
-      case 'contains': return sv.includes(cv);
-      case '>': return parseFloat(sv) > parseFloat(cv);
-      case '<': return parseFloat(sv) < parseFloat(cv);
-      default: return true;
-    }
-  });
-  return expr.logic === 'AND' ? rs.every(Boolean) : rs.some(Boolean);
-}
+/** Real fix, found by this app's own inline-CSS/business-logic sweep:
+ *  this file used to keep its own local copy of the showWhen condition
+ *  evaluator, missing the '>=' and '<=' operators that the real report
+ *  renderer (ReportPreviewRenderer.tsx's evalClause/evalCondition,
+ *  exported for exactly this reuse) already supports — a template
+ *  author testing a >=/<= condition here would see it silently
+ *  evaluate as always-true, disagreeing with the real, signed-out
+ *  report. Now calls the one real implementation instead of a second,
+ *  drifted copy. */
+const evalCond = evalCondition;
 function dig(ctx: StructuredContext, key: string): any { let v: any = ctx; for (const p of key.split('.')) v = v?.[p]; return v; }
 
 /** 'lymphovascularInvasion' → 'Lymphovascular Invasion' */
@@ -105,12 +118,12 @@ function humanizeKey(key: string): string {
 // seeded template's assembly. Pulled out to its own function (called
 // before the main switch, not as a case inside it) so the switch
 // keeps real discriminated-union narrowing for every formal node type.
-function renderSynopticBlock(ctx: StructuredContext) {
+function renderSynopticBlock(ctx: StructuredContext, t: TFunction) {
   const primary = (ctx as any).primarySynoptic ?? (ctx as any).synopticReports?.[0] ?? null;
   const answers: Record<string, string> = primary?.answers ?? {};
   const entries = Object.entries(answers);
   if (entries.length === 0) {
-    return <div className="ps-tpp-no-content">No synoptic data recorded</div>;
+    return <div className="ps-tpp-no-content">{t('templatePreviewPanel.emptyState.noSynopticData')}</div>;
   }
   return (
     <div className="ps-tpp-field-table">
@@ -165,8 +178,8 @@ const FieldTable: React.FC<{ nodes: TemplateNode[]; ctx: StructuredContext }> = 
     <div className="ps-tpp-field-table">
       {rows.map((row, ri) => (
         <div key={ri}
-          // gridTemplateColumns is computed per-row from each node's arbitrary colSpan — stays inline.
-          style={{ gridTemplateColumns: row.map(n => `${n.colSpan ?? 12}fr`).join(' ') }}
+          // Batch 367 (PS-74): per-row columns from each node's colSpan, as a custom property.
+          style={{ '--tpp-row-cols': row.map(n => `${n.colSpan ?? 12}fr`).join(' ') } as React.CSSProperties}
           className={`ps-tpp-field-row${ri % 2 ? ' ps-tpp-field-row--alt' : ''}`}
         >
           {row.map(n => (
@@ -188,6 +201,7 @@ const FieldTable: React.FC<{ nodes: TemplateNode[]; ctx: StructuredContext }> = 
 // ── Content node ───────────────────────────────────────────────
 const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNum?: number; totalPages?: number }> =
   ({ node, ctx, pageNum = 1, totalPages = 1 }) => {
+  const { t } = useTranslation();
   if (node.showWhen && !evalCond(node.showWhen, ctx)) return null;
   if (isField(node)) return <FieldTable nodes={[node]} ctx={ctx} />;
   // 'synoptic-block' is deliberately outside the formal TemplateNode
@@ -195,7 +209,7 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
   // cast) — handled here, before the switch, so the switch below keeps
   // its real discriminated-union narrowing for every formal node type.
   if ((node.type as string) === 'synoptic-block') {
-    return renderSynopticBlock(ctx);
+    return renderSynopticBlock(ctx, t);
   }
   switch (node.type) {
     case 'static-label': {
@@ -215,18 +229,18 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
         <div className="ps-tpp-paragraph">
           <div className="ps-tpp-paragraph-label">{node.label}</div>
           <div className="ps-tpp-paragraph-text">
-            {text || <span className="ps-tpp-no-content">No content</span>}
+            {text || <span className="ps-tpp-no-content">{t('templatePreviewPanel.emptyState.noContent')}</span>}
           </div>
         </div>
       );
     }
     case 'rich-text-block':
       return <div
-        // fontSize/textAlign are per-node user-configured values — stay inline.
-        style={{ fontSize: node.fontSize ?? 12, textAlign: node.textAlign ?? 'left' }}
+        // Per-node font size and alignment, as custom properties (Batch 367).
+        style={{ '--tpp-font-size': `${node.fontSize ?? 12}px`, '--tpp-align': node.textAlign ?? 'left' } as React.CSSProperties}
         className="ps-tpp-richtext"
       >
-        {node.content || <span className="ps-tpp-no-content">No content</span>}
+        {node.content || <span className="ps-tpp-no-content">{t('templatePreviewPanel.emptyState.noContent')}</span>}
       </div>;
     case 'section': {
       const heading = node.printHeading || node.label;
@@ -239,7 +253,7 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
     }
     case 'repeat-group': {
       const items: any[] = (ctx as any)[node.iterateOver] ?? [];
-      if (!items.length) return <div className="ps-tpp-no-items">No items</div>;
+      if (!items.length) return <div className="ps-tpp-no-items">{t('templatePreviewPanel.emptyState.noItems')}</div>;
       return <div>{items.map((item, i) => {
         const ic = { ...ctx, [node.itemAlias ?? 'item']: item, specimen: item } as StructuredContext;
         return <div key={i} className="ps-tpp-repeat-item"><GroupedChildren children={node.children} ctx={ic} pageNum={pageNum} totalPages={totalPages} /></div>;
@@ -262,8 +276,8 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
       // split mid-content across a column break.
       return (
         <div
-          // columnCount/columnGap are per-node user-configured values — stay inline.
-          style={{ columnCount: node.numColumns, columnGap: `${node.columnGap ?? 16}px` }}
+          // Per-node column count and gap, as custom properties (Batch 367).
+          style={{ '--tpp-col-count': node.numColumns, '--tpp-col-gap': `${node.columnGap ?? 16}px` } as React.CSSProperties}
           className="ps-tpp-col-layout"
         >
           {node.children.map(child => (
@@ -276,38 +290,44 @@ const ContentNode: React.FC<{ node: TemplateNode; ctx: StructuredContext; pageNu
     case 'image-embed':
       return (
         <div
-          // textAlign is a per-node user-configured alignment — stays inline.
-          style={{ textAlign: node.alignment === 'center' ? 'center' : node.alignment === 'right' ? 'right' : 'left' }}
+          // Per-node alignment, as a custom property (Batch 367).
+          style={{ '--tpp-align': node.alignment === 'center' ? 'center' : node.alignment === 'right' ? 'right' : 'left' } as React.CSSProperties}
           className="ps-tpp-image-wrap"
         >
           {node.src ? <img src={node.src} alt={node.alt ?? ''} width={node.width ?? 80} height={node.height ?? 80} className="ps-tpp-image" />
             : <div
-                // width/height are per-node user-configured placeholder dimensions — stay inline.
-                style={{ width: node.width ?? 80, height: node.height ?? 80 }}
+                // Per-node placeholder size, as custom properties (Batch 367).
+                style={{ '--tpp-img-w': `${node.width ?? 80}px`, '--tpp-img-h': `${node.height ?? 80}px` } as React.CSSProperties}
                 className="ps-tpp-image-placeholder"
-              >Image</div>}
+              >{t('templatePreviewPanel.emptyState.imagePlaceholder')}</div>}
           {node.caption && <div className="ps-tpp-image-caption">{node.caption}</div>}
         </div>
       );
     case 'header':
+      // "PathScribe Laboratory" / "Department of Anatomic Pathology" mirror
+      // the same default institution-name/department fallback values seeded
+      // in mockReportPartService.ts (e('Institution', ..., 'PathScribe
+      // Laboratory')) — mock/demo institution data for this preview, not
+      // UI chrome, so left untranslated like the rest of MOCK_CTX.
       return (
         <div className="ps-tpp-print-header">
           <div>
             {node.showLogo && <div className="ps-tpp-print-header-logo">PathScribe Laboratory</div>}
             <div className="ps-tpp-print-header-sub">Department of Anatomic Pathology</div>
           </div>
-          <div className="ps-tpp-print-header-right">
-            {node.showAccession && <div className="ps-tpp-print-header-accession">{MOCK_CTX.order.fullAccession}</div>}
-            {node.showPatientName && <div className="ps-tpp-print-header-patient">{MOCK_CTX.patient.name}</div>}
+          <div className="ps-tpp-print-header-right" data-phi="accession">{node.showAccession && <div className="ps-tpp-print-header-accession">{MOCK_CTX.order.fullAccession}</div>}
+            {node.showPatientName && <div className="ps-tpp-print-header-patient" data-phi="name">{MOCK_CTX.patient.name}</div>}
             <div className="ps-tpp-print-header-sub">{new Date().toLocaleDateString('en-GB', { day: '2-digit', month: 'short', year: 'numeric' })}</div>
           </div>
         </div>
       );
     case 'footer':
+      // Patient name/DOB/accession are mock demo data (MOCK_CTX), left
+      // untranslated like the rest of the mock context.
       return (
         <div className="ps-tpp-print-footer">
           <span>{MOCK_CTX.patient.name} · DOB {MOCK_CTX.patient.dob} · {MOCK_CTX.order.fullAccession}</span>
-          {node.showPageNumbers && <span>Page {pageNum} of {totalPages}</span>}
+          {node.showPageNumbers && <span>{t('templatePreviewPanel.pageNumber', { pageNum, totalPages })}</span>}
         </div>
       );
     case 'template-ref':
@@ -333,19 +353,19 @@ const Ruler: React.FC<{ widthPx: number; mL: number; mR: number }> = ({ widthPx,
   const bodyMm = Math.round((widthPx - mL - mR) / MM);
   for (let i = 0; i <= bodyMm; i += 10) {
     ticks.push(
-      // left position is a computed tick offset — stays inline.
-      <div key={i} style={{ left: mL + i * MM }} className="ps-tpp-ruler-tick">
+      // Computed tick offset, as a custom property (Batch 367).
+      <div key={i} style={{ '--tpp-tick-x': `${mL + i * MM}px` } as React.CSSProperties} className="ps-tpp-ruler-tick">
         <div className={`ps-tpp-ruler-tick-bar${i % 50 === 0 ? ' ps-tpp-ruler-tick-bar--major' : ''}`} />
         {i % 50 === 0 && i > 0 && <span className="ps-tpp-ruler-tick-label">{i}</span>}
       </div>
     );
   }
   return (
-    // width is the computed page width in px — stays inline.
-    <div style={{ width: widthPx }} className="ps-tpp-ruler">
+    // Computed page width and margins, as custom properties (Batch 367).
+    <div style={{ '--tpp-w': `${widthPx}px`, '--tpp-ml': `${mL}px`, '--tpp-mr': `${mR}px` } as React.CSSProperties} className="ps-tpp-ruler">
       {ticks}
-      <div style={{ width: mL }} className="ps-tpp-ruler-margin ps-tpp-ruler-margin--left" />
-      <div style={{ width: mR }} className="ps-tpp-ruler-margin ps-tpp-ruler-margin--right" />
+      <div className="ps-tpp-ruler-margin ps-tpp-ruler-margin--left" />
+      <div className="ps-tpp-ruler-margin ps-tpp-ruler-margin--right" />
     </div>
   );
 };
@@ -420,25 +440,26 @@ const PageCard: React.FC<{
   pageNum: number; totalPages: number;
   widthPx: number; heightPx: number; margins: Margins; ctx: StructuredContext;
 }> = ({ sections, headers, footers, pageNum, totalPages, widthPx, heightPx, margins, ctx }) => {
+  const { t } = useTranslation();
   const [mL, mR, mT, mB] = [mm(margins.left), mm(margins.right), mm(margins.top), mm(margins.bottom)];
   return (
-    // width/minHeight are computed page dimensions (from mm + scale) — stay inline.
-    <div style={{ width: widthPx, minHeight: heightPx }} className="ps-tpp-page-card">
+    // Computed page size and margins (from mm + scale), as custom properties (Batch 367).
+    <div style={{ '--tpp-w': `${widthPx}px`, '--tpp-h': `${heightPx}px`, '--tpp-ml': `${mL}px`, '--tpp-mr': `${mR}px`, '--tpp-mt': `${mT}px`, '--tpp-mb': `${mB}px` } as React.CSSProperties} className="ps-tpp-page-card">
       {totalPages > 1 && (
         <div className="ps-tpp-page-num">
-          Page {pageNum} of {totalPages}
+          {t('templatePreviewPanel.pageNumber', { pageNum, totalPages })}
         </div>
       )}
-      <div style={{ paddingLeft: mL, paddingRight: mR, paddingTop: mT }}>
+      <div className="ps-tpp-page-header">
         {headers.filter(h => pageNum === 1
           ? (h as import('../../types/template').HeaderNode).scope !== 'pages2plus'
           : (h as import('../../types/template').HeaderNode).scope !== 'page1')
           .map(h => <ContentNode key={h.id} node={h} ctx={ctx} pageNum={pageNum} totalPages={totalPages} />)}
       </div>
-      <div className="ps-tpp-page-body" style={{ paddingLeft: mL, paddingRight: mR }}>
+      <div className="ps-tpp-page-body">
         {sections.flat().map(n => <ContentNode key={n.id} node={n} ctx={ctx} pageNum={pageNum} totalPages={totalPages} />)}
       </div>
-      <div style={{ paddingLeft: mL, paddingRight: mR, paddingBottom: mB }}>
+      <div className="ps-tpp-page-footer">
         {footers.filter(f => pageNum === 1
           ? (f as import('../../types/template').FooterNode).scope !== 'pages2plus'
           : (f as import('../../types/template').FooterNode).scope !== 'page1')
@@ -452,6 +473,7 @@ const PageCard: React.FC<{
 interface Props { template: OldTemplate; onClose: () => void; }
 
 export const TemplatePreviewPanel: React.FC<Props> = ({ template, onClose }) => {
+  const { t } = useTranslation();
   // ── Sticky page size across sessions ──────────────────────────
   const [pageSizeId, setPageSizeId] = useState(() =>
     localStorage.getItem('ps_preview_page_size') ?? 'a4'
@@ -495,23 +517,23 @@ export const TemplatePreviewPanel: React.FC<Props> = ({ template, onClose }) => 
       <div className="ps-tpp-toolbar">
         <select value={pageSizeId} onChange={e => handlePageSizeChange(e.target.value)}
           className="ps-tpp-toolbar-select">
-          {PAGE_SIZES.map(p => <option key={p.id} value={p.id}>{p.label} — {p.region}</option>)}
+          {PAGE_SIZES.map(p => <option key={p.id} value={p.id}>{p.label} — {t(PAGE_SIZE_REGION_KEY[p.id])}</option>)}
         </select>
         <span className="ps-tpp-toolbar-dim">{ps.widthMm} × {ps.heightMm} mm</span>
         <div className="ps-tpp-toolbar-spacer" />
-        <span className="ps-tpp-toolbar-dim">{pages.length} page{pages.length !== 1 ? 's' : ''}</span>
-        <button onClick={() => setSettingsOpen(o => !o)} className="ps-tpp-toolbar-btn">⚙ Margins</button>
-        <button onClick={() => setShowCtx(s => !s)} className="ps-tpp-toolbar-btn">{showCtx ? 'Hide' : 'Context JSON'}</button>
-        <button onClick={onClose} className="ps-tpp-toolbar-btn ps-tpp-toolbar-btn--close">Close</button>
+        <span className="ps-tpp-toolbar-dim">{t('templatePreviewPanel.toolbar.pageCount', { count: pages.length })}</span>
+        <button onClick={() => setSettingsOpen(o => !o)} className="ps-tpp-toolbar-btn">⚙ {t('templatePreviewPanel.toolbar.margins')}</button>
+        <button onClick={() => setShowCtx(s => !s)} className="ps-tpp-toolbar-btn">{showCtx ? t('templatePreviewPanel.toolbar.hide') : t('templatePreviewPanel.toolbar.contextJson')}</button>
+        <button onClick={onClose} className="ps-tpp-toolbar-btn ps-tpp-toolbar-btn--close">{t('templatePreviewPanel.toolbar.close')}</button>
       </div>
 
       {/* Margin settings */}
       {settingsOpen && (
         <div className="ps-tpp-margins-panel">
-          <span className="ps-tpp-margins-label">MARGINS (mm)</span>
+          <span className="ps-tpp-margins-label">{t('templatePreviewPanel.margins.heading')}</span>
           {(['top','right','bottom','left'] as (keyof Margins)[]).map(side => (
             <label key={side} className="ps-tpp-margin-field">
-              {side.charAt(0).toUpperCase() + side.slice(1)}
+              {t(MARGIN_SIDE_LABEL_KEY[side])}
               <input type="number" value={margins[side]} min={5} max={50}
                 onChange={e => setMargins(m => {
                     const next = { ...m, [side]: parseInt(e.target.value) || 20 };
@@ -527,7 +549,7 @@ export const TemplatePreviewPanel: React.FC<Props> = ({ template, onClose }) => 
       {/* Context JSON */}
       {showCtx && (
         <div className="ps-tpp-ctx-panel">
-          <div className="ps-tpp-ctx-title">Mock Context — Eleanor Whitmore · Breast NST</div>
+          <div className="ps-tpp-ctx-title">{t('templatePreviewPanel.context.title', { descriptor: 'Eleanor Whitmore · Breast NST' })}</div>
           <pre className="ps-tpp-ctx-json">{JSON.stringify(ctx, null, 2)}</pre>
         </div>
       )}
@@ -536,13 +558,13 @@ export const TemplatePreviewPanel: React.FC<Props> = ({ template, onClose }) => 
       <div className="ps-tpp-doc-area">
 
         {/* Ruler */}
-        <div style={{ width: pw }} className="ps-tpp-ruler-wrap">
+        <div style={{ '--tpp-w': `${pw}px` } as React.CSSProperties} className="ps-tpp-ruler-wrap">
           <Ruler widthPx={pw} mL={mL} mR={mR} />
         </div>
 
         {/* Hidden measurement div — off-screen, at page body width */}
         <div id="preview-measure-root"
-          style={{ width: pw - mL - mR }}
+          style={{ '--tpp-w': `${pw - mL - mR}px` } as React.CSSProperties}
           className="ps-tpp-measure-root">
           {bodyNodes.map(n => (
             <div key={n.id}><ContentNode node={n} ctx={ctx} /></div>

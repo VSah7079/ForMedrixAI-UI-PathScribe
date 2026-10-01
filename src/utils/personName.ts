@@ -5,13 +5,15 @@
 // boxes that break for Spanish double surnames, Hungarian name order,
 // patients with no middle name, Mc/Mac variants, etc.
 //
-// Used by Patient, Physician, and Client contact name fields. Each of
+// Used by Patient, Physician, and Facility contact name fields. Each of
 // those types keeps `firstName`/`lastName` (or `contactName`) as
 // backward-compatible derived fields — always mirroring givenNames/
 // familyNames — so the ~15 existing consumers across Worklist, report
 // rendering, letterheads etc. that haven't migrated yet keep working
 // unchanged. New code should read/write givenNames/familyNames directly.
 // ─────────────────────────────────────────────────────────────
+
+import type { Patient } from '@/types/case/Patient';
 
 export interface PersonNameValue {
   namePrefix?: string;
@@ -66,4 +68,22 @@ export function formatFullDisplayName(name: PersonNameValue): string {
 export function fromLegacyName(firstName: string, lastName: string, opts?: { middleName?: string }): PersonNameValue {
   const given = opts?.middleName ? `${firstName} ${opts.middleName}`.trim() : firstName;
   return { givenNames: given, familyNames: lastName };
+}
+
+/**
+ * Shared "which name fields does this patient actually have" resolver —
+ * prefers the real givenNames/familyNames fields, falls back to the legacy
+ * firstName/lastName bridge above, using the ordinary (not identification)
+ * display format. File-by-file cleanup sweep: consolidates a duplicated
+ * inline implementation that had been copy-pasted into both
+ * CytologyQcQueuePage.tsx and SurgicalQaWorklistPage.tsx. Returns null for
+ * a missing patient — never a fabricated placeholder; callers decide their
+ * own fallback (e.g. the case id).
+ */
+export function resolvePatientFullDisplayName(patient: Patient | undefined | null): string | null {
+  if (!patient) return null;
+  if (patient.givenNames && patient.familyNames) {
+    return formatFullDisplayName({ ...patient, givenNames: patient.givenNames, familyNames: patient.familyNames });
+  }
+  return formatFullDisplayName(fromLegacyName(patient.firstName, patient.lastName));
 }

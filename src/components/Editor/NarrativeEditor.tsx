@@ -1,4 +1,6 @@
 import React from 'react';
+import { useTranslation } from 'react-i18next';
+import '../../pathscribe.css';
 import PathScribeEditor from './PathScribeEditor';
 import type { PathScribeEditorHandle } from './PathScribeEditorRef';
 
@@ -25,7 +27,7 @@ const NarrativeEditor = React.forwardRef<PathScribeEditorHandle, NarrativeEditor
     readOnly = false,
     minHeight = '500px',
     macros = [],
-    placeholder = 'Begin narrative report…',
+    placeholder,
     suppressToolbar = false,
     toolbarPortalId,
     theme = 'light',
@@ -34,15 +36,16 @@ const NarrativeEditor = React.forwardRef<PathScribeEditorHandle, NarrativeEditor
   },
   ref,
 ) => {
+  const { t } = useTranslation();
   return (
-    <div style={{ width: '100%', display: 'flex', flexDirection: 'column' }}>
+    <div className="ne-wrap">
       <PathScribeEditor
         ref={ref}
         content={value}
         onChange={onChange}
         readOnly={readOnly}
         minHeight={minHeight}
-        placeholder={placeholder}
+        placeholder={placeholder ?? t('narrativeEditor.defaultPlaceholder')}
         macros={macros}
         approvedFonts={[
           'Arial',

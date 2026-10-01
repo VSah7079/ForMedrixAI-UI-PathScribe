@@ -12,33 +12,39 @@ button {
    pathscribe DESIGN TOKENS
    ========================================================= */
 
-
-
-   
+/* Real fix, per direct report with screenshots in hand: "The
+   previous ask was to change those styles as they don't reflect the
+   aesthetic of the application." Confirmed directly, via real
+   computed-style inspection, not assumed: this file used to also
+   define --ps-surface (and 19 other --ps-* tokens) as light-theme
+   "Action mode" values (#f8fafc etc.) — a real, older, dual-mode
+   concept ("Research mode dark navy" vs "Action mode white") that
+   confirmed directly isn't referenced anywhere else in this app
+   anymore. pathscribe.css re-defines the SAME 20 variable names with
+   this app's own real, current, all-dark values — and because BOTH
+   :root blocks existed, whichever one happened to load/parse later
+   silently won for each shared name, which is exactly why
+   .ps-btn-secondary's own real background: var(--ps-surface) was
+   resolving to near-white at runtime despite that class's own CSS
+   correctly pointing at a dark navy value. The 20 conflicting
+   definitions were removed here — pathscribe.css is this app's own,
+   current, single source of truth for all of them now. Tokens below
+   that pathscribe.css never redefines (--ps-white, --ps-border-light,
+   --ps-red, etc.) are untouched — those were never actually
+   conflicting. */
 :root {
   /* ── Brand ── */
-  --ps-teal:            #0891B2;
-  --ps-teal-light:      #1ab8e0;
-  --ps-teal-dim:        rgba(8, 145, 178, 0.15);
   --ps-teal-border:     rgba(8, 145, 178, 0.25);
 
   /* ── Research mode surfaces (dark navy) ── */
-  --ps-navy-base:       #0b1120;
-  --ps-navy-left:       #0d1829;
-  --ps-navy-right:      #0a1628;
   --ps-navy-card:       rgba(15, 23, 42, 0.9);
-  --ps-navy-input:      rgba(22, 34, 61, 0.9);
 
   /* ── Action mode surfaces (white) ── */
   --ps-white:           #ffffff;
-  --ps-surface:         #f8fafc;
   --ps-border-light:    #e2e8f0;
 
   /* ── Text ── */
-  --ps-text-primary:    #f1f5f9;
   --ps-text-secondary:  #94a3b8;
-  --ps-text-muted:      #6b7f99;
-  --ps-text-dim:        #6b7f99;   /* raised: was #475569 (2.48:1 ❌) → now 4.59:1 ✅ */
 
   /* ── Semantic ── */
   --ps-red:             #FF453A;
@@ -48,23 +54,7 @@ button {
 
   /* ── Borders (dark surfaces) ── */
   --ps-border-dark:     rgba(51, 65, 85, 0.9);
-  --ps-border-bright:   rgba(82, 102, 128, 0.9);
   --ps-border-soft:     rgba(148, 163, 184, 0.4);
-
-  /* ── Gradients ── */
-  --ps-grad-header:     radial-gradient(circle at top left, rgba(56, 189, 248, 0.10), transparent 55%);
-  --ps-grad-left:       radial-gradient(circle at top, rgba(30, 64, 175, 0.35), transparent 60%);
-  --ps-grad-right:      radial-gradient(circle at top right, rgba(8, 47, 73, 0.90), transparent 60%);
-
-  /* ── Border radius ── */
-  --ps-radius-sm:       8px;
-  --ps-radius-md:       12px;
-  --ps-radius-lg:       18px;
-  --ps-radius-xl:       20px;
-
-  /* ── Shadows ── */
-  --ps-shadow-modal:    0 25px 50px -12px rgba(0, 0, 0, 0.25);
-  --ps-shadow-research: 0 24px 60px rgba(0, 0, 0, 0.5);
 }
 
 /* =========================================================
@@ -246,4 +236,19 @@ body {
   50%       { opacity: 0.5; }
 }
 
-html, body, #root { overflow-x: hidden; }
+/* Real fix (PS-296 — "Accession screen requires scrolling that
+   shouldn't be necessary... extra scroll bar at top"): this app is
+   built as a fixed-viewport shell — .ps-app-root is already
+   `height: 100vh; overflow: hidden`, and every page manages its own
+   internal scroll region explicitly (.ps-accession-shell,
+   .ps-scroll, etc.). But this rule only ever constrained horizontal
+   overflow, never vertical — so on any page whose content came out
+   even a few px taller than the viewport (confirmed on Accession at
+   100% zoom), the real, unwanted result was the raw BROWSER/document
+   scrollbar appearing ABOVE and independent of that page's own
+   intentional inner scrollbar — a real, confirmed second, redundant
+   scrollbar, not a rendering quirk. Constraining overflow-y here too
+   makes the outer document match its own already-stated
+   fixed-viewport design on both axes: only a page's own explicit
+   scroll containers can ever scroll, never the document itself. */
+html, body, #root { overflow: hidden; }

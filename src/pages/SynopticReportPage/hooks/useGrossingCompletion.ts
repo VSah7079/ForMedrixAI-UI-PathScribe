@@ -37,6 +37,7 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useState, useCallback, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
 import { routeCase, routeStatCase } from '@/services/cases/casePoolAssignmentService';
 import { aiBehaviorService } from '@/services';
@@ -44,16 +45,28 @@ import type { Case, ProtocolChange } from '@/types/case/Case';
 import type { CaseStatus } from '@/types/case/CaseStatus';
 import type { SetConcurrencyConflict } from './sharedHookTypes';
 import { handleConcurrencyConflict } from './sharedHookTypes';
+import { mockServiceChargeService } from '@/services/billing/mockServiceChargeService';
+import { mockOutboundChargeQueueService } from '@/services/billing/mockOutboundChargeQueueService';
+import { sweepChargesForOutbox } from '@/services/billing/sweepChargesForOutbox';
+import { mockBillingTypeTriggerConfigService } from '@/services/billing/mockBillingTypeTriggerConfigService';
+import { validateChargeMetadata } from '@/services/billing/validateChargeMetadata';
 
 interface UseGrossingCompletionParams {
   caseData: Case | null;
   setCaseData: React.Dispatch<React.SetStateAction<Case | null>>;
-  showToast: (message: string) => void;
+  showToast: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
   log: (event: string, detail: Record<string, unknown>) => void;
   knownVersionRef: MutableRefObject<number>;
   setConcurrencyConflict: SetConcurrencyConflict;
   grossingSnapshotRef: MutableRefObject<Map<string, string>>;
   handleProtocolChangesDetected: (changes: ProtocolChange[]) => void;
+  // Real feature, per direct follow-up: "there is kind of a workflow
+  // that allows the Gross to be dictated and on submission, the AI
+  // reads the Text, and updates the template... Not sure if there is
+  // bearing here." Real bearing — see this hook's own real call site
+  // below and evaluateGrossingTemplateFit's own header comment
+  // (mockCaseService.ts) for the full design.
+  handleGrossingProtocolChangesDetected: (changes: ProtocolChange[], dictatedText: string) => void;
   /** Real fix, per direct report: "I added some gross text, but the
    *  system is not allowing me to mark gross complete. Gives the no
    *  gross information has been entered." A PA who dictates the
@@ -71,8 +84,10 @@ interface UseGrossingCompletionParams {
 export function useGrossingCompletion({
   caseData, setCaseData, showToast, log, knownVersionRef,
   setConcurrencyConflict, grossingSnapshotRef, handleProtocolChangesDetected,
+  handleGrossingProtocolChangesDetected,
   orchSections,
 }: UseGrossingCompletionParams) {
+  const { t } = useTranslation();
   const [isEvaluatingSynopticFit, setIsEvaluatingSynopticFit] = useState(false);
 
   const handleGrossComplete = useCallback(async () => {
@@ -121,11 +136,7 @@ export function useGrossingCompletion({
     });
     if (specimensWithoutAnswers.length > 0) {
       const labels = specimensWithoutAnswers.map(sp => sp.label).join(', ');
-      showToast(
-        specimensWithoutAnswers.length === 1
-          ? `Specimen ${labels} has no grossing entered yet — complete every specimen before finishing Gross`
-          : `Specimens ${labels} have no grossing entered yet — complete every specimen before finishing Gross`
-      );
+      showToast(t('useGrossingCompletion.toast.specimensMissingGrossing', { count: specimensWithoutAnswers.length, labels }), 'warning');
       return;
     }
 
@@ -139,9 +150,9 @@ export function useGrossingCompletion({
       // MVP reason capture via prompt() — a dedicated modal (matching
       // RequestReviewModal/PoolClaimModal's pattern) is the real long-term
       // UI here, not a browser prompt.
-      const entered = window.prompt('Reason for updating Gross (required for audit trail):');
+      const entered = window.prompt(t('useGrossingCompletion.prompt.reasonForUpdate'));
       if (!entered || !entered.trim()) {
-        showToast('Update cancelled — a reason is required');
+        showToast(t('useGrossingCompletion.toast.updateCancelledReasonRequired'), 'warning');
         return;
       }
       reason = entered.trim();
@@ -236,7 +247,7 @@ export function useGrossingCompletion({
         },
         specimens,
         availableTemplates,
-        clientId: caseData.order?.clientId,
+        facilityId: caseData.order?.facilityId,
       };
 
       // Persist first — Gross Complete/Update Gross should succeed even if
@@ -267,6 +278,45 @@ export function useGrossingCompletion({
       knownVersionRef.current = knownVersionRef.current + 1;
       setCaseData({ ...caseData, ...patch } as typeof caseData);
 
+      // Real, per Epic: PathScribe Outbound Billing & Charge Event
+      // Engine, User Story 2 - "emit TC codes immediately upon
+      // SPECIMEN_GROSSED." Fire-and-forget, deliberately never awaited
+      // - a failure here must never surface as a grossing-completion
+      // failure. Scoped to the whole case, not one specimen - this
+      // function itself transitions every draft grossingReport at
+      // once (see its own header), so every specimen is genuinely,
+      // simultaneously grossed at this moment.
+      (async () => {
+        const chargesRes = await mockServiceChargeService.getChargesForCase(caseData.id);
+        if (!chargesRes.ok) return;
+        const alreadyQueuedRes = await mockOutboundChargeQueueService.getByServiceChargeRecordIds(
+          chargesRes.data.map(c => c.id)
+        );
+        const alreadyQueuedIds = new Set(alreadyQueuedRes.ok ? alreadyQueuedRes.data.map(e => e.serviceChargeRecordId) : []);
+        const triggerMapRes = await mockBillingTypeTriggerConfigService.getEffectiveTriggerMap(caseData.order?.siteId);
+        const toEnqueue = sweepChargesForOutbox(chargesRes.data, 'SPECIMEN_GROSSED', alreadyQueuedIds, triggerMapRes.ok ? triggerMapRes.data : undefined);
+        const metadataFailures = validateChargeMetadata(caseData);
+        await Promise.all(toEnqueue.map(async f => {
+          const enqueueRes = await mockOutboundChargeQueueService.enqueue({
+            serviceChargeRecordId: f.serviceChargeRecordId,
+            caseId: f.caseId,
+            specimenId: f.specimenId,
+            billingType: f.billingType,
+            triggerEvent: 'SPECIMEN_GROSSED',
+          });
+          // Real, per Story 4: a charge genuinely missing required
+          // metadata is flagged FAILED immediately, not left QUEUED
+          // with data already known to be bad.
+          if (enqueueRes.ok && metadataFailures.length > 0) {
+            await mockOutboundChargeQueueService.markFailed(enqueueRes.data.id, {
+              errorCode: metadataFailures[0].errorCode,
+              errorMessage: metadataFailures[0].errorMessage,
+              maxRetriesExceeded: false,
+            });
+          }
+        }));
+      })().catch(e => console.error('[PathScribe] Outbound charge queue sweep failed (non-blocking):', e));
+
       // Real fix, found via a direct audit: automatic pool routing
       // (routeCase/routeStatCase) was fully built - real admin-
       // configurable Routing Rules, a preview tool, keyword matching,
@@ -285,7 +335,7 @@ export function useGrossingCompletion({
             ? await routeStatCase({ ...caseData, ...patch })
             : await routeCase({ ...caseData, ...patch });
           if (routingResult.outcome === 'routed_to_pool' || routingResult.outcome === 'routed_to_fallback') {
-            showToast(`Routed to ${routingResult.poolName} pool.`);
+            showToast(t('useGrossingCompletion.toast.routedToPool', { poolName: routingResult.poolName }));
           }
         } catch (e) {
           console.error('Pool routing failed (non-blocking):', e);
@@ -309,9 +359,9 @@ export function useGrossingCompletion({
       const grossAiEnabled = !aiBehaviorRes.ok || aiBehaviorRes.data.grossEnabled !== false;
 
       if (!grossAiEnabled) {
-        showToast(isUpdate ? 'Gross updated' : 'Grossing complete');
+        showToast(t(isUpdate ? 'useGrossingCompletion.toast.grossUpdated' : 'useGrossingCompletion.toast.grossingComplete'));
       } else {
-        showToast(isUpdate ? 'Gross updated — re-evaluating synoptic assignment…' : 'Grossing complete — evaluating synoptic assignment…');
+        showToast(t(isUpdate ? 'useGrossingCompletion.toast.grossUpdatedReEvaluating' : 'useGrossingCompletion.toast.grossingCompleteEvaluating'));
 
         // Lock Finalize/Finalize & Next/Sign Out while evaluation runs and
         // while any resulting review modal is open — see isEvaluatingSynopticFit.
@@ -332,7 +382,74 @@ export function useGrossingCompletion({
             // resolves the modal (commit or cancel), not just until this
             // call returns.
           } else {
-            showToast('No synoptic assignment changes proposed');
+            showToast(t('useGrossingCompletion.toast.noSynopticChangesProposed'));
+          }
+
+          // Real feature, per direct follow-up: "there is kind of a
+          // workflow that allows the Gross to be dictated and on
+          // submission, the AI reads the Text, and updates the
+          // template... Not sure if there is bearing here." Real
+          // bearing, confirmed directly: evaluates whether each
+          // specimen's CURRENTLY-ASSIGNED Grossing Template still fits,
+          // now that real dictated text exists — accession-time
+          // evaluateGrossingTemplateAssignment only ever had a specimen
+          // description + clinical indication to go on, a much thinner
+          // signal. Runs BEFORE the existing dictation-to-fields pass
+          // below, and any specimen with a proposed change is excluded
+          // from that pass — no reason to populate fields against a
+          // template that's about to be replaced, only to throw that
+          // work away once the pathologist accepts the new one (which
+          // re-derives fresh suggestions for the new template itself,
+          // from the same dictated text — see handleGrossingProtoCommit,
+          // useAmendmentWorkflow.ts).
+          const { stripHtml } = await import('@/services/narrativeSignals/deidentification');
+          const perSpecimenGrossSectionsForFit = grossSections.filter(s => s.specimenId && s.text?.trim());
+          const combinedDictatedGrossText = perSpecimenGrossSectionsForFit.length > 0
+            ? perSpecimenGrossSectionsForFit.map(s => {
+                const sp = (caseData.specimens ?? []).find(sp => sp.id === s.specimenId);
+                return `SPECIMEN ${sp?.label ?? s.specimenId}: ${stripHtml(s.text)}`;
+              }).join('\n\n')
+            : (caseWideGrossSection ? stripHtml(caseWideGrossSection.text) : '');
+
+          let specimensWithProposedGrossingChange = new Set<string>();
+          if (grossAiEnabled && combinedDictatedGrossText.trim()) {
+            try {
+              const { evaluateGrossingTemplateFit } = await import('@/services/cases/mockCaseService');
+              const grossingAvailableTemplates = allTemplates
+                .filter(t => t.isDiagnostic === false)
+                .map(t => ({ id: t.id, name: t.name, category: t.category }));
+
+              const grossingFitResult = await evaluateGrossingTemplateFit({
+                dictatedGrossText: combinedDictatedGrossText,
+                specimens: (caseData.specimens ?? []).map(sp => {
+                  const currentReport = grossingReports.find(g => g.specimenId === sp.id);
+                  return {
+                    specimenId: sp.id,
+                    specimenLabel: sp.label,
+                    specimenDesc: sp.description,
+                    currentGrossingTemplate: currentReport
+                      ? { instanceId: currentReport.instanceId, templateId: currentReport.templateId, templateName: currentReport.templateName }
+                      : undefined,
+                  };
+                }),
+                availableTemplates: grossingAvailableTemplates,
+                facilityId: caseData.order?.facilityId,
+              });
+              if (grossingFitResult.warnings.length) {
+                console.warn('[PathScribe] Grossing template fit evaluation warnings:', grossingFitResult.warnings);
+              }
+              if (grossingFitResult.changes.length > 0) {
+                specimensWithProposedGrossingChange = new Set(grossingFitResult.changes.map(c => c.specimenId));
+                handleGrossingProtocolChangesDetected(grossingFitResult.changes, combinedDictatedGrossText);
+              }
+            } catch (e) {
+              // Non-blocking — Gross Complete has already fully
+              // succeeded by this point; the existing dictation-to-
+              // fields pass below still runs normally against every
+              // specimen's current template, same as if this feature
+              // didn't exist at all.
+              console.error('[PathScribe] Grossing template fit evaluation failed:', e);
+            }
           }
 
           // Real feature, per direct request: "Once I select Gross
@@ -343,11 +460,16 @@ export function useGrossingCompletion({
           // already exist, there's nothing to back-fill, same as
           // there'd be nothing to suggest for a field the pathologist
           // already typed an answer into by hand.
-          const perSpecimenGrossSections = grossSections.filter(s => s.specimenId && s.text?.trim());
-          if (hasDictatedGrossText || perSpecimenGrossSections.length > 0) {
+          const perSpecimenGrossSections = grossSections
+            .filter(s => s.specimenId && s.text?.trim())
+            // Real exclusion, per the fit-evaluation step just above —
+            // see this block's own header comment.
+            .filter(s => !specimensWithProposedGrossingChange.has(s.specimenId!));
+          if ((hasDictatedGrossText || perSpecimenGrossSections.length > 0) && (caseData.specimens ?? []).some(sp => !specimensWithProposedGrossingChange.has(sp.id))) {
             try {
               const { generateGrossingFieldSuggestionsFromDictation } = await import('@/services/cases/mockCaseService');
-              const { stripHtml } = await import('@/services/narrativeSignals/deidentification');
+              // stripHtml already imported and in scope from the
+              // fit-evaluation block above.
 
               let suggestionsBySpecimen: Record<string, Record<string, any>> = {};
 
@@ -368,7 +490,7 @@ export function useGrossingCompletion({
                   const result = await generateGrossingFieldSuggestionsFromDictation(
                     plainText,
                     [{ specimenId: sp.id, specimenLabel: sp.label, specimenDesc: sp.description, fields: grossingFieldsBySpecimen.get(sp.id) ?? [] }],
-                    caseData.order?.clientId,
+                    caseData.order?.facilityId,
                   );
                   return result;
                 }));
@@ -384,6 +506,9 @@ export function useGrossingCompletion({
                 const plainDictatedText = stripHtml(caseWideGrossSection.text);
                 const dictationSpecimens = (caseData.specimens ?? [])
                   .filter(sp => grossingFieldsBySpecimen.has(sp.id))
+                  // Real exclusion, per the fit-evaluation step above —
+                  // see that block's own header comment.
+                  .filter(sp => !specimensWithProposedGrossingChange.has(sp.id))
                   .map(sp => ({
                     specimenId: sp.id,
                     specimenLabel: sp.label,
@@ -391,7 +516,7 @@ export function useGrossingCompletion({
                     fields: grossingFieldsBySpecimen.get(sp.id) ?? [],
                   }));
                 suggestionsBySpecimen = await generateGrossingFieldSuggestionsFromDictation(
-                  plainDictatedText, dictationSpecimens, caseData.order?.clientId,
+                  plainDictatedText, dictationSpecimens, caseData.order?.facilityId,
                 );
               }
 
@@ -410,7 +535,7 @@ export function useGrossingCompletion({
                 await caseRouter.updateCase(caseData.id, { grossingReports: grossingReportsWithSuggestions }, knownVersionRef.current);
                 knownVersionRef.current = knownVersionRef.current + 1;
                 setCaseData(prev => prev ? ({ ...prev, grossingReports: grossingReportsWithSuggestions } as typeof prev) : prev);
-                showToast('Dictated Gross reviewed — synoptic field suggestions ready for confirmation');
+                showToast(t('useGrossingCompletion.toast.dictatedGrossReviewed'));
               }
             } catch (e) {
               // Non-blocking — Gross Complete has already fully
@@ -427,9 +552,9 @@ export function useGrossingCompletion({
     } catch (err) {
       if (handleConcurrencyConflict(err, setConcurrencyConflict)) return;
       console.error('[Gross Complete] Failed:', err);
-      showToast((isUpdate ? 'Update Gross' : 'Gross Complete') + ' failed — please try again');
+      showToast(t(isUpdate ? 'useGrossingCompletion.toast.updateGrossFailed' : 'useGrossingCompletion.toast.grossCompleteFailed'), 'warning');
     }
-  }, [caseData, log, showToast, handleProtocolChangesDetected, setCaseData, knownVersionRef, setConcurrencyConflict, grossingSnapshotRef, orchSections]);
+  }, [caseData, log, showToast, handleProtocolChangesDetected, setCaseData, knownVersionRef, setConcurrencyConflict, grossingSnapshotRef, orchSections, t]);
 
   return {
     isEvaluatingSynopticFit,

@@ -11,7 +11,7 @@
 // this feature — not a new name invented for this screen.
 //
 // Two real scope levels, same shape as this codebase's other org
-// -default + per-client-override settings (idle-session-timeout, the AI
+// -default + per-facility-override settings (idle-session-timeout, the AI
 // orchestrator toggle): 'enterprise' resources are visible to everyone
 // in the organisation; 'lab' resources layer on top, visible only at
 // the specific performing lab they're tied to. Per a direct requirement:
@@ -23,19 +23,22 @@
 // filtered viewer's-eye view.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useEffect, useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../../pathscribe.css';
 import { mockExternalResourceService } from '@/services/externalResources/mockExternalResourceService';
 import type { ExternalResource, ExternalResourceCategory, ExternalResourceScope } from '@/services/externalResources/IExternalResourceService';
-import { mockFacilityService } from '@/services/facilities/mockFacilityService';
-import type { Facility as Client } from '@/services/facilities/IFacilityService';
+import type { Facility } from '@/services/facilities/IFacilityService';
+import { getActivePerformingLabs } from '@/utils/performingLabs';
 import { getSessionUser } from '@/services/auth/caseAccessControl';
 import ConfirmModal from '../../Common/ConfirmModal';
 
-const CATEGORY_LABELS: Record<ExternalResourceCategory, string> = {
-  protocols: 'Protocols',
-  references: 'References',
-  systems: 'Systems',
+const CATEGORY_LABEL_KEY: Record<ExternalResourceCategory, string> = {
+  protocols: 'externalResourcesSection.categoryLabels.protocols',
+  references: 'externalResourcesSection.categoryLabels.references',
+  systems: 'externalResourcesSection.categoryLabels.systems',
 };
+
+const CATEGORY_IDS: ExternalResourceCategory[] = ['protocols', 'references', 'systems'];
 
 interface DraftState {
   id: string | null;
@@ -43,17 +46,18 @@ interface DraftState {
   url: string;
   category: ExternalResourceCategory;
   scope: ExternalResourceScope;
-  clientId: string;
+  facilityId: string;
 }
 
-const emptyDraft: DraftState = { id: null, title: '', url: '', category: 'protocols', scope: 'enterprise', clientId: '' };
+const emptyDraft: DraftState = { id: null, title: '', url: '', category: 'protocols', scope: 'enterprise', facilityId: '' };
 
 const ExternalResourcesSection: React.FC = () => {
+  const { t } = useTranslation();
   const session = getSessionUser();
   const organisationId = session?.organisationId ?? '';
 
   const [resources, setResources] = useState<ExternalResource[]>([]);
-  const [labs, setLabs] = useState<Client[]>([]);
+  const [labs, setLabs] = useState<Facility[]>([]);
   const [loading, setLoading] = useState(true);
   const [draft, setDraft] = useState<DraftState>(emptyDraft);
   const [showForm, setShowForm] = useState(false);
@@ -70,29 +74,30 @@ const ExternalResourcesSection: React.FC = () => {
 
   useEffect(() => {
     loadResources();
-    mockFacilityService.getAll().then(res => {
-      if (res.ok) setLabs(res.data.filter(c => c.roles.includes('performing_lab') && c.status === 'Active'));
-    });
+    // Same real, shared query every dictionary needing lab-scoping now
+    // uses — see utils/performingLabs.ts's own header (this file's own
+    // version of this query was the one confirmed and extracted from).
+    getActivePerformingLabs().then(setLabs);
   }, [loadResources]);
 
   const openNewForm = () => { setDraft(emptyDraft); setError(null); setShowForm(true); };
   const openEditForm = (r: ExternalResource) => {
-    setDraft({ id: r.id, title: r.title, url: r.url, category: r.category, scope: r.scope, clientId: r.clientId ?? '' });
+    setDraft({ id: r.id, title: r.title, url: r.url, category: r.category, scope: r.scope, facilityId: r.facilityId ?? '' });
     setError(null);
     setShowForm(true);
   };
 
   const handleSave = async () => {
-    if (!draft.title.trim()) { setError('Title is required.'); return; }
+    if (!draft.title.trim()) { setError(t('externalResourcesSection.errors.titleRequired')); return; }
     let parsedUrl: URL;
     try {
       parsedUrl = new URL(draft.url.trim());
       if (parsedUrl.protocol !== 'https:' && parsedUrl.protocol !== 'http:') throw new Error('not http(s)');
     } catch {
-      setError('Enter a valid URL, including https://');
+      setError(t('externalResourcesSection.errors.invalidUrl'));
       return;
     }
-    if (draft.scope === 'lab' && !draft.clientId) { setError('Select a performing lab for a lab-scoped resource.'); return; }
+    if (draft.scope === 'lab' && !draft.facilityId) { setError(t('externalResourcesSection.errors.labRequired')); return; }
 
     if (draft.id) {
       await mockExternalResourceService.update(draft.id, {
@@ -100,7 +105,7 @@ const ExternalResourcesSection: React.FC = () => {
         url: parsedUrl.toString(),
         category: draft.category,
         scope: draft.scope,
-        clientId: draft.scope === 'lab' ? draft.clientId : undefined,
+        facilityId: draft.scope === 'lab' ? draft.facilityId : undefined,
       });
     } else {
       await mockExternalResourceService.create({
@@ -109,7 +114,7 @@ const ExternalResourcesSection: React.FC = () => {
         category: draft.category,
         scope: draft.scope,
         organisationId,
-        clientId: draft.scope === 'lab' ? draft.clientId : undefined,
+        facilityId: draft.scope === 'lab' ? draft.facilityId : undefined,
       });
     }
     setShowForm(false);
@@ -123,52 +128,49 @@ const ExternalResourcesSection: React.FC = () => {
     loadResources();
   };
 
-  const labName = (clientId?: string) => labs.find(l => l.id === clientId)?.name ?? clientId ?? '—';
+  const labName = (facilityId?: string) => labs.find(l => l.id === facilityId)?.name ?? facilityId ?? t('externalResourcesSection.noLabName');
 
   const grouped: Record<ExternalResourceCategory, ExternalResource[]> = { protocols: [], references: [], systems: [] };
   resources.forEach(r => grouped[r.category].push(r));
 
   return (
-    <div style={{ width: '100%', maxWidth: 800 }}>
-      <div style={{ marginBottom: 24, display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+    <div className="ps-extres">
+      <div className="ps-extres-header">
         <div>
-          <h1 style={{ fontSize: 22, fontWeight: 700, color: '#fff', margin: 0 }}>External Resources</h1>
-          <p style={{ fontSize: 13, color: '#6b7280', marginTop: 4, maxWidth: 560 }}>
-            Reference links shown in the Resources panel — CAP protocols, WHO
-            classification, internal lab systems, and similar. Enterprise-wide
-            links are visible to everyone; lab-scoped links are visible only at
-            the specific performing lab they're tied to.
+          <h1 className="ps-extres-title">{t('externalResourcesSection.title')}</h1>
+          <p className="ps-extres-subtitle">
+            {t('externalResourcesSection.subtitle')}
           </p>
         </div>
-        <button type="button" className="ps-conf-btn-primary" onClick={openNewForm}>+ Add Resource</button>
+        <button type="button" className="ps-conf-btn-primary" onClick={openNewForm}>{t('externalResourcesSection.addResourceButton')}</button>
       </div>
 
       {loading ? (
-        <div style={{ color: '#6b7280', fontSize: 13, padding: '24px 0' }}>Loading…</div>
+        <div className="ps-extres-loading">{t('externalResourcesSection.loading')}</div>
       ) : resources.length === 0 ? (
-        <div style={{ border: '1px solid #1f2937', borderRadius: 12, padding: 24, color: '#6b7280', fontSize: 13 }}>
-          No external resources configured yet.
+        <div className="ps-extres-empty">
+          {t('externalResourcesSection.emptyState')}
         </div>
       ) : (
-        (Object.keys(CATEGORY_LABELS) as ExternalResourceCategory[]).map(cat => (
+        CATEGORY_IDS.map(cat => (
           grouped[cat].length === 0 ? null : (
-            <div key={cat} style={{ marginBottom: 20 }}>
-              <div style={{ fontSize: 11, fontWeight: 600, color: '#6b7280', textTransform: 'uppercase', letterSpacing: '0.05em', marginBottom: 8 }}>
-                {CATEGORY_LABELS[cat]}
+            <div key={cat} className="ps-extres-group">
+              <div className="ps-extres-category-label">
+                {t(CATEGORY_LABEL_KEY[cat])}
               </div>
-              <div style={{ display: 'flex', flexDirection: 'column', gap: 8 }}>
+              <div className="ps-extres-list">
                 {grouped[cat].map(r => (
-                  <div key={r.id} style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', border: '1px solid #1f2937', borderRadius: 8, padding: '10px 14px' }}>
+                  <div key={r.id} className="ps-extres-row">
                     <div>
-                      <div style={{ fontSize: 13, color: '#e5e7eb', fontWeight: 600 }}>{r.title}</div>
-                      <div style={{ fontSize: 11, color: '#6b7280' }}>{r.url}</div>
-                      <div style={{ fontSize: 11, color: '#4b5563', marginTop: 2 }}>
-                        {r.scope === 'enterprise' ? 'Enterprise-wide' : `Lab: ${labName(r.clientId)}`}
+                      <div className="ps-extres-row-title">{r.title}</div>
+                      <div className="ps-extres-row-url">{r.url}</div>
+                      <div className="ps-extres-row-scope">
+                        {r.scope === 'enterprise' ? t('externalResourcesSection.scopeEnterpriseWide') : t('externalResourcesSection.scopeLab', { labName: labName(r.facilityId) })}
                       </div>
                     </div>
-                    <div style={{ display: 'flex', gap: 8, flexShrink: 0 }}>
-                      <button type="button" className="ps-conf-btn-secondary" onClick={() => openEditForm(r)}>Edit</button>
-                      <button type="button" className="ps-conf-btn-secondary" onClick={() => setDeleteTarget(r)}>Delete</button>
+                    <div className="ps-extres-row-actions">
+                      <button type="button" className="ps-conf-btn-secondary" onClick={() => openEditForm(r)}>{t('common.edit')}</button>
+                      <button type="button" className="ps-conf-btn-secondary" onClick={() => setDeleteTarget(r)}>{t('common.delete')}</button>
                     </div>
                   </div>
                 ))}
@@ -180,80 +182,75 @@ const ExternalResourcesSection: React.FC = () => {
 
       {showForm && (
         <div className="ps-overlay" onClick={() => setShowForm(false)}>
-          <div className="ps-modal-dark" style={{ width: 'min(480px, 92vw)' }} onClick={e => e.stopPropagation()}>
+          <div className="ps-modal-dark ps-modal-dark--extres" onClick={e => e.stopPropagation()}>
             <div className="ps-modal-dark-header">
-              <span className="ps-modal-dark-title">{draft.id ? 'Edit Resource' : 'Add Resource'}</span>
+              <span className="ps-modal-dark-title">{draft.id ? t('externalResourcesSection.modal.headerEdit') : t('externalResourcesSection.modal.headerAdd')}</span>
             </div>
-            <div style={{ padding: '16px 20px', display: 'flex', flexDirection: 'column', gap: 14 }}>
+            <div className="ps-extres-modal-body">
               <div>
-                <label className="ps-conf-label" style={{ display: 'block', marginBottom: 4 }}>Title</label>
+                <label className="ps-conf-label ps-conf-label--block">{t('externalResourcesSection.modal.titleField')}</label>
                 <input
                   className="ps-conf-input"
-                  style={{ width: '100%', boxSizing: 'border-box' }}
                   value={draft.title}
                   onChange={e => setDraft(d => ({ ...d, title: e.target.value }))}
-                  placeholder="CAP Cancer Protocols"
+                  placeholder={t('externalResourcesSection.modal.titlePlaceholder')}
                 />
               </div>
               <div>
-                <label className="ps-conf-label" style={{ display: 'block', marginBottom: 4 }}>URL</label>
+                <label className="ps-conf-label ps-conf-label--block">{t('externalResourcesSection.modal.urlField')}</label>
                 <input
                   className="ps-conf-input"
-                  style={{ width: '100%', boxSizing: 'border-box' }}
                   value={draft.url}
                   onChange={e => setDraft(d => ({ ...d, url: e.target.value }))}
-                  placeholder="https://…"
+                  placeholder={t('externalResourcesSection.modal.urlPlaceholder')}
                 />
               </div>
               <div>
-                <label className="ps-conf-label" style={{ display: 'block', marginBottom: 4 }} htmlFor="extres-category">Category</label>
+                <label className="ps-conf-label ps-conf-label--block" htmlFor="extres-category">{t('externalResourcesSection.modal.categoryField')}</label>
                 <select
                   id="extres-category"
-                  className="ps-conf-select"
-                  style={{ width: '100%' }}
+                  className="ps-conf-select ps-conf-select--full"
                   value={draft.category}
                   onChange={e => setDraft(d => ({ ...d, category: e.target.value as ExternalResourceCategory }))}
                 >
-                  {(Object.keys(CATEGORY_LABELS) as ExternalResourceCategory[]).map(c => (
-                    <option key={c} value={c}>{CATEGORY_LABELS[c]}</option>
+                  {CATEGORY_IDS.map(c => (
+                    <option key={c} value={c}>{t(CATEGORY_LABEL_KEY[c])}</option>
                   ))}
                 </select>
               </div>
               <div>
-                <label className="ps-conf-label" style={{ display: 'block', marginBottom: 4 }} htmlFor="extres-scope">Scope</label>
+                <label className="ps-conf-label ps-conf-label--block" htmlFor="extres-scope">{t('externalResourcesSection.modal.scopeField')}</label>
                 <select
                   id="extres-scope"
-                  className="ps-conf-select"
-                  style={{ width: '100%' }}
+                  className="ps-conf-select ps-conf-select--full"
                   value={draft.scope}
                   onChange={e => setDraft(d => ({ ...d, scope: e.target.value as ExternalResourceScope }))}
                 >
-                  <option value="enterprise">Enterprise-wide</option>
-                  <option value="lab">Specific performing lab</option>
+                  <option value="enterprise">{t('externalResourcesSection.modal.scopeEnterpriseOption')}</option>
+                  <option value="lab">{t('externalResourcesSection.modal.scopeLabOption')}</option>
                 </select>
               </div>
               {draft.scope === 'lab' && (
                 <div>
-                  <label className="ps-conf-label" style={{ display: 'block', marginBottom: 4 }} htmlFor="extres-client">Performing Lab</label>
+                  <label className="ps-conf-label ps-conf-label--block" htmlFor="extres-facility">{t('externalResourcesSection.modal.performingLabField')}</label>
                   <select
-                    id="extres-client"
-                    className="ps-conf-select"
-                    style={{ width: '100%' }}
-                    value={draft.clientId}
-                    onChange={e => setDraft(d => ({ ...d, clientId: e.target.value }))}
+                    id="extres-facility"
+                    className="ps-conf-select ps-conf-select--full"
+                    value={draft.facilityId}
+                    onChange={e => setDraft(d => ({ ...d, facilityId: e.target.value }))}
                   >
-                    <option value="">Select a lab…</option>
+                    <option value="">{t('externalResourcesSection.modal.labPlaceholder')}</option>
                     {labs.map(l => (
                       <option key={l.id} value={l.id}>{l.name}</option>
                     ))}
                   </select>
                 </div>
               )}
-              {error && <div style={{ fontSize: 12, color: '#f87171' }}>{error}</div>}
+              {error && <div className="ps-extres-error">{error}</div>}
             </div>
-            <div style={{ display: 'flex', justifyContent: 'flex-end', gap: 8, padding: '12px 20px', borderTop: '1px solid rgba(255,255,255,0.08)' }}>
-              <button type="button" className="ps-conf-btn-secondary" onClick={() => setShowForm(false)}>Cancel</button>
-              <button type="button" className="ps-conf-btn-primary" onClick={handleSave}>Save</button>
+            <div className="ps-extres-modal-footer">
+              <button type="button" className="ps-conf-btn-secondary" onClick={() => setShowForm(false)}>{t('common.cancel')}</button>
+              <button type="button" className="ps-conf-btn-primary" onClick={handleSave}>{t('common.save')}</button>
             </div>
           </div>
         </div>
@@ -261,10 +258,10 @@ const ExternalResourcesSection: React.FC = () => {
 
       <ConfirmModal
         show={!!deleteTarget}
-        title="Delete resource"
-        message={deleteTarget ? `Delete "${deleteTarget.title}"? This cannot be undone.` : ''}
-        confirmLabel="Delete"
-        cancelLabel="Cancel"
+        title={t('externalResourcesSection.deleteModal.title')}
+        message={deleteTarget ? t('externalResourcesSection.deleteModal.message', { title: deleteTarget.title }) : ''}
+        confirmLabel={t('common.delete')}
+        cancelLabel={t('common.cancel')}
         onConfirm={handleDeleteConfirmed}
         onCancel={() => setDeleteTarget(null)}
       />

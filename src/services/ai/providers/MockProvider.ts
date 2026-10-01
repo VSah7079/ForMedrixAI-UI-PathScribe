@@ -31,7 +31,7 @@ import type {
 //    narrativeTemplateConfig.ts's "default_narrative_template" — a
 //    template that isn't actually the one in use. The real template
 //    ("Gold Standard — General Surgical Pathology", resolved for
-//    every case that doesn't have a client-specific override) uses
+//    every case that doesn't have a facility-specific override) uses
 //    entirely different section IDs, defined in
 //    services/reportParts/mockReportPartService.ts:
 //    std_body_gross / std_body_microscopic / std_body_ancillary /

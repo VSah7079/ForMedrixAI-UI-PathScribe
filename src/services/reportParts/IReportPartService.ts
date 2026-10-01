@@ -11,6 +11,7 @@ export interface IReportPartService {
   save(part: ReportPart): Promise<ServiceResult<ReportPart>>;
   publish(id: ID): Promise<ServiceResult<ReportPart>>;
   archive(id: ID): Promise<ServiceResult<ReportPart>>;
-  clone(id: ID, newName?: string): Promise<ServiceResult<ReportPart>>;
+  /** `newName` is supplied by the caller in the user's language (t('common.copyOfName')). */
+  clone(id: ID, newName: string): Promise<ServiceResult<ReportPart>>;
   remove(id: ID): Promise<ServiceResult<void>>;
 }

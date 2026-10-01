@@ -1,6 +1,6 @@
 // src/services/billing/codeMapTable.test.ts
 import { describe, it, expect } from 'vitest';
-import { computeWorkRvuForCodes, ruleBasedDefaultCptCodes, parseRvuUploadRows, suggestBlockAncillaryCptCodes, suggestSpecimenAncillaryCptCodes, computeNewSuggestions, computeCaseCodingSummary, resolveSpecimenDictionaryBaseCptCode, CODE_MAP_TABLE } from './codeMapTable';
+import { computeWorkRvuForCodes, ruleBasedDefaultCptCodes, parseRvuUploadRows, suggestBlockAncillaryCptCodes, suggestSpecimenAncillaryCptCodes, computeNewSuggestions, computeCaseCodingSummary, resolveSpecimenDictionaryBaseCptCode, computeMatrixStainBillingUnits, CODE_MAP_TABLE } from './codeMapTable';
 import type { StainType } from '../stains/IStainService';
 
 describe('CODE_MAP_TABLE — real, verified CMS 2026 work RVU values, not fabricated', () => {
@@ -9,8 +9,21 @@ describe('CODE_MAP_TABLE — real, verified CMS 2026 work RVU values, not fabric
     expect(codes).toEqual(expect.arrayContaining(['88302', '88304', '88305', '88307', '88342']));
   });
 
-  it('every entry has a real, positive work RVU value', () => {
-    CODE_MAP_TABLE.forEach(e => expect(e.workRvu).toBeGreaterThan(0));
+  it('every entry that HAS a verified work RVU carries a real, positive value - not every entry is required to have one yet (honest, disclosed gaps for unverified codes)', () => {
+    CODE_MAP_TABLE.filter(e => e.workRvu !== undefined).forEach(e => expect(e.workRvu).toBeGreaterThan(0));
+  });
+
+  it('every real entry has a real billingCode - the new primary identifier', () => {
+    CODE_MAP_TABLE.forEach(e => expect(e.billingCode).toBeTruthy());
+  });
+
+  it('the new Charge Capture entries (IHC-ADDL, PIN4-PANEL, FROZEN-FIRST, FROZEN-ADDL) are real, present rows with a verified CPT code and coding rule, honestly unverified work RVU', () => {
+    const newEntries = CODE_MAP_TABLE.filter(e => ['IHC-ADDL', 'PIN4-PANEL', 'FROZEN-FIRST', 'FROZEN-ADDL'].includes(e.billingCode));
+    expect(newEntries).toHaveLength(4);
+    newEntries.forEach(e => {
+      expect(e.code).toBeTruthy();
+      expect(e.workRvu).toBeUndefined(); // honest, disclosed gap - never fabricated
+    });
   });
 });
 
@@ -107,14 +120,14 @@ describe('suggestBlockAncillaryCptCodes — Phase 2: real, rule-based suggestion
     expect(suggestBlockAncillaryCptCodes([{ stainName: 'H&E' }], stainTypes)).toEqual([]);
   });
 
-  it('suggests one 88312 per real special stain, not once per block', () => {
+  it('suggests one SPECIAL-STAIN billingCode per real special stain, not once per block', () => {
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'PAS' }, { stainName: 'GMS' }], stainTypes);
-    expect(result).toEqual(['88312', '88312']);
+    expect(result).toEqual(['SPECIAL-STAIN', 'SPECIAL-STAIN']);
   });
 
-  it('suggests 88342 for the first real IHC stain on a block, 88341 for each additional - the real, verified CMS rule', () => {
+  it('suggests IHC-FIRST for the first real IHC stain on a block, IHC-ADDL for each additional - the real, verified CMS rule (88342/88341)', () => {
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'ER' }, { stainName: 'PR' }], stainTypes);
-    expect(result).toEqual(['88342', '88341']);
+    expect(result).toEqual(['IHC-FIRST', 'IHC-ADDL']);
   });
 
   it('excludes an unresolvable stain name silently, never guessing at its category', () => {
@@ -127,13 +140,13 @@ describe('suggestBlockAncillaryCptCodes — Phase 2: real, rule-based suggestion
       [{ stainName: 'H&E' }, { stainName: 'PAS' }, { stainName: 'ER' }],
       stainTypes
     );
-    expect(result).toEqual(['88312', '88342']);
+    expect(result).toEqual(['SPECIAL-STAIN', 'IHC-FIRST']);
   });
 
   it('per direct guidance: a real, coder-configured code on a specific antibody wins over the generic first/additional IHC rule', () => {
     const typesWithOverride: StainType[] = [
       ...stainTypes,
-      { id: '6', name: 'Ki-67', category: 'IHC', antibodyClone: '30-9', defaultCptCode: '88360', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: '6', name: 'Ki-67', category: 'IHC', antibodyClone: '30-9', defaultBillingCode: '88360', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'Ki-67' }], typesWithOverride);
     expect(result).toEqual(['88360']); // the real, coder-configured code, not the generic 88342 first-stain default
@@ -142,7 +155,7 @@ describe('suggestBlockAncillaryCptCodes — Phase 2: real, rule-based suggestion
   it('per direct guidance: a real multiplex panel (own distinct StainType record) resolves to its own real code, not counted as separate IHC stains', () => {
     const typesWithMultiplex: StainType[] = [
       ...stainTypes,
-      { id: '7', name: 'PIN-4', category: 'IHC', defaultCptCode: '88344', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: '7', name: 'PIN-4', category: 'IHC', defaultBillingCode: '88344', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'PIN-4' }], typesWithMultiplex);
     expect(result).toEqual(['88344']); // real multiplex code, not 88342
@@ -151,12 +164,33 @@ describe('suggestBlockAncillaryCptCodes — Phase 2: real, rule-based suggestion
   it('a configured stain still counts toward the generic rule for a later, unconfigured IHC stain on the same block', () => {
     const typesWithOverride: StainType[] = [
       ...stainTypes,
-      { id: '6', name: 'Ki-67', category: 'IHC', defaultCptCode: '88360', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+      { id: '6', name: 'Ki-67', category: 'IHC', defaultBillingCode: '88360', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
     ];
     // Ki-67 (configured, real 88360) comes first, then ER (unconfigured) -
     // ER should be treated as the second real IHC stain on this block (88341), not the first (88342).
     const result = suggestBlockAncillaryCptCodes([{ stainName: 'Ki-67' }, { stainName: 'ER' }], typesWithOverride);
-    expect(result).toEqual(['88360', '88341']);
+    expect(result).toEqual(['88360', 'IHC-ADDL']);
+  });
+
+  it('per direct follow-up: excludeFromIhcSequenceCounting=true does NOT consume a slot — a real, standalone multiplex panel like PIN-4 leaves the sequence untouched for a later, unconfigured IHC stain', () => {
+    const typesWithExcludedMultiplex: StainType[] = [
+      ...stainTypes,
+      { id: '7', name: 'PIN-4', category: 'IHC', defaultBillingCode: '88344', excludeFromIhcSequenceCounting: true, active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    // PIN-4 (excluded) comes first, then ER (unconfigured) - ER should
+    // still be treated as the FIRST real IHC stain on this block
+    // (88342), since PIN-4 was never a countable IHC stain at all.
+    const result = suggestBlockAncillaryCptCodes([{ stainName: 'PIN-4' }, { stainName: 'ER' }], typesWithExcludedMultiplex);
+    expect(result).toEqual(['88344', 'IHC-FIRST']);
+  });
+
+  it('excludeFromIhcSequenceCounting=true still resolves to the stain\'s own configured code, only the counting side effect changes', () => {
+    const typesWithExcludedMultiplex: StainType[] = [
+      ...stainTypes,
+      { id: '7', name: 'PIN-4', category: 'IHC', defaultBillingCode: '88344', excludeFromIhcSequenceCounting: true, active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const result = suggestBlockAncillaryCptCodes([{ stainName: 'PIN-4' }], typesWithExcludedMultiplex);
+    expect(result).toEqual(['88344']); // unchanged from the non-excluded case — the flag only affects later stains
   });
 });
 
@@ -175,8 +209,8 @@ describe('suggestSpecimenAncillaryCptCodes — real, critical fix per direct, au
       ],
       stainTypes
     );
-    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['88342']); // real specimen-wide first IHC stain
-    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['88341']); // real specimen-wide second, NOT another 88342
+    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['IHC-FIRST']); // real specimen-wide first IHC stain
+    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['IHC-ADDL']); // real specimen-wide second, NOT another IHC-FIRST
   });
 
   it('threads the count correctly across three real blocks with multiple stains each', () => {
@@ -187,8 +221,8 @@ describe('suggestSpecimenAncillaryCptCodes — real, critical fix per direct, au
       ],
       stainTypes
     );
-    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['88342', '88341']);
-    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['88341']); // real third IHC stain on the specimen, still additional
+    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['IHC-FIRST', 'IHC-ADDL']);
+    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['IHC-ADDL']); // real third IHC stain on the specimen, still additional
   });
 
   it('a block with no IHC stains at all does not disturb the running count for later blocks', () => {
@@ -199,7 +233,7 @@ describe('suggestSpecimenAncillaryCptCodes — real, critical fix per direct, au
       ],
       stainTypes
     );
-    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['88342']); // still the real first IHC stain on the specimen
+    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['IHC-FIRST']); // still the real first IHC stain on the specimen
   });
 
   it('a single-block specimen behaves identically to the original single-block function', () => {
@@ -209,6 +243,24 @@ describe('suggestSpecimenAncillaryCptCodes — real, critical fix per direct, au
     );
     const blockResult = suggestBlockAncillaryCptCodes([{ stainName: 'ER' }, { stainName: 'PR' }], stainTypes);
     expect(specimenResult.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(blockResult);
+  });
+
+  it('excludeFromIhcSequenceCounting on one block does not consume a slot for a later block on the same specimen', () => {
+    const typesWithExcludedMultiplex: StainType[] = [
+      ...stainTypes,
+      { id: '7', name: 'PIN-4', category: 'IHC', defaultBillingCode: '88344', excludeFromIhcSequenceCounting: true, active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    ];
+    const result = suggestSpecimenAncillaryCptCodes(
+      [
+        { blockId: 'blk-A', stains: [{ stainName: 'PIN-4' }] },
+        { blockId: 'blk-B', stains: [{ stainName: 'ER' }] },
+      ],
+      typesWithExcludedMultiplex
+    );
+    expect(result.find(r => r.blockId === 'blk-A')?.suggestions).toEqual(['88344']);
+    // blk-B's ER is still the real, FIRST countable IHC stain on the
+    // specimen — blk-A's PIN-4 never occupied a slot, cross-block or not.
+    expect(result.find(r => r.blockId === 'blk-B')?.suggestions).toEqual(['IHC-FIRST']);
   });
 });
 
@@ -256,8 +308,8 @@ describe('computeCaseCodingSummary — Piece 3: real pre-signout coding summary'
     );
     const blockA = result[0].blocks.find(b => b.blockId === 'blk-A');
     const blockB = result[0].blocks.find(b => b.blockId === 'blk-B');
-    expect(blockA?.unappliedSuggestions).toEqual(['88342']);
-    expect(blockB?.unappliedSuggestions).toEqual(['88341']); // real, specimen-wide second IHC stain
+    expect(blockA?.unappliedSuggestions).toEqual(['IHC-FIRST']);
+    expect(blockB?.unappliedSuggestions).toEqual(['IHC-ADDL']); // real, specimen-wide second IHC stain
   });
 
   it('reports a real base code and no warning for a fully-coded specimen', () => {
@@ -271,7 +323,7 @@ describe('computeCaseCodingSummary — Piece 3: real pre-signout coding summary'
 
   it('flags the real soft-warning condition: ancillary code present, base code missing', () => {
     const result = computeCaseCodingSummary(
-      [{ id: 'sp-1', label: 'A', blocks: [{ id: 'blk-1', label: 'A1', coding: { cpt: ['88312'] } }] }],
+      [{ id: 'sp-1', label: 'A', blocks: [{ id: 'blk-1', label: 'A1', coding: { cpt: [{ code: '88312' }] } }] }],
       stainTypes,
     );
     expect(result[0].hasBaseCode).toBe(false);
@@ -284,7 +336,7 @@ describe('computeCaseCodingSummary — Piece 3: real pre-signout coding summary'
       stainTypes,
     );
     expect(result[0].hasAncillaryButNoBaseCode).toBe(true);
-    expect(result[0].blocks[0].unappliedSuggestions).toEqual(['88312']);
+    expect(result[0].blocks[0].unappliedSuggestions).toEqual(['SPECIAL-STAIN']);
   });
 
   it('does not warn a specimen with no blocks and no base code at all - nothing ancillary to flag', () => {
@@ -300,7 +352,7 @@ describe('computeCaseCodingSummary — Piece 3: real pre-signout coding summary'
     const result = computeCaseCodingSummary(
       [
         { id: 'sp-1', label: 'A', coding: { cpt: ['88305'] } },
-        { id: 'sp-2', label: 'B', blocks: [{ id: 'blk-2', label: 'B1', coding: { cpt: ['88342'] } }] },
+        { id: 'sp-2', label: 'B', blocks: [{ id: 'blk-2', label: 'B1', coding: { cpt: [{ code: '88342' }] } }] },
       ],
       stainTypes,
     );
@@ -335,6 +387,45 @@ describe('resolveSpecimenDictionaryBaseCptCode — real fix: uses a real coder-c
     const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'not-a-real-entry' }, entries);
     expect(result).toBeNull();
   });
+
+  // Real, per direct guidance's own complexity spec (Specimen.complexity,
+  // SpecimenEntry.defaultComplexity/microUpgradeBaseCptCode).
+  describe('real complexity override behavior', () => {
+    const gallbladder = { id: 'gb', defaultBaseCptCode: '88300', defaultComplexity: 'GROSS_ONLY' as const };
+    const gallbladderWithUpgrade = { id: 'gb-upgrade', defaultBaseCptCode: '88300', defaultComplexity: 'GROSS_ONLY' as const, microUpgradeBaseCptCode: '88304' };
+    const colon = { id: 'colon', defaultBaseCptCode: '88309', defaultComplexity: 'GROSS_AND_MICRO' as const };
+    const noComplexityEntry = { id: 'legacy', defaultBaseCptCode: '88305' };
+
+    it('no complexity declared on the specimen at all - exact prior behavior, the dictionary\'s own default code', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'gb' }, [gallbladder]);
+      expect(result).toBe('88300');
+    });
+
+    it('specimen complexity matches the dictionary\'s own default - not a real override, same code', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'gb', complexity: 'GROSS_ONLY' }, [gallbladder]);
+      expect(result).toBe('88300');
+    });
+
+    it('real downgrade to GROSS_ONLY (from a GROSS_AND_MICRO default) always resolves to the one universal 88300 code', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'colon', complexity: 'GROSS_ONLY' }, [colon]);
+      expect(result).toBe('88300');
+    });
+
+    it('real upgrade to GROSS_AND_MICRO with a real, coder-configured upgrade code resolves to it', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'gb-upgrade', complexity: 'GROSS_AND_MICRO' }, [gallbladderWithUpgrade]);
+      expect(result).toBe('88304');
+    });
+
+    it('real upgrade to GROSS_AND_MICRO with NO configured upgrade code honestly returns null, never a guessed micro-level code', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'gb', complexity: 'GROSS_AND_MICRO' }, [gallbladder]);
+      expect(result).toBeNull();
+    });
+
+    it('specimen declares a complexity but the dictionary entry has none configured - falls back to the entry\'s own default code, no override logic applies', () => {
+      const result = resolveSpecimenDictionaryBaseCptCode({ specimenDictionaryEntryId: 'legacy', complexity: 'GROSS_AND_MICRO' }, [noComplexityEntry]);
+      expect(result).toBe('88305');
+    });
+  });
 });
 
 describe('ruleBasedDefaultCptCodes — real fix: honest, rule-based fallback, not invented manual-entry UI', () => {
@@ -350,5 +441,180 @@ describe('ruleBasedDefaultCptCodes — real fix: honest, rule-based fallback, no
     const codes = ruleBasedDefaultCptCodes(5);
     const result = computeWorkRvuForCodes(codes);
     expect(result.unrecognizedCodes).toHaveLength(0);
+  });
+});
+
+// PS-93 — real Biopsy Array / MatrixBlock billing coverage, per direct
+// billing-expert guidance. computeMatrixStainBillingUnits implements
+// the exact rule given: evaluatedSpecimenIds (not targetSpecimenIds)
+// is the real billing trigger, first evaluated specimen gets
+// IHC-FIRST, every additional gets IHC-ADDL, empty/undefined yields
+// zero units.
+describe('computeMatrixStainBillingUnits — PS-93 real billing-expert rule', () => {
+  const stainTypes: StainType[] = [
+    { id: '1', name: 'H&E', category: 'Routine', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '2', name: 'Ki-67', category: 'IHC', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '3', name: 'PIN4', category: 'IHC', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '4', name: 'Trichrome', category: 'Special Stain', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '5', name: 'BRAF FISH', category: 'Molecular', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  it('the real, explicit requirement: empty/undefined evaluatedSpecimenIds yields zero units — "ensuring zero risk of unbundled or improper claims"', () => {
+    expect(computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: [] }, stainTypes)).toEqual([]);
+    expect(computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Ki-67' }, stainTypes)).toEqual([]);
+  });
+
+  it('never falls back to targetSpecimenIds when evaluatedSpecimenIds is empty — order-time targeting alone never bills', () => {
+    const stain = { id: 'stain-1', stainName: 'Ki-67', targetSpecimenIds: ['sp-A', 'sp-B'], evaluatedSpecimenIds: [] } as any;
+    expect(computeMatrixStainBillingUnits(stain, stainTypes)).toEqual([]);
+  });
+
+  it('exactly 1 evaluated specimen → that specimen gets IHC-FIRST, one unit', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }, stainTypes);
+    expect(result).toEqual([{ specimenId: 'sp-A', code: 'IHC-FIRST', stainOrderId: 'stain-1' }]);
+  });
+
+  it('N > 1 evaluated specimens → first gets IHC-FIRST, every other gets IHC-ADDL — the real, explicit sequencing rule', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A', 'sp-B', 'sp-C'] }, stainTypes);
+    expect(result).toEqual([
+      { specimenId: 'sp-A', code: 'IHC-FIRST', stainOrderId: 'stain-1' },
+      { specimenId: 'sp-B', code: 'IHC-ADDL', stainOrderId: 'stain-1' },
+      { specimenId: 'sp-C', code: 'IHC-ADDL', stainOrderId: 'stain-1' },
+    ]);
+  });
+
+  it('a Special Stain gets one SPECIAL-STAIN unit per evaluated specimen, no first/additional distinction — matches the single-specimen rule this category already has elsewhere', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Trichrome', evaluatedSpecimenIds: ['sp-A', 'sp-B'] }, stainTypes);
+    expect(result).toEqual([
+      { specimenId: 'sp-A', code: 'SPECIAL-STAIN', stainOrderId: 'stain-1' },
+      { specimenId: 'sp-B', code: 'SPECIAL-STAIN', stainOrderId: 'stain-1' },
+    ]);
+  });
+
+  it('Molecular is a deliberate, disclosed gap — no units, never a guessed rule', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'BRAF FISH', evaluatedSpecimenIds: ['sp-A'] }, stainTypes);
+    expect(result).toEqual([]);
+  });
+
+  it('an unresolvable stain category produces nothing — same "never guessed at" posture as suggestAncillaryCodesForStains', () => {
+    const result = computeMatrixStainBillingUnits({ id: 'stain-1', stainName: 'Totally Unknown Stain', evaluatedSpecimenIds: ['sp-A'] }, stainTypes);
+    expect(result).toEqual([]);
+  });
+
+  it('a stain with no real id produces nothing — a suggestion must trace back to a real stain record', () => {
+    const result = computeMatrixStainBillingUnits({ stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }, stainTypes);
+    expect(result).toEqual([]);
+  });
+});
+
+describe('computeCaseCodingSummary — PS-93 real MatrixBlock integration', () => {
+  const stainTypes: StainType[] = [
+    { id: '1', name: 'H&E', category: 'Routine', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+    { id: '2', name: 'Ki-67', category: 'IHC', active: true, version: 1, updatedBy: 'admin', updatedAt: '2026-01-01T00:00:00.000Z' },
+  ];
+
+  it('a case with no matrixBlocks argument behaves exactly as before this feature existed — the real backward-compatibility guarantee', () => {
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-1', label: 'A', blocks: [{ id: 'blk-A', label: 'A1', stains: [{ stainName: 'H&E' }] }] }],
+      stainTypes,
+    );
+    expect(result[0].matrixBlockContributions).toEqual([]);
+  });
+
+  it('a specimen not participating in any matrix block gets an empty matrixBlockContributions, unaffected by other specimens\' shared blocks', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }, { specimenId: 'sp-B', positionInBlock: 2 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A', 'sp-B'] }],
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-C', label: 'C', blocks: [] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    expect(result[0].matrixBlockContributions).toEqual([]);
+  });
+
+  it('real, end-to-end: a two-specimen Biopsy Array with both cores evaluated produces the correct, real per-specimen suggestions', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }, { specimenId: 'sp-B', positionInBlock: 2 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A', 'sp-B'] }],
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [] }, { id: 'sp-B', label: 'B', blocks: [] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    const spA = result.find(sp => sp.specimenId === 'sp-A')!;
+    const spB = result.find(sp => sp.specimenId === 'sp-B')!;
+    expect(spA.matrixBlockContributions[0].unappliedSuggestions).toEqual(['IHC-FIRST']);
+    expect(spB.matrixBlockContributions[0].unappliedSuggestions).toEqual(['IHC-ADDL']);
+  });
+
+  it('a specimen targeted at order time but NOT yet evaluated has no pending suggestion — the real Point C gate', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', targetSpecimenIds: ['sp-A'] }], // no evaluatedSpecimenIds yet
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    expect(result[0].matrixBlockContributions[0].unappliedSuggestions).toEqual([]);
+  });
+
+  it('an applied matrixBlockCoding entry correctly removes that suggestion from unappliedSuggestions, mirroring an ordinary block\'s own computeNewSuggestions filtering', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }],
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [], matrixBlockCoding: [{ matrixBlockId: 'mtx-1', cpt: [{ code: 'IHC-FIRST', stainOrderId: 'stain-1' }] }] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    const contribution = result[0].matrixBlockContributions[0];
+    expect(contribution.appliedAncillaryCodes).toEqual([{ code: 'IHC-FIRST', stainOrderId: 'stain-1' }]);
+    expect(contribution.unappliedSuggestions).toEqual([]);
+  });
+
+  it('a rejected matrixBlockCoding entry also removes that suggestion, without treating it as applied', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }],
+    }];
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [], matrixBlockCoding: [{ matrixBlockId: 'mtx-1', rejectedCpt: [{ code: 'IHC-FIRST', stainOrderId: 'stain-1' }] }] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    const contribution = result[0].matrixBlockContributions[0];
+    expect(contribution.appliedAncillaryCodes).toEqual([]);
+    expect(contribution.unappliedSuggestions).toEqual([]);
+  });
+
+  it('a specimen\'s own ordinary blocks[] IHC history does NOT influence a shared MatrixBlock stain\'s own sequencing — the two are deliberately independent rules', () => {
+    const matrixBlocks = [{
+      id: 'mtx-1', label: 'M1',
+      participants: [{ specimenId: 'sp-A', positionInBlock: 1 }],
+      slides: [{ id: 'stain-1', stainName: 'Ki-67', evaluatedSpecimenIds: ['sp-A'] }],
+    }];
+    // sp-A already has two of its OWN prior IHC stains on its own,
+    // ordinary block — if the matrix rule were wrongly threaded
+    // through the same running count, this specimen's matrix
+    // contribution would incorrectly suggest IHC-ADDL instead of
+    // IHC-FIRST.
+    const result = computeCaseCodingSummary(
+      [{ id: 'sp-A', label: 'A', blocks: [{ id: 'blk-A', label: 'A1', stains: [{ stainName: 'Ki-67' }, { stainName: 'Ki-67' }] }] }],
+      stainTypes,
+      matrixBlocks,
+    );
+    const spA = result[0];
+    expect(spA.matrixBlockContributions[0].unappliedSuggestions).toEqual(['IHC-FIRST']);
   });
 });

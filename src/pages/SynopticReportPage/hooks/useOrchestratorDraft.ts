@@ -43,8 +43,8 @@
 // ─────────────────────────────────────────────────────────────────────────────
 
 import { useEffect, useCallback, type MutableRefObject } from 'react';
+import { useTranslation } from 'react-i18next';
 import { caseRouter } from '@/services/cases/CaseRouter';
-import { isOrchCaseId } from '@/services/cases/reportingModeRouting';
 import type { OrchestratorSection } from '../components/OrchestratorSectionEditor';
 import type { Case } from '@/types/case/Case';
 import type { SetConcurrencyConflict } from './sharedHookTypes';
@@ -78,11 +78,17 @@ type CaseWithOrchSections = Case & { orchSections?: OrchestratorSection[] };
 // without needing to go through the hook's return value or be reordered.
 export async function writeCaseDraft(
   caseData: Case,
-  caseId: string | undefined,
+  _caseId: string | undefined,
   orchSections: OrchestratorSection[],
   expectedVersion?: number,
 ): Promise<void> {
-  if (isOrchCaseId(caseId)) {
+  // Real fix, per direct follow-up: "the case prefix can't determine
+  // assist vs. orchestration case, we need to use a real flag."
+  // caseData is already a real parameter here — reportingMode is the
+  // real, authoritative field (see reportingModeRouting.ts's own
+  // header comment); isOrchCaseId(caseId) was never actually needed
+  // in this function at all once caseData is already in hand.
+  if (caseData.reportingMode === 'orchestrator') {
     // Real fix, per direct report: "it has the attached synoptic
     // report attached to the specimen, why is it not displaying the
     // template?" — traced to here. This previously only persisted
@@ -124,7 +130,7 @@ interface UseOrchestratorDraftParams {
   setConcurrencyConflict: SetConcurrencyConflict;
   clearDirty: () => void;
   discardDraft: () => void;
-  showToast: (message: string) => void;
+  showToast: (message: string, kind?: import('@/utils/toastPolicy').ToastKind) => void;
 }
 
 export function useOrchestratorDraft({
@@ -132,6 +138,8 @@ export function useOrchestratorDraft({
   activeSectionId, setActiveSectionId, isOrchestrationMode, leftTab,
   knownVersionRef, setConcurrencyConflict, clearDirty, discardDraft, showToast,
 }: UseOrchestratorDraftParams) {
+  const { t } = useTranslation();
+
   // ── Save ──────────────────────────────────────────────────────────────
   // The real consolidation — ONE implementation of "save the draft,"
   // mode-aware (Orchestration's orchSections vs. CoPilot's synopticReports)
@@ -157,7 +165,7 @@ export function useOrchestratorDraft({
   const saveDraftInternal = useCallback(async (): Promise<boolean> => {
     if (!caseData?.id) {
       clearDirty();
-      showToast('Draft saved');
+      showToast(t('useOrchestratorDraft.toast.draftSaved'));
       return true;
     }
     try {
@@ -177,9 +185,9 @@ export function useOrchestratorDraft({
     // "unsaved draft found" for work that had already been persisted.
     discardDraft();
     clearDirty();
-    showToast('Draft saved');
+    showToast(t('useOrchestratorDraft.toast.draftSaved'));
     return true;
-  }, [caseData, caseId, orchSections, clearDirty, showToast, discardDraft, knownVersionRef, setConcurrencyConflict]);
+  }, [caseData, caseId, orchSections, clearDirty, showToast, discardDraft, knownVersionRef, setConcurrencyConflict, t]);
 
   // ── Restore on load ──────────────────────────────────────────────────
   // Restore orchSections — checks localStorage AND the loaded caseData.

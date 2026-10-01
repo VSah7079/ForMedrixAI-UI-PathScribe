@@ -6,13 +6,18 @@
 
 import { Patient } from "./Patient";
 import { Specimen } from "./Specimen";
-import { CaseFlag } from "./CaseFlag";
-import { SpecimenFlag } from "./SpecimenFlag";
+import type { FlagInstance } from "../flagsRuntime";
+import type { RetentionHold } from "./RetentionHold";
+import type { CaseHold } from "./CaseHold";
+import type { MatrixBlock } from "./MatrixBlock";
 import { CaseComment } from "./CaseComment";
 import type { Icd10Code } from "@/services/diagnosisCodes/IDiagnosisCodesService";
+import type { RecordedClinicalHistoryEntry } from "@/types/clinicalHistory/RecordedClinicalHistoryEntry";
+import type { OutsidePatientFinancialData } from "@/types/billing/OutsidePatientFinancialData";
 import { CaseStatus } from "./CaseStatus";
 import type { FieldLineageEntry } from '@/types/reports/FieldLineage';
 import type { RevisionType } from '@/types/reports/AmendmentRecord';
+import type { AutopsyCaseDetails } from '@/types/autopsy/AutopsyCaseDetails';
 
 export interface CaseCoding {
   icd10?: string[];
@@ -56,23 +61,23 @@ export interface OrderMetadata {
    */
   orderingPhysicianId?: string;
   /** ID reference to Facility Configuration — the institution that sent the specimen */
-  clientId?: string;
+  facilityId?: string;
   /** Cached display name — avoids async lookup on every render */
-  clientName?: string;
+  facilityName?: string;
   /**
    * Real feature, per direct confirmation: "add the Client and
    * Location as fields to be seen in the accession page." ID
    * reference to services/locations/ (Location) — which specific
-   * ward/room/bed at clientId this specimen came from. Optional: not
+   * ward/room/bed at facilityId this specimen came from. Optional: not
    * every specimen has a known, specific inpatient location (e.g.
    * outpatient/clinic specimens genuinely have none) — never
-   * fabricated when not selected. Scoped to clientId; a location
+   * fabricated when not selected. Scoped to facilityId; a location
    * belongs to exactly one facility, so this should only ever be set
-   * alongside a real clientId.
+   * alongside a real facilityId.
    */
   locationId?: string;
   /** Cached display string ("Ward 3 / 101 / A") — same "avoid an
-   *  async lookup on every render" reasoning as clientName above. */
+   *  async lookup on every render" reasoning as facilityName above. */
   locationDisplay?: string;
   /** Physical facility within originHospitalId's organisation — Site.id
    *  from Organisation.sites[] (e.g. 'SITE-MRI'), NOT a bare shortName
@@ -115,6 +120,46 @@ export interface OrderMetadata {
   icd10Codes?: Icd10Code[];
   clinicalIndication?: string;
   /**
+   * Real, per the uploaded "Structured Clinical History Dictionary &
+   * Accessioning Integration" spec's own User Story 2 — the real,
+   * structured clinical_history array a validated inbound accession
+   * JSON payload carries, recorded here at the order level (same real
+   * placement as clinicalIndication/reasonForStudy/icd10Codes above —
+   * this is order-level metadata, not a per-specimen concept).
+   */
+  clinicalHistory?: RecordedClinicalHistoryEntry[];
+  /**
+   * Real, per the uploaded spec's own User Story 5, Acceptance
+   * Criteria 2 ("Incomplete orders automatically set accession_status
+   * = 'DEFICIENT'"). Real, per direct guidance's own explicit answer
+   * to the real specimen-vs-order deficiency-scoping question ("New,
+   * order-level deficiency status") — a genuinely new, order-level
+   * concept, deliberately NOT folded into the existing, specimen-
+   * scoped SpecimenDeficiency mechanism (services/deficiencies/),
+   * which has no real way to represent a deficiency belonging to the
+   * order as a whole rather than one specific specimen. Undefined on
+   * every case accessioned before this field existed — never
+   * defaulted to 'COMPLETE' retroactively, which would be a real,
+   * fabricated claim about historical data this app has no way to
+   * actually verify.
+   */
+  accessionStatus?: 'COMPLETE' | 'DEFICIENT';
+  /**
+   * Real, per direct guidance's own research: a real, standard HL7
+   * field — OBR-31 "Reason for Study" (CWE), mapping directly to
+   * FHIR's ServiceRequest.reasonCode — exists specifically to carry
+   * why a test was ordered. Left distinct from both clinicalIndication
+   * (free text) and the pre-existing, generic, unused reasonCodes
+   * field above, for the same real reason clinicalIndication already
+   * is: an unambiguous, structured field for a specific, real concept,
+   * not a repurposed vague one. First real use: distinguishing a
+   * routine, programme-invited screening test from a private or
+   * opportunistic one, for real UK CSMS registry action-code dispatch
+   * (resolveCsmsActionCode.ts) — undefined for every case where this
+   * distinction doesn't apply.
+   */
+  reasonForStudy?: 'nhs_programme_invited' | 'private_or_opportunistic';
+  /**
    * Whole-case comment thread — distinct from clinicalIndication (the
    * clinical reason, feeds AI template routing) and from the per-report/
    * per-grossing-instance comment fields elsewhere in this file
@@ -132,6 +177,28 @@ export interface OrderMetadata {
   assignedTo?: string;
   /** Participation type of the assigned pathologist — e.g. 'primary', 'consultant' */
   assignedParticipationTypeId?: string;
+  /**
+   * Real, per direct guidance ("replace the checkbox with an explicit
+   * Patient Origin / Intake Type selector"): the real, explicit
+   * top-level accessioning mode. 'standard' is the real default —
+   * Standard/EMR Order accessioning. 'downtime' is the existing,
+   * unchanged temporary/placeholder-identity mode — same real
+   * MasterPatientRecord.isDowntimeRecord/downtimeReasonCode submit
+   * behavior as before this change
+   * (services/patients/IPatientIndexService.ts), just now driven by
+   * this explicit selector instead of a checkbox. 'outside' is the
+   * new Outside/Contract Case mode — real, per direct guidance,
+   * "completely bypassing the identity reconciliation queue" is real,
+   * separate, larger work (see AccessionPage.tsx's own header comment
+   * on why); for now this mode activates the real Outside Patient
+   * Data tab and captures outsidePatientData below, while still going
+   * through normal MPI resolution like every other accession.
+   */
+  intakeType?: 'standard' | 'downtime' | 'outside';
+  /** Real, per direct guidance: only ever populated when intakeType
+   *  is 'outside' — see OutsidePatientFinancialData.ts's own header
+   *  for the full field-by-field account. */
+  outsidePatientData?: OutsidePatientFinancialData;
 }
 
 export interface DiagnosticMetadata {
@@ -151,6 +218,36 @@ export interface DiagnosticMetadata {
   grossDescription?: string;
   microscopicDescription?: string;
   ancillaryStudies?: string;
+  /** Real, per direct follow-up ("does a Preliminary Diagnosis Text
+   *  Field exist?") — it didn't. Added here, matching the exact same
+   *  case-level shape as grossDescription/microscopicDescription
+   *  above, rather than the per-specimen repeat-group binding the
+   *  Preliminary template originally (incorrectly) used — that
+   *  binding had no real field behind it anywhere. The provisional,
+   *  pre-ancillary-studies diagnostic impression recorded on a
+   *  Preliminary report, distinct from primaryDiagnosis above (the
+   *  Final report's own, later, fully-substantiated diagnosis). */
+  preliminaryImpression?: string;
+  /** Real, per the same follow-up — status text for pending ancillary
+   *  studies, backing prelim_body_ancillary_status
+   *  (services/reportParts/mockReportPartService.ts). Case-level,
+   *  matching grossDescription/microscopicDescription's own shape —
+   *  a case with multiple specimens shares one status line per study
+   *  type, same as it already shares one grossDescription. */
+  specialStainsStatus?: string;
+  ihcStatus?: string;
+  decalcificationStatus?: string;
+  molecularStatus?: string;
+  recutStatus?: string;
+  /** Real, per the same follow-up — backing prelim_body_signoff's own
+   *  reviewer-attestation and critical-value/verbal-notification log
+   *  fields. */
+  reviewerRole?: string;
+  preliminaryRecordedAt?: string;
+  criticalValueCommunicated?: string;
+  criticalValueRecipient?: string;
+  criticalValueNotifiedAt?: string;
+  criticalValueNotes?: string;
 }
 
 export interface AccessionMetadata {
@@ -164,9 +261,9 @@ export interface AccessionMetadata {
    *  CaseRouter.isOrchCase() and friends key off Case.id specifically
    *  because it has to be resolvable before the Case object is even
    *  fetched, so it can never be allowed to vary with an org's mask
-   *  config. fullAccession is what's actually driven by the org-scoped
-   *  CaseMaskConfig registry (services/caseRegistry/) — see
-   *  AccessionPage.tsx's handleSubmit. */
+   *  config. fullAccession is what's actually driven by the real
+   *  CaseMask record governing this case (services/caseRegistry/) —
+   *  see AccessionPage.tsx's handleSubmit. */
   fullAccession?: string;
   /** Which mask pattern actually produced fullAccession — kept as its
    *  own field (not re-derived) specifically so that if an organisation
@@ -208,11 +305,19 @@ export interface SynopticReportInstance {
   /** AI-suggested values per field — keyed by fieldId */
   aiSuggestions?: Record<string, AiFieldSuggestion>;
   /** Draft | finalized */
-  status: 'draft' | 'finalized' | 'pending-countersign' | 'deferred';
-  /** If deferred, what is pending (e.g. 'IHC', 'Molecular panel', 'FISH') */
-  deferredPending?: string;
+  status: 'draft' | 'finalized' | 'pending-countersign';
   /** Per-report comment (html) */
   comment?: string;
+  /** Set when an Assist-mode LIS poll (PS-87) created or last refreshed
+   *  this draft: which LIS milestone drove it, and the AI's reason and
+   *  confidence for choosing this template. Absent on every instance a
+   *  person created. See services/assistPolling/. */
+  aiDraftSource?: {
+    milestone:   'gross_complete' | 'micro_diagnosis_complete';
+    generatedAt: string;
+    reason?:     string;
+    confidence?: number;
+  };
 
   // ── Synoptic-level assignment (parent-child sign-off) ──────────────────
   /** Pathologist assigned to finalise this specific synoptic (may differ from case owner) */
@@ -285,6 +390,58 @@ export interface SynopticReportInstance {
 // PA-performed, single-sign-off work; add them back if a review/cosign
 // workflow for grossing turns out to be needed later.
 // ─────────────────────────────────────────────────────────────
+/**
+ * Real feature, per direct follow-up: "So after gross complete, then
+ * the next logical step is to generate a Microscopic Description...
+ * Perhaps a gap in our orchestration flow." Confirmed directly before
+ * building this: Stage 1 (evaluateSynopticAssignment) only ever fires
+ * at Gross Complete — before microscopic text can realistically
+ * exist — and no real trigger anywhere re-evaluates template
+ * assignment once it does, in either Orchestration OR Assist mode
+ * (confirmed directly against every real inbound HL7/LIS handler in
+ * this app; none reference microscopic text at all). This closes
+ * that gap's own data-model half.
+ *
+ * Deliberately simple/free-text, not a structured checklist like
+ * GrossingReportInstance — per direct decision, both dictation and
+ * typed entry feed the SAME single narrative field ("both,
+ * pathologist's choice, matches how Gross already works" — though
+ * confirmed directly that Gross itself has no dedicated pre-template
+ * dictation surface today either; this is genuinely the first real
+ * instance of that pattern, not a mirror of an existing one).
+ */
+export interface MicroscopicReportInstance {
+  instanceId: string;
+  /** Which specimen this Microscopic narrative belongs to — same
+   *  real per-specimen scope as GrossingReportInstance.specimenId,
+   *  since different specimens on the same case can carry genuinely
+   *  different microscopic findings and, downstream, different CAP
+   *  template determinations. */
+  specimenId: string;
+  text: string;
+  /**
+   * 'draft' while actively being typed/dictated and not yet
+   * explicitly confirmed; 'saved' once the pathologist confirms it
+   * (even if left blank — a deliberate, reviewed skip, per direct
+   * decision's own "Conditional Blocking" design; see
+   * utils/evaluateMicroscopicFinalizeGate.ts). No stored
+   * 'not-started' value — the genuine absence of any instance for a
+   * specimen already means that on its own; callers building that
+   * gate function's own input treat a missing instance as
+   * 'not-started' rather than this type needing to represent it.
+   */
+  status: 'draft' | 'saved';
+  /** Real, honest provenance — did this text arrive by dictation,
+   *  typing, or a mix of both in the same session. Not used by the
+   *  finalize gate itself (which only cares about status/content),
+   *  kept for the same real audit-trail value entryMethod-style
+   *  fields already carry elsewhere in this app. */
+  entryMethod?: 'dictated' | 'typed' | 'mixed';
+  createdAt: string;
+  updatedAt: string;
+  createdBy?: string;
+}
+
 export interface GrossingReportInstance {
   /** Unique ID for this report instance */
   instanceId: string;
@@ -327,6 +484,49 @@ export interface GrossingReportInstance {
   previouslyFinalized?: boolean;
   /** Optional free-text comment from the PA (html) */
   comment?: string;
+
+  /**
+   * Real feature, per direct follow-up: "Do we capture failed template
+   * association? That might be a good quality measure." Confirmed
+   * directly before adding this: nothing on this type (or anywhere
+   * else in the real data model) ever persisted the AI's routing
+   * confidence/reasoning/fallback status for the initial Grossing
+   * Template assignment — it only ever existed transiently, in a toast
+   * and in AccessionPage.tsx's own React state, gone the moment the
+   * page was navigated away from. Genuinely absent (`undefined`) only
+   * for the brief real window between Case creation and the
+   * background AI evaluation resolving — see AccessionPage.tsx's own
+   * `refineGrossingTemplatesInBackground()`, the one real writer of
+   * this field. Every specimen gets one, real outcome, not just the
+   * ones that changed from the default — a specimen where the AI
+   * genuinely, confidently agreed with the default is a real,
+   * different outcome from one where the AI call failed outright, and
+   * both are real, distinct signals worth being able to tell apart
+   * later.
+   */
+  templateAssignmentOutcome?: {
+    /** 'ai' — a real, specific AI routing decision, at or above the
+     *  confidence threshold. 'fallback' — the AI ran, but its
+     *  confidence was below threshold (or it found no good match),
+     *  and the configured fail-open default was used instead (S0-FR-05).
+     *  'override' — a Pass G0 client-specific routing override applied;
+     *  the AI never ran for this specimen at all. 'failed' — the real
+     *  AI call itself failed (network/provider error) — this specimen
+     *  is still using the safe, immediate default from Case creation,
+     *  but was never actually evaluated. */
+    outcome: 'ai' | 'fallback' | 'override' | 'failed';
+    /** 0–100. Absent for 'override' (no AI evaluation ran) and 'failed'
+     *  (no real result to report a confidence for). */
+    confidence?: number;
+    /** Plain-language reason from the real AI analysis, or the fixed
+     *  "Pass G0 override" / fallback explanation
+     *  evaluateGrossingTemplateAssignment itself already produces.
+     *  Absent for 'failed'. */
+    reason?: string;
+    /** Real, honest error detail — only present for 'failed'. */
+    errorMessage?: string;
+    evaluatedAt: string;
+  };
 
   /** Timestamps */
   createdAt: string;
@@ -406,6 +606,58 @@ export interface ProtocolChange {
 export interface Case {
   id: string;
 
+  /** Real, per direct guidance on APAC-QA-01 (external proficiency
+   *  testing — RCPAQAP/CAP-style EQA programs): "the synthetic cases
+   *  are accessioned into the system and resulted. Those results are
+   *  then sent to [the external provider]. Then a response is sent
+   *  back showing the scores. The Lab didn't know what the actual
+   *  result was until it was sent back." Set only on a real,
+   *  synthetic proficiency-testing challenge case, accessioned the
+   *  exact same real way as any real patient case — undefined for
+   *  every real, genuine patient case. PathScribe never stores or
+   *  computes the external provider's own known answer itself; the
+   *  real scoring happens externally, and comes back later as a
+   *  real, separate inbound event
+   *  (CytologyProficiencyTestResultEventPayload.ts) — the same real
+   *  "PathScribe publishes/ingests its own specification" split
+   *  already established for hrHPV results and molecular batch
+   *  results. */
+  proficiencyTestContext?: { provider: string; challengeReferenceId: string };
+
+  /** Real, per PS-289/PS-292's own "batch-manifest scanning with
+   *  automatic control-slide appending" piece — same real "synthetic
+   *  case, accessioned the exact same real way as any real patient
+   *  case" pattern proficiencyTestContext above already establishes,
+   *  applied to a different real purpose: a lab-owned positive
+   *  control slide for a specific reagent lot, auto-created by
+   *  shouldAutoAppendControl.ts's own real consumer
+   *  (mockBatchService.ts) when a stain requiring one
+   *  (StainType.requiresTargetControl) is added to a real 'Staining'
+   *  batch with no real control for that same lot already in its own
+   *  manifest. Undefined for every real, genuine patient case. */
+  controlSlideContext?: { reagentLotId: string; stainTypeId: string };
+
+  /** Real, per direct guidance (PS-105): the case's own real, confirmed
+   *  abnormal-detection status — set only when a pathologist actually
+   *  confirms a suggestion (records a real notification via
+   *  handleRecordCriticalNotification, services/clinical/), never from
+   *  an unconfirmed AI/discrete-rule suggestion alone. Denormalized
+   *  here specifically so WorklistTable.tsx can render a real status
+   *  indicator without re-running detection (an AI call, a real
+   *  cost/latency concern) for every row on every render. null/undefined
+   *  = no confirmed abnormal finding on this case. */
+  abnormalDetectionStatus?: { severity: 'Abnormal' | 'Critical' | 'Malignant'; confirmedAt: string } | null;
+  /** Real, per direct guidance: architecture-testing only, NEVER a
+   *  real, licensed SNOMED CT / ICD-O-3 code — PS-130 (the real
+   *  implementation) stays genuinely blocked on a real terminology
+   *  source. See resolveSyntheticCoding.ts (services/abnormalDetection/)
+   *  for the full safety reasoning — every real code value here is
+   *  structurally, unmistakably fake even read completely alone,
+   *  never relying on this field's own name/comment as the only
+   *  safeguard. Set alongside abnormalDetectionStatus above, same
+   *  real confirm moment, same lifecycle. */
+  syntheticAbnormalCoding?: { system: 'TEST-SNOMED' | 'TEST-ICDO3'; code: string; display: string }[];
+
   /** When grossing was first, genuinely completed for this case - real
    *  fix, added specifically for TAT (turnaround time) calculation
    *  (components/Contribution/qualityCalculations.ts). Set once, at the
@@ -450,6 +702,15 @@ export interface Case {
   // see GrossingReportInstance above.
   grossingReports?: GrossingReportInstance[];
 
+  // ── Microscopic narrative system (Orchestration "Stage 1.5") ──
+  // Each entry is one specimen's real, free-text Microscopic
+  // Description — the real gap between Gross Complete and diagnostic
+  // Synoptic Template determination, per direct follow-up. See
+  // MicroscopicReportInstance above and
+  // utils/evaluateMicroscopicFinalizeGate.ts for the real, conditional
+  // finalize-blocking rules built against this field.
+  microscopicReports?: MicroscopicReportInstance[];
+
   // ── Synoptic fit re-evaluation (Orchestration Stage 2) ─────
   // Persisted result of the most recent evaluateSynopticAssignment() run
   // triggered by the Stage 2 BACKGROUND check (Save Draft with non-empty
@@ -474,19 +735,34 @@ export interface Case {
 
   accession: AccessionMetadata;
   originHospitalId: string;
-  /** Physical facility within originHospitalId's organisation — e.g.
-   *  'SITE-MRI' (Site.id, from Organisation.sites[]), not a bare
-   *  shortName like 'MRI'. Optional: most orgs today have exactly one
-   *  site, and originHospitalId alone is sufficient for anything that
-   *  doesn't need facility-level routing. Only populated where it's
-   *  actually captured — see AccessionPage.tsx. Added specifically for
-   *  ModeAInterfaceService's site-level hardware routing (an
-   *  organisation like MFT can have multiple physical Vantage/Cerebro
-   *  endpoints, one per site, which originHospitalId alone can't
-   *  distinguish between). */
+  /** Real, per direct guidance — Phase 3 of the Organisation/Site ->
+   *  Facility migration. Real, admin-editable Facility.id (a child of
+   *  the origin Enterprise Facility, via parentId) — e.g.
+   *  'c-site-mft-mri' for Manchester Royal Infirmary. Migrated from
+   *  Site.id (Organisation.sites[]); Optional: most orgs today have
+   *  exactly one real site, and originHospitalId alone is sufficient
+   *  for anything that doesn't need facility-level routing. Only
+   *  populated where it's actually captured — see AccessionPage.tsx.
+   *  Added specifically for ModeAInterfaceService's site-level
+   *  hardware routing (an enterprise like MFT can have multiple
+   *  physical Vantage/Cerebro endpoints, one per site, which
+   *  originHospitalId alone can't distinguish between). */
   originSiteId?: string;
   originEnterpriseId: string;
   isReferenceLabCase?: boolean;
+  /** Real, per PathScribe Interface Specification v1.2 §2.6 (patient
+   *  data minimization) - THIS case's own real
+   *  resolveOrCreatePatient() outcome at accession, not the patient
+   *  identity's permanent origin (MasterPatientRecord.establishedVia
+   *  is patient-level and never changes after first creation - a
+   *  later case for an already-known patient is a genuine 'matched'
+   *  event for THAT case, even though the underlying identity itself
+   *  was originally 'created' by an earlier, different case). Optional
+   *  since cases accessioned before this field existed won't have it -
+   *  callers should treat a missing value as 'full' scope (the safer
+   *  of the two mistakes, same reasoning §2.6 itself uses for
+   *  'ambiguous'), never assume 'reference' from absence. */
+  patientMatchOutcome?: 'matched' | 'created' | 'ambiguous';
 
   patient: Patient;
   /** Real fix, per direct follow-up on the rest of Phase 0: the real,
@@ -496,12 +772,47 @@ export interface Case {
    *  field) genuinely has no encounter to reference. */
   encounterId?: string;
   specimens: Specimen[];
+  /** Real, per direct guidance's own confirmed Autopsy Pathology
+   *  Module work (PS-261, RFP-APLIS-2026-GLOBAL §3.1.C) — the real,
+   *  missing link between Phase 1's own AutopsyCaseDetails type
+   *  (case authority, forensic/consent records, PAD/FAD snapshots,
+   *  organ retention, ancillary holds) and this app's own real,
+   *  central Case entity. Undefined for every real, non-autopsy
+   *  case. A real "temporary accession" — receiving and refrigerating
+   *  a body before full legal paperwork exists — is simply a real
+   *  Case created with a minimal, partial autopsy record (e.g. only
+   *  jurisdiction + caseAuthority + a real, logged verbal order on
+   *  forensicAuthorization) — the same real "the form already IS the
+   *  draft accession the moment any field is filled" pattern already
+   *  established elsewhere, never a separate, parallel accession
+   *  mechanism of its own. */
+  autopsy?: AutopsyCaseDetails;
   order: OrderMetadata;
   assignmentHistory?: AssignmentEvent[];
   diagnostic?: DiagnosticMetadata;
   coding?: CaseCoding;
-  caseFlags?: CaseFlag[];
-  specimenFlags?: SpecimenFlag[];
+  // Real, confirmed fix, per direct follow-up (Jira PS-57: "two
+  // incompatible flag-tracking systems corrupt each other's data",
+  // plus the follow-up "should be able to assign Flags at either a
+  // Case or Specimen level"): was CaseFlag[]/SpecimenFlag[] — an
+  // inline copy of a flag DEFINITION's own display fields (label,
+  // color, lisCode) — but the only real, live workflow that applies a
+  // flag to a case (FlagManagerModal.tsx, via caseFlagsApi.ts) has
+  // always written FlagInstance[] instead: an application RECORD
+  // referencing a real FlagDefinition by id (flagDefinitionId), with
+  // real audit fields (appliedAt/appliedBy/source/deletedAt/
+  // deletedBy) the old type never had room for.
+  //
+  // There is deliberately no case-level specimenFlags field —
+  // specimen-level flags live only on each Specimen's own
+  // specimenFlags (types/case/Specimen.ts), the only real way to know
+  // which specimen a flag belongs to, since FlagInstance itself
+  // carries no specimenId of its own. A prior, separate bug had
+  // HeaderBar.tsx's LIS-sync path writing specimen-level flags to a
+  // case-level specimenFlags field that the real flag-application
+  // workflow never read from or wrote to at all — fixed alongside
+  // this change to write to the correct, real location instead.
+  caseFlags?: FlagInstance[];
   status: CaseStatus;
   /** Real gap fixed alongside pendingAddendumId: both finalizedAt and a
    *  top-level finalizedBy were already real, established, widely-used
@@ -514,6 +825,31 @@ export interface Case {
    *  finalizeCase actually writes at the case root. */
   finalizedAt?: string;
   finalizedBy?: string;
+  /** Real feature, per direct follow-up: "How will pathscribe know it
+   *  needs to retain the patient's specimen? ... The hold Retention
+   *  flag should be also on the accession screen." See
+   *  types/case/RetentionHold.ts's own header for the full reasoning.
+   *  Case-level (not per-specimen) — settable at accession, before
+   *  individual specimens even exist yet. Multiple real holds can
+   *  accumulate over a case's life (a patient request, later a
+   *  litigation hold); none are ever deleted, only released. */
+  retentionHolds?: RetentionHold[];
+  /** Real feature, per direct follow-up: "putting a case on Hold at
+   *  the case level makes sense if there is something truly wrong...
+   *  add a tile in their worklist for Cases on Hold." See
+   *  types/case/CaseHold.ts's own header for the full reasoning and
+   *  why this is deliberately NOT the same thing as retentionHolds
+   *  above. Gates finalize (useSignOutWorkflow.ts) while any entry is
+   *  active — same "multiple can accumulate, none ever deleted" real
+   *  history posture as retentionHolds. */
+  caseHolds?: CaseHold[];
+  /** Real, architectural fix, per direct follow-up: "the matrix block
+   *  itself is the tracked asset." Case-level, not nested under any
+   *  one Specimen — see types/case/MatrixBlock.ts's own header for
+   *  the full reasoning. Each real, physical cassette shared by more
+   *  than one specimen lives here, exactly once; a specimen with no
+   *  shared tissue never touches this array at all. */
+  matrixBlocks?: MatrixBlock[];
   /** Real feature, per direct specification: Post-Sign-Out Release Buffer.
    *  The real, buffer-aware moment this report actually became final and
    *  dispatch-eligible — set immediately (equal to finalizedAt) when no
@@ -557,6 +893,21 @@ export interface Case {
   lastRevisionType?: RevisionType;
   createdAt: string;
   updatedAt: string;
+  /**
+   * Real feature, per direct follow-up: "Stamp every saved draft...
+   * with... station_id captured at the exact moment of saving. I
+   * only fixed the audit trail. The underlying case/report save
+   * operations themselves still don't carry station attribution."
+   * Confirmed directly: no equivalent of updatedBy even existed on
+   * Case at all before this — auto-injected at the one, real choke
+   * point every case write already passes through
+   * (CaseRouter.updateCase(), getEffectiveScanStationId()), the same
+   * pattern already proven for the audit trail. Genuinely absent (not
+   * backfilled) for any case whose last write predates this field —
+   * always reflects the REAL station of the most recent save, not a
+   * history of every station that ever touched this case.
+   */
+  lastUpdatedFromStation?: string | null;
   /** Real, incrementing optimistic-concurrency version for the whole case
    *  record — per the Case Hydration & Optimistic Concurrency Control
    *  spec's §3.1. Distinct from OrchestratorSection.updatedAt (per-section
@@ -569,6 +920,11 @@ export interface Case {
   version?: number;
   sharedWith?: string[];
   acceptedBy?: string;
+  /** Real, per direct guidance ("Return to Trainee"/"Reject with
+   *  Notes" — see CaseStatus.ts's own 'returned' entry for the full
+   *  real account): the attending who rejected a resident's
+   *  countersign submission and sent it back. Set alongside
+   *  status: 'returned'. */
   returnedBy?: string;
   closedBy?: string;
   /** See ReportingMode's doc comment below for the full history of this
@@ -582,6 +938,11 @@ export interface Case {
    *  them via syncPrimaryAssignee() (caseAssignmentSync.ts), not a
    *  replacement for them. */
   participants?: CaseParticipant[];
+  /** PS-342 (Batch 338): the spelling language chosen for this case only
+   *  (a SpellingLocale code, e.g. 'en-GB'). Absent: the assigned
+   *  pathologist's preference, then the ordering facility's default,
+   *  applies (services/spellcheck/resolveSpellingLocale.ts). */
+  spellingLocaleOverride?: string | null;
   /** Real, flat denormalization of participants — the specific staffIds
    *  currently eligible to finalize this case (active Primary/
    *  Attending), maintained automatically by CaseRouter.ts whenever a

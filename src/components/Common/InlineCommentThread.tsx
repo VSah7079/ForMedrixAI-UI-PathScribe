@@ -1,4 +1,5 @@
 import React, { useEffect, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 import { logEvent } from "../../audit/auditLogger";
 
@@ -22,6 +23,7 @@ export const InlineCommentThread: React.FC<InlineCommentThreadProps> = ({
   templateId,
   currentUser = "Dr. Reviewer"
 }) => {
+  const { t } = useTranslation();
   const [comments, setComments] = useState<Comment[]>([]);
   const [draft, setDraft] = useState("");
 
@@ -98,98 +100,51 @@ export const InlineCommentThread: React.FC<InlineCommentThreadProps> = ({
 
   // -----------------------------
   // Render
+  //
+  // The "no comments yet" case and the "has comments" case share the
+  // same comment-entry input — rendered once below, with the existing-
+  // comments list shown only when there's something to show.
   // -----------------------------
 
-  // If no comments yet, show only the input
-  if (!comments.length && !draft) {
-    return (
-      <div style={{ marginTop: 8, marginBottom: 8 }}>
-        <input
-          type="text"
-          placeholder="Add a comment..."
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === "Enter") handleAdd();
-          }}
-          style={{
-            width: "100%",
-            maxWidth: 360,
-            padding: 4,
-            fontSize: 12,
-            borderRadius: 4,
-            border: "1px solid #ddd"
-          }}
-        />
-      </div>
-    );
-  }
-
   return (
-    <div style={{ marginTop: 8, marginBottom: 8 }}>
-      {/* Existing Comments */}
-      <div style={{ marginBottom: 6 }}>
-        {comments.map(c => (
-          <div
-            key={c.id}
-            style={{
-              fontSize: 12,
-              padding: 6,
-              marginBottom: 4,
-              borderRadius: 4,
-              border: "1px solid #eee",
-              background: c.resolved ? "#f3f7f3" : "#f7f7ff",
-              display: "flex",
-              justifyContent: "space-between",
-              alignItems: "center"
-            }}
-          >
-            <div>
-              <strong>{c.author}</strong>: {c.text}
-              {c.resolved && (
-                <span style={{ marginLeft: 8, color: "#3b7a3b" }}>
-                  (resolved)
-                </span>
-              )}
-            </div>
-
-            <button
-              onClick={() => toggleResolved(c.id)}
-              style={{
-                fontSize: 11,
-                padding: "2px 6px",
-                borderRadius: 4,
-                border: "1px solid #ccc",
-                background: "#fff",
-                cursor: "pointer"
-              }}
+    <div className="ps-inlinecomment-wrap">
+      {comments.length > 0 && (
+        <div className="ps-inlinecomment-list">
+          {comments.map(c => (
+            <div
+              key={c.id}
+              className={`ps-inlinecomment-row${c.resolved ? ' ps-inlinecomment-row--resolved' : ''}`}
             >
-              {c.resolved ? "Reopen" : "Resolve"}
-            </button>
-          </div>
-        ))}
-      </div>
+              <div>
+                <strong>{c.author}</strong>: {c.text}
+                {c.resolved && (
+                  <span className="ps-inlinecomment-resolved-badge">
+                    {t('inlineCommentThread.resolvedBadge')}
+                  </span>
+                )}
+              </div>
 
-      {/* Add New Comment */}
-      <div>
-        <input
-          type="text"
-          placeholder="Add a comment..."
-          value={draft}
-          onChange={e => setDraft(e.target.value)}
-          onKeyDown={e => {
-            if (e.key === "Enter") handleAdd();
-          }}
-          style={{
-            width: "100%",
-            maxWidth: 360,
-            padding: 4,
-            fontSize: 12,
-            borderRadius: 4,
-            border: "1px solid #ddd"
-          }}
-        />
-      </div>
+              <button
+                onClick={() => toggleResolved(c.id)}
+                className="ps-inlinecomment-resolve-btn"
+              >
+                {c.resolved ? t('inlineCommentThread.reopenButton') : t('deliveryRulesSection.testPanel.resolveButton')}
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
+
+      <input
+        type="text"
+        placeholder={t('inlineCommentThread.addCommentPlaceholder')}
+        value={draft}
+        onChange={e => setDraft(e.target.value)}
+        onKeyDown={e => {
+          if (e.key === "Enter") handleAdd();
+        }}
+        className="ps-inlinecomment-input"
+      />
     </div>
   );
 };

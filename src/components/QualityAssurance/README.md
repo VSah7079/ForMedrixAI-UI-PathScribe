@@ -1,7 +1,8 @@
 # components/QualityAssurance/
 
-QA/compliance aggregate reporting tabs, hosted inside `pages/DeficienciesPage.tsx`
-alongside its own deficiency-tracking tabs. Six real, distinct reports —
+QA/compliance aggregate reporting tabs, hosted inside `pages/QualityAssurancePage.tsx`
+(renamed from `DeficienciesPage.tsx` — see that page's own README entry)
+alongside its own deficiency-tracking tabs. Eight real, distinct reports —
 each measures a genuinely different thing, deliberately not merged into
 one generic "QA dashboard" (see each file's own header for why it's
 separate from its siblings). **This folder never had a README before
@@ -11,9 +12,9 @@ this codebase's own stated convention of a README per real folder.
 **Pattern:** Not the interface/mock/firestore triplet — these are report
 views, not data services. Each tab fetches from the real service(s) it
 reports on (`countersignService`, `intraoperativeService`,
-`reconciliationService`, `fppeAssignmentService`, `auditService`) plus
-`caseRouter.getAll()` for case-level context, and renders real charts/
-tables client-side.
+`reconciliationService`, `fppeAssignmentService`, `auditService`,
+`accessRequestService`) plus `caseRouter.getAll()` for case-level
+context, and renders real charts/tables client-side.
 
 ## Files
 
@@ -27,7 +28,13 @@ tables client-side.
   pending vs. merged intraoperative entries, real merge-log correlation
   via the audit trail (`Intraop Entry Merged` events).
 - **`ReconciliationTab.tsx`** — Frozen/permanent diagnostic concordance
-  rate — discordance tracking distinct from the above two.
+  rate — discordance tracking distinct from the above two. **Real,
+  current status (PS-113, Stage 4):** migrated to read from the new,
+  generic `qaActivityRecordService` (filtered to the real Frozen vs
+  Final activity type), not the old `reconciliationService` — every
+  field access updated (`fieldValues.frozenCategory`/`finalCategory`,
+  `isTeachingOnboardingCase`, `reviewerFeedback`), including the real
+  export function and both render tables.
 - **`FppeTrackingTab.tsx`** — Department-wide FPPE/Credentialing Review
   oversight (Joint Commission new-hire credentialing verification, not
   ACGME trainee milestones — a genuinely different regulatory context
@@ -59,6 +66,81 @@ tables client-side.
   all** — it isn't a "configure once" settings screen; it's a recurring
   compliance work queue, the same shape as every other tab in this
   folder, not the shape of TAT Configuration or Session Security.
+- **`RetentionHoldsTab.tsx`** — real feature, per direct follow-up: "I
+  think we will need Management review of Cases On Hold." Before this,
+  a real hold only became visible by opening that one specific case's
+  own Synoptic Report page — no aggregate view existed for a lab
+  director/manager to see every case currently on hold across the
+  whole lab, how long each has been sitting, or to confirm a hold is
+  still valid. Same real "read view over what already exists" posture
+  as `DriftCorrectionTab.tsx` — no new storage; retention holds already
+  live directly on `Case` (`types/case/RetentionHold.ts`), this just
+  surfaces them in aggregate. "Reviewing" a hold here (`reviewedAt`/
+  `reviewedByUserId`/`reviewedByUserName` on `RetentionHold` itself) is
+  deliberately separate from releasing one — release stays exactly
+  where it already lives (`RetentionHoldModal`, on the case itself);
+  this tab links straight there via "Open Case" rather than duplicating
+  that action.
+- **`PatientManagementSection.tsx`** — **NEW.** Real, per direct
+  guidance ("Since we have this PathScribe patient concept we need a
+  mechanism to perform Merge, encounter record move or link. Those
+  aren't accession activities. Perhaps a new section of Quality
+  Assurance maybe Patient Management"). The second half of that
+  request — the first half (fixing `mergeIntoExistingPatient()`/
+  `moveCaseToPatient()` to also correctly repoint a patient's real
+  Encounter records, not just Cases) is already real and done, see
+  `services/patients/README.md`. Real, proactive search (reuses
+  `mockPatientIndexService.searchPatients()` directly, same real
+  cross-tenant scoping `PatientMatchReviewSection.tsx` already uses —
+  a standard user searches only their own organisation, a
+  cross-tenant-permitted admin searches every real, active one) lets a
+  real user find any patient and act on them immediately — Merge,
+  Link (either `relationshipType`), or Move a specific case — rather
+  than depending on one of this app's three other, real but scattered
+  entry points (`PatientMatchReviewSection.tsx`'s own review queue,
+  system-flagged only; the inbound A24/A40 HL7 path, also
+  system-triggered only; `AccessionPage.tsx`'s own "Check for Existing
+  Patient" search, accessioning-time only, `same_person` only). This
+  screen doesn't replace any of those three — it's the one, real,
+  on-demand place for any real patient at any time. Reuses
+  `pages/AccessionPage/PatientLinkSearch.tsx` for every real
+  "search for a second/target patient" step across all three actions
+  — never a fourth, separate implementation of the same real search.
+  Every action gets a real, explicit `ConfirmModal` before executing,
+  with action-specific language (Merge is flagged irreversible; Link
+  and Move both explicitly state neither identity gets merged or
+  retired). No new component-level test file — same established
+  convention as `Config/System/DftExportPreviewSection.tsx`/
+  `OutboundMessagePreviewSection.tsx`: a thin UI wrapper over
+  already-tested service functions (every real action here is already
+  covered by `services/patients/mockPatientIndexService.test.ts`'s own
+  extensive suite) doesn't need a second, duplicate layer of coverage.
+  **Real, known limitation, not silently glossed over**: the
+  second/target patient search (via `PatientLinkSearch.tsx`) is scoped
+  to the primary patient's own single organisation — that shared
+  component takes one `organisationId`, not a list. A genuine
+  cross-organisation merge/link (the same real person seen at two
+  different facilities within the same lab enterprise) isn't
+  reachable from this screen yet; extending `PatientLinkSearch.tsx`
+  itself to support multiple organisations would affect its other real
+  caller (`AccessionPage.tsx`) too, so it's flagged as real, separate,
+  next-step work rather than changed here.
+  **Real, per direct follow-up ("Molecular testing across siblings")**:
+  the `family_relation` option's own label is now genuinely general —
+  "e.g. newborn/mother, or siblings for cascade molecular testing" —
+  not narrowly worded around only the one scenario that originally
+  motivated the `relationshipType` split. See
+  `components/PatientHistory/README.md`'s own entry for the matching
+  real fix on the display side — "Related Patients" is now navigable,
+  not just plain text, exactly the kind of real, useful capability the
+  siblings scenario needs (quickly reaching a sibling's own prior
+  molecular finding, not just seeing their name).
+- **`AccessRequestResponseTab.tsx`** — real feature, per direct
+  follow-up: "Do we Track the request to gain access? ... How long did
+  the Admins take?" The department-wide equivalent of what "My
+  Contribution" shows one admin at a time. Real turnaround time
+  (`resolvedAt - requestedAt`) across all three real request types
+  (Pediatric, Pool, Orchestration).
 - **`QaScopeSwitcher.tsx`** — Shared scope-filter dropdown used by most
   tabs above (FppeTrackingTab has no case data to scope;
   PatientMatchReviewSection uses its own organisation picker instead,
@@ -82,7 +164,8 @@ tables client-side.
      carries no organisation field to filter on directly) and a
      cross-tenant-permitted viewer still sees the full, untruncated list.
 - **`qaReportUtils.ts`** — Shared `QaScope` type, `caseMatchesScope()`,
-  and `exportQaReportRows()` (the real XLSX export every tab uses).
+  and `exportQaReportRows()` (the real CSV export every tab uses, via
+  `utils/csv.ts` — PS-48 moved this off the `xlsx` package).
   `caseMatchesScope()` is where the organisation-level check above
   actually lives — resolves `Case.originHospitalId` through
   `getOrganisationByHospitalId()` (`services/organisation/`), the same
@@ -122,6 +205,58 @@ tables client-side.
   collapsing them into one. See `services/organisation/README.md` for
   the fuller history of how these two concepts ended up disconnected in
   the first place.
+
+## Batch 353
+
+**`EnterpriseRollupTab.tsx`:**
+- It gets TAT targets from `tatTargetService`, and facilities, RVU tables and the audit log through `@/services`. It is off both deployment baselines.
+- Jurisdiction names on screen now use `jurisdictionNames.*`. The CSV keeps English, per its export convention.
+
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+Case numbers and MRNs in these tables and pickers are tagged: `AccessRequestResponseTab`, `CytologyHistologyCorrelationPrintView`, `CytologyQaTab` (patient MRN columns), `DriftCorrectionTab`, `InspectionModeTab`, `PatientManagementSection` (the move-case picker).
+
+## Batch 367 (PS-74): no inline CSS
+
+`CytologyQaTab.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`CytologyQaTab.tsx` takes `cytologyQaReportService` from `@/services`, and is off the deployment baseline.
+
+## Export capabilities (Batch 369, PS-355)
+
+- **One capability per report, 14 in all.** `exportQaReportRows(capability, rows, filename)` now takes the report's capability and goes through `services/qualityAssurance/qaExport.ts`, which checks it (audited) before any file is produced.
+
+  | Report | Where | Capability |
+  |---|---|---|
+  | Deficiencies (active and closed) | `QualityAssurancePage.tsx` | `qa:deficiencies:export` |
+  | Management reviews | `QualityAssurancePage.tsx` | `qa:management-reviews:export` |
+  | Billing deficiencies | `QualityAssurancePage.tsx` | `qa:billing-deficiencies:export` |
+  | Frozen section linkage | `IntraopLinkageTab` | `qa:intraop-linkage:export` |
+  | Discordance and reconciliation | `ReconciliationTab` | `qa:reconciliation:export` |
+  | Countersign turnaround | `CountersignTurnaroundTab` | `qa:countersign-turnaround:export` |
+  | Credentialing review (FPPE) | `FppeTrackingTab` | `qa:fppe-tracking:export` |
+  | Post-final drift | `DriftCorrectionTab` | `qa:drift-correction:export` |
+  | Patient match review | `PatientMatchReviewSection` | `qa:patient-match-review:export` |
+  | Access requests | `AccessRequestResponseTab` | `qa:access-request-response:export` |
+  | Cytology–histology correlation (CSV and print) | `CytologyQaTab` | `qa:cytology-histology-correlation:export` |
+  | QA dashboard | `QaDashboardTab` | `qa:activity-dashboard:export` |
+  | Inspection evidence binder | `InspectionModeTab` | `qa:inspection-evidence:export` (requires the dashboard's) |
+  | Enterprise rollup | `EnterpriseRollupTab` | `qa:enterprise-rollup:export` |
+
+- **Buttons:** every export button is a `CapabilityButton`, greyed out with the reason for anyone without the capability. The cytology–histology **Print** button checks the capability through `authorizationService.enforce` before opening the print view.
+- **Deployment baseline:** `InspectionModeTab`, `IntraopLinkageTab`, `PatientMatchReviewSection`, `QaDashboardTab` and `ReconciliationTab` take their services from `@/services` and are off the baseline.
+- **Found, not fixed:** this file's `qaReportUtils.ts` header says QA exports never include patient name, MRN or DOB. The cytology–histology correlation export includes a `Patient MRN` column. Now it at least needs its own capability and is audited, but either the column or the stated convention should change. That's Pete's call.
+
+## Batch 370 (PS-356): facility scope on exports
+
+`exportQaReportRows` now requires a context:
+- tabs with a scope switcher pass `qaScopeContext(scope)`;
+- the others pass `qaScopeContext()` (all facilities).
+
+The same context goes on each export `CapabilityButton`. Someone limited to some facilities sees enterprise-wide exports greyed out, with "your facility assignment doesn't cover it", and can export a client scope within their facilities. `CytologyQaTab`'s histology table receives the context as a prop.
 
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

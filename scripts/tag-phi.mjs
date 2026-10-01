@@ -10,6 +10,19 @@
  *   node scripts/tag-phi.mjs            ← audit mode (safe, read-only)
  *   node scripts/tag-phi.mjs --write    ← auto-tag mode (modifies files)
  *   node scripts/tag-phi.mjs --write --dry-run  ← shows diffs, no writes
+ *   node scripts/tag-phi.mjs [--write] <file> [<file> ...]
+ *                                        ← scope the scan to specific files
+ *                                          (paths relative to cwd), instead of
+ *                                          walking all of src/ — useful for the
+ *                                          PS-72 file-by-file rollout, where each
+ *                                          pass targets a named file, not a
+ *                                          whole-tree pass.
+ *
+ * Batch 363 (PS-72): this audit matches lines, so it also flags class names,
+ * comments, filters and props, and can't see a data-phi on an enclosing
+ * element. The count that decides PS-72 is the structure-aware check in
+ * src/services/phi/ (phiTagging.guard.test.ts). This script remains useful
+ * for --write on simple cases.
  *
  * What it detects:
  *   JSX expressions like {patient.name}, {mrn}, {accessionNumber} etc.
@@ -29,6 +42,9 @@ import path from 'path';
 const WRITE   = process.argv.includes('--write');
 const DRY_RUN = process.argv.includes('--dry-run');
 const SRC_DIR = path.resolve('./src');
+// Positional args (anything not a recognized flag) scope the scan to those
+// specific files instead of walking all of src/.
+const FILE_ARGS = process.argv.slice(2).filter(a => !a.startsWith('--'));
 
 // ─── PHI pattern registry ─────────────────────────────────────────────────────
 // Each entry: { pattern: RegExp, type: string, description: string }
@@ -74,8 +90,18 @@ const PHI_PATTERNS = [
     pattern: /\b(?:patient|p)\s*(?:\?|\!)?\s*\.\s*(?:insurance|insurer|policyNumber|payerId)\b/i },
 
   // ── Referring / ordering ──
-  { type: 'name',       description: 'Referring physician',
-    pattern: /\b(?:referringPhysician|orderingPhysician|requestingClinician)\b(?!\s*[:=])/i },
+  // Deliberately NOT a pattern here. Direct decision on PS-72's scope:
+  // staff/physician names (Requesting Provider, Assign to Pathologist,
+  // referring/ordering physician, "created by"/"assigned by" fields, etc.)
+  // are staff identity data, not patient PHI — GDPR Special Category Data
+  // doesn't cover them, and they're the wrong tool for the job anyway:
+  // staff-name protection belongs to RBAC and data minimization (who can
+  // see which staff names in the UI at all), not a screenshot-redaction
+  // overlay built for patient identifiers. A `referringPhysician` /
+  // `orderingPhysician` / `requestingClinician` pattern used to live here
+  // and got removed for this reason — don't re-add it without checking
+  // with Pete first, since this is a deliberate, direct scope call, not
+  // an oversight.
 
   // ── Age (quasi-identifier) ──
   { type: 'dob',        description: 'Patient age',
@@ -84,8 +110,16 @@ const PHI_PATTERNS = [
 
 // JSX inline elements worth tagging
 const INLINE_ELEMENTS = ['span', 'td', 'th', 'p', 'div', 'label', 'strong', 'em', 'b', 'li', 'h1', 'h2', 'h3', 'h4'];
+// Real bug found and fixed: the closing-tag half of this regex used to be
+// <\/(?:span|td|div|...)> — matching ANY inline element name, not
+// specifically the one that opened. That let e.g. <span>{x}</div> satisfy
+// the whole pattern whenever the real, unrelated </div> for some OUTER
+// element happened to appear right after the expression — silently
+// consuming and discarding that real closing tag on write, corrupting
+// valid JSX. Fixed with a backreference (\1) so the closing tag must be
+// the exact same element that opened, not just any element in the list.
 const INLINE_RE = new RegExp(
-  `<(${INLINE_ELEMENTS.join('|')})(\\s[^>]*)?>\\s*\\{([^}]+)\\}\\s*<\\/(?:${INLINE_ELEMENTS.join('|')})>`,
+  `<(${INLINE_ELEMENTS.join('|')})(\\s[^>]*)?>\\s*\\{([^}]+)\\}\\s*<\\/\\1>`,
   'g'
 );
 
@@ -162,7 +196,9 @@ function tagFile(filePath) {
 
 // ─── Main ─────────────────────────────────────────────────────────────────────
 
-const files   = getAllTsxFiles(SRC_DIR);
+const files   = FILE_ARGS.length > 0
+  ? FILE_ARGS.map(f => path.resolve(f))
+  : getAllTsxFiles(SRC_DIR);
 let totalHits = 0;
 let totalTagged = 0;
 const report  = [];

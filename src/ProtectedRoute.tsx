@@ -1,25 +1,18 @@
-import { Navigate, Outlet } from "react-router-dom";
+import { Navigate, Outlet, useLocation } from "react-router";
 import './pathscribe.css';
 import { useEffect } from "react";
 import { useAuth } from "@contexts/AuthContext";
 import { useIdleTimeout } from "@/hooks/useIdleTimeout";
 import { useSessionSupersedeDetection } from "@/hooks/useSessionSupersedeDetection";
 import SessionExpiryWarningModal from "@/components/Common/SessionExpiryWarningModal";
-
-const SUPERSEDED_NOTICE_KEY = 'pathscribe_show_superseded_notice';
+import { flagSupersededNotice } from "@/services/session/sessionSupersedeService";
+import type { LoginRouteState } from "@/pages/LoginPage";
 
 const ProtectedRoute = () => {
   const { user, isAuthenticated, loading, logout } = useAuth();
+  const location = useLocation();
 
-  // Force a re-check of auth state on mount.
-  // This ensures Back/Forward cannot resurrect stale UI state.
-  useEffect(() => {
-    // Triggering a re-render is enough because isAuthenticated
-    // is derived from localStorage in the updated AuthContext.
-  }, []);
-
-  // Phase 1 of the Inactivity Timeout & Draft Recovery spec (see
-  // PRIORITY_FIXES.md). Only active once actually authenticated -- no
+  // Phase 1 of the Inactivity Timeout & Draft Recovery spec. Only active once actually authenticated -- no
   // point running an idle timer against the login page itself.
   const { showWarning, secondsRemaining, expired, stayLoggedIn } = useIdleTimeout(isAuthenticated);
 
@@ -37,17 +30,19 @@ const ProtectedRoute = () => {
 
   useEffect(() => {
     if (superseded) {
-      try { sessionStorage.setItem(SUPERSEDED_NOTICE_KEY, '1'); } catch {}
+      flagSupersededNotice();
       logout(false);
     }
   }, [superseded, logout]);
 
   if (loading) {
-    return <div style={{ background: "#0f172a", height: "100vh" }} />;
+    return <div className="ps-auth-check-loading" />;
   }
 
   if (!isAuthenticated) {
-   return <Navigate to="/login" replace />;
+    // PS-60: the login page returns the user here after signing in.
+    const from = `${location.pathname}${location.search}${location.hash}`;
+    return <Navigate to="/login" replace state={{ from } satisfies LoginRouteState} />;
   }
 
   return (

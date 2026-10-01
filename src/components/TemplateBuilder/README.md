@@ -22,11 +22,16 @@ documented adapter) previewing an assembled Template.
   `mockReportTemplateService`. No issues.
 - **`PartLibraryTab.tsx`** — Browse/create/edit/duplicate Report Parts.
   Correctly protects 14 built-in standard parts (`PROTECTED` set) from
-  deletion. No issues.
+  deletion. No issues. **Real addition ("Parts Library... should also
+  be tied to a Performing Lab facility"), per direct guidance:** a real
+  Performing Lab filter (All/Global/named lab) and a lab badge on every
+  card, same Global/scoped convention as everywhere else in this app.
 - **`PartBuilderPage.tsx`** — Full-screen single-Part editor. Own header
   correctly documents that `TemplateCanvas`/`TemplateInspector`/
   `TemplatePalette` are shared, unmodified, across Part-editing and
   Template-editing — they only care about `TemplateNode[]`. No issues.
+  **Real addition:** a Performing Lab selector in the metadata panel,
+  editing the new `ReportPart.performingLabFacilityId` field.
 - **`TemplateCanvas.tsx`** (725 lines) — The drag/drop node canvas, all 18
   node types. No issues found; not read line-by-line given its size and
   that nothing surfaced at the architecture level — worth a dedicated pass
@@ -40,7 +45,21 @@ documented adapter) previewing an assembled Template.
 - **`TemplateAssemblyPage.tsx`** (758 lines) — The real Template editor:
   ordered `AssemblySlot`s, drag-to-reorder, page-zone validation
   (`validateAssembly`). **See Notes — the OldTemplate adapter, verified
-  correct, not a bug.**
+  correct, not a bug.** **Real fix ("Parts Library... should also be
+  tied to a Performing Lab facility"), per direct guidance:** confirmed
+  directly that `ReportPart.performingLabFacilityId` (new field, added
+  the same session) had zero effect here before this — the two real
+  part-selection UIs on this page (`PartPicker` modal and the always-
+  visible `PartsPanel` sidebar) are entirely separate from
+  `PartLibraryTab.tsx`'s own filtering and previously ignored the field
+  completely, meaning the tag existed but never actually constrained
+  which parts an admin could assemble into a real template. A single
+  `labFilter` state, lifted to the page's own top level (not local to
+  either picker), is now shared by both, so browsing the sidebar and
+  picking via "+ Add slot" always agree on the same lab context — no
+  lab selected shows every part unfiltered, same "no filter" convention
+  the Workstation & Hardware group-level selector already established;
+  a specific lab shows that lab's own parts plus every Global one.
 - **`TemplatePreviewPanel.tsx`** (573 lines) — Word-style paginated
   preview, auto-pagination, sticky page-size preference. Consumes the
   adapter output from `TemplateAssemblyPage.tsx` — see Notes.
@@ -49,7 +68,14 @@ documented adapter) previewing an assembled Template.
   Correctly cross-references `services/templates/templateService.ts`'s
   synoptic protocol list (not a mix-up between the two "template"
   systems) — Pass 1 of report-template resolution genuinely depends on
-  which CAP/synoptic protocol is active. No issues.
+  which CAP/synoptic protocol is active. No issues. **Real addition
+  (Report Template by facility, if none defined then Enterprise):** the
+  Test panel now resolves the selected client's real Enterprise parent
+  (`Facility.parentId`, same one-hop reasoning as the real production
+  path in `TemplateRoutingService.resolveReportTemplateAsync()`)
+  directly against the already-loaded `clients` list, so an admin
+  testing "what template does Facility X get" sees the real Enterprise
+  fallback exercised too, not just Pass 0's own direct lookup.
 
 ## Notes
 
@@ -79,6 +105,20 @@ documented adapter) previewing an assembled Template.
   `TemplatePreviewPanel.tsx` to consume `AssemblySlot[]` directly someday
   to retire `types/template.ts`'s `ReportTemplate` export entirely, but
   nothing is broken today.
+
+## Localized Duplicate names (Batch 317, PS-73)
+
+`PartLibraryTab` and `TemplateListTab` now pass the copy's name to `clone()` from `t('common.copyOfName', { name })`. The services no longer fall back to an English `"(Copy)"`. "Use Standard Template" names its copy with `t('templateListTab.defaultCustomTemplateName')`, where it used to hard-code `'My Surgical Pathology Report'`.
+
+`RoutingRulesTab`'s protocol pickers no longer offer **archived** synoptic protocols for new rules. A rule that already points at one still shows it. The non-published status beside a protocol's name is translated (`routingRulesTab.protocolWithStatus` + the lifecycle label); it used to show the raw English value, e.g. "(in_review)".
+
+## Batch 367 (PS-74): no inline CSS
+
+`TemplateAssemblyPage.tsx`, `TemplateCanvas.tsx`, `TemplateInspector.tsx`, `TemplatePalette.tsx`, `TemplatePreviewPanel.tsx`: the remaining inline styles moved into `pathscribe.css` classes. Per-instance values (sizes, positions, a colour) are passed as custom properties, and colours are derived with `color-mix()` from `--ps-hue` instead of hex strings built in JSX. The browser checks are listed in the Batch 367 changelog (`src/i18n/README.md`). The app-wide check is `services/styleRules/inlineCss.guard.test.ts`.
+
+## Batch 368
+
+`TemplateAssemblyPage.tsx` takes `reportTemplateService`, `reportPartService` and `onReportPartsChanged` from `@/services`, and is off the deployment baseline.
 
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

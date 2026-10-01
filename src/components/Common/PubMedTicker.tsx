@@ -2,19 +2,26 @@
  * PubMedTicker.tsx — src/components/Common/PubMedTicker.tsx
  *
  * Displays the most recent peer-reviewed article matching the pathology
- * domain query, opening it in a companion window.
+ * domain query (personalized by the current user's own real subspecialty
+ * assignments, when set), opening it in a companion window. Also offers a
+ * lightweight way to override today's featured article by pasting a PMID
+ * or PubMed link directly — see the header comment on the paste field
+ * below for why this is a plain <input>, not the Clipboard API.
  *
- * Presentation only. Fetching, sanitising, caching and rate-limit backoff all
- * live in src/services/research; window placement and position memory come
- * from the shared useCompanionWindow hook — the same launcher the EMR Sidecar
- * uses, rather than a second parallel mechanism.
+ * Presentation only. Fetching, sanitising, caching, personalization and
+ * rate-limit backoff all live in src/services/research and useLatestResearch;
+ * window placement and position memory come from the shared
+ * useCompanionWindow hook — the same launcher the EMR Sidecar uses, rather
+ * than a second parallel mechanism.
  *
  * Copyright (c) 2026 ForMedrixAI LLC. All rights reserved.
  */
 
 import React, { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useLatestResearch } from '@hooks/useLatestResearch';
 import { useCompanionWindow } from '@hooks/useCompanionWindow';
+import { parsePubMedInput } from '@/utils/parsePubMedInput';
 
 const ExternalLinkIcon: React.FC = () => (
   <svg
@@ -36,8 +43,11 @@ const ExternalLinkIcon: React.FC = () => (
   </svg>
 );
 
+type PasteState = { kind: 'idle' } | { kind: 'loading' } | { kind: 'success' } | { kind: 'error'; message: string };
+
 const PubMedTicker: React.FC = () => {
-  const { article, isLoading } = useLatestResearch();
+  const { t } = useTranslation();
+  const { article, isLoading, setFeatured, refresh, isRefreshing } = useLatestResearch();
 
   // Reference material, not patient context: closeOnUnmount is false so
   // navigating away from the dashboard does not shut a paper the user is
@@ -55,12 +65,43 @@ const PubMedTicker: React.FC = () => {
   // an ordinary new tab is the honest fallback here.
   const [popupBlocked, setPopupBlocked] = useState(false);
 
+  // Real feature, per direct follow-up: "If they access the article and
+  // then search and find a different article, can we update the pubmed
+  // article link to the new article so they don't have to search again."
+  // A plain, visible <input> the user pastes into — deliberately not
+  // navigator.clipboard.readText() on window focus. Reading the clipboard
+  // programmatically needs real, explicit browser permission (a cold read
+  // fails outright until granted, confirmed directly), and this app
+  // targets VDI/Citrix estates where clipboard redirection between the
+  // session and the local machine is often restricted by IT policy
+  // regardless. A normal paste into a visible field needs no special
+  // permission at all and works everywhere.
+  const [pasteValue, setPasteValue] = useState('');
+  const [pasteState, setPasteState] = useState<PasteState>({ kind: 'idle' });
+
+  const handlePasteSubmit = async () => {
+    const pmid = parsePubMedInput(pasteValue);
+    if (!pmid) {
+      setPasteState({ kind: 'error', message: t('pubMedTicker.pasteInput.errors.noPmidFound') });
+      return;
+    }
+    setPasteState({ kind: 'loading' });
+    const result = await setFeatured(pmid);
+    if (result) {
+      setPasteState({ kind: 'success' });
+      setPasteValue('');
+      window.setTimeout(() => setPasteState({ kind: 'idle' }), 2500);
+    } else {
+      setPasteState({ kind: 'error', message: t('pubMedTicker.pasteInput.errors.articleNotFound') });
+    }
+  };
+
   if (isLoading) {
     return (
       <div className="ps-litfeed" aria-hidden="true">
         <span className="ps-litfeed-badge">
           <span className="ps-litfeed-dot" />
-          From PubMed
+          {t('pubMedTicker.badge')}
         </span>
         <span className="ps-litfeed-skeleton" />
       </div>
@@ -92,30 +133,68 @@ const PubMedTicker: React.FC = () => {
   };
 
   return (
-    <div className="ps-litfeed">
-      {/* Names the source rather than implying endorsement. This is an
-          automated feed of the most recent matching article, not a curated
-          or reviewed selection. */}
-      <span
-        className="ps-litfeed-badge"
-        title="Most recent matching article from PubMed. Automated feed, not a curated selection."
-      >
-        <span className="ps-litfeed-dot" />
-        From PubMed
-      </span>
+    <div className="ps-litfeed-wrap">
+      <div className="ps-litfeed">
+        {/* Names the source rather than implying endorsement. This is an
+            automated feed of the most recent matching article, not a curated
+            or reviewed selection. */}
+        {/* Names the source rather than implying endorsement, and — per
+            direct follow-up: "by clicking the pubmed button, I'd like
+            to trigger a refresh of the presented article" — doubles as
+            a real, explicit refresh trigger. Deliberately a <button>,
+            not part of the <a> below, so clicking it never navigates
+            or opens the companion window; it only re-checks. */}
+        <button
+          type="button"
+          className="ps-litfeed-badge ps-litfeed-badge--button"
+          onClick={() => void refresh()}
+          disabled={isRefreshing}
+          title={isRefreshing ? t('pubMedTicker.refreshTooltip.checking') : t('pubMedTicker.refreshTooltip.idle')}
+        >
+          <span className={`ps-litfeed-dot${isRefreshing ? ' ps-litfeed-dot--refreshing' : ''}`} />
+          {t('pubMedTicker.badge')}
+        </button>
 
-      <a
-        className="ps-litfeed-link"
-        href={article.url}
-        target="_blank"
-        rel="noopener noreferrer"
-        onClick={handleClick}
-        aria-label={`Open the PubMed listing for "${article.title}" in a companion window`}
-      >
-        <span className="ps-litfeed-title">{article.title}</span>
-        {metadata && <span className="ps-litfeed-meta">{metadata}</span>}
-        <ExternalLinkIcon />
-      </a>
+        <a
+          className="ps-litfeed-link"
+          href={article.url}
+          target="_blank"
+          rel="noopener noreferrer"
+          onClick={handleClick}
+          aria-label={t('pubMedTicker.openAriaLabel', { title: article.title })}
+        >
+          <span className="ps-litfeed-title">{article.title}</span>
+          {metadata && <span className="ps-litfeed-meta">{metadata}</span>}
+          <ExternalLinkIcon />
+        </a>
+      </div>
+
+      <div className="ps-litfeed-paste">
+        <input
+          className="ps-litfeed-paste-input"
+          type="text"
+          value={pasteValue}
+          onChange={e => { setPasteValue(e.target.value); if (pasteState.kind === 'error') setPasteState({ kind: 'idle' }); }}
+          onKeyDown={e => { if (e.key === 'Enter') void handlePasteSubmit(); }}
+          placeholder={t('pubMedTicker.pasteInput.placeholder')}
+          disabled={pasteState.kind === 'loading'}
+        />
+        {pasteValue.trim().length > 0 && pasteState.kind !== 'success' && (
+          <button
+            className="ps-litfeed-paste-btn"
+            onClick={() => void handlePasteSubmit()}
+            disabled={pasteState.kind === 'loading'}
+          >
+            {pasteState.kind === 'loading' ? t('pubMedTicker.pasteInput.checkingButton') : t('pubMedTicker.pasteInput.applyButton')}
+          </button>
+        )}
+        {pasteState.kind === 'success' && (
+          <span className="ps-litfeed-paste-success">{t('pubMedTicker.pasteInput.successMessage')}</span>
+        )}
+        {pasteState.kind === 'error' && (
+          <span className="ps-litfeed-paste-error">{pasteState.message}</span>
+        )}
+      </div>
     </div>
   );
 };

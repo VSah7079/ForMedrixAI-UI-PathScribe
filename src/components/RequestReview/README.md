@@ -43,5 +43,10 @@ asynchronously instead of available synchronously from a constant.
 Confirmed via grep: zero remaining references to the old `REVIEWERS`
 constant anywhere in the file.
 
+
+## Batch 363 (PS-72): patient data tagged for screenshot redaction
+
+`RequestReviewModal.tsx`: the confirmation text, which names the case, is tagged.
+
 ---
 *See [components/README.md](../README.md) for how this folder fits the whole components/ layer.*

@@ -15,34 +15,17 @@
 //    for the report to be actionable (someone has to know which case to
 //    go look at).
 // ─────────────────────────────────────────────────────────────────────────────
-import * as XLSX from 'xlsx';
-import { getOrganisationByHospitalId } from '@/services/organisation/organisationService';
+import { authorizationService, exportQaReport, type QaExportCapability } from '@/services';
+import type { CapabilityContext } from '@/services/authorization/evaluateCapability';
+export { qaScopeContext } from '@/services/qualityAssurance/qaExport';
 
-export type QaScope =
-  | { level: 'enterprise' }
-  | { level: 'client'; clientId: string }
-  // Added alongside the Post-Finalization Drift tab — the real
-  // organisation-level scope, previously missing entirely from this
-  // type. 'client' filters by referring provider (order.clientId);
-  // this filters by which lab organisation actually owns the case
-  // (Case.originHospitalId, resolved via the same
-  // getOrganisationByHospitalId chain services/auth/caseAccessControl.ts
-  // already uses as the real tenant boundary elsewhere in this app).
-  // These are genuinely different, both-real dimensions — a referring
-  // client and the lab organisation processing their case are not the
-  // same thing — so this is additive, not a replacement for the
-  // existing client-level scope.
-  | { level: 'organisation'; organisationId: string };
-
-/** Real Case shape is untyped `any` at this layer (matches the loose
- *  typing caseRouter.getAll() already returns elsewhere in this
- *  codebase) — only the fields this needs. */
-export function caseMatchesScope(c: { order?: { clientId?: string }; originHospitalId?: string }, scope: QaScope): boolean {
-  if (scope.level === 'enterprise') return true;
-  if (scope.level === 'client') return c?.order?.clientId === scope.clientId;
-  const org = getOrganisationByHospitalId(c?.originHospitalId ?? '');
-  return org?.id === scope.organisationId;
-}
+// Real, per direct follow-up: QaScope and caseMatchesScope moved to
+// services/qualityAssurance/qaScope.ts — a real service must never
+// depend on a type defined in components/. Re-exported here so this
+// file's own seven existing real callers need no import changes.
+import type { QaScope } from '@/services/qualityAssurance/qaScope';
+export type { QaScope } from '@/services/qualityAssurance/qaScope';
+export { caseMatchesScope } from '@/services/qualityAssurance/qaScope';
 
 /**
  * Real, single source of truth for "what should this scope be called in
@@ -61,19 +44,22 @@ export function scopeLabel(scope: QaScope): string {
   return scope.organisationId;
 }
 
-/** Exports rows to an XLSX file, matching the exact pattern already
- *  established in ProtocolDictionarySection.tsx (XLSX.utils.json_to_sheet
- *  + XLSX.writeFile) rather than introducing a second export mechanism.
- *  Callers are responsible for making sure `rows` themselves are already
- *  PHI-safe — this function doesn't inspect or filter row content, since
- *  it has no way to know which keys are safe for a given report's shape.
- *  Each tab builds its own export rows explicitly (see
- *  IntraopLinkageTab.tsx / ReconciliationTab.tsx) rather than dumping raw
- *  service objects, specifically so nothing PHI-bearing can slip through
- *  by accident (e.g. a future field added to IntraoperativeEntry). */
-export function exportQaReportRows(rows: Record<string, string | number>[], filename: string): void {
-  const ws = XLSX.utils.json_to_sheet(rows);
-  const wb = XLSX.utils.book_new();
-  XLSX.utils.book_append_sheet(wb, ws, 'Report');
-  XLSX.writeFile(wb, filename);
+/** Exports rows to a CSV file (utils/csv.ts — PS-48 standardized every
+ *  manual-maintenance/report export in the app on strict CSV). Callers are
+ *  responsible for making sure `rows` themselves are already PHI-safe — this
+ *  function doesn't inspect or filter row content, since it has no way to
+ *  know which keys are safe for a given report's shape. Each tab builds its
+ *  own export rows explicitly rather than dumping raw service objects, so
+ *  nothing PHI-bearing can slip through by accident.
+ *
+ *  PS-355 (Batch 369): each report names its own capability. The export
+ *  service checks it (and audits the check) before producing the file; the
+ *  tab's button is greyed out for anyone without it (CapabilityButton).
+ *  `filename` may end in .csv or .xlsx; either is replaced.
+ *
+ *  PS-356 (Batch 370): `context` is required so no export forgets facility
+ *  scope: `qaScopeContext(scope)` for a tab with a scope switcher, or
+ *  `qaScopeContext()` (all facilities) for one without. */
+export function exportQaReportRows(capability: QaExportCapability, rows: Record<string, string | number>[], filename: string, context: CapabilityContext): Promise<unknown> {
+  return exportQaReport(capability, rows, filename, { authorization: authorizationService }, context);
 }

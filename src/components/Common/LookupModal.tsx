@@ -26,6 +26,7 @@
  */
 
 import React, { useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import '../../pathscribe.css';
 
 // ─── Shell ────────────────────────────────────────────────────────────────────
@@ -41,6 +42,8 @@ interface LookupModalProps {
 export const LookupModal: React.FC<LookupModalProps> = ({
   title, subtitle, selectedCount, onClose, children,
 }) => {
+  const { t } = useTranslation();
+
   // Close on Escape
   useEffect(() => {
     const handler = (e: KeyboardEvent) => { if (e.key === 'Escape') onClose(); };
@@ -49,99 +52,35 @@ export const LookupModal: React.FC<LookupModalProps> = ({
   }, [onClose]);
 
   return (
-    <div
-      onClick={onClose}
-      style={{
-        position: 'fixed', inset: 0, zIndex: 9000,
-        backgroundColor: 'rgba(0,0,0,0.85)',
-        backdropFilter: 'blur(10px)',
-        display: 'flex', alignItems: 'center', justifyContent: 'center',
-      }}
-    >
-      <div
-        onClick={e => e.stopPropagation()}
-        style={{
-          width: '680px', maxWidth: '92vw',
-          height: '82vh',
-          maxHeight: '82vh',
-          background: '#0f172a',
-          border: '1px solid rgba(255,255,255,0.1)',
-          borderRadius: '16px',
-          display: 'flex', flexDirection: 'column',
-          overflow: 'hidden',
-          boxShadow: '0 24px 64px rgba(0,0,0,0.7)',
-        }}
-      >
+    <div onClick={onClose} className="ps-lookup-overlay">
+      <div onClick={e => e.stopPropagation()} className="ps-lookup-modal">
         {/* Header */}
-        <div style={{
-          padding: '20px 24px 16px',
-          borderBottom: '1px solid rgba(255,255,255,0.08)',
-          flexShrink: 0,
-          display: 'flex', alignItems: 'flex-start', justifyContent: 'space-between', gap: 12,
-        }}>
+        <div className="ps-lookup-header">
           <div>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
-              <span style={{ fontSize: 17, fontWeight: 700, color: '#f1f5f9' }}>{title}</span>
+            <div className="ps-lookup-title-row">
+              <span className="ps-lookup-title">{title}</span>
               {selectedCount != null && selectedCount > 0 && (
-                <span style={{
-                  fontSize: 11, fontWeight: 700,
-                  background: 'rgba(8,145,178,0.2)',
-                  border: '1px solid rgba(8,145,178,0.4)',
-                  color: '#7dd3fc',
-                  borderRadius: 99, padding: '2px 9px',
-                }}>
-                  {selectedCount} selected
+                <span className="ps-lookup-selected-badge">
+                  {t('lookupModal.selectedBadge', { count: selectedCount })}
                 </span>
               )}
             </div>
             {subtitle && (
-              <p style={{ margin: '4px 0 0', fontSize: 12, color: '#94a3b8' }}>{subtitle}</p>
+              <p className="ps-lookup-subtitle">{subtitle}</p>
             )}
           </div>
-          <button
-            onClick={onClose}
-            style={{
-              background: 'transparent', border: '1px solid rgba(255,255,255,0.15)',
-              borderRadius: 8, color: '#64748b', cursor: 'pointer',
-              fontSize: 18, lineHeight: 1, padding: '4px 9px', flexShrink: 0,
-              transition: 'all 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.color = '#f1f5f9'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.3)'; }}
-            onMouseLeave={e => { e.currentTarget.style.color = '#64748b'; e.currentTarget.style.borderColor = 'rgba(255,255,255,0.15)'; }}
-          >×</button>
+          <button onClick={onClose} className="ps-lookup-close-btn">×</button>
         </div>
 
         {/* Content — scrollable */}
-        <div className="ps-scroll" style={{ flex: 1, minHeight: 0, overflowY: 'auto' }}>
+        <div className="ps-scroll ps-lookup-content">
           {children}
         </div>
 
         {/* Footer — Done button */}
-        <div style={{
-          padding: '12px 24px',
-          borderTop: '1px solid rgba(255,255,255,0.08)',
-          flexShrink: 0,
-          display: 'flex',
-          justifyContent: 'flex-end',
-          background: 'rgba(255,255,255,0.02)',
-        }}>
-          <button
-            onClick={onClose}
-            style={{
-              padding: '8px 28px',
-              borderRadius: 8,
-              border: 'none',
-              background: '#22c55e',
-              color: '#022c22',
-              fontSize: 13,
-              fontWeight: 700,
-              cursor: 'pointer',
-              transition: 'background 0.15s',
-            }}
-            onMouseEnter={e => { e.currentTarget.style.background = '#16a34a'; }}
-            onMouseLeave={e => { e.currentTarget.style.background = '#22c55e'; }}
-          >
-            Done
+        <div className="ps-lookup-footer">
+          <button onClick={onClose} className="ps-lookup-done-btn">
+            {t('common.done')}
           </button>
         </div>
       </div>
@@ -157,13 +96,14 @@ interface LookupSearchProps {
   placeholder?: string;
 }
 
-export const LookupSearch: React.FC<LookupSearchProps> = ({ value, onChange, placeholder = 'Search…' }) => {
+export const LookupSearch: React.FC<LookupSearchProps> = ({ value, onChange, placeholder }) => {
+  const { t } = useTranslation();
   const ref = useRef<HTMLInputElement>(null);
   useEffect(() => { ref.current?.focus(); }, []);
 
   return (
-    <div style={{ position: 'relative', margin: '16px 24px 12px' }}>
-      <svg style={{ position: 'absolute', left: 10, top: '50%', transform: 'translateY(-50%)', opacity: 0.4 }}
+    <div className="ps-lookup-search-wrap">
+      <svg className="ps-lookup-search-icon"
         width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="#94a3b8" strokeWidth="2.5">
         <circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/>
       </svg>
@@ -172,22 +112,11 @@ export const LookupSearch: React.FC<LookupSearchProps> = ({ value, onChange, pla
         type="text"
         value={value}
         onChange={e => onChange(e.target.value)}
-        placeholder={placeholder}
-        style={{
-          width: '100%', boxSizing: 'border-box',
-          padding: '9px 12px 9px 32px',
-          background: 'rgba(255,255,255,0.05)',
-          border: '1px solid rgba(255,255,255,0.12)',
-          borderRadius: 8, color: '#f1f5f9', fontSize: 13, outline: 'none',
-        }}
-        onFocus={e => e.currentTarget.style.borderColor = 'rgba(8,145,178,0.5)'}
-        onBlur={e  => e.currentTarget.style.borderColor = 'rgba(255,255,255,0.12)'}
+        placeholder={placeholder ?? t('lookupModal.searchPlaceholder')}
+        className="ps-lookup-search-input"
       />
       {value && (
-        <button onClick={() => onChange('')} style={{
-          position: 'absolute', right: 8, top: '50%', transform: 'translateY(-50%)',
-          background: 'transparent', border: 'none', color: '#64748b', cursor: 'pointer', fontSize: 16,
-        }}>×</button>
+        <button onClick={() => onChange('')} className="ps-lookup-search-clear">×</button>
       )}
     </div>
   );
@@ -209,35 +138,24 @@ export const LookupItem: React.FC<LookupItemProps> = ({
 }) => (
   <div
     onClick={onToggle}
-    style={{
-      display: 'flex', alignItems: 'center', gap: 12,
-      padding: '10px 24px', cursor: 'pointer',
-      background: selected ? 'rgba(8,145,178,0.12)' : 'transparent',
-      borderBottom: '1px solid rgba(255,255,255,0.04)',
-      borderLeft: selected ? '2px solid #0891B2' : '2px solid transparent',
-      transition: 'all 0.12s',
-    }}
-    onMouseEnter={e => { if (!selected) e.currentTarget.style.background = 'rgba(255,255,255,0.04)'; }}
-    onMouseLeave={e => { e.currentTarget.style.background = selected ? 'rgba(8,145,178,0.12)' : 'transparent'; }}
+    className={`ps-lookup-item${selected ? ' ps-lookup-item--selected' : ''}`}
   >
     {/* Label */}
-    <div style={{ flex: 1, minWidth: 0 }}>
-      <span style={{ fontSize: 13, color: selected ? '#7dd3fc' : '#e2e8f0', fontWeight: selected ? 600 : 400 }}>{primary}</span>
-      {secondary && <span style={{ fontSize: 11, color: '#64748b', marginLeft: 8 }}>{secondary}</span>}
+    <div className="ps-lookup-item-label">
+      <span className={`ps-lookup-item-primary${selected ? ' ps-lookup-item-primary--selected' : ''}`}>{primary}</span>
+      {secondary && <span className="ps-lookup-item-secondary">{secondary}</span>}
     </div>
 
     {/* Badge */}
     {badge && (
-      <span style={{
-        fontSize: 11, fontWeight: 700, fontFamily: 'monospace',
-        color: badgeColor, background: `${badgeColor}18`,
-        border: `1px solid ${badgeColor}30`,
-        borderRadius: 6, padding: '2px 7px', flexShrink: 0,
-      }}>{badge}</span>
+      <span
+        className="ps-lookup-item-badge"
+        style={{ '--ps-hue': badgeColor } as React.CSSProperties}
+      >{badge}</span>
     )}
 
     {/* Checkmark — only shown when selected */}
-    <div style={{ width: 18, flexShrink: 0, display: 'flex', alignItems: 'center', justifyContent: 'center' }}>
+    <div className="ps-lookup-item-check">
       {selected && (
         <svg width="14" height="14" viewBox="0 0 14 14" fill="none">
           <circle cx="7" cy="7" r="7" fill="#0891B2"/>
@@ -251,24 +169,22 @@ export const LookupItem: React.FC<LookupItemProps> = ({
 // ─── Section divider used inside grouped content ──────────────────────────────
 
 export const LookupSection: React.FC<{ label: string; count: number }> = ({ label, count }) => (
-  <div style={{
-    padding: '10px 24px 6px',
-    display: 'flex', alignItems: 'center', gap: 8,
-    borderTop: '1px solid rgba(255,255,255,0.06)',
-    background: 'rgba(255,255,255,0.02)',
-  }}>
-    <span style={{ fontSize: 10, fontWeight: 800, letterSpacing: '0.6px', textTransform: 'uppercase', color: '#475569' }}>{label}</span>
-    <span style={{ fontSize: 10, color: '#334155', background: 'rgba(255,255,255,0.05)', borderRadius: 99, padding: '1px 6px' }}>{count}</span>
-    <div style={{ flex: 1, height: 1, background: 'rgba(255,255,255,0.04)' }} />
+  <div className="ps-lookup-section">
+    <span className="ps-lookup-section-label">{label}</span>
+    <span className="ps-lookup-section-count">{count}</span>
+    <div className="ps-lookup-section-divider" />
   </div>
 );
 
 // ─── Empty state ──────────────────────────────────────────────────────────────
 
-export const LookupEmpty: React.FC<{ query: string }> = ({ query }) => (
-  <div style={{ padding: '48px 24px', textAlign: 'center', color: '#475569' }}>
-    <div style={{ fontSize: 32, marginBottom: 12 }}>🔍</div>
-    <div style={{ fontSize: 14, fontWeight: 600, color: '#64748b' }}>No results for "{query}"</div>
-    <div style={{ fontSize: 12, marginTop: 4 }}>Try a shorter or different search term</div>
-  </div>
-);
+export const LookupEmpty: React.FC<{ query: string }> = ({ query }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="ps-lookup-empty">
+      <div className="ps-lookup-empty-icon">🔍</div>
+      <div className="ps-lookup-empty-title">{t('lookupModal.noResultsFor', { query })}</div>
+      <div className="ps-lookup-empty-hint">{t('lookupModal.tryDifferentTerm')}</div>
+    </div>
+  );
+};

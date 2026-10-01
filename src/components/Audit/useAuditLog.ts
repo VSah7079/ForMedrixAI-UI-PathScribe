@@ -222,7 +222,7 @@ export type AuditPayload = {
   tat_entry_deleted:          { id: string; type: string };
   tat_entry_toggled:          { id: string; type: string; active: boolean };
   tat_entry_updated:          { id: string; type: string; changes: string[] };
-  tat_entry_created:          { type: string; targetHours: number; clientId: string | null; roleId: string | null };
+  tat_entry_created:          { type: string; targetHours: number; facilityId: string | null; roleId: string | null };
 
   // ── Flag Manager (real apply/remove — not the removed Computational ordering) ──
   flag_applied:                { caseId: string; flagName: string; specimenId?: string };
@@ -232,6 +232,10 @@ export type AuditPayload = {
   case_search_no_results:     { query: string };
   case_search_performed:      { query: string; resultCount: number };
   case_search_opened:         { query: string; caseId: string; accession?: string; matchedField?: string };
+  // Real, per direct guidance's own full "On-Demand Fetch &
+  // Fallback" design — a real local cache miss that a live LIS
+  // fetch (Option A) successfully resolved.
+  case_fetched_on_demand_from_lis: { query: string; caseId: string };
 
   // ── Validation Studies (additional — some entries already existed above) ──
   validation_study_submitted:           { studyName: string; committeeName: string; submittedBy: string };

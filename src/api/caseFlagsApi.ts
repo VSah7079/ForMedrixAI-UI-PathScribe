@@ -5,35 +5,16 @@
 import { CaseWithFlags, FlagInstance } from '../types/flagsRuntime';
 import { mockCaseService } from '../services/cases/mockCaseService';
 
-// ── Real, confirmed architectural conflict — found during a folder
-// review, documented rather than silently fixed with a guess. Two
-// independent flag-tracking systems both read/write the same
-// Case.caseFlags/Specimen.specimenFlags fields, using genuinely
-// incompatible shapes:
-//   - This file (and its consumer, pages/Synoptic/useSynopticFlags.ts,
-//     confirmed to read the data back the same way) treats those
-//     fields as FlagInstance[] — an audit-style "who applied which
-//     flag definition, when" record (flagDefinitionId, appliedAt,
-//     appliedBy, source, deletedAt/deletedBy).
-//   - The real, declared type on Case/Specimen (types/case/CaseFlag.ts,
-//     types/case/Specimen.ts's SpecimenFlag) is CaseFlag[]/
-//     SpecimenFlag[] instead — a flag-DEFINITION record (id, label,
-//     color, lisCode), no application/audit fields at all. This is
-//     the shape the Contribution Dashboard's Quality Flags tile and
-//     SearchPage.tsx's computational-flags filter both read, expecting
-//     .label/.lisCode.
-// Neither system is aware of the other. Whichever one touches a given
-// case's flags last effectively corrupts the data for the other's
-// perspective — a flag applied through the Synoptic Report page's
-// flag manager (this file) would show up with an undefined .label
-// wherever the Quality Flags/Search systems expect one, and vice
-// versa. Confirmed both code paths are genuinely reachable, not dead.
-// This needs a real architectural decision (which model is
-// authoritative, or whether these belong on two separate fields) —
-// not something to guess at here. The `as any` casts below are
-// necessary given the current, unresolved state, not laziness —
-// removing them without resolving the underlying conflict just moves
-// the same real type error around instead of fixing anything.
+// Real, confirmed resolution to the architectural conflict this file
+// used to document here (Jira PS-57): Case.caseFlags/Specimen.
+// specimenFlags now correctly declare FlagInstance[] — this file's
+// own shape all along — rather than the old CaseFlag[]/SpecimenFlag[]
+// (an inline flag-definition copy no real application workflow ever
+// produced). SearchPage.tsx's own two consumers of these same fields
+// fixed alongside this change, resolving flagDefinitionId against the
+// real flag catalog instead of expecting display fields inline. The
+// `as any` casts this file used to need are gone — they were masking
+// exactly this mismatch, not doing anything else.
 
 // ─── Types ────────────────────────────────────────────────────────────────────
 
@@ -84,17 +65,17 @@ export async function applyFlags(payload: ApplyFlagPayload): Promise<CaseWithFla
   const inst = makeInstance(payload.flagDefinitionId);
 
   if (payload.specimenId) {
-    const specimens = (c.specimens ?? []).map((sp: any) => {
+    const specimens = (c.specimens ?? []).map((sp) => {
       if (sp.id !== payload.specimenId) return sp;
       const flags: FlagInstance[] = Array.isArray(sp.specimenFlags) ? sp.specimenFlags : [];
       if (flags.some(f => f.flagDefinitionId === payload.flagDefinitionId && !f.deletedAt)) return sp;
       return { ...sp, specimenFlags: [...flags, inst] };
     });
-    await mockCaseService.updateCase(payload.caseId, { specimens } as any);
+    await mockCaseService.updateCase(payload.caseId, { specimens });
   } else {
-    const flags: FlagInstance[] = Array.isArray((c as any).caseFlags) ? (c as any).caseFlags : [];
+    const flags: FlagInstance[] = Array.isArray(c.caseFlags) ? c.caseFlags : [];
     if (!flags.some(f => f.flagDefinitionId === payload.flagDefinitionId && !f.deletedAt)) {
-      await mockCaseService.updateCase(payload.caseId, { caseFlags: [...flags, inst] } as any);
+      await mockCaseService.updateCase(payload.caseId, { caseFlags: [...flags, inst] });
     }
   }
 
@@ -111,7 +92,7 @@ export async function deleteFlags(payload: DeleteFlagPayload): Promise<CaseWithF
   const now = new Date().toISOString();
 
   if (payload.specimenId) {
-    const specimens = (c.specimens ?? []).map((sp: any) => {
+    const specimens = (c.specimens ?? []).map((sp) => {
       if (sp.id !== payload.specimenId) return sp;
       const flags: FlagInstance[] = Array.isArray(sp.specimenFlags) ? sp.specimenFlags : [];
       return {
@@ -123,16 +104,16 @@ export async function deleteFlags(payload: DeleteFlagPayload): Promise<CaseWithF
         ),
       };
     });
-    await mockCaseService.updateCase(payload.caseId, { specimens } as any);
+    await mockCaseService.updateCase(payload.caseId, { specimens });
   } else {
-    const flags: FlagInstance[] = Array.isArray((c as any).caseFlags) ? (c as any).caseFlags : [];
+    const flags: FlagInstance[] = Array.isArray(c.caseFlags) ? c.caseFlags : [];
     await mockCaseService.updateCase(payload.caseId, {
       caseFlags: flags.map(f =>
         f.id === payload.flagInstanceId
           ? { ...f, deletedAt: now, deletedBy: 'current-user' }
           : f
       ),
-    } as any);
+    });
   }
 
   const updated = await mockCaseService.getCase(payload.caseId);

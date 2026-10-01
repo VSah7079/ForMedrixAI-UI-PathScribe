@@ -1,6 +1,7 @@
 // src/components/TemplateBuilder/TemplateListTab.tsx
 import React, { useEffect, useState, useCallback } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
+import { useTranslation } from 'react-i18next';
 import type { ReportTemplate } from '../../types/reportPart';
 import {
   mockReportTemplateService,
@@ -10,28 +11,39 @@ import {
 
 const svc = mockReportTemplateService;
 
+// Real, persisted ReportTemplate.status enum values stay as data; only the
+// displayed label is translated (this sweep's usual LABEL_KEY pattern).
+const STATUS_LABEL_KEY: Record<ReportTemplate['status'], string> = {
+  published: 'templateListTab.status.published',
+  draft: 'templateListTab.status.draft',
+  archived: 'templateListTab.status.archived',
+};
+
 // ── Status badge ───────────────────────────────────────────────
 
 const StatusBadge: React.FC<{ status: ReportTemplate['status'] }> = ({ status }) => {
-  return <span className={`tmpl-badge tmpl-badge--${status}`}>{status}</span>;
+  const { t } = useTranslation();
+  return <span className={`tmpl-badge tmpl-badge--${status}`}>{t(STATUS_LABEL_KEY[status])}</span>;
 };
 
 // ── Empty state ────────────────────────────────────────────────
 
-const EmptyState: React.FC<{ onBlank: () => void; onStandard: () => void }> = ({ onBlank, onStandard }) => (
-  <div className="tmpl-empty">
-    <div className="tmpl-empty__icon">⊞</div>
-    <div className="tmpl-empty__title">No report templates yet</div>
-    <div className="tmpl-empty__desc">
-      Report templates define the structure, fields, and AI generation rules for Orchestration mode.
-      Start from the standard surgical pathology layout or build from scratch.
+const EmptyState: React.FC<{ onBlank: () => void; onStandard: () => void }> = ({ onBlank, onStandard }) => {
+  const { t } = useTranslation();
+  return (
+    <div className="tmpl-empty">
+      <div className="tmpl-empty__icon">⊞</div>
+      <div className="tmpl-empty__title">{t('templateListTab.emptyState.title')}</div>
+      <div className="tmpl-empty__desc">
+        {t('templateListTab.emptyState.description')}
+      </div>
+      <div className="tmpl-empty__actions">
+        <button onClick={onStandard} className="ps-btn-ghost-teal">{t('templateListTab.useStandardTemplateButton')}</button>
+        <button onClick={onBlank}    className="ps-btn-ghost-teal">{t('templateListTab.startBlankButton')}</button>
+      </div>
     </div>
-    <div className="tmpl-empty__actions">
-      <button onClick={onStandard} className="ps-btn-ghost-teal">Use Standard Template</button>
-      <button onClick={onBlank}    className="ps-btn-ghost-teal">Start Blank</button>
-    </div>
-  </div>
-);
+  );
+};
 
 // ── Template row ───────────────────────────────────────────────
 
@@ -43,8 +55,10 @@ const TemplateRow: React.FC<{
   isDeleting:    boolean;
   isDuplicating: boolean;
 }> = ({ template, onEdit, onDuplicate, onDelete, isDeleting, isDuplicating }) => {
+  const { t } = useTranslation();
   const [confirmDelete, setConfirmDelete] = useState(false);
   const isStandard = template.id === STANDARD_TEMPLATE_ID;
+  const isDraft = template.status === 'draft';
 
   const nodeCount = countNodes(template);
   const updatedAt = new Date(template.updatedAt).toLocaleDateString('en-GB', {
@@ -68,39 +82,39 @@ const TemplateRow: React.FC<{
             {template.name}
           </span>
           <StatusBadge status={template.status} />
-          {template.orchestrationEnabled && <span className="tmpl-badge tmpl-badge--ai">AI</span>}
-          {isStandard && <span className="tmpl-badge tmpl-badge--standard">STANDARD</span>}
+          {template.orchestrationEnabled && <span className="tmpl-badge tmpl-badge--ai">{t('templateListTab.aiBadge')}</span>}
+          {isStandard && <span className="tmpl-badge tmpl-badge--standard">{t('templateListTab.standardBadge')}</span>}
         </div>
         <div className="tmpl-row-meta">
           {template.specialty && (
             <span>{template.specialty}{template.subspecialty ? ` — ${template.subspecialty}` : ''}</span>
           )}
           {template.standard && <span>{template.standard}</span>}
-          <span>{nodeCount} active slot{nodeCount !== 1 ? 's' : ''}</span>
-          <span>Updated {updatedAt}</span>
+          <span>{t('templateListTab.activeSlots', { count: nodeCount })}</span>
+          <span>{t('templateListTab.updatedAt', { time: updatedAt })}</span>
         </div>
       </div>
 
       {/* Actions — shown via CSS :hover on .tmpl-row */}
       <div className="tmpl-row-actions">
           {!isStandard && (
-            <button onClick={onEdit} className="tmpl-row-btn tmpl-row-btn--edit">Edit</button>
+            <button onClick={onEdit} className="tmpl-row-btn tmpl-row-btn--edit">{t('common.edit')}</button>
           )}
           <button onClick={onDuplicate} disabled={isDuplicating} className="tmpl-row-btn">
-            {isDuplicating ? '…' : 'Duplicate'}
+            {isDuplicating ? '…' : t('common.duplicate')}
           </button>
           {!isStandard && (
             confirmDelete ? (
               <>
-                <span className="tmpl-delete-confirm-label">{template.status === 'draft' ? 'Delete?' : 'Archive?'}</span>
+                <span className="tmpl-delete-confirm-label">{isDraft ? t('templateListTab.confirmDeleteLabel') : t('templateListTab.confirmArchiveLabel')}</span>
                 <button onClick={onDelete} disabled={isDeleting} className="tmpl-row-btn tmpl-row-btn--confirm-delete">
-                  {isDeleting ? '…' : 'Yes'}
+                  {isDeleting ? '…' : t('common.yes')}
                 </button>
-                <button onClick={() => setConfirmDelete(false)} className="tmpl-row-btn">No</button>
+                <button onClick={() => setConfirmDelete(false)} className="tmpl-row-btn">{t('common.no')}</button>
               </>
             ) : (
               <button onClick={() => setConfirmDelete(true)} className="tmpl-row-btn tmpl-row-btn--delete">
-                {template.status === 'draft' ? 'Delete' : 'Archive'}
+                {isDraft ? t('common.delete') : t('common.archive')}
               </button>
             )
           )}
@@ -112,6 +126,7 @@ const TemplateRow: React.FC<{
 // ── Main tab ───────────────────────────────────────────────────
 
 const TemplateListTab: React.FC = () => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [templates, setTemplates]           = useState<ReportTemplate[]>([]);
   const [loading, setLoading]               = useState(true);
@@ -129,11 +144,11 @@ const TemplateListTab: React.FC = () => {
       if (result.ok) setTemplates(result.data);
       else if (result.ok === false) setError(result.error);
     } catch (e: unknown) {
-      setError((e as { message?: string })?.message ?? 'Failed to load templates');
+      setError((e as { message?: string })?.message ?? t('templateListTab.errors.loadFailed'));
     } finally {
       setLoading(false);
     }
-  }, []);
+  }, [t]);
 
   useEffect(() => {
     load();
@@ -142,7 +157,8 @@ const TemplateListTab: React.FC = () => {
 
   const handleCreate = async (fromStandardId?: string) => {
     if (fromStandardId) {
-      const result = await svc.clone(fromStandardId, 'My Surgical Pathology Report');
+      // Stored as the new template's name, so it comes from the user's language.
+      const result = await svc.clone(fromStandardId, t('templateListTab.defaultCustomTemplateName'));
       if (result.ok) navigate(`/admin/templates/${result.data.id}/edit`);
       else if (result.ok === false) setError(result.error);
     } else {
@@ -150,14 +166,16 @@ const TemplateListTab: React.FC = () => {
     }
   };
 
-  const handleDuplicate = async (id: string) => {
+  // The copy's name is marked in the user's own language (PS-73).
+  const handleDuplicate = async (tpl: ReportTemplate) => {
+    const id = tpl.id;
     setDuplicatingId(id);
     try {
-      const result = await svc.clone(id);
+      const result = await svc.clone(id, t('common.copyOfName', { name: tpl.name }));
       if (result.ok) navigate(`/admin/templates/${result.data.id}/edit`);
       else if (result.ok === false) setError(result.error);
     } catch (e: unknown) {
-      setError((e as { message?: string })?.message ?? 'Failed to duplicate');
+      setError((e as { message?: string })?.message ?? t('templateListTab.errors.duplicateFailed'));
     } finally {
       setDuplicatingId(null);
     }
@@ -166,7 +184,7 @@ const TemplateListTab: React.FC = () => {
   const handleDelete = async (id: string) => {
     setDeletingId(id);
     try {
-      const target = templates.find(t => t.id === id);
+      const target = templates.find(tpl => tpl.id === id);
       // Only a template that's still a pure Draft could never have produced
       // a real generated report — safe to hard-delete. Anything that has
       // ever been Published must be archived instead, so its structure
@@ -176,24 +194,24 @@ const TemplateListTab: React.FC = () => {
         : await svc.archive(id);
       if (result.ok === false) setError(result.error);
     } catch (e: unknown) {
-      setError((e as { message?: string })?.message ?? 'Failed to delete');
+      setError((e as { message?: string })?.message ?? t('templateListTab.errors.deleteFailed'));
     } finally {
       setDeletingId(null);
     }
   };
 
   const filtered = templates
-    .filter(t => filter === 'all' || t.status === filter)
-    .filter(t => !search ||
-      t.name.toLowerCase().includes(search.toLowerCase()) ||
-      (t.specialty ?? '').toLowerCase().includes(search.toLowerCase())
+    .filter(tpl => filter === 'all' || tpl.status === filter)
+    .filter(tpl => !search ||
+      tpl.name.toLowerCase().includes(search.toLowerCase()) ||
+      (tpl.specialty ?? '').toLowerCase().includes(search.toLowerCase())
     );
 
   const counts = {
     all:       templates.length,
-    published: templates.filter(t => t.status === 'published').length,
-    draft:     templates.filter(t => t.status === 'draft').length,
-    archived:  templates.filter(t => t.status === 'archived').length,
+    published: templates.filter(tpl => tpl.status === 'published').length,
+    draft:     templates.filter(tpl => tpl.status === 'draft').length,
+    archived:  templates.filter(tpl => tpl.status === 'archived').length,
   };
 
   return (
@@ -202,21 +220,21 @@ const TemplateListTab: React.FC = () => {
       {/* Header */}
       <div className="tmpl-list-header">
         <div>
-          <h2 className="tmpl-list-title">Report Templates</h2>
+          <h2 className="tmpl-list-title">{t('templateListTab.title')}</h2>
           <p className="tmpl-list-subtitle">
-            Define structure, fields, and AI generation for Orchestration mode
+            {t('templateListTab.subtitle')}
           </p>
         </div>
         <div className="tmpl-header-actions">
           <button
             onClick={() => handleCreate(STANDARD_TEMPLATE_ID)}
             className="ps-conf-btn-secondary"
-            title="Copy the standard surgical pathology layout as a starting point"
+            title={t('templateListTab.fromStandardTooltip')}
           >
-            From Standard
+            {t('templateListTab.fromStandardButton')}
           </button>
           <button onClick={() => handleCreate()} className="ps-conf-btn-primary">
-            + New Template
+            + {t('templateListTab.newTemplateButton')}
           </button>
         </div>
       </div>
@@ -236,13 +254,13 @@ className="tmpl-error-dismiss">✕</button>
           <div className="tmpl-filter-bar">
             {(['all', 'published', 'draft', 'archived'] as const).map(f => (
               <button key={f} onClick={() => setFilter(f)} className={`tmpl-filter-btn${filter === f ? ' active' : ''}`}>
-                {f}{counts[f] > 0 && <span className="tmpl-filter-count"> ({counts[f]})</span>}
+                {f === 'all' ? t('templateListTab.filterAll') : t(STATUS_LABEL_KEY[f])}{counts[f] > 0 && <span className="tmpl-filter-count"> ({counts[f]})</span>}
               </button>
             ))}
           </div>
           <input
             value={search} onChange={e => setSearch(e.target.value)}
-            placeholder="Search templates…"
+            placeholder={t('templateListTab.searchPlaceholder')}
             className="tmpl-search"
           />
         </div>
@@ -250,7 +268,7 @@ className="tmpl-error-dismiss">✕</button>
 
       {/* List */}
       {loading ? (
-        <div className="tmpl-loading">Loading templates…
+        <div className="tmpl-loading">{t('templateListTab.loadingTemplates')}
         </div>
       ) : filtered.length === 0 && templates.length === 0 ? (
         <EmptyState
@@ -258,19 +276,19 @@ className="tmpl-error-dismiss">✕</button>
           onStandard={() => handleCreate(STANDARD_TEMPLATE_ID)}
         />
       ) : filtered.length === 0 ? (
-        <div className="tmpl-loading">No templates match your search
+        <div className="tmpl-loading">{t('templateListTab.noSearchMatch')}
         </div>
       ) : (
         <div className="tmpl-list-body">
-          {filtered.map(t => (
+          {filtered.map(tpl => (
             <TemplateRow
-              key={t.id}
-              template={t}
-              onEdit={() => navigate(`/admin/templates/${t.id}/edit`)}
-              onDuplicate={() => handleDuplicate(t.id)}
-              onDelete={() => handleDelete(t.id)}
-              isDeleting={deletingId === t.id}
-              isDuplicating={duplicatingId === t.id}
+              key={tpl.id}
+              template={tpl}
+              onEdit={() => navigate(`/admin/templates/${tpl.id}/edit`)}
+              onDuplicate={() => handleDuplicate(tpl)}
+              onDelete={() => handleDelete(tpl.id)}
+              isDeleting={deletingId === tpl.id}
+              isDuplicating={duplicatingId === tpl.id}
             />
           ))}
         </div>

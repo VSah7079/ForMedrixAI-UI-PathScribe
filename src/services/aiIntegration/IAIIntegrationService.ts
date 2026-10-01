@@ -1,4 +1,6 @@
-import { ServiceResult, VoiceMacro } from '../../types';
+import type { VoiceMacro } from '../../types';
+// PS-67 (Batch 348): the app's one result shape, { ok, data } | { ok: false, error }.
+import type { ServiceResult } from '../types';
 import type { ProtocolChange } from '@/types/case/Case';
 
 export interface AIProcessingOptions {
@@ -58,13 +60,15 @@ export interface SynopticEvaluationInput {
    * before calling — this function doesn't re-derive that list itself.
    */
   availableTemplates: Array<{ id: string; name: string; category: string }>;
-  /** The case's ordering client — needed to resolve which AI model this
-   *  specific client is actually approved to use (see
+  /** The case's ordering facility — needed to resolve which AI model
+   *  this specific facility is actually approved to use (see
    *  resolveAiConfigOverrideForClient in
-   *  components/Config/AI/resolveClientAiModel.ts). Optional so callers
-   *  without a resolvable client (rare, but possible for internal/test
-   *  paths) still fall back safely to the org-wide default. */
-  clientId?: string;
+   *  components/Config/AI/resolveClientAiModel.ts — function/file name
+   *  kept as-is; used by 8 other files sharing the same "Client" naming
+   *  as a real, separate concern). Optional so callers without a
+   *  resolvable facility (rare, but possible for internal/test paths)
+   *  still fall back safely to the org-wide default. */
+  facilityId?: string;
 }
 
 export interface SynopticEvaluationResult {

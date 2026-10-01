@@ -12,35 +12,62 @@
 // Click "+ Add slot" to pick a part from the library.
 // ─────────────────────────────────────────────────────────────
 import React, { useCallback, useEffect, useState } from 'react';
-import { useNavigate, useParams } from 'react-router-dom';
-import type { ReportTemplate, AssemblySlot, AssemblyRole, ReportPart } from '../../types/reportPart';
+import { useTranslation } from 'react-i18next';
+import { useNavigate, useParams } from 'react-router';
+import '../../pathscribe.css';
+import type { ReportTemplate, AssemblySlot, AssemblyRole, ReportPart, ReportPartStatus } from '../../types/reportPart';
 import {
-  ASSEMBLY_ROLE_LABELS, ASSEMBLY_ROLE_ICONS, ROLE_DISPLAY_ORDER,
+  ASSEMBLY_ROLE_LABEL_KEY, ASSEMBLY_ROLE_ICONS, ROLE_DISPLAY_ORDER,
   VALID_ROLES_FOR_PART, validateAssembly,
 } from '../../types/reportPart';
-import { mockReportTemplateService } from '../../services/reportTemplates/mockReportTemplateService';
+import { reportTemplateService } from '@/services';
 import { TemplatePreviewPanel } from './TemplatePreviewPanel';
 import type { ReportTemplate as OldTemplate } from '../../types/template';
-import { mockReportPartService, onReportPartsChanged } from '../../services/reportParts/mockReportPartService';
+import { reportPartService, onReportPartsChanged } from '@/services';
 import type { LabelConfig } from '../../types/template';
 import { Label, TextInput, Toggle, Sel } from './TemplateInspector';
 import { getOrgDocumentStyleDefault, getOrgHeaderStyleDefault, getOrgFooterStyleDefault } from '../Config/System/documentStyleConfig';
+import { getActivePerformingLabs } from '../../utils/performingLabs';
+import type { Facility } from '../../services/facilities/IFacilityService';
+import { labelStyleVars } from '@/utils/labelStyleVars';
 
-const svc  = mockReportTemplateService;
-const pSvc = mockReportPartService;
+const svc  = reportTemplateService;
+const pSvc = reportPartService;
 
 // ── Page zone definitions (driven by ROLE_DISPLAY_ORDER) ───────
 const PAGE1_ROLES    = ROLE_DISPLAY_ORDER.filter(r => r === 'body' || r.endsWith('-p1'));
 const PAGE2PLUS_ROLES = ROLE_DISPLAY_ORDER.filter(r => r.endsWith('-p2plus'));
 
+// Real, persisted enum values (ReportPartStatus, also reused directly
+// as ReportTemplate.status) shown in StatusBadge and the PartPicker
+// row — the same textKey indirection pattern used throughout this
+// sweep for persisted enum displays.
+const STATUS_LABEL_KEY: Record<ReportPartStatus, string> = {
+  published: 'templateAssemblyPage.status.published',
+  draft: 'templateAssemblyPage.status.draft',
+  archived: 'templateAssemblyPage.status.archived',
+};
+
+// The three fixed document-style categories, and the "Header"/"Body"/
+// "Footer" zone-title words reused verbatim across the page-1/page-2+
+// zone headers, the body-row badge, and the style-category tabs.
+const ZONE_LABEL_KEY: Record<'header' | 'body' | 'footer', string> = {
+  header: 'templateAssemblyPage.zoneLabel.header',
+  body: 'templateAssemblyPage.zoneLabel.body',
+  footer: 'templateAssemblyPage.zoneLabel.footer',
+};
+
 // ── Role badge ─────────────────────────────────────────────────
 
-const RoleBadge: React.FC<{ role: AssemblyRole }> = ({ role }) => (
-  <span className={`ps-tmpla-role-badge ps-tmpla-role-badge--${role}`}>
-    <span>{ASSEMBLY_ROLE_ICONS[role]}</span>
-    {ASSEMBLY_ROLE_LABELS[role]}
-  </span>
-);
+const RoleBadge: React.FC<{ role: AssemblyRole }> = ({ role }) => {
+  const { t } = useTranslation();
+  return (
+    <span className={`ps-tmpla-role-badge ps-tmpla-role-badge--${role}`}>
+      <span>{ASSEMBLY_ROLE_ICONS[role]}</span>
+      {t(ASSEMBLY_ROLE_LABEL_KEY[role])}
+    </span>
+  );
+};
 
 // ── Part type badge ────────────────────────────────────────────
 // (type → modifier class mapping lives directly on each usage site)
@@ -48,10 +75,11 @@ const RoleBadge: React.FC<{ role: AssemblyRole }> = ({ role }) => (
 // ── StatusBadge ────────────────────────────────────────────────
 
 const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
+  const { t } = useTranslation();
   const known = status === 'published' || status === 'draft' || status === 'archived' ? status : 'draft';
   return (
     <span className={`ps-tmpla-status-badge ps-tmpla-status-badge--${known}`}>
-      {status}
+      {t(STATUS_LABEL_KEY[known])}
     </span>
   );
 };
@@ -60,12 +88,15 @@ const StatusBadge: React.FC<{ status: string }> = ({ status }) => {
 
 const PartPicker: React.FC<{
   role: AssemblyRole;
+  labFilter: string;
+  labs: Facility[];
   onPick: (part: ReportPart) => void;
   onClose: () => void;
-}> = ({ role, onPick, onClose }) => {
+}> = ({ role, labFilter, labs, onPick, onClose }) => {
+  const { t } = useTranslation();
   const validTypes = Object.entries(VALID_ROLES_FOR_PART)
     .filter(([, roles]) => roles.includes(role))
-    .map(([t]) => t);
+    .map(([partType]) => partType);
 
   const [parts, setParts] = useState<ReportPart[]>([]);
   const [search, setSearch] = useState('');
@@ -83,10 +114,18 @@ const PartPicker: React.FC<{
     return onReportPartsChanged(loadPickerParts);
   }, [loadPickerParts]);
 
+  // Real, per direct guidance ("Parts Library... should also be tied
+  // to a Performing Lab facility"): no lab selected shows every real
+  // part unfiltered (same "All Facilities means no filter" convention
+  // as the Workstation & Hardware group-level selector) — a specific
+  // lab shows that lab's own parts plus every Global one, never a
+  // lab-specific part belonging to a DIFFERENT lab.
   const filtered = parts.filter(p =>
     p.status === 'published' &&
-    (!search || p.name.toLowerCase().includes(search.toLowerCase()))
+    (!search || p.name.toLowerCase().includes(search.toLowerCase())) &&
+    (!labFilter || !p.performingLabFacilityId || p.performingLabFacilityId === labFilter)
   );
+  const labName = (id?: string) => id ? (labs.find(l => l.id === id)?.name ?? id) : t('templateAssemblyPage.globalLabel');
 
   return (
     <div className="ps-tmpla-picker-overlay" onClick={onClose}>
@@ -94,24 +133,24 @@ const PartPicker: React.FC<{
         {/* Header */}
         <div className="ps-tmpla-picker-header">
           <div className="ps-tmpla-picker-title">
-            Select a Part
+            {t('templateAssemblyPage.selectPartTitle')}
           </div>
           <div className="ps-tmpla-picker-subtitle">
-            Adding to slot: <RoleBadge role={role} />
+            {t('templateAssemblyPage.addingToSlotLabel')} <RoleBadge role={role} />
           </div>
           <input
             autoFocus
             value={search}
             onChange={e => setSearch(e.target.value)}
-            placeholder="Search parts…"
+            placeholder={t('templateAssemblyPage.searchPartsPlaceholder')}
             className="ps-tmpla-picker-search"
           />
         </div>
         {/* List */}
         <div className="ps-tmpla-picker-list">
-          {loading && <div className="ps-tmpla-picker-loading">Loading…</div>}
+          {loading && <div className="ps-tmpla-picker-loading">{t('templateAssemblyPage.loadingLabel')}</div>}
           {!loading && filtered.length === 0 && (
-            <div className="ps-tmpla-picker-empty">No published parts found</div>
+            <div className="ps-tmpla-picker-empty">{t('templateAssemblyPage.noPublishedPartsFound')}</div>
           )}
           {filtered.map(part => (
             <div
@@ -131,7 +170,10 @@ const PartPicker: React.FC<{
                 </div>
               </div>
               <div className="ps-tmpla-picker-row-status">
-                {part.status}
+                {t(STATUS_LABEL_KEY[part.status])}
+              </div>
+              <div className="ps-tmpla-picker-row-status">
+                {labName(part.performingLabFacilityId)}
               </div>
             </div>
           ))}
@@ -139,7 +181,7 @@ const PartPicker: React.FC<{
         {/* Footer */}
         <div className="ps-tmpla-picker-footer">
           <button onClick={onClose} className="ps-tmpla-picker-cancel">
-            Cancel
+            {t('common.cancel')}
           </button>
         </div>
       </div>
@@ -150,16 +192,20 @@ const PartPicker: React.FC<{
 // ── Persistent Parts Panel (left sidebar) ──────────────────────
 
 const PART_TYPE_CONFIG = {
-  header: { label: 'Header Parts', icon: '▲', roles: ['header-p1', 'header-p2plus'] as AssemblyRole[] },
-  body:   { label: 'Body Parts',   icon: '▬', roles: ['body'] as AssemblyRole[]                      },
-  footer: { label: 'Footer Parts', icon: '▼', roles: ['footer-p1', 'footer-p2plus'] as AssemblyRole[]},
+  header: { labelKey: 'templateAssemblyPage.partType.header', icon: '▲', roles: ['header-p1', 'header-p2plus'] as AssemblyRole[] },
+  body:   { labelKey: 'templateAssemblyPage.partType.body',   icon: '▬', roles: ['body'] as AssemblyRole[]                      },
+  footer: { labelKey: 'templateAssemblyPage.partType.footer', icon: '▼', roles: ['footer-p1', 'footer-p2plus'] as AssemblyRole[]},
 };
 
 const PartsPanel: React.FC<{
   activeRole:  AssemblyRole | null;
   usedPartIds: Set<string>;
+  labFilter:   string;
+  labs:        Facility[];
+  onLabFilterChange: (labId: string) => void;
   onAdd:       (part: ReportPart, role: AssemblyRole) => void;
-}> = ({ activeRole, usedPartIds, onAdd }) => {
+}> = ({ activeRole, usedPartIds, labFilter, labs, onLabFilterChange, onAdd }) => {
+  const { t } = useTranslation();
   const [parts, setParts] = useState<ReportPart[]>([]);
   const [search, setSearch] = useState('');
 
@@ -175,7 +221,8 @@ const PartsPanel: React.FC<{
   }, [loadParts]);
 
   const filtered = parts.filter(p =>
-    !search || p.name.toLowerCase().includes(search.toLowerCase())
+    (!search || p.name.toLowerCase().includes(search.toLowerCase())) &&
+    (!labFilter || !p.performingLabFacilityId || p.performingLabFacilityId === labFilter)
   );
 
   return (
@@ -183,15 +230,15 @@ const PartsPanel: React.FC<{
       {/* Panel header */}
       <div className="ps-tmpla-panel-header">
         <div className="ps-tmpla-panel-title">
-          Part Library
+          {t('templateAssemblyPage.partLibraryTitle')}
         </div>
         {activeRole ? (
           <div className="ps-tmpla-panel-hint ps-tmpla-panel-hint--active">
-            Click a part to add → {ASSEMBLY_ROLE_LABELS[activeRole]}
+            {t('templateAssemblyPage.clickPartToAddHint', { role: t(ASSEMBLY_ROLE_LABEL_KEY[activeRole]) })}
           </div>
         ) : (
           <div className="ps-tmpla-panel-hint">
-            Click a zone "+" to start adding
+            {t('templateAssemblyPage.clickZoneToStartHint')}
           </div>
         )}
       </div>
@@ -200,10 +247,24 @@ const PartsPanel: React.FC<{
       <div className="ps-tmpla-panel-search-wrap">
         <input
           value={search} onChange={e => setSearch(e.target.value)}
-          placeholder="Search parts…"
+          placeholder={t('templateAssemblyPage.searchPartsPlaceholder')}
           className="ps-tmpla-panel-search"
         />
       </div>
+
+      {/* Real, per direct guidance ("Parts Library... should also be
+          tied to a Performing Lab facility") — shared with the
+          PartPicker modal via the same lifted labFilter state, so
+          browsing here and picking via "+ Add slot" always agree on
+          which lab's context is active. */}
+      {labs.length > 0 && (
+        <div className="ps-tmpla-panel-search-wrap">
+          <select className="ps-conf-select" value={labFilter} onChange={e => onLabFilterChange(e.target.value)}>
+            <option value="">{t('templateAssemblyPage.allLabsOption')}</option>
+            {labs.map(l => <option key={l.id} value={l.id}>{l.name}</option>)}
+          </select>
+        </div>
+      )}
 
       {/* Part groups */}
       <div className="ps-tmpla-panel-groups">
@@ -218,7 +279,7 @@ const PartsPanel: React.FC<{
             <div key={type} className={`ps-tmpla-panel-group${groupActive ? '' : ' ps-tmpla-panel-group--dimmed'}`}>
               {/* Group header */}
               <div className="ps-tmpla-panel-group-header">
-                <span>{cfg.icon}</span> {cfg.label}
+                <span>{cfg.icon}</span> {t(cfg.labelKey)}
                 <span className="ps-tmpla-panel-group-count">
                   {group.length}
                 </span>
@@ -231,7 +292,7 @@ const PartsPanel: React.FC<{
                 return (
                   <div
                     key={part.id}
-                    title={canAdd ? `Add to ${ASSEMBLY_ROLE_LABELS[activeRole!]}` : 'Select a zone first'}
+                    title={canAdd ? t('templateAssemblyPage.addToTooltip', { role: t(ASSEMBLY_ROLE_LABEL_KEY[activeRole!]) }) : t('templateAssemblyPage.selectZoneFirstTooltip')}
                     onClick={() => canAdd && onAdd(part, activeRole!)}
                     className={`ps-tmpla-panel-row${canAdd ? ' ps-tmpla-panel-row--addable' : ''}`}
                   >
@@ -277,6 +338,7 @@ const SlotRow: React.FC<{
   onToggle: () => void;
   onEdit: () => void;
 }> = ({ slot, displayName, dragging, onDragStart, onRemove, onToggle, onEdit }) => {
+  const { t } = useTranslation();
   const draggableRole = slot.role === 'body';
 
   const rowClass = [
@@ -310,16 +372,16 @@ const SlotRow: React.FC<{
       {/* Actions */}
       <div className="ps-tmpla-slotrow-actions">
         {/* Enable/disable */}
-        <button onClick={onToggle} title={slot.enabled ? 'Disable slot' : 'Enable slot'}
+        <button onClick={onToggle} title={slot.enabled ? t('templateAssemblyPage.disableSlotTooltip') : t('templateAssemblyPage.enableSlotTooltip')}
           className={`ps-tmpla-slotrow-toggle${slot.enabled ? ' ps-tmpla-slotrow-toggle--on' : ''}`}>
           {slot.enabled ? '●' : '○'}
         </button>
         {/* Edit part */}
-        <button onClick={onEdit} title="Edit this part" className="ps-tmpla-slotrow-edit">
-          Edit part
+        <button onClick={onEdit} title={t('templateAssemblyPage.editPartTooltip')} className="ps-tmpla-slotrow-edit">
+          {t('templateAssemblyPage.editPartButton')}
         </button>
         {/* Remove */}
-        <button onClick={onRemove} title="Remove from template" className="ps-tmpla-slotrow-remove">
+        <button onClick={onRemove} title={t('templateAssemblyPage.removeFromTemplateTooltip')} className="ps-tmpla-slotrow-remove">
           ✕
         </button>
       </div>
@@ -329,14 +391,17 @@ const SlotRow: React.FC<{
 
 // ── Add slot button ────────────────────────────────────────────
 
-const AddSlotRow: React.FC<{ role: AssemblyRole; onAdd: () => void; activeRole?: AssemblyRole | null }> = ({ role, onAdd }) => (
-  <button onClick={onAdd} className="ps-tmpla-addslot">
-    <span className="ps-tmpla-addslot-icon">+</span>
-    <span className="ps-tmpla-addslot-label">
-      Add {ASSEMBLY_ROLE_LABELS[role]}
-    </span>
-  </button>
-);
+const AddSlotRow: React.FC<{ role: AssemblyRole; onAdd: () => void; activeRole?: AssemblyRole | null }> = ({ role, onAdd }) => {
+  const { t } = useTranslation();
+  return (
+    <button onClick={onAdd} className="ps-tmpla-addslot">
+      <span className="ps-tmpla-addslot-icon">+</span>
+      <span className="ps-tmpla-addslot-label">
+        {t('templateAssemblyPage.addRoleButton', { role: t(ASSEMBLY_ROLE_LABEL_KEY[role]) })}
+      </span>
+    </button>
+  );
+};
 
 // ── Document style editor ──────────────────────────────────────
 // Real feature, per direct request: template-wide default body style
@@ -358,60 +423,56 @@ const FONT_FAMILY_OPTIONS = [
   { value: 'Courier New',     label: 'Courier New' },
 ];
 
-const DocumentStyleEditor: React.FC<{ style: LabelConfig; onChange: (s: LabelConfig) => void }> = ({ style, onChange }) => (
+const DocumentStyleEditor: React.FC<{ style: LabelConfig; onChange: (s: LabelConfig) => void }> = ({ style, onChange }) => {
+  const { t } = useTranslation();
+  return (
   <div className="ps-tinsp-stack">
-    <Label>Font family</Label>
+    <Label>{t('templateAssemblyPage.fontFamilyLabel')}</Label>
     <Sel value={style.fontFamily ?? 'Arial'} onChange={v => onChange({ ...style, fontFamily: v })}
       options={FONT_FAMILY_OPTIONS} fullWidth />
 
-    <Label>Font size (px)</Label>
+    <Label>{t('templateAssemblyPage.fontSizeLabel')}</Label>
     <TextInput
       value={String(style.fontSize ?? 10)}
       onChange={v => onChange({ ...style, fontSize: parseInt(v) || 10 })}
       placeholder="10"
     />
 
-    <div className="ps-tinsp-row" style={{ marginTop: 4 }}>
+    <div className="ps-tinsp-row ps-tinsp-row--tight">
       <Toggle
         checked={style.weight === 'bold'}
         onChange={v => onChange({ ...style, weight: v ? 'bold' : 'normal' })}
-        label="Bold"
+        label={t('templateAssemblyPage.boldLabel')}
       />
       <Toggle
         checked={style.decoration === 'underline'}
         onChange={v => onChange({ ...style, decoration: v ? 'underline' : 'none' })}
-        label="Underline"
+        label={t('templateAssemblyPage.underlineLabel')}
       />
     </div>
 
-    <Label>Text transform</Label>
+    <Label>{t('templateAssemblyPage.textTransformLabel')}</Label>
     <Sel value={style.transform ?? 'none'} onChange={v => onChange({ ...style, transform: v as LabelConfig['transform'] })}
       options={[
-        { value: 'none',       label: 'As typed' },
-        { value: 'uppercase',  label: 'UPPERCASE' },
-        { value: 'capitalize', label: 'Capitalize' },
+        { value: 'none',       label: t('templateAssemblyPage.transformAsTyped') },
+        { value: 'uppercase',  label: t('templateAssemblyPage.transformUppercase') },
+        { value: 'capitalize', label: t('templateAssemblyPage.transformCapitalize') },
       ]} fullWidth />
 
     <div
-      style={{
-        marginTop: 8, padding: '10px 12px', borderRadius: 6,
-        border: '1px solid rgba(255,255,255,0.08)', background: 'rgba(255,255,255,0.02)',
-        fontFamily: style.fontFamily || 'Arial',
-        fontSize: `${style.fontSize ?? 10}px`,
-        fontWeight: style.weight === 'bold' ? 700 : 400,
-        textDecoration: style.decoration === 'underline' ? 'underline' : 'none',
-        textTransform: style.transform === 'uppercase' ? 'uppercase' : style.transform === 'capitalize' ? 'capitalize' : 'none',
-        color: '#f1f5f9',
-      }}
+      className="ps-tmpla-style-preview"
+      style={labelStyleVars(style, 'preview')}
     >
-      Preview — most report text renders this way unless a component overrides it.
+      {t('templateAssemblyPage.stylePreviewText')}
     </div>
   </div>
-);
+  );
+};
 
 // ── Main page ──────────────────────────────────────────────────
 
 export const TemplateAssemblyPage: React.FC = () => {
+  const { t } = useTranslation();
   const { templateId } = useParams<{ templateId: string }>();
   const navigate = useNavigate();
 
@@ -435,10 +496,19 @@ export const TemplateAssemblyPage: React.FC = () => {
   // snapshot stored on the slot at the moment it was added — see Known
   // Limitations in the Admin Guide for why this previously went stale.
   const [partsById, setPartsById] = useState<Record<string, ReportPart>>({});
+  // Real, per direct guidance ("Parts Library... should also be tied
+  // to a Performing Lab facility") — lifted here (not local to
+  // PartsPanel) specifically so the picker modal (PartPicker, opened
+  // separately) and the always-visible sidebar agree on the same real
+  // lab context, rather than two independent filters that could
+  // silently disagree.
+  const [labs, setLabs] = useState<Facility[]>([]);
+  const [labFilter, setLabFilter] = useState('');
+  useEffect(() => { getActivePerformingLabs().then(setLabs); }, []);
 
   useEffect(() => {
     const loadPartsById = () => {
-      mockReportPartService.getAll().then(r => {
+      reportPartService.getAll().then(r => {
         if (r.ok) {
           const map: Record<string, ReportPart> = {};
           r.data.forEach((p: ReportPart) => { map[p.id] = p; });
@@ -562,8 +632,8 @@ export const TemplateAssemblyPage: React.FC = () => {
     setActiveRole(null);
   }, [addSlot]);
 
-  if (loading) return <div className="ps-tmpla-loading">Loading template…</div>;
-  if (!template) return <div className="ps-tmpla-loading">Template not found.</div>;
+  if (loading) return <div className="ps-tmpla-loading">{t('templateAssemblyPage.loadingTemplate')}</div>;
+  if (!template) return <div className="ps-tmpla-loading">{t('templateAssemblyPage.templateNotFound')}</div>;
 
   // Group slots by role display order
   const slotsByRole = (role: AssemblyRole) =>
@@ -596,6 +666,9 @@ export const TemplateAssemblyPage: React.FC = () => {
     setDraggingSlotId(null);
   };
 
+  const orgStyleForCategory = (cat: 'header' | 'body' | 'footer') =>
+    cat === 'header' ? orgHeaderStyleDefault : cat === 'footer' ? orgFooterStyleDefault : orgDocumentStyleDefault;
+
   return (
     <div className="ps-tmpla-root">
 
@@ -605,7 +678,7 @@ export const TemplateAssemblyPage: React.FC = () => {
           <button
             onClick={() => navigate(-1)}
             className="ps-tmpla-back-btn"
-            title="Back to templates"
+            title={t('templateAssemblyPage.backToTemplatesTooltip')}
           >
             ←
           </button>
@@ -619,32 +692,32 @@ export const TemplateAssemblyPage: React.FC = () => {
                 onChange={e => setTemplate({ ...template, name: e.target.value })}
                 onFocus={() => setNameActive(true)}
                 onBlur={() => { setNameActive(false); save(template); }}
-                title="Click to edit template name"
+                title={t('templateAssemblyPage.clickToEditNameTooltip')}
                 className="ps-tmpla-name-input" />
               {nameActive && <span className="ps-tmpla-name-pencil">✎</span>}
             </div>
-            <div className="ps-tmpla-name-sub">{template.specialty || 'General'} · {template.standard ?? 'Custom'}</div>
+            <div className="ps-tmpla-name-sub">{template.specialty || t('templateAssemblyPage.specialtyFallback')} · {template.standard ?? t('templateAssemblyPage.standardFallback')}</div>
           </div>
         </div>
         <div className="ps-tmpla-top-right">
-          <span className="ps-tmpla-save-indicator">{saving ? '⟳ Saving…' : '✓ Saved'}</span>
+          <span className="ps-tmpla-save-indicator">{saving ? t('templateAssemblyPage.savingIndicator') : t('templateAssemblyPage.savedIndicator')}</span>
           <StatusBadge status={template.status} />
           <button onClick={() => setStyleOpen(o => !o)} className="ps-tmpla-btn">
-            🖋 Style
+            🖋 {t('templateAssemblyPage.styleButton')}
           </button>
           <button onClick={async () => {
             if (!template) return;
             const slotsInOrder = template.assembly.filter(s => s.enabled);
-            const partResults = await Promise.all(slotsInOrder.map(s => mockReportPartService.getById(s.partId)));
+            const partResults = await Promise.all(slotsInOrder.map(s => reportPartService.getById(s.partId)));
             setResolvedParts(partResults.filter(r => r.ok).map(r => (r as { ok: true; data: ReportPart }).data));
             setPreviewOpen(true);
           }} className="ps-tmpla-btn ps-tmpla-btn--preview">
-            Preview
+            {t('templateAssemblyPage.previewButton')}
           </button>
           <button onClick={async () => { const r = await svc.publish(template.id); if (r.ok) setTemplate(r.data); }}
             disabled={template.status === 'published'}
             className={`ps-tmpla-btn ps-tmpla-btn--publish${template.status === 'published' ? ' ps-tmpla-btn--published' : ''}`}>
-            {template.status === 'published' ? 'Published' : 'Publish'}
+            {template.status === 'published' ? t('templateAssemblyPage.publishedButton') : t('templateAssemblyPage.publishButton')}
           </button>
         </div>
       </header>
@@ -657,31 +730,28 @@ export const TemplateAssemblyPage: React.FC = () => {
            inheriting something invisible. */}
       {styleOpen && (
         <div className="ps-partb-meta-panel">
-          <div style={{ display: 'flex', gap: 6, marginBottom: 10 }}>
+          <div className="ps-tmpla-style-tabs">
             {(['header', 'body', 'footer'] as const).map(cat => (
               <button
                 key={cat}
                 onClick={() => setStyleCategory(cat)}
                 className={`ps-partb-btn${styleCategory === cat ? ' ps-partb-btn--grid-on' : ''}`}
-                style={{ textTransform: 'capitalize' }}
               >
-                {cat}
+                {t(ZONE_LABEL_KEY[cat])}
               </button>
             ))}
           </div>
-          <div style={{ marginBottom: 10, fontSize: 12, color: '#94a3b8' }}>
-            Default {styleCategory} text style for this template. Falls back to
-            the org-wide {styleCategory} default (
-            {(styleCategory === 'header' ? orgHeaderStyleDefault : styleCategory === 'footer' ? orgFooterStyleDefault : orgDocumentStyleDefault).fontFamily},{' '}
-            {(styleCategory === 'header' ? orgHeaderStyleDefault : styleCategory === 'footer' ? orgFooterStyleDefault : orgDocumentStyleDefault).fontSize}px
-            ) when not set here. Individual components can still override
-            this for specific fields (e.g. Final Diagnosis bold and
-            capitalized).
+          <div className="ps-tmpla-style-desc">
+            {t('templateAssemblyPage.styleCategoryDescription', {
+              category: t(ZONE_LABEL_KEY[styleCategory]),
+              fontFamily: orgStyleForCategory(styleCategory).fontFamily,
+              fontSize: orgStyleForCategory(styleCategory).fontSize,
+            })}
           </div>
           <DocumentStyleEditor
             style={
               template.documentStyle?.[styleCategory]
-              ?? (styleCategory === 'header' ? orgHeaderStyleDefault : styleCategory === 'footer' ? orgFooterStyleDefault : orgDocumentStyleDefault)
+              ?? orgStyleForCategory(styleCategory)
             }
             onChange={next => save({ ...template, documentStyle: { ...template.documentStyle, [styleCategory]: next } })}
           />
@@ -695,6 +765,9 @@ export const TemplateAssemblyPage: React.FC = () => {
         <PartsPanel
           activeRole={activeRole}
           usedPartIds={usedPartIds}
+          labFilter={labFilter}
+          labs={labs}
+          onLabFilterChange={setLabFilter}
           onAdd={handlePanelAdd}
         />
 
@@ -711,7 +784,7 @@ export const TemplateAssemblyPage: React.FC = () => {
           {/* Assembly validation warnings */}
           {validation && !(validation as any).valid && (
             <div className="ps-tmpla-warn-banner">
-              <strong>Assembly issues:</strong>
+              <strong>{t('templateAssemblyPage.assemblyIssuesHeading')}</strong>
               <ul>
                 {((validation as any).errors ?? []).map((msg: string, i: number) => (
                   <li key={i}>{msg}</li>
@@ -726,7 +799,7 @@ export const TemplateAssemblyPage: React.FC = () => {
               {template.name}
             </div>
             <div className="ps-tmpla-desc-sub">
-              Drag body parts to reorder · Click a zone to assign or change a part · Toggle ● to enable/disable
+              {t('templateAssemblyPage.dragToReorderHint')}
             </div>
           </div>
 
@@ -735,21 +808,21 @@ export const TemplateAssemblyPage: React.FC = () => {
 
             {/* ── Page 1 ── */}
             <div>
-              <div className="ps-tmpla-page-label">Page 1</div>
+              <div className="ps-tmpla-page-label">{t('templateAssemblyPage.page1Label')}</div>
               <div className="ps-tmpla-page-card">
                 {PAGE1_ROLES.map(role => {
                   if (role === 'body') return (
                     <React.Fragment key="body">
                       <div className="ps-tmpla-zone-header ps-tmpla-zone-header--spaced">
                         <span className="ps-tmpla-zone-icon">▬</span>
-                        <span className="ps-tmpla-zone-title">Body</span>
+                        <span className="ps-tmpla-zone-title">{t(ZONE_LABEL_KEY.body)}</span>
                         <span className="ps-tmpla-zone-meta">
-                          {bodySlots.filter(s => s.enabled).length} active · drag to reorder
+                          {t('templateAssemblyPage.activeDragToReorder', { count: bodySlots.filter(s => s.enabled).length })}
                         </span>
                       </div>
                       {bodySlots.length === 0 && (
                         <div className="ps-tmpla-body-empty">
-                          No body parts added yet
+                          {t('templateAssemblyPage.noBodyPartsYet')}
                         </div>
                       )}
                       {bodySlots.map((slot, i) => (
@@ -762,15 +835,15 @@ export const TemplateAssemblyPage: React.FC = () => {
                         >
                           <span className="ps-tmpla-body-row-handle">⠿</span>
                           <span className="ps-tmpla-body-row-index">{i + 1}</span>
-                          <span className="ps-tmpla-body-row-badge">Body</span>
+                          <span className="ps-tmpla-body-row-badge">{t(ZONE_LABEL_KEY.body)}</span>
                           <span className={`ps-tmpla-body-row-name${slot.enabled ? '' : ' ps-tmpla-body-row-name--disabled'}`}>{resolveSlotName(slot)}</span>
-                          <button onClick={() => toggleSlot(slot.slotId)} title={slot.enabled ? 'Disable' : 'Enable'}
+                          <button onClick={() => toggleSlot(slot.slotId)} title={slot.enabled ? t('templateAssemblyPage.disableTooltip') : t('templateAssemblyPage.enableTooltip')}
                             className={`ps-tmpla-body-row-toggle${slot.enabled ? ' ps-tmpla-body-row-toggle--on' : ''}`}>
                             {slot.enabled ? '●' : '○'}
                           </button>
                           <button onClick={() => navigate(`/admin/parts/${slot.partId}/edit`)}
                             className="ps-tmpla-body-row-edit">
-                            Edit part
+                            {t('templateAssemblyPage.editPartButton')}
                           </button>
                           <button onClick={() => removeSlot(slot.slotId)}
                             className="ps-tmpla-body-row-remove">
@@ -782,12 +855,12 @@ export const TemplateAssemblyPage: React.FC = () => {
                     </React.Fragment>
                   );
                   const icon = role.startsWith('header') ? '▲' : '▼';
-                  const label = role.startsWith('header') ? 'Header' : 'Footer';
+                  const zoneCat: 'header' | 'footer' = role.startsWith('header') ? 'header' : 'footer';
                   return (
                     <React.Fragment key={role}>
                       <div className={`ps-tmpla-zone-header${role !== PAGE1_ROLES[0] ? ' ps-tmpla-zone-header--spaced' : ''}`}>
                         <span className="ps-tmpla-zone-icon">{icon}</span>
-                        <span className="ps-tmpla-zone-title">{label}</span>
+                        <span className="ps-tmpla-zone-title">{t(ZONE_LABEL_KEY[zoneCat])}</span>
                       </div>
                       {slotsByRole(role).map(slot => (
                         <SlotRow key={slot.slotId} slot={slot} displayName={resolveSlotName(slot)}
@@ -806,16 +879,16 @@ export const TemplateAssemblyPage: React.FC = () => {
 
             {/* ── Pages 2+ ── */}
             <div>
-              <div className="ps-tmpla-page-label">Pages 2+</div>
+              <div className="ps-tmpla-page-label">{t('templateAssemblyPage.page2PlusLabel')}</div>
               <div className="ps-tmpla-page-card">
                 {PAGE2PLUS_ROLES.map((role, i) => {
                   const icon = role.startsWith('header') ? '▲' : '▼';
-                  const label = role.startsWith('header') ? 'Header' : 'Footer';
+                  const zoneCat: 'header' | 'footer' = role.startsWith('header') ? 'header' : 'footer';
                   return (
                     <React.Fragment key={role}>
                       <div className={`ps-tmpla-zone-header${i > 0 ? ' ps-tmpla-zone-header--spaced' : ''}`}>
                         <span className="ps-tmpla-zone-icon">{icon}</span>
-                        <span className="ps-tmpla-zone-title">{label}</span>
+                        <span className="ps-tmpla-zone-title">{t(ZONE_LABEL_KEY[zoneCat])}</span>
                       </div>
                       {slotsByRole(role).map(slot => (
                         <SlotRow key={slot.slotId} slot={slot} displayName={resolveSlotName(slot)}
@@ -831,12 +904,12 @@ export const TemplateAssemblyPage: React.FC = () => {
                         <>
                           <div className="ps-tmpla-zone-header ps-tmpla-zone-header--spaced">
                             <span className="ps-tmpla-zone-icon">▬</span>
-                            <span className="ps-tmpla-zone-title">Body</span>
-                            <span className="ps-tmpla-zone-meta">same as Page 1</span>
+                            <span className="ps-tmpla-zone-title">{t(ZONE_LABEL_KEY.body)}</span>
+                            <span className="ps-tmpla-zone-meta">{t('templateAssemblyPage.sameAsPage1')}</span>
                           </div>
                           <div className="ps-tmpla-body-continue">
-                            {bodySlots.length === 0 ? 'No body parts — add them in Page 1'
-                              : `${bodySlots.length} part${bodySlots.length !== 1 ? 's' : ''} continue across all pages`}
+                            {bodySlots.length === 0 ? t('templateAssemblyPage.noBodyPartsAddInPage1')
+                              : t('templateAssemblyPage.bodyPartsContinue', { count: bodySlots.length })}
                           </div>
                         </>
                       )}
@@ -852,7 +925,7 @@ export const TemplateAssemblyPage: React.FC = () => {
 
       {/* ── Part picker modal ── */}
       {picker && (
-        <PartPicker role={picker} onPick={part => addSlot(picker, part)}
+        <PartPicker role={picker} labFilter={labFilter} labs={labs} onPick={part => addSlot(picker, part)}
           onClose={() => setPicker(null)} />
       )}
 

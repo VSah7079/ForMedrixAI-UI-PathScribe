@@ -1,11 +1,18 @@
 import React, { useState, useRef, useCallback, useEffect, useMemo } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
+import { useTranslation, Trans } from 'react-i18next';
 import { buildPoolGroupRows, splitPoolRowsByUrgency, computeRestrictedPoolKeys, type PoolDividerRow, type SubspecialtyForRestrictionCheck } from './poolGrouping';
+import { buildAmendmentGroupRows, type AmendmentDividerRow } from './amendmentGrouping';
+import { buildAutopsyGroupRows, type AutopsyDividerRow } from './autopsyGrouping';
+import type { AmendmentType } from '@/types/reports/AmendmentRecord';
+import { resolveDigitalReadinessBadge, resolveDpTriageBadge } from '@/services/digitalPathology/resolveWorklistDpBadges';
 import { storageGet, storageSet } from '@/services/mockStorage';
 import { useAuth } from "@/contexts/AuthContext";
 import { useSystemConfig } from "@/contexts/SystemConfigContext";
 import { getFacilityDateParts } from '@/utils/facilityTime';
-import { messageService, facilityService, auditService, specimenDeficiencyService, subspecialtyService, userService } from "@/services";
+import { facilityService, auditService, specimenDeficiencyService, subspecialtyService, accessRequestService } from "@/services";
+import { sendAccessRequestToAdmins } from "@/utils/accessRequests";
+import { resolvePediatricAccess, resolveOrchestrationAccess } from "@/services/auth/caseAccessControl";
 import { useMessaging } from "@/contexts/MessagingContext";
 import { getOrganisationByHospitalId, getOrganisationShortName } from '../../services/organisation/organisationService';
 import { formatDate as formatDateLocale, localeForJurisdiction, formatAge } from '@/utils/formatDate';
@@ -14,9 +21,16 @@ import { isUrgentCase } from '@/utils/caseUrgency';
 import type { RevisionType } from '@/types/reports/AmendmentRecord';
 import type { Jurisdiction } from '@/types/systemConfig';
 import '../../pathscribe.css';
-import { Case } from "../../types/case/Case";
+import { Case, CaseParticipant } from "../../types/case/Case";
 import { Flag } from '../../services/flags/IFlagService';
 import { prefetchTemplateData } from '@/services/templates/templateService';
+// PS-304 — Worklist "Staff" column: shared memoized lookup (avoids a
+// redundant fetch per row/render — see participationTypeLookup.ts's own
+// comment for why this matters) and the AppShell compose-drawer bridge.
+import { getParticipationTypeLookup } from '@/utils/participationTypeLookup';
+import type { ParticipationTypeRecord } from '@/services/participationTypes/IParticipationTypeService';
+import { openComposeTo } from '@/utils/openComposeTo';
+import { setCaseOpenedFrom } from '@/utils/search/searchSession';
 
 // ─────────────────────────────────────────────────────────────────────────────
 // TYPES
@@ -29,13 +43,37 @@ type SortEntry = {
 
 type DividerRow = 
   | { __divider: true; label: string; count: number; isPool: false; isUrgent: boolean; restrictedCount?: number }
-  | PoolDividerRow;
+  | PoolDividerRow
+  | AmendmentDividerRow
+  | AutopsyDividerRow;
 
 type DisplayRow = Case | DividerRow;
 
 interface WorklistTableProps {
   cases: Case[];
   activeFilter: string;
+  /** Real feature, per direct follow-up: "we could segment the filter
+   *  results into those subgroups... Amendment and Correction at the
+   *  top followed by Addenda." Only meaningful when activeFilter ===
+   *  'amended' — see amendmentGrouping.ts. */
+  amendmentTypeByCaseId?: ReadonlyMap<string, AmendmentType | 'notice'>;
+  /** Real, per direct follow-up ("some cases will have DP, others may
+   *  not") — every real case's own real, most-recent WsiScanBatch
+   *  slides and completed AiScreeningResult, keyed by caseId. Both
+   *  maps are genuinely sparse: a case with no real digital slide
+   *  data simply has no entry, and the Digital Readiness/DP AI Triage
+   *  columns render nothing for that row — never a fabricated badge.
+   *  Deliberately kept in the SAME worklist a pathologist already
+   *  uses, not a second, separate page they'd have to remember to
+   *  also check. */
+  wsiSlidesByCaseId?: ReadonlyMap<string, import('@/services/digitalPathology/IWsiScanBatchService').WsiScanSlide[]>;
+  dpResultByCaseId?: ReadonlyMap<string, import('@/types/digitalPathology/AiScreeningResult').AiScreeningResult>;
+  onOpenDpDrawer?: (caseId: string) => void;
+  // Real, per direct follow-up ("Autopsy, there are so few, can we
+  // just group the records?") — only ever checked for the one real
+  // group-by-status behavior below; every other branch's own row
+  // ordering is completely unaffected.
+  branchFilter?: 'all' | 'surgpath' | 'cytology' | 'autopsy';
   tableHeight?: number;
   delegatedCaseIds?: string[];
   onBeforeNavigate?: (caseId: string) => void;
@@ -56,6 +94,13 @@ interface WorklistTableProps {
    * false leaves Worklist's existing behavior completely untouched.
    */
   forceCardView?: boolean;
+  /**
+   * Batch 350: keep the order the cases arrive in. Search passes this: the
+   * case search service has already sorted (and paged) the results, so
+   * regrouping (urgent first, pool last) or re-sorting one page here would
+   * misrepresent the server's order.
+   */
+  preserveOrder?: boolean;
 }
 // ─────────────────────────────────────────────────────────────────────────────
 // CONSTANTS
@@ -64,17 +109,31 @@ interface WorklistTableProps {
 const BATCH_SIZE = 15;
 const SORT_KEY   = 'worklistSort';
 
-const HEADER_COLUMNS: { label: string; key: string }[] = [
-  { label: 'Case',        key: 'id'                  },
-  { label: 'Patient',     key: 'lastName'             },
-  { label: 'MRN',         key: 'mrn'                  },
-  { label: 'Sex',         key: 'sex'                  },
-  { label: 'DOB (Age)',   key: 'dateOfBirth'          },
-  { label: 'Specimen(s)', key: 'specimenSummary'      },
-  { label: 'Accession',   key: 'accessionDate'        },
-  { label: 'Physician',   key: 'submittingPhysician'  },
-  { label: 'Flag(s)',     key: 'flagSeverity'         },
-  { label: 'Status   ', key: 'status'               },
+// labelKey, not label — resolved via t() at render time. Batch 31:
+// previously hardcoded English, including a trailing-non-breaking-space
+// "Status\u00a0\u00a0\u00a0" with no CSS rule anywhere that ever depended
+// on it (grepped .wl-col-th/.wl-col-header-btn — neither existed in
+// pathscribe.css before this batch) — trimmed as real dead whitespace,
+// not a translated string's concern.
+const HEADER_COLUMNS: { labelKey: string; key: string }[] = [
+  { labelKey: 'worklistTable.columns.case',             key: 'id'                  },
+  { labelKey: 'worklistTable.columns.patient',           key: 'lastName'             },
+  { labelKey: 'worklistTable.columns.mrn',               key: 'mrn'                  },
+  { labelKey: 'worklistTable.columns.sex',               key: 'sex'                  },
+  { labelKey: 'worklistTable.columns.dobAge',            key: 'dateOfBirth'          },
+  { labelKey: 'worklistTable.columns.accession',         key: 'accessionDate'        },
+  { labelKey: 'worklistTable.columns.physician',         key: 'submittingPhysician'  },
+  { labelKey: 'worklistTable.columns.specimens',         key: 'specimenSummary'      },
+  { labelKey: 'worklistTable.columns.digitalReadiness',  key: 'digitalReadiness' },
+  { labelKey: 'worklistTable.columns.dpTriage',          key: 'dpTriage' },
+  { labelKey: 'worklistTable.columns.flags',             key: 'flagSeverity'         },
+  // PS-304: placed right before Status rather than next to Physician —
+  // Physician/Specimens/Digital Readiness/Flags are all about the
+  // specimen/case content itself, while Staff (like Status) is about
+  // who's handling the case and where it stands, so it reads more
+  // naturally grouped with Status at the tail of the row.
+  { labelKey: 'worklistTable.columns.staff',             key: 'staff'                },
+  { labelKey: 'worklistTable.columns.status',            key: 'status'               },
 ];
 // ─────────────────────────────────────────────────────────────────────────────
 // COLOR PALETTES
@@ -87,8 +146,7 @@ const HEADER_COLUMNS: { label: string; key: string }[] = [
  *  'blue', 'purple'...) and so NEVER matched any real flag -
  *  FLAG_PALETTE[flag.color] silently fell through to the blue default
  *  every single time, regardless of a flag's real, intended color.
- *  This computes the real bg/border/dot directly from the flag's own
- *  real hex value instead, with a small named-color fallback kept only
+ *  This takes the flag's own real hex value instead, with a small named-color fallback kept only
  *  for defensiveness (a flag genuinely created with a named color
  *  string, however unlikely given the real data never does this,
  *  still renders correctly rather than falling through silently). */
@@ -97,22 +155,13 @@ const NAMED_FLAG_COLORS: Record<string, string> = {
   green: '#10B981', orange: '#F97316', purple: '#8B5CF6',
 };
 
-function hexToRgba(hex: string, alpha: number): string | null {
-  const m = /^#([0-9a-fA-F]{6})$/.exec(hex);
-  if (!m) return null;
-  const int = parseInt(m[1], 16);
-  const r = (int >> 16) & 255, g = (int >> 8) & 255, b = int & 255;
-  return `rgba(${r},${g},${b},${alpha})`;
-}
-
-function getFlagPalette(color: string | undefined): { bg: string; border: string; dot: string } {
+/** The flag's colour as a hue (--ps-hue); CSS derives any tint from it.
+ *  Batch 367 (PS-74): the rgba tints this used to build were never used. */
+function getFlagPalette(color: string | undefined): { dot: string } {
   const hex = color && color.startsWith('#') ? color : NAMED_FLAG_COLORS[(color ?? '').toLowerCase()];
-  const bg = hex ? hexToRgba(hex, 0.15) : null;
-  const border = hex ? hexToRgba(hex, 0.4) : null;
-  if (hex && bg && border) return { bg, border, dot: hex };
   // Real, honest fallback - a genuinely unrecognized/missing color, not
   // a silently-always-triggered default the way the old lookup was.
-  return { bg: 'rgba(59,130,246,0.15)', border: 'rgba(59,130,246,0.4)', dot: '#3B82F6' };
+  return { dot: hex && /^#[0-9a-fA-F]{6}$/.test(hex) ? hex : '#3B82F6' };
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -194,9 +243,26 @@ const getSortValue = (c: Case, key: string): any => {
       return c.order?.requestingProvider ?? '';
     case 'status':
       return c.status;
+    case 'staff': {
+      // Real design choice: sorts by the Primary Pathologist's name when
+      // there is one (matches "Primary Pathologist always shown first"
+      // in the cell itself), else the first active participant, else ''
+      // so sorting this column never throws/no-ops on a case with no
+      // team assigned yet.
+      const active = (c.participants ?? []).filter(p => p.status === 'active');
+      const primary = active.find(p => p.participationTypeIds.includes('primary'));
+      return primary?.staffName ?? active[0]?.staffName ?? '';
+    }
     case 'flagSeverity':
-      // Derived value: total number of flags
-      return (c.caseFlags?.length ?? 0) + (c.specimenFlags?.length ?? 0);
+      // Derived value: total number of flags. Real, confirmed fix
+      // (Jira PS-57): specimen-level flags now correctly aggregated
+      // from each specimen's own, nested specimenFlags — the case's
+      // own top-level specimenFlags field this used to read never
+      // reflected the real, live flag-application workflow (see
+      // renderFlags's own, fuller comment in the component body).
+      // Deleted (removed) flags excluded, same as everywhere else.
+      return (c.caseFlags?.filter(f => !f.deletedAt).length ?? 0)
+        + (c.specimens ?? []).reduce((n, sp) => n + (sp.specimenFlags?.filter(f => !f.deletedAt).length ?? 0), 0);
     default:
       return (c as any)[key];
   }
@@ -225,6 +291,20 @@ const getStatusStyle = (status: string) => {
       return { bg: 'rgba(236,72,153,0.15)',  color: '#EC4899', border: 'rgba(236,72,153,0.3)'  }; // pink — matches Finalizing tile
     case 'pool':
       return { bg: 'rgba(249,115,22,0.15)',  color: '#F97316', border: 'rgba(249,115,22,0.3)'  }; // orange — matches Pool tile
+    // Real feature, per direct specification: Post-Sign-Out Release
+    // Buffer. Found missing during a pre-push audit — same teal as
+    // HeaderBar.tsx's own dedicated pending-release styling and
+    // SearchPage.tsx's STATUS_PILL_META, for cross-page consistency.
+    case 'pending-release':
+      return { bg: 'rgba(28,141,227,0.15)',   color: '#1C8DE3', border: 'rgba(28,141,227,0.3)'   }; // blue — matches HeaderBar's pending-release badge
+    // Real, per direct guidance ("Yes we should scope 'Return to
+    // Trainee'/'Reject with Notes'"): deep brown, deliberately NOT
+    // amber/orange — 'pending-review' immediately above already uses
+    // #F59E0B, and "Needs Review" vs. "Needs Revision" are close
+    // enough in wording that a close color too would compound the
+    // confusion, not just risk it.
+    case 'returned':
+      return { bg: 'rgba(120,53,15,0.15)',    color: '#78350F', border: 'rgba(120,53,15,0.3)'    }; // deep brown — matches WorklistPage's "Needs Revision" tile
     default:
       return { bg: 'rgba(255,255,255,0.05)', color: '#94a3b8', border: 'rgba(255,255,255,0.1)' };
   }
@@ -238,27 +318,41 @@ const getStatusStyle = (status: string) => {
  * FlagChip: Renders a small badge with a flag icon.
  * isSpecimen = true renders a dashed flag icon.
  * isSpecimen = false renders a solid flag icon.
+ *
+ * Real, confirmed fix (Jira PS-57): flag is a real FlagInstance now —
+ * id/flagDefinitionId/appliedAt/source/deletedAt, none of the display
+ * fields (label/color/description) this component used to read
+ * directly off it. Resolves against flagDefById instead — the exact
+ * gap this component's own prior comment on flagDefinitions (below,
+ * at the props destructure) already flagged as real, separate
+ * follow-up work; this is that follow-up.
  */
-const FlagChip: React.FC<{ flag: any; isSpecimen?: boolean }> = React.memo(({ flag, isSpecimen }) => {
-  const palette = getFlagPalette(flag.color);
-  const label: string = flag.label || flag.name || flag.type || flag.color || 'Flag';
-  
+const FlagChip: React.FC<{ flag: any; flagDefById: Map<string, Flag>; isSpecimen?: boolean }> = React.memo(({ flag, flagDefById, isSpecimen }) => {
+  const { t } = useTranslation();
+  const def = flagDefById.get(flag.flagDefinitionId);
+  // Real, honest gap: the real Flag/FlagDefinition catalog has no color
+  // field at all (confirmed directly) — getFlagPalette's own fallback
+  // below already handles this gracefully, not something to paper over
+  // with a field that was never real.
+  const palette = getFlagPalette(undefined);
+  const label: string = def?.name ?? flag.label ?? flag.name ?? t('worklistTable.flagChip.fallbackLabel');
+  const scope = isSpecimen ? t('worklistTable.flagChip.scopeSpecimen') : t('worklistTable.flagChip.scopeCase');
+  const title = def?.description
+    ? t('worklistTable.flagChip.titleWithDescription', { scope, label, description: def.description })
+    : t('worklistTable.flagChip.title', { scope, label });
+
   return (
     <span
       className="wl-flag-chip"
-      title={`${isSpecimen ? 'Specimen' : 'Case'}: ${label}${flag.description ? ` — ${flag.description}` : ''}`}
-      style={{
-        background: palette.bg, 
-        border: `1px solid ${palette.border}`,
-        color: palette.dot,
-      }}
+      title={title}
+      style={{ '--ps-hue': palette.dot } as React.CSSProperties}
     >
       <svg width="7" height="8" viewBox="0 0 7 8" fill="none" className="wl-flag-chip-icon">
         <path
           d="M1 7V1 M1 1 L6 2.5 L1 4"
           stroke={palette.dot}
           strokeWidth={isSpecimen ? 1.2 : 1.8}
-          strokeLinecap="round" 
+          strokeLinecap="round"
           strokeLinejoin="round"
           strokeDasharray={isSpecimen ? '2 1' : undefined}
           fill="none"
@@ -272,17 +366,20 @@ const FlagChip: React.FC<{ flag: any; isSpecimen?: boolean }> = React.memo(({ fl
  * SpecimenChip: Renders a compact pill for each specimen.
  * Includes a tooltip for the full description.
  */
-const SpecimenChip: React.FC<{ 
-  label: string; 
-  description: string; 
-  fullDescription?: string 
-}> = React.memo(({ label, description, fullDescription }) => (
-  <span className="wl-specimen-chip" title={`${label}: ${fullDescription || description}`}>
-    <span className="wl-specimen-chip__label">{label}</span>
-    <span className="wl-specimen-chip__sep">·</span>
-    <span className="wl-specimen-chip__desc">{description}</span>
-  </span>
-));
+const SpecimenChip: React.FC<{
+  label: string;
+  description: string;
+  fullDescription?: string
+}> = React.memo(({ label, description, fullDescription }) => {
+  const { t } = useTranslation();
+  return (
+    <span className="wl-specimen-chip" title={t('worklistTable.specimenChip.title', { label, description: fullDescription || description })}>
+      <span className="wl-specimen-chip__label">{label}</span>
+      <span className="wl-specimen-chip__sep">·</span>
+      <span className="wl-specimen-chip__desc">{description}</span>
+    </span>
+  );
+});
 
 /**
  * StatusDot: A simple colored circle representing the case status.
@@ -315,87 +412,36 @@ function getReportBreakdown(c: any): { finalized: number; total: number } | null
   return { finalized, total: reports.length };
 }
 
-/**
- * Real bug fix: both Pediatric and Orchestration access-request buttons
- * below used to send a message to a hardcoded `recipientId: 'u3'`,
- * `recipientName: 'System Admin'` — but no user with id 'u3' exists
- * anywhere in the real, canonical services/users/mockUserService.ts
- * directory (confirmed directly: real ids are '1'-'10', 'PATH-xxx',
- * 'PA-001'). 'u3' was only ever a stand-in id from AppShell.tsx's own,
- * separate, hand-maintained INTERNAL_USERS messaging directory — the
- * exact same real ID-collision pattern RequestReviewModal.tsx's own
- * header comment already documents and fixed ('u3'/'u4' meaning
- * different people in different, disconnected lists). Sending to 'u3'
- * here meant these access-request messages were silently vanishing —
- * no real inbox anywhere ever received them.
- *
- * Real fix: sources real, active Admin-role users from the same
- * canonical userService RequestReviewModal.tsx, StaffTab.tsx, and
- * CaseTeamModal.tsx all already use. Scoped to the requesting user's
- * own organisation first — the UI copy says "your System Admin", and
- * an admin at an unrelated hospital across the world has no real
- * authority to grant a client-level or staff-record permission for a
- * different organisation's case. Falls back to every real admin
- * system-wide only if that organisation genuinely has none configured
- * yet, so the request is never silently dropped the way it was before.
- * messageService.send() takes one recipient at a time, so a real admin
- * pool sends one message per real admin, not just the first one found.
- */
-async function sendAccessRequestToAdmins(
-  requestingUser: { id: string; name: string; organisationId?: string },
-  subject: string,
-  body: string,
-  configLink: string,
-): Promise<void> {
-  const usersRes = await userService.getAll();
-  if (!usersRes.ok) return;
-  const allAdmins = usersRes.data.filter(u =>
-    u.status === 'Active' && u.roles.includes('Admin') && u.id !== requestingUser.id
-  );
-  const orgAdmins = requestingUser.organisationId
-    ? allAdmins.filter(u => u.organisationId === requestingUser.organisationId)
-    : [];
-  const recipients = orgAdmins.length > 0 ? orgAdmins : allAdmins;
-  await Promise.all(recipients.map(admin => messageService.send({
-    senderId: requestingUser.id,
-    senderName: requestingUser.name,
-    recipientId: admin.id,
-    recipientName: `${admin.firstName} ${admin.lastName}`.trim(),
-    subject,
-    body,
-    configLink,
-    timestamp: new Date(),
-    isUrgent: false,
-  })));
-}
-
+// getReportBreakdown, and sendAccessRequestToAdmins (now shared —
+// see src/utils/accessRequests.ts) used to both live in this block.
 const StatusDot: React.FC<{ status: string; isGrossed?: boolean; lastRevisionType?: RevisionType; reportBreakdown?: { finalized: number; total: number } | null }> = React.memo(({ status, isGrossed, lastRevisionType, reportBreakdown }) => {
+  const { t } = useTranslation();
   const isRevisedFinal = hasDisplayableRevision(status, lastRevisionType);
   const s = isRevisedFinal ? REVISION_ACCENT : getStatusStyle(status);
-  const label = getCaseStatusLabel(status, lastRevisionType);
+  const label = getCaseStatusLabel(status, lastRevisionType, t);
   const isPool = status === 'pool';
 
   return (
-    <span style={{ display: 'inline-flex', alignItems: 'center', gap: 5 }}>
+    <span className="wl-status-wrap">
       <span
-        title={`Status: ${label}`}
+        title={t('worklistTable.statusDot.title', { label })}
         className="wl-status-dot"
-        style={{ background: s.color, boxShadow: `0 0 4px ${s.color}66` }}
+        style={{ '--wl-status-color': s.color } as React.CSSProperties}
       />
       {isPool && (
         <span
-          title={isGrossed ? 'Grossed — ready for pickup' : 'New — awaiting Gross'}
+          title={isGrossed ? t('worklistTable.statusDot.poolGrossedTitle') : t('worklistTable.statusDot.poolNewTitle')}
           className={`wl-pool-substate${isGrossed ? ' wl-pool-substate--grossed' : ' wl-pool-substate--new'}`}
         >
-          {isGrossed ? 'Grossed' : 'New'}
+          {isGrossed ? t('worklistTable.statusDot.poolGrossedLabel') : t('worklistTable.statusDot.poolNewLabel')}
         </span>
       )}
       {reportBreakdown && (
         <span
-          title={`${reportBreakdown.finalized} of ${reportBreakdown.total} reports finalized — this case's reports aren't all in the same state`}
+          title={t('worklistTable.statusDot.reportBreakdownTitle', { finalized: reportBreakdown.finalized, total: reportBreakdown.total })}
           className="wl-pool-substate wl-pool-substate--mixed"
         >
-          {reportBreakdown.finalized}/{reportBreakdown.total} Final
+          {t('worklistTable.statusDot.finalRatio', { finalized: reportBreakdown.finalized, total: reportBreakdown.total })}
         </span>
       )}
     </span>
@@ -405,9 +451,33 @@ const StatusDot: React.FC<{ status: string; isGrossed?: boolean; lastRevisionTyp
 /**
  * UrgentDot: A red pulsing dot used to highlight STAT/Urgent cases.
  */
-const UrgentDot: React.FC = React.memo(() => (
-  <span title="Urgent Case (STAT)" className="wl-urgent-dot" />
-));
+const UrgentDot: React.FC = React.memo(() => {
+  const { t } = useTranslation();
+  return <span title={t('worklistTable.urgentDot.title')} className="wl-urgent-dot" />;
+});
+
+/**
+ * AbnormalDot: real, per direct guidance (PS-105) — a small, static
+ * indicator for a case's own real, pathologist-CONFIRMED
+ * abnormalDetectionStatus (never an unconfirmed AI/discrete-rule
+ * suggestion — that only ever exists transiently during the sign-out
+ * modal, never reaches here). One color per real severity level.
+ */
+const AbnormalDot: React.FC<{ severity: 'Abnormal' | 'Critical' | 'Malignant'; syntheticCoding?: { code: string; display: string }[] }> = React.memo(({ severity, syntheticCoding }) => {
+  const { t } = useTranslation();
+  // Real, per direct guidance: architecture-testing only — see
+  // resolveSyntheticCoding.ts's own header for the full safety
+  // reasoning. Appended to the tooltip only, purely for a QC tester to
+  // directly verify the confirmed-finding → coded-term pipeline
+  // actually worked — never rendered as if it were a real code. Left
+  // untranslated like the rest of this synthetic-coding suffix's own
+  // codes/display terms — it's diagnostic/testing output, not UI copy.
+  const codingSuffix = syntheticCoding?.length
+    ? ` — ${syntheticCoding.map(c => `${c.code} (${c.display})`).join('; ')}`
+    : '';
+  const severityLabel = t(`worklistTable.abnormalDot.severity.${severity}`);
+  return <span title={t('worklistTable.abnormalDot.title', { severity: severityLabel, codingSuffix })} className={`wl-abnormal-dot--${severity}`} />;
+});
 // ─────────────────────────────────────────────────────────────────────────────
 // WORKLIST TABLE COMPONENT
 // ─────────────────────────────────────────────────────────────────────────────
@@ -415,6 +485,11 @@ const UrgentDot: React.FC = React.memo(() => (
 const WorklistTable: React.FC<WorklistTableProps> = ({
   cases,
   activeFilter,
+  amendmentTypeByCaseId,
+  wsiSlidesByCaseId,
+  dpResultByCaseId,
+  onOpenDpDrawer,
+  branchFilter,
   tableHeight,
   delegatedCaseIds = [],
   onBeforeNavigate,
@@ -425,20 +500,23 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   onRowSelect,
   onFirstCaseId,
   onDisplayOrder,
-  // flagDefinitions is a real prop three callers (SearchPage, WorklistPage,
-  // SynopticReportPage) actively pass in, but nothing in this component
-  // reads it — likely orphaned when the Sidecar overlay (mentioned in
-  // renderFlag's own comment below) was removed. Not dead code to delete;
-  // flagged here rather than silently suppressed. If Computational-flag
-  // styling in renderFlag was the intended consumer, that's real,
-  // separate follow-up work.
-  flagDefinitions: _flagDefinitions = [],
+  // Real, confirmed fix (Jira PS-57): flagDefinitions is now used —
+  // see FlagChip's own comment above. Real, live catalog, same one
+  // SearchPage/WorklistPage/SynopticReportPage already fetch and pass
+  // down; this component just never resolved against it before.
+  flagDefinitions = [],
   forceCardView = false,
+  preserveOrder = false,
 }) => {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const { user } = useAuth();
   const { config } = useSystemConfig();
   const { reloadInbox } = useMessaging();
+  const flagDefById = React.useMemo(
+    () => new Map(flagDefinitions.map(f => [f.id, f])),
+    [flagDefinitions]
+  );
 
   // ── Restricted-pool awareness for the current user (real fix, from a
   //    direct product review: the worklist previously showed every pool's
@@ -503,25 +581,15 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // description now), and defMap had no other purpose.
 
   // ── Pediatric access state ──────────────────────────────────────────────
-  const [pedBlockedCase, setPedBlockedCase] = React.useState<{id:string;age:number;clientId?:string}|null>(null);
+  const [pedBlockedCase, setPedBlockedCase] = React.useState<{id:string;age:number;facilityId?:string}|null>(null);
 
-  // Persisted set of case IDs where access has been requested — survives refresh
-  const [pedRequestedIds, setPedRequestedIds] = React.useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem('pathscribe_ped_requested');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch { return new Set(); }
-  });
-
-  const markPedRequested = React.useCallback((caseId: string) => {
-    setPedRequestedIds(prev => {
-      const next = new Set(prev).add(caseId);
-      localStorage.setItem('pathscribe_ped_requested', JSON.stringify([...next]));
-      return next;
-    });
-  }, []);
-
-  const pedRequestSent = pedBlockedCase ? pedRequestedIds.has(pedBlockedCase.id) : false;
+  // Real feature, per direct follow-up: "Do we Track the request to
+  // gain access?... Do we generate a ticket system that has its own
+  // status." Replaces the old, bare per-browser localStorage sets
+  // (pathscribe_ped_requested / pathscribe_orch_requested) — not real,
+  // status-bearing records, and not genuinely user-specific across
+  // sessions. Both derived from one real fetch against the tracked
+  // AccessRequestService below (pedRequestedIds/orchRequestedIds).
 
   // ── Orchestration access state ──────────────────────────────────────────
   // Structurally mirrors the pediatric block above — same request/audit/
@@ -533,26 +601,36 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // migration risk with existing pediatric request state.
   const [orchBlockedCase, setOrchBlockedCase] = React.useState<{id:string}|null>(null);
 
-  const [orchRequestedIds, setOrchRequestedIds] = React.useState<Set<string>>(() => {
-    try {
-      const stored = localStorage.getItem('pathscribe_orch_requested');
-      return stored ? new Set(JSON.parse(stored)) : new Set();
-    } catch { return new Set(); }
-  });
+  const [pedRequestedIds, setPedRequestedIds] = React.useState<Set<string>>(new Set());
+  const [orchRequestedIds, setOrchRequestedIds] = React.useState<Set<string>>(new Set());
+
+  const refreshAccessRequestState = React.useCallback(() => {
+    const userId = (user as any)?.id;
+    if (!userId) return;
+    accessRequestService.getAllForUser(userId).then(res => {
+      if (!res.ok) return;
+      const pending = res.data.filter(r => r.status === 'pending');
+      setPedRequestedIds(new Set(pending.filter(r => r.type === 'pediatric' && r.caseId).map(r => r.caseId!)));
+      setOrchRequestedIds(new Set(pending.filter(r => r.type === 'orchestration' && r.caseId).map(r => r.caseId!)));
+    }).catch(() => {});
+  }, [(user as any)?.id]);
+
+  React.useEffect(() => { refreshAccessRequestState(); }, [refreshAccessRequestState]);
+
+  const markPedRequested = React.useCallback((caseId: string) => {
+    setPedRequestedIds(prev => new Set(prev).add(caseId));
+  }, []);
+
+  const pedRequestSent = pedBlockedCase ? pedRequestedIds.has(pedBlockedCase.id) : false;
 
   const markOrchRequested = React.useCallback((caseId: string) => {
-    setOrchRequestedIds(prev => {
-      const next = new Set(prev).add(caseId);
-      localStorage.setItem('pathscribe_orch_requested', JSON.stringify([...next]));
-      return next;
-    });
+    setOrchRequestedIds(prev => new Set(prev).add(caseId));
   }, []);
 
   const orchRequestSent = orchBlockedCase ? orchRequestedIds.has(orchBlockedCase.id) : false;
 
   const isOrchRestricted = React.useCallback((c: any): boolean => {
-    if ((c?.reportingMode) !== 'orchestrator') return false; // not an Orchestration case — no gate applies
-    return !((user as any)?.canViewOrchestration ?? false);
+    return !resolveOrchestrationAccess(user as any, c).granted;
   }, [user]);
 
   // Combined check used at every PHI-redaction point in the table/card
@@ -598,20 +676,98 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
     return () => document.removeEventListener('visibilitychange', onVisible);
   }, [loadClientThresholds]);
 
+  // PS-304 — Staff column: id → {label, abbreviation, color} lookup for
+  // every participation type a case's participants[] can reference.
+  // Fetched once through the shared memoized helper (getParticipationTypeLookup)
+  // rather than mockParticipationTypeService directly, so every open worklist
+  // row shares the one real fetch instead of firing one per row.
+  const [participationTypes, setParticipationTypes] = useState<ParticipationTypeRecord[]>([]);
+  useEffect(() => {
+    let cancelled = false;
+    getParticipationTypeLookup().then(types => { if (!cancelled) setParticipationTypes(types); });
+    return () => { cancelled = true; };
+  }, []);
+  const participationTypeById = useMemo(
+    () => new Map(participationTypes.map(t => [t.id, t])),
+    [participationTypes],
+  );
+
+  /** Active participants for a case, Primary Pathologist first (stable
+   *  otherwise) — per PS-304's "Primary Pathologist always shown first". */
+  const getStaffParticipants = React.useCallback((c: Case): CaseParticipant[] => {
+    const active = (c.participants ?? []).filter(p => p.status === 'active');
+    const primaryIdx = active.findIndex(p => p.participationTypeIds.includes('primary'));
+    if (primaryIdx <= 0) return active; // already first, or none — nothing to reorder
+    const primary = active[primaryIdx];
+    return [primary, ...active.slice(0, primaryIdx), ...active.slice(primaryIdx + 1)];
+  }, []);
+
+  /** Comma-joined role label(s) for a participant's tooltip — a
+   *  participant can hold more than one participation type at once
+   *  (e.g. Resident + Grossing). Falls back to the raw id for any type
+   *  not (yet) in the lookup rather than silently dropping it. */
+  const getStaffRoleLabel = React.useCallback((p: CaseParticipant): string =>
+    p.participationTypeIds.map(id => participationTypeById.get(id)?.label ?? id).join(', '),
+    [participationTypeById],
+  );
+
+  /** One small badge per assigned staff member: name + a distinct
+   *  "RES" marker for Residents (participationTypeIds includes
+   *  'resident') + a message icon that opens the compose drawer
+   *  pre-addressed to that person with the case's accession as the
+   *  subject. stopPropagation on the message click is real, not
+   *  defensive boilerplate — the row itself has its own onClick that
+   *  navigates into the case, and without it every click to message
+   *  someone would also open the case underneath the drawer. */
+  const renderStaffCell = React.useCallback((c: Case) => {
+    const participants = getStaffParticipants(c);
+    if (participants.length === 0) return <span className="wl-td-muted">—</span>;
+    // "Case {accession}" — pre-fills the compose drawer's own subject
+    // line, i.e. it's message-composition text sent to another user,
+    // not chrome rendered for the person looking at this table. Left
+    // in English per this sweep's established "exported/persisted
+    // data stays English" convention (same reasoning already applied
+    // to sendAccessRequestToAdmins' own message bodies below).
+    const subject = `Case ${c.accession?.fullAccession ?? c.id}`;
+    return (
+      <div className="wl-chips-wrap">
+        {participants.map(p => {
+          const isResident = p.participationTypeIds.includes('resident');
+          const isPrimary  = p.participationTypeIds.includes('primary');
+          return (
+            <span
+              key={p.staffId}
+              className={`wl-staff-chip${isPrimary ? ' wl-staff-chip--primary' : ''}`}
+              title={getStaffRoleLabel(p)}
+            >
+              {/* "RES" itself is a compact domain abbreviation (like
+                  MRN/DOB elsewhere in this file), not translated — only
+                  its tooltip is real UI copy. */}
+              {isResident && <span className="wl-staff-chip__badge" title={t('worklistTable.staffChip.residentBadgeTitle')}>RES</span>}
+              <span className="wl-staff-chip__name">{p.staffName}</span>
+              <button
+                type="button"
+                className="wl-staff-chip__msg-btn"
+                title={t('worklistTable.staffChip.messageTitle', { name: p.staffName })}
+                onClick={e => { e.stopPropagation(); openComposeTo(p.staffId, subject); }}
+              >
+                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2"><path d="M4 4h16c1.1 0 2 .9 2 2v12c0 1.1-.9 2-2 2H4c-1.1 0-2-.9-2-2V6c0-1.1.9-2 2-2z"/><polyline points="22,6 12,13 2,6"/></svg>
+              </button>
+            </span>
+          );
+        })}
+      </div>
+    );
+  }, [getStaffParticipants, getStaffRoleLabel, t]);
+
   const isPedRestricted = React.useCallback((c: any): boolean => {
-    const clientId  = c?.order?.clientId;
-    const dob       = c?.patient?.dateOfBirth;
-    const threshold = clientId ? (clientThresholds[clientId] ?? null) : null;
-    if (!dob || threshold === null) return false; // client has no pediatric policy
-
-    const age = Math.floor((Date.now() - new Date(dob).getTime()) / 31557600000);
-    if (age >= threshold) return false; // not a pediatric patient
-
-    // Option C: user must be in the client's authorized pediatric pathologist list
-    const authorizedIds: string[] = clientId
-      ? ((clientThresholds as any)[`${clientId}_authorized`] ?? [])
-      : [];
-    return !authorizedIds.includes((user as any)?.id ?? '');
+    const clientId = c?.order?.facilityId;
+    const facility = clientId ? {
+      id: clientId,
+      pediatricAgeThreshold: clientThresholds[clientId] ?? null,
+      authorizedPediatricPathologistIds: (clientThresholds as any)[`${clientId}_authorized`] ?? [],
+    } : null;
+    return !resolvePediatricAccess(user as any, c, facility).granted;
   }, [user, clientThresholds]);
 
   // Pool cases: view-only/PHI-redacted for EVERYONE until actually
@@ -647,10 +803,10 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // redaction, unlike the other two which need a permission change.
   const restrictedLabel = React.useCallback((c: any): string => {
     const kind = restrictionKind(c);
-    if (kind === 'pediatric') return 'Patient';
-    if (kind === 'pool') return 'Pooled Case';
-    return 'Case';
-  }, [restrictionKind]);
+    if (kind === 'pediatric') return t('worklistTable.restricted.patient');
+    if (kind === 'pool') return t('worklistTable.restricted.pooledCase');
+    return t('worklistTable.restricted.case');
+  }, [restrictionKind, t]);
   
   // Ref for the scrollable container to implement infinite scroll
   const scrollRef  = useRef<HTMLDivElement>(null);
@@ -696,7 +852,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // effective yet still represents unfinished quality work, so it
   // stays flagged here too, not just genuinely-open items. Only
   // 'closed' clears the flag. This is just a signal pointing at the
-  // dedicated Deficiencies work queue (src/pages/DeficienciesPage.tsx),
+  // dedicated Deficiencies work queue (src/pages/QualityAssurancePage.tsx),
   // not where resolution happens — see that page's own header comment
   // for why deficiency resolution is deliberately independent of any
   // single case's lifecycle.
@@ -843,7 +999,6 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       if (activeFilter === 'delegated') return delegatedCaseIds.includes(c.id);
 
       // 4. Status-based filters — cast to any to bypass CaseStatus union constraint
-      if (activeFilter === 'review')     return c.status === 'pending-review';
       if (activeFilter === 'inprogress') return c.status === 'in-progress';
       // 'amended' (displayed as "Amendment & Addenda") is no longer a
       // CaseStatus value to match against — WorklistPage computes it via
@@ -851,6 +1006,11 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       // filteredCases before it ever reaches this component, so this is
       // a pass-through rather than a second status-string check.
       if (activeFilter === 'amended')    return true;
+      // Same real pass-through reasoning as 'amended' above -
+      // informalReviewCaseIds is also computed live in WorklistPage
+      // (informalReviewService.getPendingForReviewer) and cases are
+      // pre-filtered before reaching this component.
+      if (activeFilter === 'informalreview') return true;
       if (activeFilter === 'draft')      return c.status === 'draft';
       if (activeFilter === 'finalizing') return c.status === 'finalizing';
 
@@ -909,6 +1069,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
    * 3. Re-combines them so Urgent is always first.
    */
   const finalCases = useMemo(() => {
+    if (preserveOrder) return filteredCases;
     const poolCases = filteredCases.filter(c => c.status === 'pool');
     const nonPool   = filteredCases.filter(c => c.status !== 'pool');
     const urgent    = nonPool.filter(isUrgentCase);
@@ -919,7 +1080,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       ...sortGroup(normal),
       ...sortGroup(poolCases),
     ];
-  }, [filteredCases, isUrgentCase, sortGroup]);
+  }, [filteredCases, isUrgentCase, sortGroup, preserveOrder]);
 
   // ─────────────────────────────────────────────────────────────────────────────
   // NAVIGATION & SELECTION
@@ -930,10 +1091,28 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
    * Triggers the navigation to the synoptic reporting view,
    * passing the current worklist order in the router state.
    */
+  /**
+   * openCase:
+   * Triggers the navigation to the synoptic reporting view,
+   * passing the current worklist order in the router state.
+   *
+   * Real feature, per direct follow-up: "when those cases are
+   * selected it opens to that intermediate page where they can
+   * publish their review." Only the Informal Review filter routes to
+   * FullReportPage (the real, read-only intermediate view) instead of
+   * the full editor — every other filter's behavior is completely
+   * unchanged.
+   */
   const openCase = useCallback(
     (id: string) => {
-      sessionStorage.setItem('pathscribe:navFrom', navSource);
+      setCaseOpenedFrom(navSource);
       onBeforeNavigate?.(id);
+      if (activeFilter === 'informalreview') {
+        navigate(`/report/${id}`, {
+          state: { fromFilter: activeFilter, openInternalNotes: true },
+        });
+        return;
+      }
       navigate(`/case/${id}/synoptic`, {
         state: { 
           // Pass the IDs so the case view can implement "Next/Prev"
@@ -941,7 +1120,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
         },
       });
     },
-    [navigate, onBeforeNavigate, finalCases, navSource]
+    [navigate, onBeforeNavigate, finalCases, navSource, activeFilter]
   );
 
   /**
@@ -953,16 +1132,22 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       const c = cases.find(c => c.id === id);
 
       // Pediatric restricted — show access modal instead of opening case
-      if (isPedRestricted(c as any)) {
+      const facilityIdForPedCheck = (c as any)?.order?.facilityId;
+      const pedFacility = facilityIdForPedCheck ? {
+        id: facilityIdForPedCheck,
+        pediatricAgeThreshold: clientThresholds[facilityIdForPedCheck] ?? null,
+        authorizedPediatricPathologistIds: (clientThresholds as any)[`${facilityIdForPedCheck}_authorized`] ?? [],
+      } : null;
+      const pedDecision = resolvePediatricAccess(user as any, c as any, pedFacility);
+      if (!pedDecision.granted) {
         const dob = (c as any)?.patient?.dateOfBirth;
         const age = dob ? Math.floor((Date.now()-new Date(dob).getTime())/31557600000) : 0;
-        const clientId = (c as any)?.order?.clientId;
-        setPedBlockedCase({ id, age, clientId });
+        setPedBlockedCase({ id, age, facilityId: facilityIdForPedCheck });
         // Audit: access denied event
         auditService.logEvent({
           type: 'system',
           event: 'Pediatric Access Denied',
-          detail: `Case ${id} opened by ${(user as any)?.name ?? 'Unknown'} — blocked: patient age ${age} below client pediatric threshold. User lacks canViewPediatric permission.`,
+          detail: `Case ${id} opened by ${(user as any)?.name ?? 'Unknown'} — blocked: ${pedDecision.reason}`,
           user: (user as any)?.name ?? 'Unknown',
           caseId: id,
           confidence: null,
@@ -1014,7 +1199,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       prefetchTemplateData(templateId);
       openCase(id);
     },
-    [cases, openCase, onRowSelect, onPoolCaseClick, isOrchRestricted, isPedRestricted, user]
+    [cases, openCase, onRowSelect, onPoolCaseClick, isOrchRestricted, isPedRestricted, user, clientThresholds]
   );
 // ─────────────────────────────────────────────────────────────────────────────
   // DISPLAY ROW GENERATION (Dividers + Virtualization)
@@ -1025,6 +1210,29 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
    * Maps the sorted cases into a format that includes UI dividers.
    */
   const displayRows = useMemo<DisplayRow[]>(() => {
+    // Batch 350: Search's results arrive sorted and paged by the server; show
+    // them as they are, without the Worklist's urgent/pool sections.
+    if (preserveOrder) return finalCases;
+
+    // Real feature, per direct follow-up: "we could segment the filter
+    // results into those subgroups... Amendment and Correction at the
+    // top followed by Addenda." The default Urgent/All Cases grouping
+    // below doesn't apply here — amended-filter cases never include
+    // pool cases in the first place (see the status-filter comment
+    // above) — so this is a genuinely separate branch, not a variant
+    // of the default one.
+    if (activeFilter === 'amended' && amendmentTypeByCaseId) {
+      return buildAmendmentGroupRows(finalCases, amendmentTypeByCaseId);
+    }
+
+    // Real, per direct follow-up ("Autopsy, there are so few, can we
+    // just group the records?") — same real, deliberate "genuinely
+    // separate branch" reasoning as the Amendment grouping right
+    // above, not a variant of the default Urgent/All Cases grouping.
+    if (branchFilter === 'autopsy') {
+      return buildAutopsyGroupRows(finalCases);
+    }
+
     const pool        = finalCases.filter(c => c.status === 'pool');
     const urgent      = finalCases.filter(c => isUrgentCase(c) && c.status !== 'pool');
     const normal      = finalCases.filter(c => !isUrgentCase(c) && c.status !== 'pool');
@@ -1050,20 +1258,23 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
     // cases exist, unassigned, in urgentPoolRows just above (already
     // visible there, but easy to miss scanning past it quickly).
     if (urgent.length > 0) {
-      rows.push({ __divider: true, label: 'Urgent', count: urgent.length, isPool: false, isUrgent: true,
+      rows.push({ __divider: true, label: t('worklistTable.divider.urgent'), count: urgent.length, isPool: false, isUrgent: true,
         restrictedCount: pool.filter(isUrgentCase).length || undefined });
       rows.push(...urgent);
     }
     // Normal non-pool cases — same idea, for non-urgent pool cases.
     if (normal.length > 0) {
-      rows.push({ __divider: true, label: 'All Cases', count: normal.length, isPool: false, isUrgent: false,
+      rows.push({ __divider: true, label: t('worklistTable.divider.allCases'), count: normal.length, isPool: false, isUrgent: false,
         restrictedCount: pool.filter(c => !isUrgentCase(c)).length || undefined });
       rows.push(...normal);
     }
     rows.push(...normalPoolRows);
 
     return rows;
-  }, [finalCases, isUrgentCase, restrictedPoolKeys]);
+    // t included so these two divider labels re-resolve on a language
+    // switch, same "t in deps" convention this sweep already applies to
+    // other memoized/effect-computed display strings elsewhere.
+  }, [finalCases, isUrgentCase, restrictedPoolKeys, activeFilter, amendmentTypeByCaseId, branchFilter, t, preserveOrder]);
 
   /**
    * visibleRows:
@@ -1078,7 +1289,9 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
     for (const row of displayRows) {
       if ('__divider' in row) {
         result.push(row);
-        skippingCollapsedGroup = row.isPool && collapsedPoolKeys.has(row.poolKey);
+        // Amendment & Addenda dividers are never collapsible - only real
+        // pool sub-groups (poolKey) support the collapsed-group feature.
+        skippingCollapsedGroup = 'isPool' in row && row.isPool && collapsedPoolKeys.has(row.poolKey);
         continue;
       }
 
@@ -1163,14 +1376,24 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   // deletion). The pill's own tooltip now carries the description
   // that was the only real information the overlay ever added.
   const renderFlag = (appliedFlag: any, idx: number, isSpecimen: boolean) => {
-    return <FlagChip key={`flag-${appliedFlag.id ?? idx}-${idx}`} flag={appliedFlag} isSpecimen={isSpecimen} />;
+    return <FlagChip key={`flag-${appliedFlag.id ?? idx}-${idx}`} flag={appliedFlag} flagDefById={flagDefById} isSpecimen={isSpecimen} />;
   };
 
 
-  const renderFlags = (caseFlags: any[], specimenFlags: any[], _caseId: string) => {
+  // Real, confirmed fix (Jira PS-57): specimenFlags used to come from
+  // a top-level Case.specimenFlags field — confirmed directly, only
+  // ever populated by HeaderBar.tsx's LIS-sync path, never by the
+  // real flag-application workflow (FlagManagerModal/caseFlagsApi.ts),
+  // which has always written to each specimen's own, nested
+  // specimenFlags instead (the only real way to know which specimen a
+  // flag belongs to, since FlagInstance itself carries no specimenId).
+  // Aggregated here across all of the case's specimens. Deleted
+  // (removed) flags excluded on both sides — the old, wrong type had
+  // no real field for this at all.
+  const renderFlags = (caseFlags: any[], specimens: any[], _caseId: string) => {
     const allFlags = [
-      ...caseFlags.map(f => ({ f, isSpecimen: false })),
-      ...specimenFlags.map(f => ({ f, isSpecimen: true })),
+      ...caseFlags.filter(f => !f.deletedAt).map(f => ({ f, isSpecimen: false })),
+      ...specimens.flatMap((sp: any) => (sp.specimenFlags ?? []).filter((f: any) => !f.deletedAt).map((f: any) => ({ f, isSpecimen: true }))),
     ];
     return (
       <div className="wl-flags-wrap">
@@ -1180,20 +1403,23 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
   };
 
   return (
-    <div className="wl-container" style={{ height: tableHeight ? `${tableHeight}px` : '100%' }}>
+    <div className="wl-container" style={{ '--wl-container-height': tableHeight ? `${tableHeight}px` : '100%' } as React.CSSProperties}>
       
       {/* Multi-Sort Indicator Ribbon */}
       {sortStack.length > 1 && (
         <div className="wl-sort-ribbon">
-          <span className="wl-sort-ribbon__label">Sorted by:</span>
-          {sortStack.map((s) => (
-            <div key={s.key} className="wl-sort-chip">
-              {HEADER_COLUMNS.find(h => h.key === s.key)?.label}
-              <span className="wl-sort-chip__dir">{s.dir}</span>
-              <button onClick={() => onRemoveSort(s.key)} className="wl-sort-chip__remove">×</button>
-            </div>
-          ))}
-          <button onClick={clearSort} className="wl-sort-clear">Clear All</button>
+          <span className="wl-sort-ribbon__label">{t('worklistTable.sortRibbon.label')}</span>
+          {sortStack.map((s) => {
+            const col = HEADER_COLUMNS.find(h => h.key === s.key);
+            return (
+              <div key={s.key} className="wl-sort-chip">
+                {col ? t(col.labelKey) : null}
+                <span className="wl-sort-chip__dir">{s.dir === 'asc' ? t('worklistTable.sortRibbon.asc') : t('worklistTable.sortRibbon.desc')}</span>
+                <button onClick={() => onRemoveSort(s.key)} className="wl-sort-chip__remove">×</button>
+              </div>
+            );
+          })}
+          <button onClick={clearSort} className="wl-sort-clear">{t('worklistTable.sortRibbon.clearAll')}</button>
         </div>
       )}
 
@@ -1211,22 +1437,48 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       {isTablet ? (
         <div className="wl-scroll wl-card-list" ref={scrollRef} onScroll={handleScroll}>
           {finalCases.length === 0 ? (
-            <div className="wl-empty-state">No cases match the current filter.</div>
+            <div className="wl-empty-state">{t('worklistTable.emptyState')}</div>
           ) : (
             <>
               {visibleRows.map((row: DisplayRow, rowIndex: number) => {
 
                 // Section divider
                 if ('__divider' in row) {
+                  // Real feature, per direct follow-up: Amendment &
+                  // Addenda's own group dividers - genuinely simpler
+                  // than pool dividers (never collapsible, no
+                  // restricted-pool-membership concept applies here).
+                  if ('isAmendmentGroup' in row) {
+                    return (
+                      <div key={`div-${row.label}-${rowIndex}`} className="wl-card-divider">
+                        <span className="wl-card-divider__label">{row.label}</span>
+                        <span className="wl-card-divider__count">{row.count}</span>
+                        <div className="wl-card-divider__line" />
+                      </div>
+                    );
+                  }
+                  // Real, per direct follow-up ("Autopsy, there are
+                  // so few, can we just group the records?") — same
+                  // real, simple, non-collapsible divider shape as
+                  // the Amendment group right above; no real
+                  // "collapsible pool" concept applies here either.
+                  if ('isAutopsyGroup' in row) {
+                    return (
+                      <div key={`div-${row.label}-${rowIndex}`} className="wl-card-divider">
+                        <span className="wl-card-divider__label">{row.label}</span>
+                        <span className="wl-card-divider__count">{row.count}</span>
+                        <div className="wl-card-divider__line" />
+                      </div>
+                    );
+                  }
                   const isCollapsible = row.isPool;
                   const isCollapsed   = row.isPool && collapsedPoolKeys.has(row.poolKey);
                   const restrictedCount = row.isPool === false ? row.restrictedCount : undefined;
                   return (
                     <div
                       key={`div-${row.label}-${rowIndex}`}
-                      className="wl-card-divider"
+                      className={`wl-card-divider${isCollapsible ? ' wl-divider--clickable' : ''}`}
                       onClick={isCollapsible ? () => togglePoolCollapsed(row.poolKey) : undefined}
-                      style={isCollapsible ? { cursor: 'pointer' } : undefined}
                     >
                       {isCollapsible && (
                         <span className="wl-card-divider__chevron">{isCollapsed ? '▶' : '▼'}</span>
@@ -1234,13 +1486,23 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       <span className={`wl-card-divider__label${row.isUrgent ? ' wl-card-divider__label--urgent' : row.isPool ? ' wl-card-divider__label--pool' : ''}`}>
                         {row.label}
                       </span>
+                      {/* Real feature, per direct follow-up: "it should
+                          show first the number of cases in the group,
+                          and the number of restricted cases in the
+                          group. The arrows going up is not the easiest
+                          to read." Total count now comes right after
+                          the label, ahead of the restricted-cases
+                          badge — previously last. Arrow removed; text
+                          now says "Restricted" directly, matching the
+                          same word used to describe this everywhere
+                          else, rather than a directional glyph. */}
+                      <span className="wl-card-divider__count">{row.count}</span>
                       {row.isPool && row.restrictedForMe && (
-                        <span className="wl-card-divider__restricted" title="You aren't a member of this pool — visible, not claimable">Restricted</span>
+                        <span className="wl-card-divider__restricted" title={t('worklistTable.divider.restrictedForMeTitle')}>{t('worklistTable.divider.restricted')}</span>
                       )}
                       {!!restrictedCount && (
-                        <span className="wl-card-divider__restricted" title="Additional unassigned cases of the same type, sitting in the pool">{restrictedCount} Restricted</span>
+                        <span className="wl-card-divider__restricted" title={t('worklistTable.divider.restrictedCountTitle')}>{t('worklistTable.divider.restrictedCount', { count: restrictedCount })}</span>
                       )}
-                      <span className="wl-card-divider__count">{row.count}</span>
                       <div className="wl-card-divider__line" />
                     </div>
                   );
@@ -1251,10 +1513,11 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                 const isUrgent = isUrgentCase(c);
                 const isRush = (c.order as any)?.priority === 'Rush';
                 const hasOpenDeficiency = caseIdsWithOpenDeficiency.has(c.id);
+                const abnormalSeverity = c.abnormalDetectionStatus?.severity;
                 const isSelected = selectedCaseId ? c.id === selectedCaseId : false;
                 const isRevisedFinalCard = hasDisplayableRevision(c.status, c.lastRevisionType);
                 const statusStyle = isRevisedFinalCard ? REVISION_ACCENT : getStatusStyle(c.status);
-                const statusLabel = getCaseStatusLabel(c.status, c.lastRevisionType);
+                const statusLabel = getCaseStatusLabel(c.status, c.lastRevisionType, t);
 
                 let cardClass = 'wl-card';
                 if (isSelected) cardClass += ' wl-card--selected';
@@ -1273,7 +1536,8 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     <div className="wl-card__header">
                       <div className="wl-card__id-group">
                         {isUrgent && <UrgentDot />}
-                        {hasOpenDeficiency && <span className="wl-card__deficiency-dot" title="Open specimen deficiency — see Deficiencies queue">⚠</span>}
+                        {abnormalSeverity && <AbnormalDot severity={abnormalSeverity} syntheticCoding={c.syntheticAbnormalCoding} />}
+                        {hasOpenDeficiency && <span className="wl-card__deficiency-dot" title={t('worklistTable.deficiency.title')}>⚠</span>}
                         <div>
                           {c.originHospitalId && c.originHospitalId !== 'HOSP-001' && (
                             <div
@@ -1292,10 +1556,12 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                               never actually colored at all, unlike table
                               view's own, real, already-correct
                               isRush/isUrgent/isPool inline-style logic,
-                              matched here directly. */}
+                              matched here directly. Color now comes from a
+                              CSS modifier class (batch 31), not an inline
+                              style object recomputed every render. */}
                           <span
-                            className="wl-case-id"
-                            style={{ color: isRush ? '#f59e0b' : isUrgent ? '#f87171' : c.status === 'pool' ? '#F97316' : '#0891b2' }}
+                            className={`wl-case-id${isRush ? ' wl-case-id--rush' : isUrgent ? ' wl-case-id--urgent' : c.status === 'pool' ? ' wl-case-id--pool' : ''}`}
+                            data-phi="accession"
                           >
                             {c.id}
                           </span>
@@ -1303,7 +1569,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       </div>
                       <span
                         className="wl-card__status-badge"
-                        style={{ background: statusStyle.bg, color: statusStyle.color, borderColor: statusStyle.border }}
+                        style={{ '--wl-badge-bg': statusStyle.bg, '--wl-badge-color': statusStyle.color, '--wl-badge-border': statusStyle.border } as React.CSSProperties}
                       >
                         {statusLabel}
                       </span>
@@ -1311,11 +1577,10 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                         const breakdown = getReportBreakdown(c);
                         return breakdown && (
                           <span
-                            title={`${breakdown.finalized} of ${breakdown.total} reports finalized — this case's reports aren't all in the same state`}
-                            className="wl-pool-substate wl-pool-substate--mixed"
-                            style={{ marginLeft: 6 }}
+                            title={t('worklistTable.statusDot.reportBreakdownTitle', { finalized: breakdown.finalized, total: breakdown.total })}
+                            className="wl-pool-substate wl-pool-substate--mixed wl-pool-substate--spaced"
                           >
-                            {breakdown.finalized}/{breakdown.total} Final
+                            {t('worklistTable.statusDot.finalRatio', { finalized: breakdown.finalized, total: breakdown.total })}
                           </span>
                         );
                       })()}
@@ -1326,31 +1591,31 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
                       {/* Patient */}
                       <div>
-                        <div className="wl-card__field-label">Patient</div>
+                        <div className="wl-card__field-label">{t('worklistTable.card.patientLabel')}</div>
                         <div className="wl-card__field-value" data-phi="name">
                           {isRestricted(c)
-                            ? <span className="wl-ped-name">🔒 Restricted {restrictedLabel(c)}</span>
+                            ? <span className="wl-ped-name">🔒 {t('worklistTable.restricted.badge', { label: restrictedLabel(c) })}</span>
                             : <>{c.patient.lastName}, {c.patient.firstName}</>}
                         </div>
                         {isRestricted(c) ? (
                           <div className="wl-ped-hint">
                             {restrictionKind(c) === 'pediatric' ? (
                               pedRequestedIds.has(c.id) ? (
-                                <span className="wl-ped-badge">⏳ Access requested</span>
-                              ) : 'Click to request pediatric access'
+                                <span className="wl-ped-badge">⏳ {t('worklistTable.restricted.accessRequestedBadge')}</span>
+                              ) : t('worklistTable.restricted.clickPediatric')
                             ) : restrictionKind(c) === 'orchestration' ? (
                               orchRequestedIds.has(c.id) ? (
-                                <span className="wl-ped-badge">⏳ Access requested</span>
-                              ) : 'Click to request Orchestration access'
+                                <span className="wl-ped-badge">⏳ {t('worklistTable.restricted.accessRequestedBadge')}</span>
+                              ) : t('worklistTable.restricted.clickOrchestration')
                             ) : (
-                              'Claim this case to view patient details'
+                              t('worklistTable.restricted.claimToView')
                             )}
                           </div>
                         ) : (
                           <div className="wl-card__field-sub" data-phi="dob">
                             {c.patient.sex?.charAt(0) ?? '—'}
                             {' · '}
-                            {formatDate(c.patient.dateOfBirth, c.order?.clientId)}
+                            {formatDate(c.patient.dateOfBirth, c.order?.facilityId)}
                             {' '}
                             ({c.patient.dateOfBirth ? formatAge(c.patient.dateOfBirth) : '—'})
                             <span className="wl-mrn-inline" data-phi="mrn">· MRN {c.patient.mrn ?? '—'}</span>
@@ -1360,8 +1625,8 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
                       {/* Accession + Physician */}
                       <div>
-                        <div className="wl-card__field-label">Accession · Physician</div>
-                        <div className="wl-card__field-sub">{formatDate(c.order?.receivedDate, c.order?.clientId)}</div>
+                        <div className="wl-card__field-label">{t('worklistTable.card.accessionPhysicianLabel')}</div>
+                        <div className="wl-card__field-sub">{formatDate(c.order?.receivedDate, c.order?.facilityId)}</div>
                         <div className="wl-card__field-sub">
                           {c.order?.requestingProvider ?? '—'}
                         </div>
@@ -1370,7 +1635,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       {/* Specimens — full width */}
                       {!isRestricted(c) && c.specimens && c.specimens.length > 0 && (
                         <div className="wl-card__body-full">
-                          <div className="wl-card__field-label">Specimen{c.specimens.length > 1 ? 's' : ''}</div>
+                          <div className="wl-card__field-label">{t('worklistTable.card.specimenLabel', { count: c.specimens.length })}</div>
                           <div className="wl-card__chips">
                             {c.specimens.slice(0, 3).map(s => (
                               <SpecimenChip key={s.id} label={s.label} description={s.description} />
@@ -1391,11 +1656,23 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                           rather than capping the flag count here, which
                           doesn't address a single long label and would
                           silently hide real flags beyond an arbitrary cutoff. */}
-                      {!isRestricted(c) && ((c.caseFlags?.length ?? 0) + (c.specimenFlags?.length ?? 0)) > 0 && (
+                      {!isRestricted(c) && ((c.caseFlags?.filter(f => !f.deletedAt).length ?? 0) + (c.specimens ?? []).reduce((n, sp) => n + (sp.specimenFlags?.filter(f => !f.deletedAt).length ?? 0), 0)) > 0 && (
                         <div className="wl-card__body-full">
-                          <div className="wl-card__field-label">Flags</div>
+                          <div className="wl-card__field-label">{t('worklistTable.card.flagsLabel')}</div>
                           <div className="wl-card__chips">
-                            {renderFlags(c.caseFlags ?? [], c.specimenFlags ?? [], c.id)}
+                            {renderFlags(c.caseFlags ?? [], c.specimens ?? [], c.id)}
+                          </div>
+                        </div>
+                      )}
+
+                      {/* Staff — PS-304, full width like Specimens/Flags
+                          above; the card layout has no dedicated column
+                          to squeeze this into the way the table does. */}
+                      {!isRestricted(c) && (
+                        <div className="wl-card__body-full">
+                          <div className="wl-card__field-label">{t('worklistTable.card.staffLabel')}</div>
+                          <div className="wl-card__chips">
+                            {renderStaffCell(c)}
                           </div>
                         </div>
                       )}
@@ -1412,7 +1689,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
               )}
 
               {/* Bottom buffer */}
-              <div style={{ height: '80px' }} />
+              <div className="wl-bottom-buffer" />
             </>
           )}
         </div>
@@ -1448,31 +1725,54 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
             genuinely extreme widths, not the expected normal-laptop behavior.
           */}
           <colgroup>
-            <col style={{ width: '32px' }} />{/* urgent dot — fixed, icon */}
-            <col style={{ width: '13%' }} />{/* case id */}
-            <col style={{ width: '13%' }} />{/* patient */}
-            <col style={{ width: '6%'  }} />{/* mrn */}
-            <col style={{ width: '30px' }} />{/* sex — fixed, single letter */}
-            <col style={{ width: '10%' }} />{/* dob */}
-            <col style={{ width: '19%' }} />{/* specimens */}
-            <col style={{ width: '8%'  }} />{/* accession */}
-            <col style={{ width: '12%' }} />{/* physician */}
-            <col style={{ width: '18%' }} />{/* flags */}
-            <col style={{ width: '40px' }} />{/* status dot — fixed, icon */}
+            <col className="wl-col-dot" />{/* urgent dot — fixed, icon */}
+            <col className="wl-col-case-id" />{/* case id */}
+            <col className="wl-col-patient" />{/* patient */}
+            <col className="wl-col-mrn" />{/* mrn */}
+            <col className="wl-col-sex" />{/* sex — fixed, single letter */}
+            <col className="wl-col-dob" />{/* dob */}
+            {/* Real, per direct follow-up: "I would prefer to keep
+                the mrn, sex, dob (Age) with the accession date AND
+                physician, then specimen and the rest of the
+                columns." Reordered to match; widths trimmed slightly
+                (was 8%/12%) to make real room for the two DP columns
+                below, which this colgroup had never accounted for at
+                all since they were added \u2014 the real, confirmed
+                root cause of the 34" monitor's own column-width
+                trouble (table-layout:fixed with a colgroup that
+                defines fewer <col>s than the table actually has). */}
+            <col className="wl-col-accession" />{/* accession */}
+            <col className="wl-col-physician" />{/* physician */}
+            <col className="wl-col-specimens" />{/* specimens */}
+            <col className="wl-col-digital-readiness" />{/* digital readiness */}
+            <col className="wl-col-dp-triage" />{/* dp ai triage & biomarkers */}
+            <col className="wl-col-flags" />{/* flags */}
+            {/* PS-304: new Staff column — percentages above trimmed by
+                ~1% each (100% total preserved) to make real room for
+                this one rather than pushing the table past 100% width,
+                which is exactly what the colgroup-vs-column-count
+                mismatch this comment block already warns about above
+                would do again for a 6th time. */}
+            <col className="wl-col-staff" />{/* staff */}
+            <col className="wl-col-status" />{/* status dot — fixed, icon */}
           </colgroup>
 
           {/* ── Sticky Header ── */}
           <thead className="wl-thead">
             <tr className="wl-thead-row">
               <th className="wl-th-dot" />
-              {HEADER_COLUMNS.map(({ label, key }, colIdx) => {
+              {HEADER_COLUMNS.map(({ labelKey, key }, colIdx) => {
                 const sortEntry = sortStack.find(e => e.key === key);
                 const isPrimary = sortStack[0]?.key === key;
                 const isLast    = colIdx === HEADER_COLUMNS.length - 1;
+                // Color precedence (primary sort > any active sort > default)
+                // now comes from a CSS modifier class (batch 31), not a
+                // per-render inline style object.
+                const colorClass = isPrimary ? ' wl-col-header-btn--primary' : sortEntry ? ' wl-col-header-btn--active' : '';
                 return (
                   <th key={key} className={isLast ? 'wl-col-th--last' : 'wl-col-th'}>
-                    <button onClick={() => onHeaderClick(key)} className={isLast ? 'wl-col-header-btn wl-col-header-btn--last' : 'wl-col-header-btn'} style={{ color: isPrimary ? '#38bdf8' : sortEntry ? '#7dd3fc' : '#94a3b8' }}>
-                      {label}
+                    <button onClick={() => onHeaderClick(key)} className={`${isLast ? 'wl-col-header-btn wl-col-header-btn--last' : 'wl-col-header-btn'}${colorClass}`}>
+                      {t(labelKey)}
                       {sortEntry && <span className="wl-sort-arrow">{sortEntry.dir === 'asc' ? '▴' : '▾'}</span>}
                     </button>
                   </th>
@@ -1485,8 +1785,8 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
           <tbody>
             {finalCases.length === 0 ? (
               <tr>
-                <td colSpan={11} className="wl-td-empty">
-                  No cases match the current filter.
+                <td colSpan={14} className="wl-td-empty">
+                  {t('worklistTable.emptyState')}
                 </td>
               </tr>
             ) : (
@@ -1494,31 +1794,66 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
                 // Section divider
                 if ('__divider' in row) {
+                  // Real feature, per direct follow-up: Amendment &
+                  // Addenda's own group dividers - same simpler
+                  // treatment as the tablet/card view above.
+                  if ('isAmendmentGroup' in row) {
+                    return (
+                      <tr key={`div-${row.label}-${rowIndex}`}>
+                        <td colSpan={14} className="wl-td-divider--normal">
+                          <div className="wl-card-divider wl-card-divider--flush">
+                            <span className="wl-card-divider__label">{row.label}</span>
+                            <span className="wl-card-divider__count">{row.count}</span>
+                            <div className="wl-card-divider__line" />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
+                  // Real, per direct follow-up ("Autopsy, there are
+                  // so few, can we just group the records?") — same
+                  // simpler treatment as the Amendment group right
+                  // above.
+                  if ('isAutopsyGroup' in row) {
+                    return (
+                      <tr key={`div-${row.label}-${rowIndex}`}>
+                        <td colSpan={14} className="wl-td-divider--normal">
+                          <div className="wl-card-divider wl-card-divider--flush">
+                            <span className="wl-card-divider__label">{row.label}</span>
+                            <span className="wl-card-divider__count">{row.count}</span>
+                            <div className="wl-card-divider__line" />
+                          </div>
+                        </td>
+                      </tr>
+                    );
+                  }
                   const isCollapsible = row.isPool;
                   const isCollapsed   = row.isPool && collapsedPoolKeys.has(row.poolKey);
                   const restrictedCount = row.isPool === false ? row.restrictedCount : undefined;
                   return (
                     <tr key={`div-${row.label}-${rowIndex}`}>
                       <td
-                        colSpan={11}
-                        className={row.isUrgent ? 'wl-td-divider--urgent' : 'wl-td-divider--normal'}
+                        colSpan={14}
+                        className={`${row.isUrgent ? 'wl-td-divider--urgent' : 'wl-td-divider--normal'}${isCollapsible ? ' wl-divider--clickable' : ''}`}
                         onClick={isCollapsible ? () => togglePoolCollapsed(row.poolKey) : undefined}
-                        style={isCollapsible ? { cursor: 'pointer' } : undefined}
                       >
-                        <div className="wl-card-divider" style={{ padding: 0 }}>
+                        <div className="wl-card-divider wl-card-divider--flush">
                           {isCollapsible && (
                             <span className="wl-card-divider__chevron">{isCollapsed ? '▶' : '▼'}</span>
                           )}
                           <span className={`wl-card-divider__label${row.isUrgent ? ' wl-card-divider__label--urgent' : row.isPool ? ' wl-card-divider__label--pool' : ''}`}>
                             {row.label}
                           </span>
+                          {/* Real feature, per direct follow-up: same
+                              count-first, arrow-free reorder as the
+                              tablet/card view above. */}
+                          <span className="wl-card-divider__count">{row.count}</span>
                           {row.isPool && row.restrictedForMe && (
-                            <span className="wl-card-divider__restricted" title="You aren't a member of this pool — visible, not claimable">Restricted</span>
+                            <span className="wl-card-divider__restricted" title={t('worklistTable.divider.restrictedForMeTitle')}>{t('worklistTable.divider.restricted')}</span>
                           )}
                           {!!restrictedCount && (
-                            <span className="wl-card-divider__restricted" title="Additional unassigned cases of the same type, sitting in the pool">{restrictedCount} Restricted</span>
+                            <span className="wl-card-divider__restricted" title={t('worklistTable.divider.restrictedCountTitle')}>{t('worklistTable.divider.restrictedCount', { count: restrictedCount })}</span>
                           )}
-                          <span className="wl-card-divider__count">{row.count}</span>
                           <div className="wl-card-divider__line" />
                         </div>
                       </td>
@@ -1531,29 +1866,32 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                 const isUrgent = isUrgentCase(c);
                 const isRush   = (c.order as any)?.priority === 'Rush';
                 const hasOpenDeficiency = caseIdsWithOpenDeficiency.has(c.id);
+                const abnormalSeverity = c.abnormalDetectionStatus?.severity;
                 const isPool   = c.status === 'pool';
                 const isSelected = selectedCaseId ? c.id === selectedCaseId : false;
                 const isHovered = hoveredRow === c.id;
 
+                // Background/border-left state now comes from two
+                // independent, mutually-exclusive CSS classes (batch 31,
+                // replacing a per-render inline style object) — see
+                // .wl-tr/.wl-tr--*/.wl-tr--border-* in pathscribe.css.
+                const rowStateClass = isSelected ? ' wl-tr--selected' : isHovered && isPool ? ' wl-tr--hover-pool' : isHovered ? ' wl-tr--hover' : '';
+                const rowBorderClass = isSelected ? ' wl-tr--border-selected' : isPool ? ' wl-tr--border-pool' : isRush ? ' wl-tr--border-rush' : isUrgent ? ' wl-tr--border-urgent' : '';
+
                 return (
                   <tr
                     key={c.id}
+                    className={`wl-tr${rowStateClass}${rowBorderClass}`}
                     onClick={() => handleRowClick(c.id)}
                     onMouseEnter={() => setHoveredRow(c.id)}
                     onMouseLeave={() => setHoveredRow(null)}
-                    style={{
-                      background: isSelected ? 'rgba(8,145,178,0.18)' : isHovered && isPool ? 'rgba(249,115,22,0.10)' : isHovered ? 'rgba(8,145,178,0.10)' : 'transparent',
-                      borderLeft: `2px solid ${isSelected ? '#0891B2' : isPool ? 'rgba(249,115,22,0.7)' : isRush ? 'rgba(245,158,11,0.6)' : isUrgent ? 'rgba(239,68,68,0.5)' : 'transparent'}`,
-                      borderBottom: '1px solid rgba(255,255,255,0.05)',
-                      cursor: 'pointer',
-                      transition: 'background 0.15s ease',
-                    }}
                   >
                     {/* Urgent dot */}
                     <td className="wl-td-dot">
                       <div className="wl-td-dot-inner">
                         {isUrgent && <UrgentDot />}
-                        {hasOpenDeficiency && <span className="wl-card__deficiency-dot" title="Open specimen deficiency — see Deficiencies queue">⚠</span>}
+                        {abnormalSeverity && <AbnormalDot severity={abnormalSeverity} syntheticCoding={c.syntheticAbnormalCoding} />}
+                        {hasOpenDeficiency && <span className="wl-card__deficiency-dot" title={t('worklistTable.deficiency.title')}>⚠</span>}
                       </div>
                     </td>
 
@@ -1565,7 +1903,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                           {getOrganisationShortName(c.originHospitalId)}
                         </div>
                       )}
-                      <div style={{ fontWeight: 600, color: isRush ? '#f59e0b' : isUrgent ? '#f87171' : isPool ? '#F97316' : '#0891b2', fontSize: '13px' }}>
+                      <div className={`wl-case-id-inline${isRush ? ' wl-case-id-inline--rush' : isUrgent ? ' wl-case-id-inline--urgent' : isPool ? ' wl-case-id-inline--pool' : ''}`} data-phi="accession">
                         {c.id}
                       </div>
                     </td>
@@ -1574,21 +1912,21 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     <td className="wl-td" data-phi="name">
                       {isRestricted(c) ? (
                         <div>
-                          <div className="wl-ped-name">🔒 Restricted {restrictedLabel(c)}</div>
+                          <div className="wl-ped-name">🔒 {t('worklistTable.restricted.badge', { label: restrictedLabel(c) })}</div>
                           {restrictionKind(c) === 'pediatric' ? (
                             pedRequestedIds.has(c.id) ? (
-                              <div className="wl-ped-badge">⏳ Access requested</div>
+                              <div className="wl-ped-badge">⏳ {t('worklistTable.restricted.accessRequestedBadge')}</div>
                             ) : (
-                              <div className="wl-ped-hint">Click to request pediatric access</div>
+                              <div className="wl-ped-hint">{t('worklistTable.restricted.clickPediatric')}</div>
                             )
                           ) : restrictionKind(c) === 'orchestration' ? (
                             orchRequestedIds.has(c.id) ? (
-                              <div className="wl-ped-badge">⏳ Access requested</div>
+                              <div className="wl-ped-badge">⏳ {t('worklistTable.restricted.accessRequestedBadge')}</div>
                             ) : (
-                              <div className="wl-ped-hint">Click to request Orchestration access</div>
+                              <div className="wl-ped-hint">{t('worklistTable.restricted.clickOrchestration')}</div>
                             )
                           ) : (
-                            <div className="wl-ped-hint">Claim this case to view patient details</div>
+                            <div className="wl-ped-hint">{t('worklistTable.restricted.claimToView')}</div>
                           )}
                         </div>
                       ) : (
@@ -1611,9 +1949,26 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     {/* DOB */}
                     <td className="wl-td-dob" data-phi="dob">
                       {isRestricted(c) ? '—' : (
-                        <>{formatDate(c.patient.dateOfBirth, c.order?.clientId)}
+                        <>{formatDate(c.patient.dateOfBirth, c.order?.facilityId)}
                         <span className="wl-dob-age">({c.patient.dateOfBirth ? formatAge(c.patient.dateOfBirth) : '—'})</span></>
                       )}
+                    </td>
+
+                    {/* Real, per direct follow-up: "I would prefer to
+                        keep the mrn, sex, dob (Age) with the
+                        accession date AND physician, then specimen
+                        and the rest of the columns." Accession and
+                        Physician moved here, immediately after DOB
+                        and before Specimens \u2014 same real cell
+                        content as before, just reordered. */}
+                    {/* Accession date */}
+                    <td className="wl-td-date">
+                      {formatDate(c.order?.receivedDate, c.order?.facilityId)}
+                    </td>
+
+                    {/* Physician */}
+                    <td className="wl-td-physician">
+                      {c.order?.requestingProvider ?? '—'}
                     </td>
 
                     {/* Specimens */}
@@ -1629,21 +1984,65 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                       )}
                     </td>
 
-                    {/* Accession date */}
-                    <td className="wl-td-date">
-                      {formatDate(c.order?.receivedDate, c.order?.clientId)}
+                    {/* Real, per direct follow-up ("some cases will
+                        have DP, others may not") — same, single
+                        worklist, two new, genuinely optional columns.
+                        Both badges render nothing at all for a case
+                        with no real digital slide/AI data, rather
+                        than an empty placeholder cell claiming a real
+                        absence of data is itself a real status. */}
+                    {/* Real fix (PS-319 — "selecting the Digital
+                        Readiness indicator opens the drawer, but
+                        immediately navigates to the Synoptic Report
+                        page instead of letting the user stay on the
+                        drawer"): this <td> sits inside the row <tr>,
+                        which has its own onClick={() =>
+                        handleRowClick(c.id)} that navigates into the
+                        case. Neither this cell's onClick nor the badge
+                        <button> inside it stopped the click from
+                        bubbling up to that row handler, so a single
+                        click fired BOTH onOpenDpDrawer (opens the
+                        drawer, correctly) AND handleRowClick
+                        (navigates away, immediately closing/leaving
+                        it) in the same event. Same real
+                        stopPropagation() fix this file's own
+                        openComposeTo button (above) already uses for
+                        an identical contained-click-inside-a-clickable-
+                        row situation. */}
+                    <td className="wl-td wl-td-dp" onClick={e => { e.stopPropagation(); onOpenDpDrawer?.(c.id); }}>
+                      {(() => {
+                        const badge = resolveDigitalReadinessBadge(wsiSlidesByCaseId?.get(c.id));
+                        if (!badge) return null;
+                        return (
+                          <button type="button" className={`wl-dp-badge wl-dp-badge--${badge.level}`} title={t('worklistTable.dp.viewSlideDetails')}>
+                            {badge.summaryText}
+                          </button>
+                        );
+                      })()}
                     </td>
-
-                    {/* Physician */}
-                    <td className="wl-td-physician">
-                      {c.order?.requestingProvider ?? '—'}
+                    <td className="wl-td wl-td-dp" onClick={e => { e.stopPropagation(); onOpenDpDrawer?.(c.id); }}>
+                      {(() => {
+                        const badge = resolveDpTriageBadge(dpResultByCaseId?.get(c.id));
+                        if (!badge) return null;
+                        return (
+                          <button type="button" className={`wl-dp-badge wl-dp-badge--${badge.level}`} title={t('worklistTable.dp.viewAiTriageDetails')}>
+                            <div>{badge.primaryText}</div>
+                            {badge.biomarkerSummary && <div className="wl-dp-badge-sub">{badge.biomarkerSummary}</div>}
+                          </button>
+                        );
+                      })()}
                     </td>
 
                     {/* Flags */}
                     <td className="wl-td">
                       <div className="wl-chips-wrap">
-                        {renderFlags(c.caseFlags ?? [], c.specimenFlags ?? [], c.id)}
+                        {renderFlags(c.caseFlags ?? [], c.specimens ?? [], c.id)}
                       </div>
+                    </td>
+
+                    {/* Staff — PS-304 */}
+                    <td className="wl-td">
+                      {renderStaffCell(c)}
                     </td>
 
                     {/* Status dot */}
@@ -1662,12 +2061,12 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
             {isLoadingMore && (
               <tr>
-                <td colSpan={11} className="wl-loading-state">
+                <td colSpan={14} className="wl-loading-state">
                   <div className="wl-loader-spinner wl-loader-center" />
                 </td>
               </tr>
             )}
-            <tr><td colSpan={11} className="wl-row-spacer" /></tr>
+            <tr><td colSpan={14} className="wl-row-spacer" /></tr>
           </tbody>
         </table>
         </div>{/* end scroll container */}
@@ -1681,7 +2080,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
           className="wl-mirror-bar"
           onScroll={handleMirrorScroll}
         >
-          <div ref={innerRef} style={{ height: '1px' }} />
+          <div ref={innerRef} className="wl-mirror-bar-spacer" />
         </div>
 
       </div>
@@ -1691,16 +2090,15 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       {/* ── Pediatric Access Modal ─────────────────────────────────────── */}
       {pedBlockedCase && (
         <div className="ps-overlay" onClick={() => setPedBlockedCase(null)}>
-          <div className="ps-modal ps-modal-md" onClick={e => e.stopPropagation()}
-            style={{ borderColor: 'rgba(245,158,11,0.4)' }}>
+          <div className="ps-modal ps-modal-md ps-modal--accent-amber" onClick={e => e.stopPropagation()}>
 
             <div className="ps-modal-header">
               <div className="ps-modal-header-inner">
                 <div className="ps-ped-icon">🔒</div>
                 <div>
-                  <div className="ps-modal-title">Pediatric Access Required</div>
+                  <div className="ps-modal-title">{t('worklistTable.pedModal.title')}</div>
                   <div className="ps-modal-subtitle">
-                    Patient age {pedBlockedCase.age} · Case {pedBlockedCase.id}
+                    {t('worklistTable.pedModal.subtitle', { age: pedBlockedCase.age, id: pedBlockedCase.id })}
                   </div>
                 </div>
               </div>
@@ -1708,38 +2106,45 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
             <div className="ps-modal-body">
               <p className="ps-ped-body">
-                This patient is classified as pediatric. Access requires both a user-level qualification <em>and</em> authorization
-                by the submitting facility. Your System Admin can grant access via{' '}
-                <strong className="ps-ped-highlight">Configuration → Facility Configuration</strong>.
+                <Trans
+                  i18nKey="worklistTable.pedModal.body"
+                  components={{ em: <em />, strong: <strong className="ps-ped-highlight" /> }}
+                />
               </p>
 
               {pedRequestSent ? (
                 <div className="ps-ped-pending">
-                  ⏳ Access request pending — your System Admin has been notified.<br/>
-                  <span className="ps-ped-pending-sub">You'll receive a message when access is granted.</span>
+                  ⏳ {t('worklistTable.accessModal.requestPending')}<br/>
+                  <span className="ps-ped-pending-sub">{t('worklistTable.accessModal.willReceiveMessage')}</span>
                 </div>
               ) : (
                 <div className="ps-ped-info-box">
-                  <strong className="ps-ped-highlight">Request Pediatric Access</strong><br/>
-                  One click sends an automated request to your System Admin.
+                  <strong className="ps-ped-highlight">{t('worklistTable.pedModal.requestButtonLabel')}</strong><br/>
+                  {t('worklistTable.accessModal.oneClickNote')}
                 </div>
               )}
             </div>
 
             <div className="ps-modal-footer">
               <button className="ps-btn-secondary" onClick={() => setPedBlockedCase(null)}>
-                Close
+                {t('common.close')}
               </button>
               {!pedRequestSent && (
                 <button className="ps-btn-primary" onClick={async () => {
                   if (!user || !pedBlockedCase) return;
                   try {
+                    // Message subject/body sent to the facility's admins,
+                    // and the audit-trail detail string below — both are
+                    // persisted/other-reader text, not on-screen UI chrome
+                    // for the pathologist viewing this table, so they stay
+                    // in English per this sweep's established convention
+                    // (same reasoning as the compose-drawer subject above).
                     await sendAccessRequestToAdmins(
                       { id: (user as any).id, name: (user as any).name, organisationId: (user as any).organisationId },
                       `Pediatric Access Request — ${(user as any).name}`,
-                      `${(user as any).name} needs Pediatric Access for case ${pedBlockedCase.id} (patient age ${pedBlockedCase.age}).\n\nTo grant access:\n1. Go to Configuration → Facility Configuration\n2. Open the submitting facility for this case\n3. Add ${(user as any).name} to the Authorized Pediatric Pathologists list\n\nNote: Both the user-level Pediatric flag AND the facility authorization must be set for access to be granted.`,
-                      pedBlockedCase.clientId
-                        ? `/configuration?tab=system&section=clients&client=${pedBlockedCase.clientId}`
+                      `${(user as any).name} needs Pediatric Access for case ${pedBlockedCase.id} (patient age ${pedBlockedCase.age}).\n\nTo grant access:\n1. Go to Configuration → System → Integrations → Facility Configuration\n2. Open the submitting facility for this case\n3. Add ${(user as any).name} to the Authorized Pediatric Pathologists list\n\nNote: Both the user-level Pediatric flag AND the facility authorization must be set for access to be granted.`,
+                      pedBlockedCase.facilityId
+                        ? `/configuration?tab=system&section=clients&client=${pedBlockedCase.facilityId}`
                         : '/configuration?tab=system&section=clients',
                     );
                     markPedRequested(pedBlockedCase.id);
@@ -1754,7 +2159,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     }).catch(() => {});
                   } catch { markPedRequested(pedBlockedCase.id); }
                 }}>
-                  Request Pediatric Access
+                  {t('worklistTable.pedModal.requestButtonLabel')}
                 </button>
               )}
             </div>
@@ -1765,20 +2170,20 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
       {/* Structurally mirrors the Pediatric Access Modal above — same
           messageService/auditService shape, same request-tracking pattern —
           with copy and the message payload adjusted for what's actually being
-          granted: a Role-level flag (canViewOrchestration), not a per-client
+          granted: the staff record's own flag (StaffUser.canViewOrchestration;
+          corrected in Batch 370, this used to say Role-level), not a per-client
           authorized-pathologist list, and no age/clientId involved. */}
       {orchBlockedCase && (
         <div className="ps-overlay" onClick={() => setOrchBlockedCase(null)}>
-          <div className="ps-modal ps-modal-md" onClick={e => e.stopPropagation()}
-            style={{ borderColor: 'rgba(56,189,248,0.4)' }}>
+          <div className="ps-modal ps-modal-md ps-modal--accent-sky" onClick={e => e.stopPropagation()}>
 
             <div className="ps-modal-header">
               <div className="ps-modal-header-inner">
                 <div className="ps-ped-icon">🔒</div>
                 <div>
-                  <div className="ps-modal-title">Orchestration Access Required</div>
+                  <div className="ps-modal-title">{t('worklistTable.orchModal.title')}</div>
                   <div className="ps-modal-subtitle">
-                    Case {orchBlockedCase.id}
+                    {t('worklistTable.orchModal.subtitle', { id: orchBlockedCase.id })}
                   </div>
                 </div>
               </div>
@@ -1786,38 +2191,40 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
 
             <div className="ps-modal-body">
               <p className="ps-ped-body">
-                This case belongs to PathScribe Orchestration/Outreach — a different data source than
-                your LIS cases, with its own access control. Viewing it requires the{' '}
-                <strong className="ps-ped-highlight">canViewOrchestration</strong> flag on your staff record.
-                Your System Admin can grant this via{' '}
-                <strong className="ps-ped-highlight">Configuration → Staff</strong> (same screen as Pediatric Access).
+                <Trans
+                  i18nKey="worklistTable.orchModal.body"
+                  components={{ strong: <strong className="ps-ped-highlight" /> }}
+                />
               </p>
 
               {orchRequestSent ? (
                 <div className="ps-ped-pending">
-                  ⏳ Access request pending — your System Admin has been notified.<br/>
-                  <span className="ps-ped-pending-sub">You'll receive a message when access is granted.</span>
+                  ⏳ {t('worklistTable.accessModal.requestPending')}<br/>
+                  <span className="ps-ped-pending-sub">{t('worklistTable.accessModal.willReceiveMessage')}</span>
                 </div>
               ) : (
                 <div className="ps-ped-info-box">
-                  <strong className="ps-ped-highlight">Request Orchestration Access</strong><br/>
-                  One click sends an automated request to your System Admin.
+                  <strong className="ps-ped-highlight">{t('worklistTable.orchModal.requestButtonLabel')}</strong><br/>
+                  {t('worklistTable.accessModal.oneClickNote')}
                 </div>
               )}
             </div>
 
             <div className="ps-modal-footer">
               <button className="ps-btn-secondary" onClick={() => setOrchBlockedCase(null)}>
-                Close
+                {t('common.close')}
               </button>
               {!orchRequestSent && (
                 <button className="ps-btn-primary" onClick={async () => {
                   if (!user || !orchBlockedCase) return;
                   try {
+                    // Message subject/body and audit detail below stay in
+                    // English — same "persisted/other-reader text" reasoning
+                    // as the Pediatric Access modal's own handler above.
                     await sendAccessRequestToAdmins(
                       { id: (user as any).id, name: (user as any).name, organisationId: (user as any).organisationId },
                       `Orchestration Access Request — ${(user as any).name}`,
-                      `${(user as any).name} needs Orchestration access for case ${orchBlockedCase.id}.\n\nTo grant access:\n1. Go to Configuration → Staff\n2. Open ${(user as any).name}'s staff record\n3. Enable the "canViewOrchestration" flag\n\nNote: this grants visibility into ALL Orchestration/Outreach cases for this user, not just this one case — confirm that's the intended scope before granting. (Same flag location/pattern as Pediatric Access, on the staff record rather than a per-client list.)`,
+                      `${(user as any).name} needs Orchestration access for case ${orchBlockedCase.id}.\n\nTo grant access:\n1. Go to Configuration → Staff\n2. Open ${(user as any).name}'s staff record\n3. Enable the "canViewOrchestration" flag\n\nNote: this grants visibility into ALL Orchestration/Outreach cases for this user, not just this one case — confirm that's the intended scope before granting. (Same flag location/pattern as Pediatric Access, on the staff record rather than a per-facility list.)`,
                       '/configuration?tab=system&section=staff',
                     );
                     markOrchRequested(orchBlockedCase.id);
@@ -1832,7 +2239,7 @@ const WorklistTable: React.FC<WorklistTableProps> = ({
                     }).catch(() => {});
                   } catch { markOrchRequested(orchBlockedCase.id); }
                 }}>
-                  Request Orchestration Access
+                  {t('worklistTable.orchModal.requestButtonLabel')}
                 </button>
               )}
             </div>

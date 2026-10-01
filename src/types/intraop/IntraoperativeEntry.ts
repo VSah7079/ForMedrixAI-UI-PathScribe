@@ -24,6 +24,8 @@
 // see mockIntraoperativeService's addMilestone for why.
 // ─────────────────────────────────────────────────────────────────────────────
 
+import type { DigitalAsset } from '@/types/case/Material';
+
 export type MilestoneType =
   | 'gross_logged'
   | 'touch_prep_performed'
@@ -31,6 +33,46 @@ export type MilestoneType =
   | 'frozen_section_cut';
 
 export type SkipReason = 'fibrotic_scant' | 'direct_to_frozen' | 'other';
+
+/** Real, new type, per direct guidance — resolves a real, confirmed gap
+ *  (Jira PS-82): milestones[] tracks WORKFLOW SEQUENCE (when a step
+ *  happened, was it skipped, why) — it was never meant to be, and
+ *  never reliably could be, a real COUNT of what was actually
+ *  produced. A single 'frozen_section_cut' milestone tap represents
+ *  the workflow step happening at all, not how many physical blocks
+ *  were frozen, and a specimen can genuinely have BOTH touch preps AND
+ *  frozen blocks, which the old single-tap-per-milestone-type model
+ *  had no way to represent as distinct, countable, separately-
+ *  identified outputs at all. */
+export type PreparationType =
+  | 'frozen_block'
+  | 'touch_prep'
+  | 'squash_prep'
+  | 'cytology_fluid'
+  | 'gross_only';
+
+/** Real, itemized record of one specific preparation actually
+ *  produced at the bench — e.g. one real frozen block, one real touch
+ *  prep slide. This, not milestones[], is the real source
+ *  suggestFrozenSectionCptCodes() (services/billing/frozenSectionBilling.ts)
+ *  counts from — see that file's own header for the full reasoning,
+ *  and PreparationOutput[] on IntraopSpecimen below for where these
+ *  live per specimen. */
+export interface PreparationOutput {
+  id: string;
+  type: PreparationType;
+  /** Real, human-readable identifier for this specific output, e.g.
+   *  "FS-A1" for a frozen block or "FS-TP1" for a touch prep slide on
+   *  specimen A — matches the real example given directly ("Specimen A
+   *  → 1 Touch Prep Slide (FS-TP1) + 1 Frozen Block (FS-A1)").
+   *  Auto-generated from the specimen's own label plus a real,
+   *  per-type sequence counter (mockIntraoperativeService.ts's own
+   *  addPreparationOutput) — never left to free-text entry, so two
+   *  outputs of the same type on the same specimen can never
+   *  collide. */
+  identifier: string;
+  timestamp: string;
+}
 
 /** Discrete, comparable category — the actual point of this over free
  *  text: two short diagnoses can't reliably self-compare for
@@ -80,6 +122,18 @@ export interface IntraopSpecimen {
   specimenLabel: string;
   arrivalTimestamp: string; // TAT baseline, per specimen — different specimens in the same session can arrive at genuinely different moments
   milestones: MilestoneEntry[];
+  /** Real, per direct follow-up on item 3 of the image/PDF
+   *  architecture scoping — confirmed directly that no real gross/
+   *  frozen-section photo capture existed anywhere in the intraop
+   *  workflow before this, even though it's explicitly named in both
+   *  PAX-it!'s and PathoZoom®'s own real capabilities. Uses the same
+   *  real DigitalAsset shape as HistologyBlock's own block-face
+   *  photos (types/case/Material.ts) — never a second, parallel
+   *  photo type. Every entry's own url is a real, uploaded reference
+   *  (services/imageAssociation/IImageUploadService.ts) — never a
+   *  base64 frame stored directly, per this same session's own
+   *  confirmed §1.1 compliance fix. */
+  digitalAssets?: DigitalAsset[];
   preliminaryCytologyDictation?: string;
   /** Phase 1 of a real two-phase gross description model — rapid,
    *  high-velocity capture at the bench: dimensions/weight, which
@@ -118,6 +172,43 @@ export interface IntraopSpecimen {
    *  setFrozenSectionDiagnosis (mockIntraoperativeService.ts) - the real
    *  moment the diagnosis is actually rendered. */
   frozenDiagnosisRenderedAt?: string;
+  /** Real, per the OR Suite Live Board's own dismissal workflow spec —
+   *  the deliberate, distinct second confirmation point at the END of
+   *  the workflow (sign-out/dismissal read-back protocol) for THIS one
+   *  specimen's own row on the board — separate from the session-level
+   *  verbalReportLog above (real-time, whenever an urgent finding
+   *  needs to be called in; both are kept, per direct confirmation:
+   *  "replacing the standalone button with only a dismissal-time
+   *  checkbox would create a significant patient safety and audit
+   *  gap"). Undefined the whole time a completed specimen sits on the
+   *  OR Live Board awaiting dismissal — its presence alone is what
+   *  removes that row from the active board (mirrors
+   *  frozenDiagnosisRenderedAt's own "presence is the state" design). */
+  dismissedFromBoardAt?: string;
+  dismissedByUserId?: string;
+  dismissedByUserName?: string;
+  /** The mandatory verification checkbox's own real answer — "Verbal
+   *  result read-back confirmed with Operating Surgeon." Always true
+   *  when dismissedFromBoardAt is set: the real Confirm & Dismiss
+   *  button stays disabled until this is checked, so there's no real
+   *  path to a dismissal record with this false — kept as an explicit
+   *  field anyway because a real, immutable audit record should state
+   *  the fact it attests to, not require the reader to infer it from
+   *  "well, dismissal happened, so it must have been checked." */
+  surgeonReadbackConfirmed?: boolean;
+  /** Real, itemized record of what was actually produced at the bench
+   *  for this specimen, per direct guidance — separate from
+   *  milestones[] above (workflow-sequence tracking only). A single
+   *  specimen can genuinely have multiple, different preparation
+   *  outputs — e.g. one touch prep slide AND two frozen blocks — each
+   *  with its own real identifier. This is the real source
+   *  suggestFrozenSectionCptCodes() counts frozen blocks from
+   *  (services/billing/frozenSectionBilling.ts) — resolves PS-82's
+   *  real, confirmed gap (counting milestones.length was never
+   *  reliable). Genuinely empty for a specimen where nothing has been
+   *  logged yet, or for legacy sessions created before this field
+   *  existed. */
+  preparations: PreparationOutput[];
 }
 
 export interface IntraoperativeEntry {
@@ -134,17 +225,17 @@ export interface IntraoperativeEntry {
   surgeon: string;
   /** Real feature, per direct confirmation: "Let's wire in Facility
    *  and Location (Room) for Intraop." Same real pattern as
-   *  Case.order.clientId/locationId — captured once per session
+   *  Case.order.facilityId/locationId — captured once per session
    *  (alongside OR/surgeon), not per specimen, since the specimens
    *  under one session all come from the same OR/facility. Optional:
    *  a session can genuinely be started before the facility/location
    *  is known (e.g. barcode-only identification with no ADT match —
    *  see PatientMatchInfo), same honest-absence posture as the rest
    *  of this type. */
-  clientId?: string;
+  facilityId?: string;
   /** Cached display name — avoids an async lookup on every render,
-   *  same reasoning as Case.order.clientName. */
-  clientName?: string;
+   *  same reasoning as Case.order.facilityName. */
+  facilityName?: string;
   locationId?: string;
   /** Cached display string ("OR-3" / "Ward 3 / 101 / A") — same
    *  reasoning as Case.order.locationDisplay. */

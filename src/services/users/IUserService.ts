@@ -17,17 +17,42 @@ export interface StaffUser {
    * If undefined/null, the system falls back to the Global Facility Profile.
    */
   voiceProfile?: VoiceProfileId | null;
+  /** PS-342 (Batch 338): the spelling language this pathologist prefers
+   *  (a SpellingLocale code). Inherited by cases assigned to them, ahead
+   *  of the facility default; a case's own choice still wins. Null or
+   *  absent: use the facility default. */
+  spellingLocale?: string | null;
   /** Professional credentials suffix (e.g. MD, FCAP, MBChB, FRCPath) */
   credentials?: string;
+  /** Real, per direct guidance's own explicit design — sign-out
+   *  permissions stored as real, scoped credentials/sub-capabilities
+   *  on the user record, not a dynamic top-level role. Deliberately a
+   *  separate field from `credentials` above (a formatted display
+   *  suffix) — same word, genuinely different real meaning. Real,
+   *  honest note: this app has two, separate, pre-existing StaffUser
+   *  definitions (this one and types/index.ts's own) — this field is
+   *  added to both for consistency, not a sign either has been
+   *  unified into the other. */
+  providerCredentials?: import('@/types/staff/ProviderCredential').ProviderCredential[];
   /** Option C — user-level pediatric qualification flag.
-   * Must also be on the client's authorizedPediatricPathologistIds list. */
+   * Must also be on the facility's authorizedPediatricPathologistIds list. */
   canViewPediatric?: boolean;
+  /** Real, per direct follow-up on the RFP-APLIS-2026-GLOBAL
+   *  Intraoperative/Frozen Section Dashboard's own Location-First +
+   *  Quick Auth design ("Proximity Badge Tap (RFID/NFC) or 4-digit
+   *  PIN"). Real, honest mock scope: a genuine RFID/NFC badge reader
+   *  is real hardware integration this codebase cannot build — the
+   *  PIN half is real and fully working today, standing in for
+   *  whichever real credential a real deployment actually wires up.
+   *  Only meaningful for a real 'or-staff' role — lab staff keep
+   *  using the existing, real login. */
+  quickAuthPin?: string;
   /**
    * User-level flag granting visibility into Orchestration/Outreach cases
    * (O26- prefix, routed by CaseRouter to the PathScribe Firestore service)
    * across Search and Worklist. Unlike canViewPediatric, this is a single
    * flag with no second authorization layer — Orchestration cases aren't
-   * tied to a per-client list, so there's no equivalent of "Option C" here.
+   * tied to a per-facility list, so there's no equivalent of "Option C" here.
    * Defaults to false/undefined — must be explicitly granted.
    */
   canViewOrchestration?: boolean;
@@ -79,10 +104,38 @@ export interface StaffUser {
    * access control than actually exists.
    */
   organisationId?: string;
+  /**
+   * PS-356 (Batch 370): the facilities (services/facilities/, the same ids
+   * as a case's facilityId and a QA client scope) this person works for.
+   * Empty or absent: all facilities. It narrows where their capabilities
+   * apply (services/authorization/evaluateCapability.ts); it doesn't grant
+   * anything and doesn't change which cases they can open (that is the
+   * organisation boundary above). Per Pete, scope lives here, on the
+   * assignment, not on the role.
+   */
+  facilityIds?: string[];
   /** GMC number for UK users */
   gmcNumber?: string;
   /** Middle name or initial */
   middleName?: string;
+  /**
+   * Real feature, per direct follow-up building a real fallback chain
+   * for session station init: "Fallback to User Profile: If no
+   * device-level ID exists, pull the logged-in user's
+   * default_station_id." A real, admin-assigned home station for
+   * roaming staff — distinct from the device-level, localStorage-
+   * backed sticky station (useCurrentScanStation.ts), which still
+   * takes priority when it exists (a fixed workstation's own identity
+   * always wins over whichever user happens to log in there).
+   */
+  defaultScanStationId?: string;
+  /**
+   * PS-60 (Batch 343): the SSO accounts this person signs in with, one per
+   * provider (issuer + permanent account id). Set at first sign-in when
+   * linking by email is allowed, or by an administrator. Sign-in matches on
+   * this, never on email alone (services/auth/externalIdentity.ts).
+   */
+  externalIdentities?: import('../auth/externalIdentity').ExternalIdentityLink[];
 }
 
 export interface IUserService {

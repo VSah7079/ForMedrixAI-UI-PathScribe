@@ -9,7 +9,7 @@
 // timeZone support (no external library needed, no dependency added).
 //
 // Before this: computeMonthlyCaseCounts/computeMonthlyRvu/computeRvuSummary
-// (and DeficienciesPage.tsx's own, separate month-bucketing loop) all used
+// (and QualityAssurancePage.tsx's own, separate month-bucketing loop) all used
 // raw new Date(iso).getMonth()/.getFullYear() - the VIEWING DEVICE's own
 // local timezone, not a real, fixed facility timezone. Two real problems
 // this caused: (1) a test using midnight-UTC fixtures silently misattributed
@@ -44,7 +44,7 @@ export interface FacilityMonthRange {
 }
 
 /** Real, shared helper for the "trailing N months, in facility time"
- *  pattern found identically duplicated across DeficienciesPage.tsx,
+ *  pattern found identically duplicated across QualityAssurancePage.tsx,
  *  ReconciliationTab.tsx, CountersignTurnaroundTab.tsx, and
  *  IntraopLinkageTab.tsx - each had built this via
  *  d.setMonth(d.getMonth() - i) on a raw, viewing-device-local Date.
@@ -151,6 +151,12 @@ export interface FacilityDateParts {
 export function getFacilityDateParts(input: string | Date, timezone: string): FacilityDateParts {
   const { year, month, day } = getFacilityDateTimeParts(input, timezone);
   return { year, month, day };
+}
+
+/** Batch 360: the facility's calendar date as 'YYYY-MM-DD' (e.g. "today" for due dates). */
+export function getFacilityIsoDate(input: string | Date, timezone: string): string {
+  const { year, month, day } = getFacilityDateParts(input, timezone);
+  return `${year}-${String(month + 1).padStart(2, '0')}-${String(day).padStart(2, '0')}`;
 }
 
 /** Real, shared UTC-offset computation (milliseconds), reused by both

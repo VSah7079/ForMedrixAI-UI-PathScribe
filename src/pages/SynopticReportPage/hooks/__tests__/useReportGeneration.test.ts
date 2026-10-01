@@ -19,6 +19,11 @@
 
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { renderHook, act } from '@testing-library/react';
+// Initializes the real i18next instance so t() resolves to actual English
+// text at test time — this hook's toast strings are now i18n-driven, and
+// a few assertions below require exact-text equality, not just substring
+// containment.
+import '@/i18n/config';
 import { useReportGeneration } from '../useReportGeneration';
 import type { Case } from '@/types/case/Case';
 import type { OrchestratorSection } from '../../components/OrchestratorSectionEditor';
@@ -179,7 +184,7 @@ describe('useReportGeneration — buildOrchCallbacks state transitions', () => {
 
     act(() => { capturedCallbacks.onError('sec-1', 'model timed out'); });
     expect(result.current.isOrchestrating).toBe(false);
-    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('model timed out'));
+    expect(showToast).toHaveBeenCalledWith(expect.stringContaining('model timed out'), 'warning');
   });
 });
 
@@ -213,7 +218,7 @@ describe('useReportGeneration — handleGenerateReport / handleAbortGenerate', (
 
     await act(async () => { await result.current.handleGenerateReport(); });
 
-    expect(showToast).toHaveBeenCalledWith('Generation failed: model timed out');
+    expect(showToast).toHaveBeenCalledWith('Generation failed: model timed out', 'warning');
     expect(result.current.isOrchestrating).toBe(false);
   });
 

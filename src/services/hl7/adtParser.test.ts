@@ -37,6 +37,55 @@ function buildAdtA08(): string {
   ].join('\r');
 }
 
+// Real, precisely verified fixture, per direct, detailed correction:
+// DG1 riding with a real A01 — DG1-3's real component order
+// (identifier^text^codingSystem) confirmed directly against this
+// app's own, already-existing outbound buildDG1 (segmentBuilders.ts).
+// Two real, repeating DG1 segments (getAllSegments, not getSegment) —
+// exercises real multi-diagnosis handling, not just a single row.
+function buildAdtA01WithDG1(): string {
+  return [
+    'MSH|^~\\&|EPIC|EPICADT|SMS|SMSADT|202601150800|CHARRIS|ADT^A01|MSG004|P|2.5',
+    'EVN||202601150800',
+    'PID|1||MRN30456^^^MAIN_CAMPUS^MR||GARCIA^MARIA^L||19901105|F',
+    'PV1|1|I|ICU^301^A^MAIN_CAMPUS||||9876543^WILLIAMS^CAROL^L^^^MD||||||||||||FIN99887|||||||||||||||||||||||||202601150730',
+    'DG1|1|I10|E11.9^Type 2 diabetes mellitus without complications^I10|Type 2 Diabetes||A',
+    'DG1|2|I10|I10^Essential (primary) hypertension^I10|Hypertension||W',
+  ].join('\r');
+}
+
+describe('parseAdtMessage — real fix, per direct, detailed correction: DG1 is its own, dedicated segment (not part of OBR), and legitimately rides with ADT', () => {
+  it('correctly extracts a real DG1-3 (identifier^text^codingSystem) and DG1-6 (diagnosis type)', () => {
+    const result = parseAdtMessage(buildAdtA01WithDG1());
+    expect(result.diagnoses).toEqual([
+      { code: 'E11.9', description: 'Type 2 diabetes mellitus without complications', codingSystem: 'I10', diagnosisType: 'A' },
+      { code: 'I10', description: 'Essential (primary) hypertension', codingSystem: 'I10', diagnosisType: 'W' },
+    ]);
+  });
+
+  it('preserves real DG1-1 set-id order across multiple repeating segments', () => {
+    const result = parseAdtMessage(buildAdtA01WithDG1());
+    expect(result.diagnoses[0].code).toBe('E11.9');
+    expect(result.diagnoses[1].code).toBe('I10');
+  });
+
+  it('returns a genuinely empty array, not undefined, for a real message that carries no DG1 at all — most real ADT traffic won\'t', () => {
+    const result = parseAdtMessage(buildAdtA01());
+    expect(result.diagnoses).toEqual([]);
+  });
+
+  it('silently drops a DG1 segment with no real DG1-3.1 identifier — never a genuine diagnosis, never a hollow entry', () => {
+    const raw = [
+      'MSH|^~\\&|EPIC|EPICADT|SMS|SMSADT|202601150800|CHARRIS|ADT^A01|MSG005|P|2.5',
+      'EVN||202601150800',
+      'PID|1||MRN30456^^^MAIN_CAMPUS^MR||GARCIA^MARIA^L||19901105|F',
+      'PV1|1|I|ICU^301^A^MAIN_CAMPUS||||9876543^WILLIAMS^CAROL^L^^^MD||||||||||||FIN99887|||||||||||||||||||||||||202601150730',
+      'DG1|1|I10|||',
+    ].join('\r');
+    expect(parseAdtMessage(raw).diagnoses).toEqual([]);
+  });
+});
+
 describe('parseAdtMessage — real fix: the first real inbound HL7 parsing this app has, verified against real, precisely-counted field positions', () => {
   it('correctly identifies the real event type from MSH-9', () => {
     expect(parseAdtMessage(buildAdtA01()).eventType).toBe('A01');
@@ -114,9 +163,9 @@ describe('parseAdtMessage — real fix: the first real inbound HL7 parsing this 
     expect(result.encounter.floor).toBeUndefined();
   });
 
-  it('correctly extracts and formats the real attending provider from PV1-7', () => {
+  it('real, per PS-81 (Jira): correctly extracts the real, structured attending provider from PV1-7 - id/lastName/firstName, never flattened to a string here anymore', () => {
     const result = parseAdtMessage(buildAdtA01());
-    expect(result.encounter.attendingProvider).toBe('WILLIAMS, CAROL');
+    expect(result.encounter.attendingProvider).toEqual({ id: '9876543', lastName: 'WILLIAMS', firstName: 'CAROL' });
   });
 
   it('correctly extracts the real admit time from PV1-44', () => {

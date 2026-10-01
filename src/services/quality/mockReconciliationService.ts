@@ -141,7 +141,12 @@ const TEACHING_SEED: ReconciliationRecord[] = [
   })) as ReconciliationRecord[],
 ];
 
-const SEED_RECORDS: ReconciliationRecord[] = [...DISCORDANT_SEED, ...CONCORDANT_SEED, ...TEACHING_SEED];
+// Real, per direct guidance ahead of PS-113's Stage 3 migration:
+// exported (was module-private) so reconciliationRecordMapping.ts's
+// real, tested migration can map over the exact same real seed data
+// this service itself uses - never a hand-copied, potentially-drifting
+// duplicate.
+export const SEED_RECORDS: ReconciliationRecord[] = [...DISCORDANT_SEED, ...CONCORDANT_SEED, ...TEACHING_SEED];
 
 const load    = (): ReconciliationRecord[] => storageGet<ReconciliationRecord[]>(STORAGE_KEY, SEED_RECORDS);
 const persist = (data: ReconciliationRecord[]) => storageSet(STORAGE_KEY, data);
