@@ -1,6 +1,6 @@
 import React from "react";
 import '../../../pathscribe.css';
-import { useNavigate } from "react-router-dom";
+import { useNavigate } from "react-router";
 
 type Template = { id: string; name: string; version: string; status: string; };
 

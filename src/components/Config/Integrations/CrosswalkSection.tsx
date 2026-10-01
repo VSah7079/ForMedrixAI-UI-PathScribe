@@ -14,7 +14,7 @@
 // tell system-learned entries apart from admin-confirmed ones.
 // ─────────────────────────────────────────────────────────────────────────────
 import React, { useState, useEffect, useRef } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router';
 import { parseCsv, toCsv, downloadCsv, isCsvFile, readFileAsText } from '@/utils/csv';
 import '../../../pathscribe.css';
 import { orderIntakeService, facilityService, specimenDictionaryService, interfaceExceptionService } from '@/services';
