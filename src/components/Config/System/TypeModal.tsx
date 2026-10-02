@@ -196,7 +196,7 @@ const TypeModal: React.FC<TypeModalProps> = ({ mode, type, existingEntries, labs
               {mode === 'add' ? t('participationTypesSection.modal.titleAdd') : t('participationTypesSection.modal.titleEdit', { label: type?.label ?? '' })}
               {isBuiltIn && (
                 <span className="ps-idf-tier-badge ps-idf-tier-badge--2 ps-participationtypes__builtin-badge">
-                  {t('participationTypesSection.builtInBadge')}
+                  {t('participationTypesSecticlson.builtInBadge')}
                 </span>
               )}
             </h2>
